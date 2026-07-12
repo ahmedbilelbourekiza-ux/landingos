@@ -1,8 +1,7 @@
-import { Badge } from "@/components/ui/badge";
 import { discountPercentage, formatPrice } from "@/lib/landing/format";
 
-// Price display: large crimson-tinted price, struck-through old price,
-// and a gold discount badge for luxury feel.
+// Price display: large primary-colored price, struck-through old price,
+// and a gold discount badge for luxury feel. Uses design system tokens.
 export function PriceBlock({
   price,
   oldPrice,
@@ -15,7 +14,7 @@ export function PriceBlock({
   const off = discountPercentage(price, oldPrice);
   return (
     <div className="flex flex-wrap items-baseline gap-3" dir="rtl">
-      <span className="text-4xl font-bold tracking-tight tabular-nums" style={{ color: "var(--crimson)" }}>
+      <span className="text-4xl font-bold tracking-tight tabular-nums text-primary">
         {formatPrice(price, currency)}
       </span>
       {oldPrice && off && (

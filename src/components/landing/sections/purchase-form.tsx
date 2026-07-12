@@ -224,7 +224,6 @@ export function PurchaseForm({
         size="lg"
         disabled={submitting}
         className="h-14 w-full rounded-xl text-base font-bold shadow-lg transition-all hover:shadow-xl"
-        style={{ backgroundColor: "var(--crimson)" }}
       >
         {submitting ? <Loader2 className="size-5 animate-spin" /> : null}
         {submitting ? "جاري الإرسال..." : `${buttonText} · ${formatPrice(grandTotal, currency)}`}

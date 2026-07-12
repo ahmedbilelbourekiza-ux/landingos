@@ -67,8 +67,8 @@
   --popover-foreground: oklch(0.18 0.01 250);
 
   /* Crimson primary — CTA buttons, selected variants */
-  --primary: oklch(0.38 0.12 25);
-  --primary-foreground: oklch(0.98 0 0);
+  --primary: #991B1B;
+  --primary-foreground: #FFFFFF;
 
   /* Secondary: warm light gray */
   --secondary: oklch(0.96 0.003 75);
@@ -86,7 +86,7 @@
   /* Borders: warm, subtle */
   --border: oklch(0.91 0.003 75);
   --input: oklch(0.91 0.003 75);
-  --ring: oklch(0.38 0.12 25);
+  --ring: #991B1B;
 
   /* Charts */
   --chart-1: oklch(0.38 0.12 25);
@@ -98,12 +98,12 @@
   /* Dashboard sidebar */
   --sidebar: oklch(0.97 0.002 75);
   --sidebar-foreground: oklch(0.18 0.01 250);
-  --sidebar-primary: oklch(0.38 0.12 25);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-primary: #991B1B;
+  --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: oklch(0.94 0.003 75);
   --sidebar-accent-foreground: oklch(0.18 0.01 250);
   --sidebar-border: oklch(0.91 0.003 75);
-  --sidebar-ring: oklch(0.38 0.12 25);
+  --sidebar-ring: #991B1B;
 
   /* Custom theme tokens */
   --crimson: #991B1B;
@@ -121,8 +121,8 @@
   --card-foreground: oklch(0.95 0.003 75);
   --popover: oklch(0.18 0.005 250);
   --popover-foreground: oklch(0.95 0.003 75);
-  --primary: oklch(0.55 0.15 25);
-  --primary-foreground: oklch(0.98 0 0);
+  --primary: #B91C1C;
+  --primary-foreground: #FFFFFF;
   --secondary: oklch(0.25 0.005 250);
   --secondary-foreground: oklch(0.95 0.003 75);
   --muted: oklch(0.25 0.005 250);

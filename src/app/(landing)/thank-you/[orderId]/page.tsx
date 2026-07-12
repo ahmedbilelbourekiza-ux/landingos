@@ -53,12 +53,12 @@ export default async function ThankYouPage({
   const totalPrice = order.totalPrice.toNumber();
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-12" style={{ backgroundColor: "var(--warm-bg)" }}>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-muted/30 px-4 py-12">
       <div className="w-full max-w-md">
         {/* Success header */}
         <div className="flex flex-col items-center gap-4 text-center">
-          <div className="grid size-16 place-items-center rounded-full" style={{ backgroundColor: "var(--crimson)" }}>
-            <CheckCircle2 className="size-9 text-white" strokeWidth={1.5} />
+          <div className="grid size-16 place-items-center rounded-full bg-primary">
+            <CheckCircle2 className="size-9 text-primary-foreground" strokeWidth={1.5} />
           </div>
           <h1 className="text-2xl font-bold tracking-tight" dir="rtl">
             تم استلام طلبك بنجاح
@@ -122,8 +122,8 @@ export default async function ThankYouPage({
             {/* Status */}
             <div className="flex items-center justify-between border-t pt-3">
               <span className="text-sm text-muted-foreground">حالة الطلب</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: "var(--crimson)" , color: "white" }}>
-                <span className="size-1.5 rounded-full bg-white" />
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground">
+                <span className="size-1.5 rounded-full bg-primary-foreground" />
                 {order.status}
               </span>
             </div>
@@ -131,7 +131,7 @@ export default async function ThankYouPage({
         </div>
 
         {/* Message */}
-        <div className="mt-6 rounded-xl border p-4 text-center" style={{ borderColor: "var(--crimson)", backgroundColor: "var(--warm-bg)" }} dir="rtl">
+        <div className="mt-6 rounded-xl border border-primary/20 bg-primary/5 p-4 text-center" dir="rtl">
           <div className="flex items-center justify-center gap-2 text-sm font-medium text-foreground">
             <Truck className="size-4" style={{ color: "var(--gold)" }} />
             سيتم التواصل معك خلال وقت قصير لتأكيد الطلب
@@ -146,8 +146,7 @@ export default async function ThankYouPage({
           {landing?.slug && (
             <a
               href={`/l/${landing.slug}`}
-              className="inline-flex h-12 flex-1 items-center justify-center rounded-xl px-6 text-sm font-bold text-white shadow-lg transition-all hover:shadow-xl"
-              style={{ backgroundColor: "var(--crimson)" }}
+              className="inline-flex h-12 flex-1 items-center justify-center rounded-xl bg-primary px-6 text-sm font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-xl"
             >
               طلب مرة أخرى
             </a>
