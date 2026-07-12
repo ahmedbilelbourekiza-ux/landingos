@@ -64,7 +64,8 @@ export function StickyBuyButton({
             type="button"
             size="lg"
             onClick={scrollToForm}
-            className="h-12 w-full rounded-xl text-base font-semibold shadow-sm"
+            className="h-14 w-full rounded-xl text-base font-bold shadow-lg"
+            style={{ backgroundColor: "var(--crimson)" }}
           >
             <ShoppingBag className="size-4" />
             {buttonText} · {formatPrice(subtotal, currency)}

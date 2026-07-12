@@ -53,12 +53,12 @@ export default async function ThankYouPage({
   const totalPrice = order.totalPrice.toNumber();
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-muted/30 px-4 py-12">
+    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-12" style={{ backgroundColor: "var(--warm-bg)" }}>
       <div className="w-full max-w-md">
         {/* Success header */}
         <div className="flex flex-col items-center gap-4 text-center">
-          <div className="grid size-16 place-items-center rounded-full bg-emerald-500/10">
-            <CheckCircle2 className="size-9 text-emerald-600" strokeWidth={1.5} />
+          <div className="grid size-16 place-items-center rounded-full" style={{ backgroundColor: "var(--crimson)" }}>
+            <CheckCircle2 className="size-9 text-white" strokeWidth={1.5} />
           </div>
           <h1 className="text-2xl font-bold tracking-tight" dir="rtl">
             تم استلام طلبك بنجاح
@@ -66,7 +66,7 @@ export default async function ThankYouPage({
         </div>
 
         {/* Order details card */}
-        <div className="mt-8 rounded-2xl border bg-card p-6 shadow-sm" dir="rtl">
+        <div className="mt-8 rounded-2xl border bg-card p-6 shadow-md" dir="rtl">
           <div className="flex flex-col gap-4">
             {/* Order number */}
             <div className="flex items-center justify-between border-b pb-3">
@@ -122,8 +122,8 @@ export default async function ThankYouPage({
             {/* Status */}
             <div className="flex items-center justify-between border-t pt-3">
               <span className="text-sm text-muted-foreground">حالة الطلب</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                <span className="size-1.5 rounded-full bg-amber-500" />
+              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: "var(--crimson)" , color: "white" }}>
+                <span className="size-1.5 rounded-full bg-white" />
                 {order.status}
               </span>
             </div>
@@ -131,9 +131,9 @@ export default async function ThankYouPage({
         </div>
 
         {/* Message */}
-        <div className="mt-6 rounded-xl border border-primary/20 bg-primary/5 p-4 text-center" dir="rtl">
+        <div className="mt-6 rounded-xl border p-4 text-center" style={{ borderColor: "var(--crimson)", backgroundColor: "var(--warm-bg)" }} dir="rtl">
           <div className="flex items-center justify-center gap-2 text-sm font-medium text-foreground">
-            <Truck className="size-4 text-primary" />
+            <Truck className="size-4" style={{ color: "var(--gold)" }} />
             سيتم التواصل معك خلال وقت قصير لتأكيد الطلب
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -146,7 +146,8 @@ export default async function ThankYouPage({
           {landing?.slug && (
             <a
               href={`/l/${landing.slug}`}
-              className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-foreground px-6 text-sm font-semibold text-background transition-colors hover:bg-foreground/90"
+              className="inline-flex h-12 flex-1 items-center justify-center rounded-xl px-6 text-sm font-bold text-white shadow-lg transition-all hover:shadow-xl"
+              style={{ backgroundColor: "var(--crimson)" }}
             >
               طلب مرة أخرى
             </a>

@@ -1,10 +1,6 @@
 import { Truck, Wallet, ShieldCheck, Award } from "lucide-react";
 
-// Trust badges: universal COD conversion signals that appear under the price.
-// These are intentionally hardcoded rather than data-driven — they are
-// business-model constants (fast delivery, cash on delivery, warranty,
-// premium quality), not per-product attributes. Every COD landing page
-// should surface the same four reassurances.
+// Trust badges with gold icon accents on warm cards.
 const BENEFITS = [
   { icon: Truck, label: "توصيل سريع" },
   { icon: Wallet, label: "الدفع عند الاستلام" },
@@ -18,9 +14,9 @@ export function BenefitsList() {
       {BENEFITS.map(({ icon: Icon, label }) => (
         <li
           key={label}
-          className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2.5 text-sm font-medium"
+          className="flex items-center gap-2.5 rounded-xl border bg-card px-3 py-3 text-sm font-medium shadow-sm"
         >
-          <Icon className="size-4 shrink-0 text-foreground" aria-hidden />
+          <Icon className="size-4 shrink-0" style={{ color: "var(--gold)" }} aria-hidden />
           <span className="truncate">{label}</span>
         </li>
       ))}
