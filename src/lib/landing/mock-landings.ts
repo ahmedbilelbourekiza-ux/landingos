@@ -13,7 +13,7 @@ export interface LandingListItem {
   price: number;
   currency: string;
   status: LandingPageStatus;
-  thumbnailUrl: string;
+  thumbnailUrl: string | null;
   updatedAt: string; // ISO string for easy sorting + display formatting
 }
 

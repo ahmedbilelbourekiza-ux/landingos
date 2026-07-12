@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { ImageOff } from "lucide-react";
 
 import {
   Table,
@@ -48,13 +49,19 @@ export function LandingTable({
               <TableCell>
                 <div className="flex items-center gap-3">
                   <div className="relative size-10 shrink-0 overflow-hidden rounded-lg border bg-muted">
-                    <Image
-                      src={landing.thumbnailUrl}
-                      alt={landing.title}
-                      fill
-                      sizes="40px"
-                      className="object-cover"
-                    />
+                    {landing.thumbnailUrl ? (
+                      <Image
+                        src={landing.thumbnailUrl}
+                        alt={landing.title}
+                        fill
+                        sizes="40px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="grid h-full place-items-center text-muted-foreground/40">
+                        <ImageOff className="size-4" strokeWidth={1.5} />
+                      </div>
+                    )}
                   </div>
                   <span className="truncate font-medium">{landing.title}</span>
                 </div>

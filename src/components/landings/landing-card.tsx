@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { ImageOff } from "lucide-react";
 
 import { formatPrice } from "@/lib/landing/format";
 import { formatRelative } from "@/lib/landing/date";
@@ -22,13 +23,19 @@ export function LandingCard({
   return (
     <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
       <div className="relative size-14 shrink-0 overflow-hidden rounded-lg border bg-muted">
-        <Image
-          src={landing.thumbnailUrl}
-          alt={landing.title}
-          fill
-          sizes="56px"
-          className="object-cover"
-        />
+        {landing.thumbnailUrl ? (
+          <Image
+            src={landing.thumbnailUrl}
+            alt={landing.title}
+            fill
+            sizes="56px"
+            className="object-cover"
+          />
+        ) : (
+          <div className="grid h-full place-items-center text-muted-foreground/40">
+            <ImageOff className="size-5" strokeWidth={1.5} />
+          </div>
+        )}
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-1">

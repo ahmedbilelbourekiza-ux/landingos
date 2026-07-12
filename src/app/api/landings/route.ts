@@ -40,7 +40,7 @@ export async function GET() {
       price: p.price.toNumber(),
       currency: p.currency,
       status: p.status,
-      thumbnailUrl: p.media[0]?.url ?? "",
+      thumbnailUrl: p.media[0]?.url ?? null,
       updatedAt: p.updatedAt.toISOString(),
     }));
 
