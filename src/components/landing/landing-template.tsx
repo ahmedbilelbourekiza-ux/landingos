@@ -5,22 +5,19 @@ import * as React from "react";
 import { AnnouncementBar } from "./sections/announcement-bar";
 import { SiteNav } from "./sections/site-nav";
 import { ProductSection } from "./sections/product-section";
-import { ReviewsSection } from "./sections/reviews-section";
-import { FAQSection } from "./sections/faq-section";
 import { SiteFooter } from "./sections/site-footer";
 import { StickyBuyButton } from "./sections/sticky-buy-button";
 import type { LandingPageData } from "@/types/landing";
 import { createLandingOrderStore, type LandingOrderStore } from "@/lib/landing/store";
 
 // The default landing-page template. Given a LandingPageData object, it wires
-// up a per-page order store and renders every section, honoring the settings
-// flags (showReviews, showFAQ, stickyBuyButton). This is the single render
-// target for future landing pages: swap the mock data for a Prisma row and
-// the same component tree renders the real page.
+// up a per-page order store and renders the product section + footer. Reviews
+// and FAQ are removed for the MVP — the landing page is intentionally short.
+// The Reviews editor in the dashboard stays intact; it just doesn't render
+// on the public page yet.
 //
 // The store is created once per mount via useState's lazy initializer; the
-// page prop is treated as immutable for the lifetime of the route (each
-// landing page lives at its own URL, so the data never hot-swaps).
+// page prop is treated as immutable for the lifetime of the route.
 export function LandingTemplate({ page }: { page: LandingPageData }) {
   const [store] = React.useState<LandingOrderStore>(() =>
     createLandingOrderStore(page),
@@ -33,8 +30,6 @@ export function LandingTemplate({ page }: { page: LandingPageData }) {
       <SiteNav />
       <main className="flex-1">
         <ProductSection page={page} store={store} />
-        {setting?.showReviews && <ReviewsSection reviews={page.reviews} />}
-        {setting?.showFAQ && <FAQSection faqs={page.faqs} />}
       </main>
       <SiteFooter />
       {setting?.stickyBuyButton && (

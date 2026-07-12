@@ -11,7 +11,6 @@ import { PreviewPricing } from "./preview/preview-pricing";
 import { PreviewVariants } from "./preview/preview-variants";
 import { PreviewCTA } from "./preview/preview-cta";
 import { PreviewOrderForm } from "./preview/preview-order-form";
-import { PreviewReviews } from "./preview/preview-reviews";
 
 // Composer only. Renders the device frame and composes the Preview* section
 // components in order. No business logic, no price computation, no
@@ -46,7 +45,6 @@ export function PreviewContent({
           <PreviewCTA preview={preview} />
         </div>
         <PreviewOrderForm preview={preview} />
-        <PreviewReviews preview={preview} />
       </div>
     </div>
   );
