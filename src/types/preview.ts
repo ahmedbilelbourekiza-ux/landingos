@@ -3,6 +3,7 @@ import type { PricingPreviewValues } from "@/components/landings/edit/sections/p
 import type { ImagesPreviewValues } from "@/components/landings/edit/sections/images-section";
 import type { VariantsPreviewValues } from "@/components/landings/edit/sections/variants-section";
 import type { ReviewsPreviewValues } from "@/components/landings/edit/sections/reviews-section";
+import type { OrderFormPreviewValues } from "@/components/landings/edit/sections/order-form-section";
 
 // Single source of truth for the edit workspace preview. The parent owns
 // this object; each section updates only its own slice via onPreviewChange.
@@ -14,4 +15,5 @@ export interface PreviewState {
   images: ImagesPreviewValues;
   variants: VariantsPreviewValues;
   reviews: ReviewsPreviewValues;
+  orderForm: OrderFormPreviewValues;
 }

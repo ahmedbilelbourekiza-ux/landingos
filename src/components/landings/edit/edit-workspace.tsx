@@ -10,6 +10,7 @@ import {
 } from "@/lib/landing/mock-landings";
 import { mockImagesData } from "@/lib/landing/mock-media";
 import { mockReviewsData } from "@/lib/landing/mock-reviews";
+import { mockOrderFormData } from "@/lib/landing/mock-order-form";
 import type { PreviewState } from "@/types/preview";
 import { EditWorkspaceHeader } from "./edit-workspace-header";
 import { EditSections } from "./edit-sections";
@@ -42,6 +43,9 @@ export function EditWorkspace({ landing }: { landing: LandingListItem }) {
     },
     reviews: {
       reviews: mockReviewsData.reviews,
+    },
+    orderForm: {
+      config: mockOrderFormData,
     },
   });
 

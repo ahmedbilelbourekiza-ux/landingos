@@ -6,6 +6,7 @@ import {
   Image as ImageIcon,
   Tag,
   Layers,
+  ShoppingCart,
   Sparkles,
   Star,
   HelpCircle,
@@ -22,6 +23,7 @@ import { PricingSection } from "./sections/pricing-section";
 import { ImagesSection } from "./sections/images-section";
 import { VariantsSection } from "./sections/variants-section";
 import { ReviewsSection } from "./sections/reviews-section";
+import { OrderFormSection } from "./sections/order-form-section";
 
 const SECTIONS: {
   id: string;
@@ -33,6 +35,7 @@ const SECTIONS: {
   { id: "images", title: "Images & Media", description: "Product gallery, videos, and thumbnails.", icon: ImageIcon },
   { id: "pricing", title: "Pricing", description: "Price, old price, and currency.", icon: Tag },
   { id: "variants", title: "Variants", description: "Colors, sizes, and product options.", icon: Layers },
+  { id: "order-form", title: "Order Form", description: "Configure the purchase form fields.", icon: ShoppingCart },
   { id: "benefits", title: "Benefits", description: "Trust badges and key selling points.", icon: Sparkles },
   { id: "reviews", title: "Reviews", description: "Customer testimonials and ratings.", icon: Star },
   { id: "faq", title: "FAQ", description: "Frequently asked questions.", icon: HelpCircle },
@@ -65,6 +68,7 @@ export function EditSections({
       images: (v: PreviewState["images"]) => onPreviewChange("images", v),
       variants: (v: PreviewState["variants"]) => onPreviewChange("variants", v),
       reviews: (v: PreviewState["reviews"]) => onPreviewChange("reviews", v),
+      orderForm: (v: PreviewState["orderForm"]) => onPreviewChange("orderForm", v),
     }),
     [onPreviewChange],
   );
@@ -86,6 +90,9 @@ export function EditSections({
         }
         if (section.id === "reviews") {
           return <ReviewsSection key={section.id} onPreviewChange={callbacks.reviews} />;
+        }
+        if (section.id === "order-form") {
+          return <OrderFormSection key={section.id} onPreviewChange={callbacks.orderForm} />;
         }
         return (
           <EditSectionCard
