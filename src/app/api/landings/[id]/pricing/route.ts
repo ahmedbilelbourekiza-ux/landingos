@@ -9,8 +9,6 @@ const pricingSchema = z
     price: z.coerce.number().positive("Price must be greater than 0"),
     oldPrice: z.coerce.number().positive().optional().nullable(),
     currency: z.enum(["DZD", "EUR", "USD"]),
-    shipping: z.coerce.number().min(0, "Shipping cannot be negative"),
-    freeShipping: z.boolean(),
   })
   .superRefine((data, ctx) => {
     if (data.oldPrice !== undefined && data.oldPrice !== null && data.oldPrice <= data.price) {
@@ -22,7 +20,7 @@ const pricingSchema = z
     }
   });
 
-// PATCH /api/landings/[id]/pricing — update price, oldPrice, currency, shipping, freeShipping
+// PATCH /api/landings/[id]/pricing — update price, oldPrice, currency
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -36,23 +34,14 @@ export async function PATCH(
     const page = await db.landingPage.findUnique({ where: { id }, select: { id: true } });
     if (!page) return fail("NOT_FOUND", "Landing page not found", 404);
 
-    const { shipping, freeShipping, ...pageFields } = parsed.data;
-
-    await db.$transaction([
-      db.landingPage.update({
-        where: { id },
-        data: {
-          price: pageFields.price,
-          oldPrice: pageFields.oldPrice ?? null,
-          currency: pageFields.currency,
-        },
-      }),
-      db.landingSetting.upsert({
-        where: { landingPageId: id },
-        create: { landingPageId: id, shipping, freeShipping },
-        update: { shipping, freeShipping },
-      }),
-    ]);
+    await db.landingPage.update({
+      where: { id },
+      data: {
+        price: parsed.data.price,
+        oldPrice: parsed.data.oldPrice ?? null,
+        currency: parsed.data.currency,
+      },
+    });
 
     return ok({ id });
   } catch (error) {

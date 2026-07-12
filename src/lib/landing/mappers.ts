@@ -81,8 +81,6 @@ export function toPreviewState(page: LandingWithRelations): PreviewState {
       price: page.price.toNumber(),
       oldPrice: page.oldPrice?.toNumber() ?? null,
       currency: page.currency,
-      shipping: page.setting?.shipping.toNumber() ?? 0,
-      freeShipping: page.setting?.freeShipping ?? false,
     },
     images: {
       heroUrl: hero?.url ?? null,
@@ -102,6 +100,9 @@ export function toPreviewState(page: LandingWithRelations): PreviewState {
     },
     orderForm: {
       config: parseOrderFormConfig(page.setting, page.buttonText),
+    },
+    delivery: {
+      prices: [],
     },
   };
 }

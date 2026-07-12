@@ -16,7 +16,7 @@ import {
   sortableKeyboardCoordinates,
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
-import { Image as ImageIcon, Plus, AlertCircle } from "lucide-react";
+import { Image as ImageIcon, Plus, AlertCircle, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -25,7 +25,6 @@ import {
   SectionShell,
   useSectionState,
 } from "@/components/landings/edit/section";
-import { MediaPickerDialog } from "./media-picker-dialog";
 import { SortableImageCard, HeroImageCard } from "./image-card";
 
 // The preview values the Images section lifts to the parent: the hero image
@@ -82,7 +81,8 @@ export function ImagesSection({
 
   const [hero, setHero] = React.useState<MediaItem | null>(initialHero);
   const [gallery, setGallery] = React.useState<MediaItem[]>(initialGallery);
-  const [pickerOpen, setPickerOpen] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Validation error (max 12 images total, at least 1 hero). Shown inline
   // like other sections' errors.
@@ -159,6 +159,42 @@ export function ImagesSection({
     section.markDirty();
   };
 
+  const totalImages = (hero ? 1 : 0) + gallery.length;
+
+  // --- Upload image ---
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    if (totalImages >= MAX_IMAGES) {
+      setValidationError(`Maximum ${MAX_IMAGES} images total.`);
+      return;
+    }
+
+    setUploading(true);
+    setValidationError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const json = await res.json();
+      if (!json.success) {
+        setValidationError(json.error?.message || "Upload failed");
+        return;
+      }
+      handleAddImage({
+        id: `img-${Date.now()}`,
+        url: json.data.url,
+        filename: file.name,
+      });
+    } catch {
+      setValidationError("Network error during upload");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // --- Save / Cancel ---
   const handleSave = async () => {
     if (!hero) {
@@ -175,8 +211,6 @@ export function ImagesSection({
     setValidationError(null);
     section.reset();
   };
-
-  const totalImages = (hero ? 1 : 0) + gallery.length;
 
   return (
     <SectionShell
@@ -230,12 +264,19 @@ export function ImagesSection({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setPickerOpen(true)}
-              disabled={totalImages >= MAX_IMAGES}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={totalImages >= MAX_IMAGES || uploading}
             >
-              <Plus className="size-4" />
-              Add Image
+              {uploading ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+              {uploading ? "Uploading..." : "Add Image"}
             </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/avif"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
           </div>
 
           {gallery.length === 0 ? (
@@ -280,12 +321,6 @@ export function ImagesSection({
           <span>Drag to reorder · Click Hero to promote</span>
         </div>
       </div>
-
-      <MediaPickerDialog
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-        onPick={handleAddImage}
-      />
     </SectionShell>
   );
 }
