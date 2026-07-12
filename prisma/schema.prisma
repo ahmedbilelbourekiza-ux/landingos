@@ -34,6 +34,16 @@ enum LandingMediaType {
   VIDEO
 }
 
+// Order lifecycle. NEW when the customer submits, then progresses through
+// CONFIRMED → SHIPPED → DELIVERED. CANCELLED is a terminal state.
+enum OrderStatus {
+  NEW
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
 // A landing page represents a single COD product. One page = one product =
 // one purchase form. `published` is the public visibility flag; `status` is
 // the editorial lifecycle. `webhookUrl` optionally overrides the global
@@ -63,6 +73,7 @@ model LandingPage {
   faqs           LandingFAQ[]
   setting        LandingSetting?
   deliveryPrices LandingDeliveryPrice[]
+  orders         Order[]
 
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
@@ -233,4 +244,34 @@ model LandingDeliveryPrice {
 
   @@unique([landingPageId, wilayaId])
   @@index([landingPageId])
+}
+
+// A customer order. Every field is a snapshot — the order never changes
+// even if the landing is edited later. `variants` is a JSON string storing
+// the selected options at order time: [{"name":"Color","value":"Black"}].
+// Prices are snapshot Decimals, never recalculated.
+model Order {
+  id            String      @id @default(cuid())
+  landingPageId String
+  customerName  String
+  phone         String
+  wilaya        String      // snapshot of wilaya name
+  baladia       String      // snapshot of baladia name
+  address       String
+  notes         String?
+  quantity      Int
+  variants      String      // JSON snapshot: [{"name":"Color","value":"Black"}]
+  productPrice  Decimal     // snapshot — unit price including variant extras
+  shippingPrice Decimal     // snapshot — delivery price for the selected wilaya
+  totalPrice    Decimal     // snapshot — (productPrice * quantity) + shippingPrice
+  status        OrderStatus @default(NEW)
+
+  landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([landingPageId])
+  @@index([status])
+  @@index([createdAt])
 }

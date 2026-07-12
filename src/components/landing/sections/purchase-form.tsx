@@ -1,68 +1,52 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Minus, Plus, ShieldCheck, Truck } from "lucide-react";
+import { Minus, Plus, ShieldCheck, Truck, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/landing/format";
 import type { LandingOrderStore } from "@/lib/landing/store";
-import { useOrderTotals } from "@/lib/landing/store";
+import { useOrderTotals, useUnitPrice } from "@/lib/landing/store";
 
-// Validation schema for the COD purchase form. Defined here (not in a shared
-// lib) because submission handling belongs to a later task — when the webhook
-// integration lands, this schema moves to a shared location and a server
-// action/route reuses it for input validation. Phone is kept permissive for
-// international formats; stricter normalization happens server-side later.
 const purchaseSchema = z.object({
   fullName: z.string().min(2, "Please enter your full name"),
   phone: z.string().min(6, "Please enter a valid phone number"),
-  wilaya: z.string().min(2, "Please select your wilaya"),
-  baladia: z.string().min(2, "Please select your baladia"),
   address: z.string().min(5, "Please enter your delivery address"),
   notes: z.string().optional(),
 });
 
 type PurchaseFormValues = z.infer<typeof purchaseSchema>;
 
-// Quantity stepper. Wired to the shared store (not RHF) so the order summary
-// reacts instantly. Separated because quantity affects pricing, not the
-// submission payload directly — though it will be appended on submit later.
+interface WilayaOption {
+  id: number;
+  code: string;
+  name: string;
+  baladias: { id: number; name: string }[];
+}
+
 function QuantityStepper({ store }: { store: LandingOrderStore }) {
   const quantity = store((s) => s.quantity);
   const setQuantity = store((s) => s.setQuantity);
-
   return (
     <div>
       <Label className="mb-2">Quantity</Label>
       <div className="inline-flex items-center rounded-lg border">
-        <button
-          type="button"
-          aria-label="Decrease quantity"
-          onClick={() => setQuantity(quantity - 1)}
-          className="grid size-10 place-items-center rounded-l-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
+        <button type="button" aria-label="Decrease quantity" onClick={() => setQuantity(quantity - 1)}
+          className="grid size-10 place-items-center rounded-l-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <Minus className="size-4" />
         </button>
-        <span
-          className="w-12 text-center text-sm font-semibold tabular-nums"
-          aria-live="polite"
-          aria-label={`Quantity ${quantity}`}
-        >
+        <span className="w-12 text-center text-sm font-semibold tabular-nums" aria-live="polite" aria-label={`Quantity ${quantity}`}>
           {quantity}
         </span>
-        <button
-          type="button"
-          aria-label="Increase quantity"
-          onClick={() => setQuantity(quantity + 1)}
-          className="grid size-10 place-items-center rounded-r-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
+        <button type="button" aria-label="Increase quantity" onClick={() => setQuantity(quantity + 1)}
+          className="grid size-10 place-items-center rounded-r-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <Plus className="size-4" />
         </button>
       </div>
@@ -72,136 +56,194 @@ function QuantityStepper({ store }: { store: LandingOrderStore }) {
 
 export function PurchaseForm({
   store,
+  landingId,
   buttonText,
   currency,
 }: {
   store: LandingOrderStore;
+  landingId: string;
   buttonText: string;
   currency: string;
 }) {
+  const router = useRouter();
   const { total } = useOrderTotals(store);
+  const unitPrice = useUnitPrice(store);
+  const quantity = store((s) => s.quantity);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<PurchaseFormValues>({
+  const [wilayas, setWilayas] = React.useState<WilayaOption[]>([]);
+  const [selectedWilaya, setSelectedWilaya] = React.useState<number | "">("");
+  const [selectedBaladia, setSelectedBaladia] = React.useState<number | "">("");
+  const [deliveryPrices, setDeliveryPrices] = React.useState<Record<number, number>>({});
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+
+  const { register, handleSubmit, formState: { errors } } = useForm<PurchaseFormValues>({
     resolver: zodResolver(purchaseSchema),
     mode: "onBlur",
   });
 
-  // No submission logic yet — this is frontend-only. The handler is wired so
-  // the button is a real submit (not a no-op div), and the schema runs so the
-  // UX is testable. The webhook call arrives in a later task.
-  const onSubmit = handleSubmit((values) => {
-    console.log("[LandingOS] purchase intent (frontend only)", {
-      ...values,
-      quantity: store.getState().quantity,
-      total,
+  // Load wilayas + delivery prices on mount
+  React.useEffect(() => {
+    Promise.all([
+      fetch("/api/wilayas").then((r) => r.json()),
+      fetch(`/api/landings/${landingId}/delivery-prices`).then((r) => r.json()),
+    ]).then(([wJson, pJson]) => {
+      if (wJson.success) setWilayas(wJson.data);
+      if (pJson.success) {
+        const map: Record<number, number> = {};
+        for (const p of pJson.data) map[p.wilayaId] = p.homePrice;
+        setDeliveryPrices(map);
+      }
     });
+  }, [landingId]);
+
+  const selectedWilayaData = wilayas.find((w) => w.id === Number(selectedWilaya));
+  const shipping = deliveryPrices[Number(selectedWilaya)] ?? null;
+  const grandTotal = total + (shipping ?? 0);
+
+  const onSubmit = handleSubmit(async (values) => {
+    if (submitting) return;
+    if (!selectedWilaya || !selectedBaladia) {
+      setSubmitError("Please select your wilaya and commune");
+      return;
+    }
+    if (shipping === null) {
+      setSubmitError("Delivery is not available for the selected wilaya");
+      return;
+    }
+
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const state = store.getState();
+      const variantSnapshot = state.groups.map((g) => ({
+        name: g.name,
+        value: state.selected[g.name] ?? g.options[0]?.value ?? "",
+      }));
+
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          landingId,
+          customerName: values.fullName,
+          phone: values.phone,
+          wilayaId: Number(selectedWilaya),
+          baladiaId: Number(selectedBaladia),
+          address: values.address,
+          notes: values.notes || undefined,
+          quantity: state.quantity,
+          variants: variantSnapshot,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        setSubmitError(json.error?.message || "Failed to submit order");
+        setSubmitting(false);
+        return;
+      }
+      router.push(`/thank-you/${json.data.orderId}`);
+    } catch {
+      setSubmitError("Network error — please try again");
+      setSubmitting(false);
+    }
   });
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Full name" error={errors.fullName?.message}>
-          <Input
-            id="fullName"
-            placeholder="Jane Doe"
-            autoComplete="name"
-            aria-invalid={!!errors.fullName}
-            {...register("fullName")}
-          />
+          <Input id="fullName" placeholder="Jane Doe" autoComplete="name" aria-invalid={!!errors.fullName} {...register("fullName")} />
         </Field>
         <Field label="Phone number" error={errors.phone?.message}>
-          <Input
-            id="phone"
-            type="tel"
-            placeholder="+213 6 12 34 56 78"
-            autoComplete="tel"
-            aria-invalid={!!errors.phone}
-            {...register("phone")}
-          />
-        </Field>
-        <Field label="Wilaya" error={errors.wilaya?.message}>
-          <Input
-            id="wilaya"
-            placeholder="Alger"
-            autoComplete="address-level1"
-            aria-invalid={!!errors.wilaya}
-            {...register("wilaya")}
-          />
-        </Field>
-        <Field label="Baladia" error={errors.baladia?.message}>
-          <Input
-            id="baladia"
-            placeholder="Bab El Oued"
-            autoComplete="address-level2"
-            aria-invalid={!!errors.baladia}
-            {...register("baladia")}
-          />
+          <Input id="phone" type="tel" placeholder="+213 6 12 34 56 78" autoComplete="tel" aria-invalid={!!errors.phone} {...register("phone")} />
         </Field>
       </div>
 
+      {/* Wilaya select */}
+      <Field label="Wilaya" error={!selectedWilaya && submitError ? "Please select your wilaya" : undefined}>
+        <select
+          value={selectedWilaya}
+          onChange={(e) => { setSelectedWilaya(e.target.value ? Number(e.target.value) : ""); setSelectedBaladia(""); }}
+          className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+        >
+          <option value="">Select wilaya...</option>
+          {wilayas.map((w) => (
+            <option key={w.id} value={w.id}>{w.code} — {w.name}</option>
+          ))}
+        </select>
+      </Field>
+
+      {/* Baladia select — filtered by selected wilaya */}
+      {selectedWilayaData && (
+        <Field label="Commune" error={!selectedBaladia && submitError ? "Please select your commune" : undefined}>
+          <select
+            value={selectedBaladia}
+            onChange={(e) => setSelectedBaladia(e.target.value ? Number(e.target.value) : "")}
+            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+          >
+            <option value="">Select commune...</option>
+            {selectedWilayaData.baladias.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        </Field>
+      )}
+
       <Field label="Delivery address" error={errors.address?.message}>
-        <Input
-          id="address"
-          placeholder="Street, building, floor, apartment"
-          autoComplete="street-address"
-          aria-invalid={!!errors.address}
-          {...register("address")}
-        />
+        <Input id="address" placeholder="Street, building, floor, apartment" autoComplete="street-address" aria-invalid={!!errors.address} {...register("address")} />
       </Field>
 
       <Field label="Order notes (optional)" error={errors.notes?.message}>
-        <Textarea
-          id="notes"
-          rows={2}
-          placeholder="Landmark, delivery time preference…"
-          {...register("notes")}
-        />
+        <Textarea id="notes" rows={2} placeholder="Landmark, delivery time preference…" {...register("notes")} />
       </Field>
 
       <QuantityStepper store={store} />
 
-      <Button
-        type="submit"
-        size="lg"
-        className="h-12 w-full rounded-xl text-base font-semibold shadow-sm"
-      >
-        {buttonText} · {formatPrice(total, currency)}
+      {/* Shipping + total summary */}
+      {selectedWilaya !== "" && (
+        <div className="flex flex-col gap-1 rounded-lg border bg-muted/30 p-3 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Product ({formatPrice(unitPrice, currency)} × {quantity})</span>
+            <span className="tabular-nums">{formatPrice(total, currency)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Shipping</span>
+            <span className="tabular-nums">
+              {shipping !== null ? formatPrice(shipping, currency) : "Not available"}
+            </span>
+          </div>
+          <div className="flex justify-between border-t pt-1 font-semibold">
+            <span>Total</span>
+            <span className="tabular-nums">{formatPrice(grandTotal, currency)}</span>
+          </div>
+        </div>
+      )}
+
+      {submitError && (
+        <p className="text-sm text-destructive" role="alert">{submitError}</p>
+      )}
+
+      <Button type="submit" size="lg" disabled={submitting}
+        className="h-12 w-full rounded-xl text-base font-semibold shadow-sm">
+        {submitting ? <Loader2 className="size-5 animate-spin" /> : null}
+        {submitting ? "Submitting..." : `${buttonText} · ${formatPrice(grandTotal, currency)}`}
       </Button>
 
       <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <ShieldCheck className="size-3.5" /> 30-day warranty
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Truck className="size-3.5" /> 24–72h delivery
-        </span>
+        <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3.5" /> 30-day warranty</span>
+        <span className="inline-flex items-center gap-1.5"><Truck className="size-3.5" /> 24–72h delivery</span>
       </div>
     </form>
   );
 }
 
-function Field({
-  label,
-  error,
-  children,
-}: {
-  label: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={label.replace(/\s+/g, "").toLowerCase()}>{label}</Label>
       {children}
-      {error && (
-        <p className="text-xs text-destructive" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
     </div>
   );
 }

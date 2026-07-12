@@ -55,6 +55,7 @@ export function ProductInfo({
       <div className="border-t pt-6">
         <PurchaseForm
           store={store}
+          landingId={page.id}
           buttonText={page.buttonText}
           currency={page.currency}
         />
