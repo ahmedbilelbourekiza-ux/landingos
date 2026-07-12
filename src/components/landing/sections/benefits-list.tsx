@@ -6,10 +6,10 @@ import { Truck, Wallet, ShieldCheck, Award } from "lucide-react";
 // premium quality), not per-product attributes. Every COD landing page
 // should surface the same four reassurances.
 const BENEFITS = [
-  { icon: Truck, label: "Fast Delivery" },
-  { icon: Wallet, label: "Cash On Delivery" },
-  { icon: ShieldCheck, label: "30-Day Warranty" },
-  { icon: Award, label: "Premium Quality" },
+  { icon: Truck, label: "توصيل سريع" },
+  { icon: Wallet, label: "الدفع عند الاستلام" },
+  { icon: ShieldCheck, label: "ضمان 30 يوم" },
+  { icon: Award, label: "جودة عالية" },
 ] as const;
 
 export function BenefitsList() {

@@ -11,10 +11,7 @@ import type { LandingPageData } from "@/types/landing";
 import type { LandingOrderStore } from "@/lib/landing/store";
 
 // The right-hand column of the product hero: identity, price, trust badges,
-// variant selection, live order summary, and the purchase form. Ordered for
-// conversion — price and reassurance first, then configuration, then the
-// action. Every sub-component reads from the shared order store so quantity
-// and variant changes propagate to the summary and button label instantly.
+// variant selection, live order summary, and the purchase form.
 export function ProductInfo({
   page,
   store,
@@ -28,23 +25,28 @@ export function ProductInfo({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut", delay: 0.1 }}
       className="flex flex-col gap-6"
+      dir="rtl"
     >
-      <div className="flex flex-col gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+      {/* Title — larger, bolder for stronger hierarchy */}
+      <div className="flex flex-col gap-2">
+        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
           {page.title}
         </h1>
         {page.description && (
-          <p className="text-[15px] leading-relaxed text-muted-foreground">
+          <p className="text-base leading-relaxed text-muted-foreground">
             {page.description}
           </p>
         )}
       </div>
 
-      <PriceBlock
-        price={page.price}
-        oldPrice={page.oldPrice}
-        currency={page.currency}
-      />
+      {/* Price — visually stronger with more vertical presence */}
+      <div className="py-1">
+        <PriceBlock
+          price={page.price}
+          oldPrice={page.oldPrice}
+          currency={page.currency}
+        />
+      </div>
 
       <BenefitsList />
 

@@ -2,8 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { discountPercentage, formatPrice } from "@/lib/landing/format";
 
 // Price display: large current price, struck-through old price, and a
-// discount badge computed from the two. The badge only renders when the old
-// price is genuinely higher — a 0% or negative discount would look broken.
+// discount badge. Visually stronger hierarchy: 4xl price, prominent badge.
 export function PriceBlock({
   price,
   oldPrice,
@@ -15,16 +14,16 @@ export function PriceBlock({
 }) {
   const off = discountPercentage(price, oldPrice);
   return (
-    <div className="flex flex-wrap items-baseline gap-3">
-      <span className="text-3xl font-semibold tracking-tight tabular-nums">
+    <div className="flex flex-wrap items-baseline gap-3" dir="rtl">
+      <span className="text-4xl font-bold tracking-tight tabular-nums">
         {formatPrice(price, currency)}
       </span>
       {oldPrice && off && (
         <>
-          <span className="text-lg text-muted-foreground line-through tabular-nums">
+          <span className="text-xl text-muted-foreground line-through tabular-nums">
             {formatPrice(oldPrice, currency)}
           </span>
-          <Badge className="bg-foreground text-background hover:bg-foreground">
+          <Badge className="bg-emerald-500 text-white hover:bg-emerald-500 text-sm px-2.5 py-1">
             −{off}%
           </Badge>
         </>

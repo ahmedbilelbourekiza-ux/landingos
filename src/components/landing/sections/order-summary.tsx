@@ -18,12 +18,12 @@ export function OrderSummary({
   const quantity = store((s) => s.quantity);
 
   const rows = [
-    { label: "Unit price", value: formatPrice(unitPrice, currency) },
-    { label: `Subtotal × ${quantity}`, value: formatPrice(subtotal, currency) },
+    { label: "سعر المنتج", value: formatPrice(unitPrice, currency) },
+    { label: `المجموع الفرعي × ${quantity}`, value: formatPrice(subtotal, currency) },
   ];
 
   return (
-    <dl className="space-y-2 rounded-xl border bg-muted/30 p-4 text-sm">
+    <dl className="space-y-2 rounded-xl border bg-muted/30 p-4 text-sm" dir="rtl">
       {rows.map((row) => (
         <div key={row.label} className="flex items-center justify-between">
           <dt className="text-muted-foreground">{row.label}</dt>

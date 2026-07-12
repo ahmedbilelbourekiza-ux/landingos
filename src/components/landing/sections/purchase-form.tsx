@@ -36,7 +36,7 @@ function QuantityStepper({ store }: { store: LandingOrderStore }) {
   const setQuantity = store((s) => s.setQuantity);
   return (
     <div>
-      <Label className="mb-2">Quantity</Label>
+      <Label className="mb-2">الكمية</Label>
       <div className="inline-flex items-center rounded-lg border">
         <button type="button" aria-label="Decrease quantity" onClick={() => setQuantity(quantity - 1)}
           className="grid size-10 place-items-center rounded-l-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -152,22 +152,22 @@ export function PurchaseForm({
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Full name" error={errors.fullName?.message}>
-          <Input id="fullName" placeholder="Jane Doe" autoComplete="name" aria-invalid={!!errors.fullName} {...register("fullName")} />
+        <Field label="الاسم الكامل" error={errors.fullName?.message}>
+          <Input id="fullName" dir="auto" placeholder="أدخل اسمك الكامل" autoComplete="name" aria-invalid={!!errors.fullName} {...register("fullName")} />
         </Field>
-        <Field label="Phone number" error={errors.phone?.message}>
-          <Input id="phone" type="tel" placeholder="+213 6 12 34 56 78" autoComplete="tel" aria-invalid={!!errors.phone} {...register("phone")} />
+        <Field label="رقم الهاتف" error={errors.phone?.message}>
+          <Input id="phone" type="tel" dir="auto" placeholder="06 12 34 56 78" autoComplete="tel" aria-invalid={!!errors.phone} {...register("phone")} />
         </Field>
       </div>
 
       {/* Wilaya select */}
-      <Field label="Wilaya" error={!selectedWilaya && submitError ? "Please select your wilaya" : undefined}>
+      <Field label="الولاية" error={!selectedWilaya && submitError ? "يرجى اختيار الولاية" : undefined}>
         <select
           value={selectedWilaya}
           onChange={(e) => { setSelectedWilaya(e.target.value ? Number(e.target.value) : ""); setSelectedBaladia(""); }}
           className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
         >
-          <option value="">Select wilaya...</option>
+          <option value="">اختر الولاية...</option>
           {wilayas.map((w) => (
             <option key={w.id} value={w.id}>{w.code} — {w.name}</option>
           ))}
@@ -176,13 +176,13 @@ export function PurchaseForm({
 
       {/* Baladia select — filtered by selected wilaya */}
       {selectedWilayaData && (
-        <Field label="Commune" error={!selectedBaladia && submitError ? "Please select your commune" : undefined}>
+        <Field label="البلدية" error={!selectedBaladia && submitError ? "يرجى اختيار البلدية" : undefined}>
           <select
             value={selectedBaladia}
             onChange={(e) => setSelectedBaladia(e.target.value ? Number(e.target.value) : "")}
             className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
           >
-            <option value="">Select commune...</option>
+            <option value="">اختر البلدية...</option>
             {selectedWilayaData.baladias.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
@@ -190,31 +190,31 @@ export function PurchaseForm({
         </Field>
       )}
 
-      <Field label="Delivery address" error={errors.address?.message}>
-        <Input id="address" placeholder="Street, building, floor, apartment" autoComplete="street-address" aria-invalid={!!errors.address} {...register("address")} />
+      <Field label="عنوان التوصيل" error={errors.address?.message}>
+        <Input id="address" dir="auto" placeholder="الشارع، المبنى، الطابق، الشقة" autoComplete="street-address" aria-invalid={!!errors.address} {...register("address")} />
       </Field>
 
-      <Field label="Order notes (optional)" error={errors.notes?.message}>
-        <Textarea id="notes" rows={2} placeholder="Landmark, delivery time preference…" {...register("notes")} />
+      <Field label="ملاحظات الطلب (اختياري)" error={errors.notes?.message}>
+        <Textarea id="notes" dir="auto" rows={2} placeholder="معلم، تفضيل وقت التوصيل..." {...register("notes")} />
       </Field>
 
       <QuantityStepper store={store} />
 
       {/* Shipping + total summary */}
       {selectedWilaya !== "" && (
-        <div className="flex flex-col gap-1 rounded-lg border bg-muted/30 p-3 text-sm">
+        <div className="flex flex-col gap-1 rounded-lg border bg-muted/30 p-3 text-sm" dir="rtl">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Product ({formatPrice(unitPrice, currency)} × {quantity})</span>
+            <span className="text-muted-foreground">المنتج ({formatPrice(unitPrice, currency)} × {quantity})</span>
             <span className="tabular-nums">{formatPrice(subtotal, currency)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Shipping</span>
+            <span className="text-muted-foreground">سعر التوصيل</span>
             <span className="tabular-nums">
-              {shipping !== null ? formatPrice(shipping, currency) : "Not available"}
+              {shipping !== null ? formatPrice(shipping, currency) : "غير متاح"}
             </span>
           </div>
           <div className="flex justify-between border-t pt-1 font-semibold">
-            <span>Total</span>
+            <span>الإجمالي</span>
             <span className="tabular-nums">{formatPrice(grandTotal, currency)}</span>
           </div>
         </div>
@@ -227,12 +227,12 @@ export function PurchaseForm({
       <Button type="submit" size="lg" disabled={submitting}
         className="h-12 w-full rounded-xl text-base font-semibold shadow-sm">
         {submitting ? <Loader2 className="size-5 animate-spin" /> : null}
-        {submitting ? "Submitting..." : `${buttonText} · ${formatPrice(grandTotal, currency)}`}
+        {submitting ? "جاري الإرسال..." : `${buttonText} · ${formatPrice(grandTotal, currency)}`}
       </Button>
 
       <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3.5" /> 30-day warranty</span>
-        <span className="inline-flex items-center gap-1.5"><Truck className="size-3.5" /> 24–72h delivery</span>
+        <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3.5" /> ضمان 30 يوم</span>
+        <span className="inline-flex items-center gap-1.5"><Truck className="size-3.5" /> توصيل 24-72 ساعة</span>
       </div>
     </form>
   );

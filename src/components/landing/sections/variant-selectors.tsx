@@ -6,11 +6,8 @@ import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/landing/format";
 import type { LandingOrderStore } from "@/lib/landing/store";
 
-// One segmented control per variant group (e.g. Size, Formula). Each option
-// is a button in a wrapping flex row; the selected option gets a solid fill.
-// Extra-price adjustments are shown inline so the user sees the cost impact
-// before committing. State lives in the shared order store so the order
-// summary updates instantly on selection.
+// One segmented control per variant group. Each option is a button; the
+// selected option gets a solid fill. Extra-price adjustments shown inline.
 export function VariantSelectors({
   store,
   currency,
@@ -25,7 +22,7 @@ export function VariantSelectors({
   if (groups.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" dir="rtl">
       {groups.map((group) => (
         <fieldset key={group.name}>
           <legend className="mb-2 text-sm font-medium">{group.name}</legend>
