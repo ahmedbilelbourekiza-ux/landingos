@@ -16,9 +16,8 @@ import type { LandingOrderStore } from "@/lib/landing/store";
 import { useOrderTotals, useUnitPrice } from "@/lib/landing/store";
 
 const purchaseSchema = z.object({
-  fullName: z.string().min(2, "Please enter your full name"),
-  phone: z.string().min(6, "Please enter a valid phone number"),
-  address: z.string().min(5, "Please enter your delivery address"),
+  fullName: z.string().min(2, "يرجى إدخال الاسم الكامل"),
+  phone: z.string().min(6, "يرجى إدخال رقم هاتف صحيح"),
   notes: z.string().optional(),
 });
 
@@ -28,7 +27,8 @@ interface WilayaOption {
   id: number;
   code: string;
   name: string;
-  baladias: { id: number; name: string }[];
+  nameAr: string | null;
+  baladias: { id: number; name: string; nameAr: string | null }[];
 }
 
 function QuantityStepper({ store }: { store: LandingOrderStore }) {
@@ -130,7 +130,6 @@ export function PurchaseForm({
           phone: values.phone,
           wilayaId: Number(selectedWilaya),
           baladiaId: Number(selectedBaladia),
-          address: values.address,
           notes: values.notes || undefined,
           quantity: state.quantity,
           variants: variantSnapshot,
@@ -138,13 +137,13 @@ export function PurchaseForm({
       });
       const json = await res.json();
       if (!json.success) {
-        setSubmitError(json.error?.message || "Failed to submit order");
+        setSubmitError(json.error?.message || "فشل إرسال الطلب");
         setSubmitting(false);
         return;
       }
       router.push(`/thank-you/${json.data.orderId}`);
     } catch {
-      setSubmitError("Network error — please try again");
+      setSubmitError("خطأ في الشبكة — يرجى المحاولة مرة أخرى");
       setSubmitting(false);
     }
   });
@@ -169,7 +168,7 @@ export function PurchaseForm({
         >
           <option value="">اختر الولاية...</option>
           {wilayas.map((w) => (
-            <option key={w.id} value={w.id}>{w.code} — {w.name}</option>
+            <option key={w.id} value={w.id}>{w.code} — {w.nameAr ?? w.name}</option>
           ))}
         </select>
       </Field>
@@ -184,15 +183,11 @@ export function PurchaseForm({
           >
             <option value="">اختر البلدية...</option>
             {selectedWilayaData.baladias.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
+              <option key={b.id} value={b.id}>{b.nameAr ?? b.name}</option>
             ))}
           </select>
         </Field>
       )}
-
-      <Field label="عنوان التوصيل" error={errors.address?.message}>
-        <Input id="address" dir="auto" placeholder="الشارع، المبنى، الطابق، الشقة" autoComplete="street-address" aria-invalid={!!errors.address} {...register("address")} />
-      </Field>
 
       <Field label="ملاحظات الطلب (اختياري)" error={errors.notes?.message}>
         <Textarea id="notes" dir="auto" rows={2} placeholder="معلم، تفضيل وقت التوصيل..." {...register("notes")} />

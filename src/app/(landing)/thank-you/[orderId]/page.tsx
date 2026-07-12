@@ -29,7 +29,6 @@ export default async function ThankYouPage({
       phone: true,
       wilaya: true,
       baladia: true,
-      address: true,
       notes: true,
       quantity: true,
       variants: true,
@@ -38,11 +37,15 @@ export default async function ThankYouPage({
       totalPrice: true,
       status: true,
       createdAt: true,
+      landingPage: {
+        select: { slug: true },
+      },
     },
   });
 
   if (!order) notFound();
 
+  const landing = order.landingPage;
   const variants: VariantSnapshot[] = JSON.parse(order.variants);
   const currency = "DZD"; // COD orders are always in DZD
   const productPrice = order.productPrice.toNumber();
@@ -84,9 +87,6 @@ export default async function ThankYouPage({
 
             {/* Baladia */}
             <DetailRow label="البلدية" value={order.baladia} />
-
-            {/* Address */}
-            <DetailRow label="عنوان التوصيل" value={order.address} />
 
             {/* Variants */}
             {variants.length > 0 && (
@@ -139,6 +139,18 @@ export default async function ThankYouPage({
           <p className="mt-1 text-xs text-muted-foreground">
             يرجى إبقاء هاتفك متاحًا
           </p>
+        </div>
+
+        {/* Action buttons */}
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row" dir="rtl">
+          {landing?.slug && (
+            <a
+              href={`/l/${landing.slug}`}
+              className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-foreground px-6 text-sm font-semibold text-background transition-colors hover:bg-foreground/90"
+            >
+              طلب مرة أخرى
+            </a>
+          )}
         </div>
       </div>
     </div>

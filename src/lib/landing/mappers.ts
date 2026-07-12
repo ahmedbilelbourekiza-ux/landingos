@@ -58,7 +58,11 @@ function parseOrderFormConfig(
   }
   try {
     const stored = JSON.parse(setting.orderFormConfig) as Partial<OrderFormConfig>;
-    return { ...mockOrderFormData, ...stored, buttonText };
+    // Force address to not visible — the field is no longer collected.
+    const merged = { ...mockOrderFormData, ...stored, buttonText };
+    merged.address.visible = false;
+    merged.address.required = false;
+    return merged;
   } catch {
     return { ...mockOrderFormData, buttonText };
   }

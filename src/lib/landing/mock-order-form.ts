@@ -50,8 +50,8 @@ export const mockOrderFormData: OrderFormConfig = {
     placeholder: "Bab El Oued",
   },
   address: {
-    visible: true,
-    required: true,
+    visible: false,
+    required: false,
     label: "Address",
     placeholder: "Street, building, floor, apartment",
   },

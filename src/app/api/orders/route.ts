@@ -79,7 +79,6 @@ const createOrderSchema = z.object({
   phone: z.string().min(6, "Valid phone number is required"),
   wilayaId: z.number().int(),
   baladiaId: z.number().int(),
-  address: z.string().min(5, "Address is required"),
   notes: z.string().optional(),
   quantity: z.number().int().min(1, "Quantity must be at least 1"),
   variants: z.array(variantItemSchema),
@@ -92,7 +91,7 @@ export async function POST(req: NextRequest) {
     const parsed = createOrderSchema.safeParse(body);
     if (!parsed.success) return fromZodError(parsed.error);
 
-    const { landingId, customerName, phone, wilayaId, baladiaId, address, notes, quantity, variants } = parsed.data;
+    const { landingId, customerName, phone, wilayaId, baladiaId, notes, quantity, variants } = parsed.data;
 
     // 1. Validate landing exists and is published
     const landing = await db.landingPage.findUnique({
@@ -141,14 +140,16 @@ export async function POST(req: NextRequest) {
     const totalPrice = productPrice * quantity + shippingPrice;
 
     // 7. Create order + initial status history entry
+    // Store Arabic names as snapshots — the order never changes even if
+    // the wilaya/baladia names are edited later.
     const order = await db.order.create({
       data: {
         landingPageId: landingId,
         customerName,
         phone,
-        wilaya: wilaya.name,
-        baladia: baladia.name,
-        address,
+        wilaya: wilaya.nameAr ?? wilaya.name,
+        baladia: baladia.nameAr ?? baladia.name,
+        address: "",
         notes: notes || null,
         quantity,
         variants: JSON.stringify(variants),
