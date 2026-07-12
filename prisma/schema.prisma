@@ -35,10 +35,11 @@ enum LandingMediaType {
 }
 
 // Order lifecycle. NEW when the customer submits, then progresses through
-// CONFIRMED → SHIPPED → DELIVERED. CANCELLED is a terminal state.
+// CONFIRMED → PREPARING → SHIPPED → DELIVERED. CANCELLED is a terminal state.
 enum OrderStatus {
   NEW
   CONFIRMED
+  PREPARING
   SHIPPED
   DELIVERED
   CANCELLED

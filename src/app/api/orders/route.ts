@@ -4,6 +4,70 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { ok, fail, fromZodError, serverError } from "@/lib/api-response";
 
+// GET /api/orders — paginated list with search, filter, sort.
+// Query params: page (default 1), limit (default 20), search, status, sort
+// (newest | oldest). Joins LandingPage for product thumbnail + title.
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const page = Math.max(1, Number(searchParams.get("page") ?? 1));
+    const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit") ?? 20)));
+    const search = searchParams.get("search")?.trim() ?? "";
+    const status = searchParams.get("status") ?? "ALL";
+    const sort = searchParams.get("sort") ?? "newest";
+
+    const where = {
+      ...(status !== "ALL" && { status: status as never }),
+      ...(search && {
+        OR: [
+          { id: { contains: search } },
+          { customerName: { contains: search } },
+          { phone: { contains: search } },
+        ],
+      }),
+    };
+
+    const orderBy = { createdAt: sort === "oldest" ? "asc" as const : "desc" as const };
+
+    const [orders, total] = await Promise.all([
+      db.order.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          landingPage: {
+            select: {
+              title: true,
+              media: { take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
+            },
+          },
+        },
+      }),
+      db.order.count({ where }),
+    ]);
+
+    const data = orders.map((o) => ({
+      id: o.id,
+      orderNumber: o.id.slice(-8).toUpperCase(),
+      customerName: o.customerName,
+      phone: o.phone,
+      wilaya: o.wilaya,
+      quantity: o.quantity,
+      totalPrice: o.totalPrice.toNumber(),
+      status: o.status,
+      createdAt: o.createdAt.toISOString(),
+      productTitle: o.landingPage?.title ?? "Unknown",
+      productThumbnail: o.landingPage?.media[0]?.url ?? "",
+    }));
+
+    return ok({ orders: data, total, page, limit, totalPages: Math.ceil(total / limit) });
+  } catch (error) {
+    console.error("[api/orders] GET error:", error);
+    return serverError("Failed to fetch orders");
+  }
+}
+
 const variantItemSchema = z.object({
   name: z.string(),
   value: z.string(),
@@ -33,32 +97,25 @@ export async function POST(req: NextRequest) {
     // 1. Validate landing exists and is published
     const landing = await db.landingPage.findUnique({
       where: { id: landingId },
-      include: {
-        variants: { orderBy: { displayOrder: "asc" } },
-        setting: true,
-      },
+      include: { variants: { orderBy: { displayOrder: "asc" } } },
     });
     if (!landing) return fail("NOT_FOUND", "Landing page not found", 404);
     if (!landing.published || landing.status !== "PUBLISHED") {
       return fail("NOT_PUBLISHED", "This landing page is not available", 403);
     }
 
-    // 2. Validate wilaya exists
+    // 2. Validate wilaya
     const wilaya = await db.wilaya.findUnique({ where: { id: wilayaId } });
     if (!wilaya) return fail("INVALID_WILAYA", "Invalid wilaya", 422);
 
-    // 3. Validate baladia exists and belongs to the selected wilaya
-    const baladia = await db.baladia.findFirst({
-      where: { id: baladiaId, wilayaId },
-    });
+    // 3. Validate baladia belongs to wilaya
+    const baladia = await db.baladia.findFirst({ where: { id: baladiaId, wilayaId } });
     if (!baladia) return fail("INVALID_BALADIA", "Invalid commune for the selected wilaya", 422);
 
-    // 4. Validate variants match the landing's variant options
+    // 4. Validate variants
     const landingVariantGroups = new Map<string, Set<string>>();
     for (const v of landing.variants) {
-      if (!landingVariantGroups.has(v.name)) {
-        landingVariantGroups.set(v.name, new Set());
-      }
+      if (!landingVariantGroups.has(v.name)) landingVariantGroups.set(v.name, new Set());
       landingVariantGroups.get(v.name)!.add(v.value);
     }
     for (const submitted of variants) {
@@ -68,15 +125,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 5. Look up shipping price from LandingDeliveryPrice
+    // 5. Look up shipping price
     const deliveryPrice = await db.landingDeliveryPrice.findUnique({
       where: { landingPageId_wilayaId: { landingPageId: landingId, wilayaId } },
     });
-    if (!deliveryPrice) {
-      return fail("NO_SHIPPING", "Delivery is not available for the selected wilaya", 422);
-    }
+    if (!deliveryPrice) return fail("NO_SHIPPING", "Delivery is not available for the selected wilaya", 422);
 
-    // 6. Compute product price (base + variant extras)
+    // 6. Compute snapshots
     const variantExtra = variants.reduce((sum, v) => {
       const match = landing.variants.find((lv) => lv.name === v.name && lv.value === v.value);
       return sum + (match?.extraPrice.toNumber() ?? 0);
@@ -85,7 +140,7 @@ export async function POST(req: NextRequest) {
     const shippingPrice = deliveryPrice.homePrice.toNumber();
     const totalPrice = productPrice * quantity + shippingPrice;
 
-    // 7. Create the order with all snapshots
+    // 7. Create order
     const order = await db.order.create({
       data: {
         landingPageId: landingId,
