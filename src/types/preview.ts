@@ -2,7 +2,7 @@ import type { GeneralPreviewValues } from "@/components/landings/edit/sections/g
 import type { PricingPreviewValues } from "@/components/landings/edit/sections/pricing-section";
 import type { ImagesPreviewValues } from "@/components/landings/edit/sections/images-section";
 import type { VariantsPreviewValues } from "@/components/landings/edit/sections/variants-section";
-import type { VariantGroup } from "@/lib/landing/mock-landings";
+import type { ReviewsPreviewValues } from "@/components/landings/edit/sections/reviews-section";
 
 // Single source of truth for the edit workspace preview. The parent owns
 // this object; each section updates only its own slice via onPreviewChange.
@@ -13,8 +13,5 @@ export interface PreviewState {
   pricing: PricingPreviewValues;
   images: ImagesPreviewValues;
   variants: VariantsPreviewValues;
+  reviews: ReviewsPreviewValues;
 }
-
-// Re-export the variant types here so the preview-content component can
-// import everything it needs from one place.
-export type { VariantGroup, VariantOption } from "@/lib/landing/mock-landings";

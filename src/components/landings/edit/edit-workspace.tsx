@@ -9,6 +9,7 @@ import {
   mockVariantsData,
 } from "@/lib/landing/mock-landings";
 import { mockImagesData } from "@/lib/landing/mock-media";
+import { mockReviewsData } from "@/lib/landing/mock-reviews";
 import type { PreviewState } from "@/types/preview";
 import { EditWorkspaceHeader } from "./edit-workspace-header";
 import { EditSections } from "./edit-sections";
@@ -38,6 +39,9 @@ export function EditWorkspace({ landing }: { landing: LandingListItem }) {
     },
     variants: {
       groups: mockVariantsData.groups,
+    },
+    reviews: {
+      reviews: mockReviewsData.reviews,
     },
   });
 

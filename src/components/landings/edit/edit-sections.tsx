@@ -21,6 +21,7 @@ import { GeneralSection } from "./sections/general-section";
 import { PricingSection } from "./sections/pricing-section";
 import { ImagesSection } from "./sections/images-section";
 import { VariantsSection } from "./sections/variants-section";
+import { ReviewsSection } from "./sections/reviews-section";
 
 const SECTIONS: {
   id: string;
@@ -63,6 +64,7 @@ export function EditSections({
       pricing: (v: PreviewState["pricing"]) => onPreviewChange("pricing", v),
       images: (v: PreviewState["images"]) => onPreviewChange("images", v),
       variants: (v: PreviewState["variants"]) => onPreviewChange("variants", v),
+      reviews: (v: PreviewState["reviews"]) => onPreviewChange("reviews", v),
     }),
     [onPreviewChange],
   );
@@ -81,6 +83,9 @@ export function EditSections({
         }
         if (section.id === "variants") {
           return <VariantsSection key={section.id} onPreviewChange={callbacks.variants} />;
+        }
+        if (section.id === "reviews") {
+          return <ReviewsSection key={section.id} onPreviewChange={callbacks.reviews} />;
         }
         return (
           <EditSectionCard
