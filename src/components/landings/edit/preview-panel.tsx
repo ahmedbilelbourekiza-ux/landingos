@@ -5,14 +5,18 @@ import { RefreshCw, ExternalLink } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { PreviewDeviceToggle, type PreviewDevice } from "./preview-device-toggle";
-import { PreviewPlaceholder } from "./preview-placeholder";
+import { PreviewContent } from "./preview-content";
+import type { GeneralPreviewValues } from "./sections/general-section";
 
-// Sticky right-column preview panel. Owns only one piece of state — the
-// selected device — which swaps the placeholder frame. The Refresh and
-// Open buttons are disabled today; they activate when live preview lands.
-// The panel is sticky so it stays in view while scrolling the section cards
-// on the left, mimicking the Framer/Webflow editor feel.
-export function PreviewPanel() {
+// Sticky right-column preview panel. Owns one piece of state — the selected
+// device — which swaps the preview frame size. The preview values come from
+// the parent (lifted state from the General section). Refresh and Open are
+// disabled until live iframe preview lands.
+export function PreviewPanel({
+  values,
+}: {
+  values: GeneralPreviewValues;
+}) {
   const [device, setDevice] = React.useState<PreviewDevice>("desktop");
 
   return (
@@ -23,7 +27,7 @@ export function PreviewPanel() {
           <PreviewDeviceToggle value={device} onChange={setDevice} />
         </div>
 
-        <PreviewPlaceholder device={device} />
+        <PreviewContent device={device} values={values} />
 
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="flex-1" disabled>

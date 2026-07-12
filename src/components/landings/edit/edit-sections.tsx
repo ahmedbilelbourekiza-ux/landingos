@@ -15,6 +15,7 @@ import {
 
 import { EditSectionCard } from "./edit-section-card";
 import { SectionComingSoon } from "./section-coming-soon";
+import { GeneralSection, type GeneralPreviewValues } from "./sections/general-section";
 
 // The nine editing sections, owned by this client component because the
 // icon references (lucide components) can't cross a server→client boundary.
@@ -84,24 +85,38 @@ const SECTIONS: {
   },
 ];
 
-// Renders the full stack of section cards. Today every card shows the
-// "Coming Soon" placeholder; future tasks replace the children of a given
-// card with its real editing form. This component is the single place where
-// the section list lives, so the page above stays a thin server shell.
-export function EditSections() {
+// Renders the full stack of section cards. The General section is real
+// (GeneralSection with a working form); all others still show "Coming Soon".
+// As each section gets its real editor, it's swapped in here the same way
+// General was — one conditional, no restructuring.
+export function EditSections({
+  onGeneralValuesChange,
+}: {
+  onGeneralValuesChange: (values: GeneralPreviewValues) => void;
+}) {
   return (
     <div className="flex flex-col gap-6">
-      {SECTIONS.map((section) => (
-        <EditSectionCard
-          key={section.id}
-          id={section.id}
-          title={section.title}
-          description={section.description}
-          icon={section.icon}
-        >
-          <SectionComingSoon />
-        </EditSectionCard>
-      ))}
+      {SECTIONS.map((section) => {
+        if (section.id === "general") {
+          return (
+            <GeneralSection
+              key={section.id}
+              onValuesChange={onGeneralValuesChange}
+            />
+          );
+        }
+        return (
+          <EditSectionCard
+            key={section.id}
+            id={section.id}
+            title={section.title}
+            description={section.description}
+            icon={section.icon}
+          >
+            <SectionComingSoon />
+          </EditSectionCard>
+        );
+      })}
     </div>
   );
 }

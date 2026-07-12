@@ -3,15 +3,16 @@
 // they're used today, and the project rule is to not build generic systems
 // for single use cases.
 
-// Common COD operating currencies. Small, fixed list — a select is the right
-// UI. Adding a new currency is a one-line edit here, not a database migration.
+// Common COD operating currencies. DZD (Algerian Dinar) leads as the project
+// default. Small, fixed list — a select is the right UI. Adding a currency is
+// a one-line edit here, not a database migration.
 export const CURRENCIES = [
+  { code: "DZD", label: "DZD — Algerian Dinar" },
+  { code: "MAD", label: "MAD — Moroccan Dirham" },
+  { code: "TND", label: "TND — Tunisian Dinar" },
   { code: "USD", label: "USD — US Dollar" },
   { code: "EUR", label: "EUR — Euro" },
   { code: "GBP", label: "GBP — British Pound" },
-  { code: "MAD", label: "MAD — Moroccan Dirham" },
-  { code: "DZD", label: "DZD — Algerian Dinar" },
-  { code: "TND", label: "TND — Tunisian Dinar" },
   { code: "SAR", label: "SAR — Saudi Riyal" },
   { code: "AED", label: "AED — UAE Dirham" },
 ] as const;

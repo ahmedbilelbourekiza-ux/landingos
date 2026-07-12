@@ -84,7 +84,7 @@ export function NewLandingForm() {
       slug: "",
       price: 0,
       oldPrice: undefined,
-      currency: "USD",
+      currency: "DZD",
       status: "DRAFT",
     },
   });
@@ -168,7 +168,7 @@ export function NewLandingForm() {
             type="number"
             step="0.01"
             min="0"
-            placeholder="49.00"
+            placeholder="4900"
             aria-invalid={!!errors.price}
             {...register("price")}
           />
