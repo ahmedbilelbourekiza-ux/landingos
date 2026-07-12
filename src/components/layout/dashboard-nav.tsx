@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard } from "lucide-react";
+import { LayoutDashboard, FileText } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 // implemented routes belong here — placeholder links would mislead the admin.
 export const dashboardNav = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
+  { title: "Landing Pages", href: "/dashboard/landings", icon: FileText },
 ] as const;
 
 export function DashboardNav() {
