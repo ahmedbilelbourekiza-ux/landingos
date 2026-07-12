@@ -2,17 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FileText, Package } from "lucide-react";
+import { LayoutDashboard, FileText, Package, Truck } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-// Single source for dashboard navigation. Rendered by both the desktop
-// sidebar and the mobile sheet so the two never drift apart. Only real,
-// implemented routes belong here — placeholder links would mislead the admin.
 export const dashboardNav = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
   { title: "Landing Pages", href: "/dashboard/landings", icon: FileText },
   { title: "Orders", href: "/dashboard/orders", icon: Package },
+  { title: "Delivery Prices", href: "/dashboard/delivery-prices", icon: Truck },
 ] as const;
 
 export function DashboardNav() {

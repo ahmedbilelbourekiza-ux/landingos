@@ -4,7 +4,6 @@ import type { ImagesPreviewValues } from "@/components/landings/edit/sections/im
 import type { VariantsPreviewValues } from "@/components/landings/edit/sections/variants-section";
 import type { ReviewsPreviewValues } from "@/components/landings/edit/sections/reviews-section";
 import type { OrderFormPreviewValues } from "@/components/landings/edit/sections/order-form-section";
-import type { DeliveryPreviewValues } from "@/components/landings/edit/sections/delivery-section";
 
 export interface PreviewState {
   general: GeneralPreviewValues;
@@ -13,5 +12,4 @@ export interface PreviewState {
   variants: VariantsPreviewValues;
   reviews: ReviewsPreviewValues;
   orderForm: OrderFormPreviewValues;
-  delivery: DeliveryPreviewValues;
 }

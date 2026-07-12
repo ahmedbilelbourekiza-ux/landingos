@@ -105,9 +105,6 @@ export function toPreviewState(page: LandingWithRelations): PreviewState {
     orderForm: {
       config: parseOrderFormConfig(page.setting, page.buttonText),
     },
-    delivery: {
-      prices: [],
-    },
   };
 }
 

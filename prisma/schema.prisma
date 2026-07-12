@@ -73,7 +73,6 @@ model LandingPage {
   reviews        LandingReview[]
   faqs           LandingFAQ[]
   setting        LandingSetting?
-  deliveryPrices LandingDeliveryPrice[]
   orders         Order[]
 
   createdAt      DateTime          @default(now())
@@ -207,7 +206,7 @@ model Wilaya {
   name            String
   nameAr          String?
   baladias        Baladia[]
-  deliveryPrices  LandingDeliveryPrice[]
+  deliveryPrices  GlobalDeliveryPrice[]
 
   createdAt       DateTime                @default(now())
 }
@@ -226,25 +225,19 @@ model Baladia {
   @@index([wilayaId])
 }
 
-// Per-landing delivery prices for each wilaya. Every landing owns its own
-// prices — no defaults, no auto-generation. The admin manually enters home
-// and desk delivery prices for each wilaya they want to serve.
-// `deskPrice` is optional because not all wilayas offer desk delivery.
-model LandingDeliveryPrice {
-  id           String      @id @default(cuid())
-  landingPageId String
-  wilayaId     Int
-  homePrice    Decimal
-  deskPrice    Decimal?
+// Global delivery prices — one row per wilaya, shared by every landing.
+// Configured once in the Delivery Prices dashboard page, used by every
+// checkout automatically.
+model GlobalDeliveryPrice {
+  id        String   @id @default(cuid())
+  wilayaId  Int      @unique
+  homePrice Decimal
+  deskPrice Decimal?
 
-  landingPage  LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
-  wilaya       Wilaya      @relation(fields: [wilayaId], references: [id], onDelete: Cascade)
+  wilaya    Wilaya   @relation(fields: [wilayaId], references: [id], onDelete: Cascade)
 
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  @@unique([landingPageId, wilayaId])
-  @@index([landingPageId])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // A customer order. Every field is a snapshot — the order never changes

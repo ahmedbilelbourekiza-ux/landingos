@@ -17,14 +17,23 @@ export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
   }[]>([]);
   const [selectedWilaya, setSelectedWilaya] = React.useState<number | "">("");
   const [selectedBaladia, setSelectedBaladia] = React.useState<number | "">("");
+  const [deliveryPrices, setDeliveryPrices] = React.useState<Record<number, number>>({});
 
-  // Load wilayas from the API on mount
+  // Load wilayas + global delivery prices on mount
   React.useEffect(() => {
-    fetch("/api/wilayas")
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.success) setWilayas(json.data);
-      });
+    Promise.all([
+      fetch("/api/wilayas").then((r) => r.json()),
+      fetch("/api/settings/delivery-prices").then((r) => r.json()),
+    ]).then(([wJson, pJson]) => {
+      if (wJson.success) setWilayas(wJson.data);
+      if (pJson.success) {
+        const map: Record<number, number> = {};
+        for (const p of pJson.data) {
+          if (p.homePrice !== null) map[p.id] = p.homePrice;
+        }
+        setDeliveryPrices(map);
+      }
+    });
   }, []);
 
   const visibleFields = [
@@ -32,16 +41,12 @@ export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
     "phone",
     "wilaya",
     "baladia",
-    "address",
     "notes",
     "quantity",
   ].filter((k) => config[k as keyof typeof config]?.visible);
 
-  // Find the selected wilaya's delivery price
-  const deliveryPrice = preview.delivery.prices.find(
-    (p) => p.wilayaId === Number(selectedWilaya),
-  );
-  const shipping = deliveryPrice?.homePrice ?? 0;
+  // Find the selected wilaya's delivery price from global settings
+  const shipping = deliveryPrices[Number(selectedWilaya)] ?? 0;
 
   // Compute effective price (base + variant extras + shipping)
   const variantExtra = preview.variants.groups.reduce((sum, g) => {

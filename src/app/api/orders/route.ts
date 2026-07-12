@@ -124,9 +124,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 5. Look up shipping price
-    const deliveryPrice = await db.landingDeliveryPrice.findUnique({
-      where: { landingPageId_wilayaId: { landingPageId: landingId, wilayaId } },
+    // 5. Look up shipping price from global delivery settings
+    const deliveryPrice = await db.globalDeliveryPrice.findUnique({
+      where: { wilayaId },
     });
     if (!deliveryPrice) return fail("NO_SHIPPING", "Delivery is not available for the selected wilaya", 422);
 

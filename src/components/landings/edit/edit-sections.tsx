@@ -24,9 +24,6 @@ import { ImagesSection } from "./sections/images-section";
 import { VariantsSection } from "./sections/variants-section";
 import { ReviewsSection } from "./sections/reviews-section";
 import { OrderFormSection } from "./sections/order-form-section";
-import { DeliverySection } from "./sections/delivery-section";
-import { Truck } from "lucide-react";
-
 const SECTIONS: {
   id: string;
   title: string;
@@ -37,7 +34,6 @@ const SECTIONS: {
   { id: "images", title: "Images & Media", description: "Product gallery, videos, and thumbnails.", icon: ImageIcon },
   { id: "pricing", title: "Pricing", description: "Price, old price, and currency.", icon: Tag },
   { id: "variants", title: "Variants", description: "Colors, sizes, and product options.", icon: Layers },
-  { id: "delivery", title: "Delivery", description: "Set delivery prices for each wilaya.", icon: Truck },
   { id: "order-form", title: "Order Form", description: "Configure the purchase form fields.", icon: ShoppingCart },
   { id: "benefits", title: "Benefits", description: "Trust badges and key selling points.", icon: Sparkles },
   { id: "reviews", title: "Reviews", description: "Customer testimonials and ratings.", icon: Star },
@@ -66,7 +62,6 @@ export function EditSections({
       variants: (v: PreviewState["variants"]) => onPreviewChange("variants", v),
       reviews: (v: PreviewState["reviews"]) => onPreviewChange("reviews", v),
       orderForm: (v: PreviewState["orderForm"]) => onPreviewChange("orderForm", v),
-      delivery: (v: PreviewState["delivery"]) => onPreviewChange("delivery", v),
     }),
     [onPreviewChange],
   );
@@ -131,16 +126,6 @@ export function EditSections({
               landingId={landingId}
               initialValues={preview.orderForm}
               onPreviewChange={callbacks.orderForm}
-            />
-          );
-        }
-        if (section.id === "delivery") {
-          return (
-            <DeliverySection
-              key={section.id}
-              landingId={landingId}
-              initialValues={preview.delivery}
-              onPreviewChange={callbacks.delivery}
             />
           );
         }

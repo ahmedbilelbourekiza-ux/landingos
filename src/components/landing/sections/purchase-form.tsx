@@ -82,20 +82,22 @@ export function PurchaseForm({
     mode: "onBlur",
   });
 
-  // Load wilayas + delivery prices on mount
+  // Load wilayas + global delivery prices on mount
   React.useEffect(() => {
     Promise.all([
       fetch("/api/wilayas").then((r) => r.json()),
-      fetch(`/api/landings/${landingId}/delivery-prices`).then((r) => r.json()),
+      fetch("/api/settings/delivery-prices").then((r) => r.json()),
     ]).then(([wJson, pJson]) => {
       if (wJson.success) setWilayas(wJson.data);
       if (pJson.success) {
         const map: Record<number, number> = {};
-        for (const p of pJson.data) map[p.wilayaId] = p.homePrice;
+        for (const p of pJson.data) {
+          if (p.homePrice !== null) map[p.wilayaId ?? p.id] = p.homePrice;
+        }
         setDeliveryPrices(map);
       }
     });
-  }, [landingId]);
+  }, []);
 
   const selectedWilayaData = wilayas.find((w) => w.id === Number(selectedWilaya));
   const shipping = deliveryPrices[Number(selectedWilaya)] ?? null;
