@@ -116,7 +116,48 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+    font-variation-settings: "opsz" 32;
+  }
+
+  h1, h2, h3, h4 {
+    @apply tracking-tight;
+  }
+
+  ::selection {
+    background-color: oklch(0.205 0 0 / 12%);
+  }
+  .dark ::selection {
+    background-color: oklch(0.985 0 0 / 18%);
+  }
+
+  /* Subtle, premium scrollbar — thin, neutral, fades into the chrome. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.7 0 0 / 40%) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: oklch(0.7 0 0 / 35%);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: oklch(0.7 0 0 / 55%);
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
   }
 }

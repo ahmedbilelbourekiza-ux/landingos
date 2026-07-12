@@ -1,0 +1,44 @@
+"use client";
+
+import * as React from "react";
+import { Menu } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { Logo } from "@/components/shared/logo";
+import { DashboardNav } from "./dashboard-nav";
+
+// Mobile navigation drawer. Mirrors the desktop sidebar's content. Opens on
+// demand so it never steals screen space on small viewports.
+export function MobileSidebar() {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="lg:hidden"
+          aria-label="Open navigation"
+        >
+          <Menu className="size-5" />
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="left" className="w-72 p-0">
+        <SheetTitle className="sr-only">Navigation</SheetTitle>
+        <div className="flex h-16 items-center border-b px-5">
+          <Logo />
+        </div>
+        <div className="px-3 py-4" onClick={() => setOpen(false)}>
+          <DashboardNav />
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
