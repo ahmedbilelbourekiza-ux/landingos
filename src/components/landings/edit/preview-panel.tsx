@@ -6,23 +6,11 @@ import { RefreshCw, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PreviewDeviceToggle, type PreviewDevice } from "./preview-device-toggle";
 import { PreviewContent } from "./preview-content";
-import type { GeneralPreviewValues } from "./sections/general-section";
-import type { PricingPreviewValues } from "./sections/pricing-section";
-import type { ImagesPreviewValues } from "./sections/images-section";
+import type { PreviewState } from "@/types/preview";
 
-// Sticky right-column preview panel. Owns one piece of state — the selected
-// device — which swaps the preview frame size. The preview values come from
-// the parent (lifted state from General + Pricing + Images sections). Refresh
-// and Open are disabled until live iframe preview lands.
-export function PreviewPanel({
-  values,
-  pricing,
-  images,
-}: {
-  values: GeneralPreviewValues;
-  pricing: PricingPreviewValues;
-  images: ImagesPreviewValues;
-}) {
+// Sticky right-column preview panel. Owns only the device toggle state.
+// Reads everything else from the single preview object owned by the parent.
+export function PreviewPanel({ preview }: { preview: PreviewState }) {
   const [device, setDevice] = React.useState<PreviewDevice>("desktop");
 
   return (
@@ -33,12 +21,7 @@ export function PreviewPanel({
           <PreviewDeviceToggle value={device} onChange={setDevice} />
         </div>
 
-        <PreviewContent
-          device={device}
-          values={values}
-          pricing={pricing}
-          images={images}
-        />
+        <PreviewContent device={device} preview={preview} />
 
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="flex-1" disabled>

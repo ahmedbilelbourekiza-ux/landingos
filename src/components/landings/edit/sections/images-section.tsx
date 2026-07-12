@@ -39,9 +39,9 @@ export interface ImagesPreviewValues {
 const MAX_IMAGES = 12;
 
 export function ImagesSection({
-  onValuesChange,
+  onPreviewChange,
 }: {
-  onValuesChange: (values: ImagesPreviewValues) => void;
+  onPreviewChange: (values: ImagesPreviewValues) => void;
 }) {
   const section = useSectionState();
 
@@ -62,11 +62,11 @@ export function ImagesSection({
 
   // --- Lift preview values to parent ---
   React.useEffect(() => {
-    onValuesChange({
+    onPreviewChange({
       heroUrl: hero?.url ?? null,
       galleryUrls: gallery.map((g) => g.url),
     });
-  }, [hero, gallery, onValuesChange]);
+  }, [hero, gallery, onPreviewChange]);
 
   // --- Actions ---
   const handleAddImage = (item: MediaItem) => {

@@ -27,7 +27,7 @@ import {
 import { Field } from "./field";
 
 // The 5 pricing values the preview panel needs. Lifted to the parent the
-// same way General's values are — via onValuesChange, no global store.
+// same way General's values are — via onPreviewChange, no global store.
 export interface PricingPreviewValues {
   price: number;
   oldPrice: number | null;
@@ -71,9 +71,9 @@ const pricingSchema = z
 type PricingFormValues = z.infer<typeof pricingSchema>;
 
 export function PricingSection({
-  onValuesChange,
+  onPreviewChange,
 }: {
-  onValuesChange: (values: PricingPreviewValues) => void;
+  onPreviewChange: (values: PricingPreviewValues) => void;
 }) {
   const section = useSectionState();
 
@@ -112,7 +112,7 @@ export function PricingSection({
   // real numbers — string concatenation would otherwise join "2990" + "400"
   // into "2990400" instead of adding to 3390.
   React.useEffect(() => {
-    onValuesChange({
+    onPreviewChange({
       price: Number(priceValue) || 0,
       oldPrice:
         oldPriceValue !== undefined && oldPriceValue !== null && oldPriceValue !== ""
@@ -128,7 +128,7 @@ export function PricingSection({
     currencyValue,
     shippingValue,
     freeShippingValue,
-    onValuesChange,
+    onPreviewChange,
   ]);
 
   // --- Save / Cancel ---

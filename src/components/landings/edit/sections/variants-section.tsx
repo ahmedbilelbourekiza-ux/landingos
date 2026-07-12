@@ -1,0 +1,147 @@
+"use client";
+
+import * as React from "react";
+import { Layers, Plus, AlertCircle } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { mockVariantsData, type VariantGroup } from "@/lib/landing/mock-landings";
+import {
+  SectionShell,
+  useSectionState,
+} from "@/components/landings/edit/section";
+import { VariantGroupEditor } from "./variant-group-editor";
+
+// The preview values the Variants section lifts to the parent: just the
+// groups array. The preview derives the selected options (first of each
+// group) and the extra-price adjustment.
+export interface VariantsPreviewValues {
+  groups: VariantGroup[];
+}
+
+const MAX_GROUPS = 3;
+const CURRENCY = "DZD"; // matches the pricing section default
+
+export function VariantsSection({
+  onPreviewChange,
+}: {
+  onPreviewChange: (values: VariantsPreviewValues) => void;
+}) {
+  const section = useSectionState();
+  const [groups, setGroups] = React.useState<VariantGroup[]>(
+    mockVariantsData.groups,
+  );
+  const [validationError, setValidationError] = React.useState<string | null>(null);
+
+  // --- Lift preview values to parent ---
+  React.useEffect(() => {
+    onPreviewChange({ groups });
+  }, [groups, onPreviewChange]);
+
+  // --- Group operations ---
+  const addGroup = () => {
+    if (groups.length >= MAX_GROUPS) return;
+    const newGroup: VariantGroup = {
+      id: `grp-${Date.now()}`,
+      name: "",
+      options: [],
+    };
+    setGroups((prev) => [...prev, newGroup]);
+    section.markDirty();
+  };
+
+  const updateGroup = (id: string, patch: Partial<VariantGroup>) => {
+    setGroups((prev) =>
+      prev.map((g) => (g.id === id ? { ...g, ...patch } : g)),
+    );
+    section.markDirty();
+  };
+
+  const deleteGroup = (id: string) => {
+    setGroups((prev) => prev.filter((g) => g.id !== id));
+    section.markDirty();
+  };
+
+  // --- Save / Cancel ---
+  const handleSave = async () => {
+    // Validate: every group must have a name and at least one option with a label.
+    for (const g of groups) {
+      if (!g.name.trim()) {
+        setValidationError("Every group must have a name.");
+        return;
+      }
+      if (g.options.length === 0) {
+        setValidationError(`"${g.name}" needs at least one option.`);
+        return;
+      }
+      for (const o of g.options) {
+        if (!o.label.trim()) {
+          setValidationError(`Every option in "${g.name}" needs a label.`);
+          return;
+        }
+      }
+    }
+    setValidationError(null);
+    await section.save();
+  };
+
+  const handleCancel = () => {
+    setGroups(mockVariantsData.groups);
+    setValidationError(null);
+    section.reset();
+  };
+
+  return (
+    <SectionShell
+      id="variants"
+      title="Variants"
+      description="Colors, sizes, and product options."
+      icon={Layers}
+      state={section.state}
+      onSave={handleSave}
+      onCancel={handleCancel}
+    >
+      <div className="flex flex-col gap-4">
+        {validationError && (
+          <p
+            className="flex items-center gap-1.5 text-xs text-destructive"
+            role="alert"
+          >
+            <AlertCircle className="size-3.5" />
+            {validationError}
+          </p>
+        )}
+
+        {groups.length === 0 && (
+          <div className="flex items-center justify-center rounded-xl border border-dashed py-8 text-sm text-muted-foreground">
+            No variant groups yet. Add one below.
+          </div>
+        )}
+
+        {groups.map((group, i) => (
+          <VariantGroupEditor
+            key={group.id}
+            group={group}
+            index={i}
+            currency={CURRENCY}
+            onChange={updateGroup}
+            onDelete={deleteGroup}
+          />
+        ))}
+
+        <Button
+          type="button"
+          variant="outline"
+          onClick={addGroup}
+          disabled={groups.length >= MAX_GROUPS}
+          className="w-full"
+        >
+          <Plus className="size-4" />
+          Add Group
+          <span className="ml-auto text-xs text-muted-foreground">
+            {groups.length}/{MAX_GROUPS}
+          </span>
+        </Button>
+      </div>
+    </SectionShell>
+  );
+}

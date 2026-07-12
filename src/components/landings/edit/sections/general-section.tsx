@@ -17,7 +17,7 @@ import {
 import { Field } from "./field";
 
 // The 4 display values the preview panel needs. Lifted to the parent via
-// onValuesChange — no global store, just the minimum state lifted to the
+// onPreviewChange — no global store, just the minimum state lifted to the
 // nearest common ancestor (EditWorkspace).
 export interface GeneralPreviewValues {
   title: string;
@@ -54,9 +54,9 @@ const generalSchema = z.object({
 type GeneralFormValues = z.infer<typeof generalSchema>;
 
 export function GeneralSection({
-  onValuesChange,
+  onPreviewChange,
 }: {
-  onValuesChange: (values: GeneralPreviewValues) => void;
+  onPreviewChange: (values: GeneralPreviewValues) => void;
 }) {
   const section = useSectionState();
 
@@ -93,7 +93,7 @@ export function GeneralSection({
   const announcementValue = useWatch({ control, name: "announcement" });
 
   React.useEffect(() => {
-    onValuesChange({
+    onPreviewChange({
       title: titleValue ?? "",
       description: descriptionValue ?? "",
       buttonText: buttonValue ?? "",
@@ -104,7 +104,7 @@ export function GeneralSection({
     descriptionValue,
     buttonValue,
     announcementValue,
-    onValuesChange,
+    onPreviewChange,
   ]);
 
   // --- Save / Cancel ---

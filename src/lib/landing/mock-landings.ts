@@ -101,3 +101,41 @@ export const mockPricingData = {
   shipping: 400,
   freeShipping: false,
 };
+
+// Variant types — shared between the section, the preview, and the mock data.
+export interface VariantOption {
+  id: string;
+  label: string;
+  extraPrice: number;
+}
+
+export interface VariantGroup {
+  id: string;
+  name: string;
+  options: VariantOption[];
+}
+
+// Initial variant groups for the edit workspace. Two groups (Color + Pack)
+// match the example in the task spec. The first option in each group is
+// auto-selected in the preview, and its extraPrice is added to the base.
+export const mockVariantsData: { groups: VariantGroup[] } = {
+  groups: [
+    {
+      id: "g-color",
+      name: "Color",
+      options: [
+        { id: "o-white", label: "White", extraPrice: 0 },
+        { id: "o-black", label: "Black", extraPrice: 0 },
+      ],
+    },
+    {
+      id: "g-pack",
+      name: "Pack",
+      options: [
+        { id: "o-1pc", label: "1 Piece", extraPrice: 0 },
+        { id: "o-2pc", label: "2 Pieces", extraPrice: 900 },
+        { id: "o-3pc", label: "3 Pieces", extraPrice: 1700 },
+      ],
+    },
+  ],
+};
