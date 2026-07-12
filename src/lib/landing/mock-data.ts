@@ -1,14 +1,7 @@
 import type { LandingPageData, VariantGroup } from "@/types/landing";
 
-// Flat-rate shipping used by the order summary. Hardcoded in mock data for
-// the template; will become a per-page setting when the settings model grows
-// a shipping field in a later task.
-export const MOCK_SHIPPING_COST = 5;
-
-// Premium skincare serum — a clean, photogenic product that fits the
-// Apple/Linear aesthetic the template targets. Every field maps 1:1 to a
-// LandingPageData key, so this object is structurally identical to what a
-// future Prisma loader will return.
+// Premium skincare serum — used only by the /preview route (Task 3 template
+// demo). The public landing route /l/[slug] renders entirely from Prisma.
 export const mockLandingPage: LandingPageData = {
   id: "mock-serum-001",
   title: "Lumière Vitamin C Serum",

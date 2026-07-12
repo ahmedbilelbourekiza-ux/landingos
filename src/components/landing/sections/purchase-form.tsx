@@ -66,7 +66,7 @@ export function PurchaseForm({
   currency: string;
 }) {
   const router = useRouter();
-  const { total } = useOrderTotals(store);
+  const { subtotal } = useOrderTotals(store);
   const unitPrice = useUnitPrice(store);
   const quantity = store((s) => s.quantity);
 
@@ -99,7 +99,7 @@ export function PurchaseForm({
 
   const selectedWilayaData = wilayas.find((w) => w.id === Number(selectedWilaya));
   const shipping = deliveryPrices[Number(selectedWilaya)] ?? null;
-  const grandTotal = total + (shipping ?? 0);
+  const grandTotal = subtotal + (shipping ?? 0);
 
   const onSubmit = handleSubmit(async (values) => {
     if (submitting) return;
@@ -205,7 +205,7 @@ export function PurchaseForm({
         <div className="flex flex-col gap-1 rounded-lg border bg-muted/30 p-3 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Product ({formatPrice(unitPrice, currency)} × {quantity})</span>
-            <span className="tabular-nums">{formatPrice(total, currency)}</span>
+            <span className="tabular-nums">{formatPrice(subtotal, currency)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Shipping</span>

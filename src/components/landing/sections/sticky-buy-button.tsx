@@ -23,7 +23,7 @@ export function StickyBuyButton({
   buttonText: string;
   currency: string;
 }) {
-  const { total } = useOrderTotals(store);
+  const { subtotal } = useOrderTotals(store);
   const [visible, setVisible] = React.useState(false);
   const targetRef = React.useRef<HTMLElement | null>(null);
 
@@ -67,7 +67,7 @@ export function StickyBuyButton({
             className="h-12 w-full rounded-xl text-base font-semibold shadow-sm"
           >
             <ShoppingBag className="size-4" />
-            {buttonText} · {formatPrice(total, currency)}
+            {buttonText} · {formatPrice(subtotal, currency)}
           </Button>
         </motion.div>
       )}

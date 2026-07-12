@@ -5,6 +5,7 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SheetDescription,
 } from "@/components/ui/sheet";
 import { LandingTemplate } from "@/components/landing/landing-template";
 import { previewToLandingPage } from "@/lib/landing/preview-to-landing";
@@ -31,6 +32,9 @@ export function PreviewDrawer({
       <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-3xl">
         <SheetHeader className="sticky top-0 z-10 border-b bg-background/80 px-6 py-3 backdrop-blur-md">
           <SheetTitle className="text-sm">Live Preview</SheetTitle>
+          <SheetDescription className="sr-only">
+            Live preview of the landing page with current unsaved changes.
+          </SheetDescription>
         </SheetHeader>
         <div className="min-h-[calc(100vh-3rem)]">
           <LandingTemplate page={landingPage} />

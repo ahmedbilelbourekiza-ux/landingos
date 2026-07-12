@@ -8,6 +8,7 @@ import {
   Sheet,
   SheetContent,
   SheetTitle,
+  SheetDescription,
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Logo } from "@/components/shared/logo";
@@ -32,6 +33,9 @@ export function MobileSidebar() {
       </SheetTrigger>
       <SheetContent side="left" className="w-72 p-0">
         <SheetTitle className="sr-only">Navigation</SheetTitle>
+        <SheetDescription className="sr-only">
+          Dashboard navigation menu
+        </SheetDescription>
         <div className="flex h-16 items-center border-b px-5">
           <Logo />
         </div>
