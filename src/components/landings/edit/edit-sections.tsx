@@ -43,24 +43,18 @@ const SECTIONS: {
   { id: "integrations", title: "Integrations", description: "Webhook, Facebook Pixel, and analytics.", icon: Plug },
 ];
 
-// Renders the full stack of section cards. General, Pricing, Images, and
-// Variants are real editors; the rest still show "Coming Soon". Each real
-// section receives its preview slice + the shared onPreviewChange callback.
 export function EditSections({
   preview,
   onPreviewChange,
+  landingId,
 }: {
   preview: PreviewState;
   onPreviewChange: <K extends keyof PreviewState>(
     slice: K,
     values: PreviewState[K],
   ) => void;
+  landingId: string;
 }) {
-  // Memoize each per-section callback so the sections' useEffect deps stay
-  // stable. The parent's onPreviewChange is already memoized (useCallback
-  // with []), so these are stable too. Without this, inline arrow functions
-  // would create new references on every render and trigger infinite update
-  // loops in the sections' lifting effects.
   const callbacks = React.useMemo(
     () => ({
       general: (v: PreviewState["general"]) => onPreviewChange("general", v),
@@ -77,22 +71,64 @@ export function EditSections({
     <div className="flex flex-col gap-6">
       {SECTIONS.map((section) => {
         if (section.id === "general") {
-          return <GeneralSection key={section.id} onPreviewChange={callbacks.general} />;
+          return (
+            <GeneralSection
+              key={section.id}
+              landingId={landingId}
+              initialValues={preview.general}
+              onPreviewChange={callbacks.general}
+            />
+          );
         }
         if (section.id === "pricing") {
-          return <PricingSection key={section.id} onPreviewChange={callbacks.pricing} />;
+          return (
+            <PricingSection
+              key={section.id}
+              landingId={landingId}
+              initialValues={preview.pricing}
+              onPreviewChange={callbacks.pricing}
+            />
+          );
         }
         if (section.id === "images") {
-          return <ImagesSection key={section.id} onPreviewChange={callbacks.images} />;
+          return (
+            <ImagesSection
+              key={section.id}
+              landingId={landingId}
+              initialValues={preview.images}
+              onPreviewChange={callbacks.images}
+            />
+          );
         }
         if (section.id === "variants") {
-          return <VariantsSection key={section.id} onPreviewChange={callbacks.variants} />;
+          return (
+            <VariantsSection
+              key={section.id}
+              landingId={landingId}
+              initialValues={preview.variants}
+              onPreviewChange={callbacks.variants}
+            />
+          );
         }
         if (section.id === "reviews") {
-          return <ReviewsSection key={section.id} onPreviewChange={callbacks.reviews} />;
+          return (
+            <ReviewsSection
+              key={section.id}
+              landingId={landingId}
+              initialValues={preview.reviews}
+              onPreviewChange={callbacks.reviews}
+            />
+          );
         }
         if (section.id === "order-form") {
-          return <OrderFormSection key={section.id} onPreviewChange={callbacks.orderForm} />;
+          return (
+            <OrderFormSection
+              key={section.id}
+              landingId={landingId}
+              initialValues={preview.orderForm}
+              onPreviewChange={callbacks.orderForm}
+            />
+          );
         }
         return (
           <EditSectionCard

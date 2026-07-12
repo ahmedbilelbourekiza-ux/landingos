@@ -3,8 +3,9 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { Loader2 } from "lucide-react";
 
-import { mockLandings, type LandingListItem } from "@/lib/landing/mock-landings";
+import type { LandingListItem } from "@/lib/landing/mock-landings";
 import type { LandingPageStatus } from "@/types/landing";
 import { LandingsHeader } from "@/components/landings/landings-header";
 import { SearchBar } from "@/components/landings/search-bar";
@@ -13,65 +14,77 @@ import { SortSelect, type SortValue } from "@/components/landings/sort-select";
 import { LandingTable } from "@/components/landings/landing-table";
 import { LandingCard } from "@/components/landings/landing-card";
 import { LandingEmptyState } from "@/components/landings/landing-empty-state";
+import { LandingActionsMenu } from "@/components/landings/landing-actions-menu";
 
-// Note: metadata must live in a server component, but this page is a client
-// component (it holds filter/search state). The title is set via the root
-// layout's template ("%s · LandingOS") through a nested metadata export in
-// a server wrapper if needed; for now the dashboard layout's default title
-// applies, which is acceptable for an internal tool.
-
-// Local CMS state: search query, status filter, and sort order. All derived
-// lists (filtered + sorted) are computed with useMemo so the table and card
-// views never re-render unnecessarily. Kept entirely in the page component —
-// no store needed for a single-view, single-user internal tool.
 export default function LandingsPage() {
   const [query, setQuery] = React.useState("");
   const [filter, setFilter] = React.useState<FilterValue>("ALL");
   const [sort, setSort] = React.useState<SortValue>("updated");
+  const [landings, setLandings] = React.useState<LandingListItem[]>([]);
+  const [loading, setLoading] = React.useState(true);
 
   const router = useRouter();
-  const handleCreate = () => {
-    router.push("/dashboard/landings/new");
+  const handleCreate = () => router.push("/dashboard/landings/new");
+
+  const fetchLandings = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/landings");
+      const json = await res.json();
+      if (json.success) setLandings(json.data);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchLandings();
+  }, [fetchLandings]);
+
+  const handleDelete = async (landing: LandingListItem) => {
+    if (!confirm(`Delete "${landing.title}"? This cannot be undone.`)) return;
+    await fetch(`/api/landings/${landing.id}`, { method: "DELETE" });
+    fetchLandings();
   };
 
-  // Counts per status for the filter tabs. "All" is the total. Computed once
-  // per render over the static mock array — cheap, and stays correct when
-  // real data arrives because the source is the same array.
+  const handleEdit = (landing: LandingListItem) => {
+    router.push(`/dashboard/landings/${landing.id}/edit`);
+  };
+
+  const handleRowActions = (landing: LandingListItem) => ({
+    onPreview: () => window.open(`/l/${landing.slug}`, "_blank"),
+    onEdit: () => handleEdit(landing),
+    onDuplicate: () => {},
+    onPublish: () => {},
+    onArchive: () => {},
+    onDelete: () => handleDelete(landing),
+  });
+
   const counts = React.useMemo<Record<FilterValue, number>>(
     () => ({
-      ALL: mockLandings.length,
-      DRAFT: mockLandings.filter((l) => l.status === "DRAFT").length,
-      PUBLISHED: mockLandings.filter((l) => l.status === "PUBLISHED").length,
-      ARCHIVED: mockLandings.filter((l) => l.status === "ARCHIVED").length,
+      ALL: landings.length,
+      DRAFT: landings.filter((l) => l.status === "DRAFT").length,
+      PUBLISHED: landings.filter((l) => l.status === "PUBLISHED").length,
+      ARCHIVED: landings.filter((l) => l.status === "ARCHIVED").length,
     }),
-    [],
+    [landings],
   );
 
   const visible = React.useMemo(() => {
-    let list: LandingListItem[] = mockLandings;
-
+    let list = landings;
     if (filter !== "ALL") {
       list = list.filter((l) => l.status === (filter as LandingPageStatus));
     }
-
     const q = query.trim().toLowerCase();
-    if (q) {
-      list = list.filter((l) => l.title.toLowerCase().includes(q));
-    }
+    if (q) list = list.filter((l) => l.title.toLowerCase().includes(q));
 
-    const sorted = [...list].sort((a, b) => {
+    return [...list].sort((a, b) => {
       const ta = new Date(a.updatedAt).getTime();
       const tb = new Date(b.updatedAt).getTime();
-      if (sort === "newest") return tb - ta;
       if (sort === "oldest") return ta - tb;
-      // "updated" — most recently updated first. Same as newest in this mock
-      // since updatedAt is the only timestamp exposed; diverges once the
-      // list view also carries createdAt.
       return tb - ta;
     });
-
-    return sorted;
-  }, [filter, query, sort]);
+  }, [landings, filter, query, sort]);
 
   const isFilteredEmpty = query.trim() !== "" || filter !== "ALL";
 
@@ -85,38 +98,38 @@ export default function LandingsPage() {
       >
         <LandingsHeader onCreate={handleCreate} />
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <FilterTabs value={filter} counts={counts} onChange={setFilter} />
-          <div className="flex items-center gap-2">
-            <SearchBar
-              value={query}
-              onChange={setQuery}
-              className="w-full sm:w-64"
-            />
-            <SortSelect value={sort} onChange={setSort} />
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
           </div>
-        </div>
-
-        {visible.length === 0 ? (
-          <LandingEmptyState
-            title={isFilteredEmpty ? "No matching landing pages." : "No landing pages yet."}
-            message={
-              isFilteredEmpty
-                ? "Try a different search or filter."
-                : "Create your first landing page."
-            }
-            onCreate={isFilteredEmpty ? undefined : handleCreate}
-          />
         ) : (
           <>
-            <div className="hidden lg:block">
-              <LandingTable landings={visible} />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <FilterTabs value={filter} counts={counts} onChange={setFilter} />
+              <div className="flex items-center gap-2">
+                <SearchBar value={query} onChange={setQuery} className="w-full sm:w-64" />
+                <SortSelect value={sort} onChange={setSort} />
+              </div>
             </div>
-            <div className="flex flex-col gap-2 lg:hidden">
-              {visible.map((landing) => (
-                <LandingCard key={landing.id} landing={landing} />
-              ))}
-            </div>
+
+            {visible.length === 0 ? (
+              <LandingEmptyState
+                title={isFilteredEmpty ? "No matching landing pages." : "No landing pages yet."}
+                message={isFilteredEmpty ? "Try a different search or filter." : "Create your first landing page."}
+                onCreate={isFilteredEmpty ? undefined : handleCreate}
+              />
+            ) : (
+              <>
+                <div className="hidden lg:block">
+                  <LandingTable landings={visible} onRowActions={handleRowActions} />
+                </div>
+                <div className="flex flex-col gap-2 lg:hidden">
+                  {visible.map((landing) => (
+                    <LandingCard key={landing.id} landing={landing} onRowActions={handleRowActions} />
+                  ))}
+                </div>
+              </>
+            )}
           </>
         )}
       </motion.div>

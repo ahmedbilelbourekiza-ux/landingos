@@ -3,15 +3,6 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
-import type { LandingListItem } from "@/lib/landing/mock-landings";
-import {
-  mockGeneralData,
-  mockPricingData,
-  mockVariantsData,
-} from "@/lib/landing/mock-landings";
-import { mockImagesData } from "@/lib/landing/mock-media";
-import { mockReviewsData } from "@/lib/landing/mock-reviews";
-import { mockOrderFormData } from "@/lib/landing/mock-order-form";
 import type { PreviewState } from "@/types/preview";
 import { EditWorkspaceHeader, type PublishStatus } from "./edit-workspace-header";
 import { EditSections } from "./edit-sections";
@@ -20,45 +11,30 @@ import { PreviewDrawer } from "./preview-drawer";
 import { PublishDialog } from "./publish-dialog";
 import { LeaveWarningDialog } from "./leave-warning-dialog";
 
-export function EditWorkspace({ landing }: { landing: LandingListItem }) {
+export function EditWorkspace({
+  landingId,
+  landingTitle,
+  landingSlug,
+  initialPreview,
+  initialStatus,
+}: {
+  landingId: string;
+  landingTitle: string;
+  landingSlug: string;
+  initialPreview: PreviewState;
+  initialStatus: PublishStatus;
+}) {
   const router = useRouter();
 
-  const [preview, setPreview] = React.useState<PreviewState>({
-    general: {
-      title: mockGeneralData.title,
-      description: mockGeneralData.description,
-      buttonText: mockGeneralData.buttonText,
-      announcement: mockGeneralData.announcement,
-    },
-    pricing: {
-      price: mockPricingData.price,
-      oldPrice: mockPricingData.oldPrice,
-      currency: mockPricingData.currency,
-      shipping: mockPricingData.shipping,
-      freeShipping: mockPricingData.freeShipping,
-    },
-    images: {
-      heroUrl: mockImagesData.hero.url,
-      galleryUrls: mockImagesData.gallery.map((g) => g.url),
-    },
-    variants: { groups: mockVariantsData.groups },
-    reviews: { reviews: mockReviewsData.reviews },
-    orderForm: { config: mockOrderFormData },
-  });
-
-  // --- Publish lifecycle ---
-  const [publishStatus, setPublishStatus] = React.useState<PublishStatus>("DRAFT");
+  const [preview, setPreview] = React.useState<PreviewState>(initialPreview);
+  const [publishStatus, setPublishStatus] = React.useState<PublishStatus>(initialStatus);
   const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = React.useState(false);
   const [previewDrawerOpen, setPreviewDrawerOpen] = React.useState(false);
 
-  // Ref that tracks whether the landing has been published. Used inside the
-  // stable handlePreviewChange callback to set hasUnsavedChanges without
-  // breaking the callback's memoization (which sections depend on).
-  const publishedRef = React.useRef(false);
+  const publishedRef = React.useRef(initialStatus === "PUBLISHED");
 
-  // One memoized callback. After publishing, any change sets unsaved = true.
   const handlePreviewChange = React.useCallback(
     <K extends keyof PreviewState>(slice: K, values: PreviewState[K]) => {
       setPreview((prev) => ({ ...prev, [slice]: values }));
@@ -70,28 +46,32 @@ export function EditWorkspace({ landing }: { landing: LandingListItem }) {
   );
 
   // --- Publish / Update ---
-  const handlePublishClick = () => setPublishDialogOpen(true);
-
-  const handlePublishConfirm = () => {
+  const handlePublishConfirm = async () => {
     setPublishStatus("PUBLISHING");
     setPublishDialogOpen(false);
-    // Mock publishing delay
-    setTimeout(() => {
-      setPublishStatus("PUBLISHED");
-      setHasUnsavedChanges(false);
-      publishedRef.current = true;
-    }, 1500);
+    try {
+      const res = await fetch(`/api/landings/${landingId}/publish`, { method: "POST" });
+      const json = await res.json();
+      if (json.success) {
+        setPublishStatus("PUBLISHED");
+        setHasUnsavedChanges(false);
+        publishedRef.current = true;
+      } else {
+        setPublishStatus(publishedRef.current ? "PUBLISHED" : "DRAFT");
+      }
+    } catch {
+      setPublishStatus(publishedRef.current ? "PUBLISHED" : "DRAFT");
+    }
   };
 
   // --- Copy Link ---
   const handleCopyLink = () => {
-    const url = `https://landing.local/${landing.slug}`;
-    navigator.clipboard?.writeText(url);
+    navigator.clipboard?.writeText(`https://landing.local/${landingSlug}`);
   };
 
   // --- Open Landing ---
   const handleOpenLanding = () => {
-    window.open(`/l/${landing.slug}`, "_blank");
+    window.open(`/l/${landingSlug}`, "_blank");
   };
 
   // --- Back with warning ---
@@ -111,11 +91,11 @@ export function EditWorkspace({ landing }: { landing: LandingListItem }) {
   return (
     <div className="flex flex-col">
       <EditWorkspaceHeader
-        landing={landing}
+        landingTitle={landingTitle}
         publishStatus={publishStatus}
         hasUnsavedChanges={hasUnsavedChanges}
         onPreview={() => setPreviewDrawerOpen(true)}
-        onPublish={handlePublishClick}
+        onPublish={() => setPublishDialogOpen(true)}
         onCopyLink={handleCopyLink}
         onOpenLanding={handleOpenLanding}
         onBack={handleBack}
@@ -126,6 +106,7 @@ export function EditWorkspace({ landing }: { landing: LandingListItem }) {
           <EditSections
             preview={preview}
             onPreviewChange={handlePreviewChange}
+            landingId={landingId}
           />
           <div className="hidden lg:block">
             <PreviewPanel preview={preview} />

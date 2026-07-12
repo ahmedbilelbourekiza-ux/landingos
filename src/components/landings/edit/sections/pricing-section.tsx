@@ -19,7 +19,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatPrice, discountPercentage } from "@/lib/landing/format";
-import { mockPricingData } from "@/lib/landing/mock-landings";
 import {
   SectionShell,
   useSectionState,
@@ -71,15 +70,36 @@ const pricingSchema = z
 type PricingFormValues = z.infer<typeof pricingSchema>;
 
 export function PricingSection({
+  landingId,
+  initialValues,
   onPreviewChange,
 }: {
+  landingId: string;
+  initialValues: PricingPreviewValues;
   onPreviewChange: (values: PricingPreviewValues) => void;
 }) {
-  const section = useSectionState();
+  const section = useSectionState({
+    save: async () => {
+      const values = form.getValues();
+      const res = await fetch(`/api/landings/${landingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          price: values.price,
+          oldPrice: values.oldPrice ?? null,
+          currency: values.currency,
+          shipping: values.shipping,
+          freeShipping: values.freeShipping,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error?.message || "Save failed");
+    },
+  });
 
   const form = useForm<PricingFormValues>({
     resolver: zodResolver(pricingSchema),
-    defaultValues: mockPricingData,
+    defaultValues: initialValues,
     mode: "onBlur",
   });
 
@@ -139,7 +159,7 @@ export function PricingSection({
   };
 
   const handleCancel = () => {
-    reset(mockPricingData);
+    reset(initialValues);
     section.reset();
   };
 

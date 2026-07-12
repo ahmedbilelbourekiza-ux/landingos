@@ -1,25 +1,45 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 
-import { mockLandings } from "@/lib/landing/mock-landings";
+import { db } from "@/lib/db";
+import { toPreviewState } from "@/lib/landing/mappers";
 import { EditWorkspace } from "@/components/landings/edit/edit-workspace";
+import type { PublishStatus } from "@/components/landings/edit/edit-workspace-header";
 
 export const metadata: Metadata = {
   title: "Edit Landing",
 };
 
-// Edit workspace — thin server shell. Resolves params and mock data, then
-// hands off to the client EditWorkspace which holds the lifted preview
-// state. When Prisma lands, the mock lookup becomes a real findUnique with
-// notFound().
 export default async function EditLandingPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  void id;
 
-  const landing = mockLandings[0];
+  const page = await db.landingPage.findUnique({
+    where: { id },
+    include: {
+      media: { orderBy: { displayOrder: "asc" } },
+      variants: { orderBy: { displayOrder: "asc" } },
+      reviews: { orderBy: { displayOrder: "asc" } },
+      setting: true,
+    },
+  });
 
-  return <EditWorkspace landing={landing} />;
+  if (!page) notFound();
+
+  const initialPreview = toPreviewState(page);
+  const initialStatus: PublishStatus =
+    page.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT";
+
+  return (
+    <EditWorkspace
+      landingId={page.id}
+      landingTitle={page.title}
+      landingSlug={page.slug}
+      initialPreview={initialPreview}
+      initialStatus={initialStatus}
+    />
+  );
 }

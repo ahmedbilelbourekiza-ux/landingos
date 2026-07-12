@@ -17,23 +17,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { mockLandings } from "@/lib/landing/mock-landings";
 import { CURRENCIES, slugify } from "@/lib/landing/create";
 import type { LandingPageStatus } from "@/types/landing";
 
-// Validation schema. The slug uniqueness check runs against the mock list —
-// when Prisma lands this becomes a server-side check, but the client-side
-// guard stays for instant feedback. oldPrice, when provided, must be greater
-// than price (a discount going the wrong way would be a bug, not a feature).
-const existingSlugs = new Set(mockLandings.map((l) => l.slug));
-
+// Slug uniqueness is validated server-side during the POST. The client-side
+// schema only checks format. oldPrice, when provided, must be greater than
+// price (a discount going the wrong way would be a bug, not a feature).
 const createSchema = z.object({
   title: z.string().min(2, "Title must be at least 2 characters"),
   slug: z
     .string()
     .min(2, "Slug must be at least 2 characters")
-    .regex(/^[a-z0-9-]+$/, "Use lowercase letters, numbers, and hyphens only")
-    .refine((v) => !existingSlugs.has(v), "This slug is already taken"),
+    .regex(/^[a-z0-9-]+$/, "Use lowercase letters, numbers, and hyphens only"),
   price: z.coerce.number().positive("Price must be greater than 0"),
   oldPrice: z.coerce
     .number()
@@ -106,14 +101,27 @@ export function NewLandingForm() {
     setValue("slug", e.target.value, { shouldValidate: true });
   };
 
-  const onSubmit = handleSubmit((values) => {
+  const onSubmit = handleSubmit(async (values) => {
     setIsSubmitting(true);
-    // Mock create — generate a temporary id and redirect to the edit page.
-    // No data is persisted. The edit page (future task) will receive this id
-    // via params; for now it'll 404, which is expected.
-    const mockId = `lp_${Date.now()}`;
-    console.log("[LandingOS] mock create", { id: mockId, ...values });
-    router.push(`/dashboard/landings/${mockId}/edit`);
+    try {
+      const res = await fetch("/api/landings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        setError("root", {
+          message: json.error?.message || "Failed to create landing page",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      router.push(`/dashboard/landings/${json.data.id}/edit`);
+    } catch {
+      setError("root", { message: "Network error — please try again" });
+      setIsSubmitting(false);
+    }
   });
 
   return (

@@ -4,32 +4,50 @@ import * as React from "react";
 import { Layers, Plus, AlertCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { mockVariantsData, type VariantGroup } from "@/lib/landing/mock-landings";
+import { type VariantGroup } from "@/lib/landing/mock-landings";
 import {
   SectionShell,
   useSectionState,
 } from "@/components/landings/edit/section";
 import { VariantGroupEditor } from "./variant-group-editor";
 
-// The preview values the Variants section lifts to the parent: just the
-// groups array. The preview derives the selected options (first of each
-// group) and the extra-price adjustment.
 export interface VariantsPreviewValues {
   groups: VariantGroup[];
 }
 
 const MAX_GROUPS = 3;
-const CURRENCY = "DZD"; // matches the pricing section default
+const CURRENCY = "DZD";
 
 export function VariantsSection({
+  landingId,
+  initialValues,
   onPreviewChange,
 }: {
+  landingId: string;
+  initialValues: VariantsPreviewValues;
   onPreviewChange: (values: VariantsPreviewValues) => void;
 }) {
-  const section = useSectionState();
-  const [groups, setGroups] = React.useState<VariantGroup[]>(
-    mockVariantsData.groups,
-  );
+  const [groups, setGroups] = React.useState<VariantGroup[]>(initialValues.groups);
+
+  const section = useSectionState({
+    save: async () => {
+      const flatVariants = groups.flatMap((g, gi) =>
+        g.options.map((opt, oi) => ({
+          name: g.name,
+          value: opt.label,
+          extraPrice: opt.extraPrice,
+          displayOrder: gi * 100 + oi,
+        })),
+      );
+      const res = await fetch(`/api/landings/${landingId}/variants`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ variants: flatVariants }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error?.message || "Save failed");
+    },
+  });
   const [validationError, setValidationError] = React.useState<string | null>(null);
 
   // --- Lift preview values to parent ---
@@ -85,7 +103,7 @@ export function VariantsSection({
   };
 
   const handleCancel = () => {
-    setGroups(mockVariantsData.groups);
+    setGroups(initialValues.groups);
     setValidationError(null);
     section.reset();
   };

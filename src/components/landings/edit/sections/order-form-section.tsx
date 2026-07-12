@@ -6,7 +6,6 @@ import { ShoppingCart } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  mockOrderFormData,
   FIELD_DEFS,
   type OrderFormConfig,
   type OrderFormField,
@@ -18,40 +17,49 @@ import {
 } from "@/components/landings/edit/section";
 import { OrderFormFieldEditor } from "./order-form-field-editor";
 
-// The preview values the Order Form section lifts to the parent: the full
-// config object. The preview renders the form with the configured fields.
 export interface OrderFormPreviewValues {
   config: OrderFormConfig;
 }
 
 export function OrderFormSection({
+  landingId,
+  initialValues,
   onPreviewChange,
 }: {
+  landingId: string;
+  initialValues: OrderFormPreviewValues;
   onPreviewChange: (values: OrderFormPreviewValues) => void;
 }) {
-  const section = useSectionState();
-  const [config, setConfig] = React.useState<OrderFormConfig>(mockOrderFormData);
+  const [config, setConfig] = React.useState<OrderFormConfig>(initialValues.config);
 
-  // --- Lift preview values to parent ---
+  const section = useSectionState({
+    save: async () => {
+      const res = await fetch(`/api/landings/${landingId}/order-form`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error?.message || "Save failed");
+    },
+  });
+
   React.useEffect(() => {
     onPreviewChange({ config });
   }, [config, onPreviewChange]);
 
-  // --- Update a single field ---
   const updateField = (key: FieldKey, patch: Partial<OrderFormField>) => {
     setConfig((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
     section.markDirty();
   };
 
-  // --- Update button text ---
   const updateButtonText = (text: string) => {
     setConfig((prev) => ({ ...prev, buttonText: text }));
     section.markDirty();
   };
 
-  // --- Save / Cancel ---
   const handleCancel = () => {
-    setConfig(mockOrderFormData);
+    setConfig(initialValues.config);
     section.reset();
   };
 
@@ -66,7 +74,6 @@ export function OrderFormSection({
       onCancel={handleCancel}
     >
       <div className="flex flex-col gap-3">
-        {/* Field editors */}
         {FIELD_DEFS.map((def) => (
           <OrderFormFieldEditor
             key={def.key}
@@ -77,7 +84,6 @@ export function OrderFormSection({
           />
         ))}
 
-        {/* Purchase button text */}
         <div className="rounded-xl border bg-muted/20 p-3">
           <Label className="text-xs text-muted-foreground">
             Purchase Button Text

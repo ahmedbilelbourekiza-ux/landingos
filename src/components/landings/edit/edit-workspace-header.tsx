@@ -14,8 +14,6 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-import type { LandingListItem } from "@/lib/landing/mock-landings";
 
 export type PublishStatus = "DRAFT" | "PUBLISHING" | "PUBLISHED";
 
@@ -24,7 +22,7 @@ export type PublishStatus = "DRAFT" | "PUBLISHING" | "PUBLISHED";
 // drawer. Publish/Update triggers the confirmation dialog. After publishing,
 // Copy Link and Open Landing buttons appear.
 export function EditWorkspaceHeader({
-  landing,
+  landingTitle,
   publishStatus,
   hasUnsavedChanges,
   onPreview,
@@ -33,7 +31,7 @@ export function EditWorkspaceHeader({
   onOpenLanding,
   onBack,
 }: {
-  landing: LandingListItem;
+  landingTitle: string;
   publishStatus: PublishStatus;
   hasUnsavedChanges: boolean;
   onPreview: () => void;
@@ -58,7 +56,7 @@ export function EditWorkspaceHeader({
         >
           <ArrowLeft className="size-4" />
         </Button>
-        <span className="truncate text-sm font-medium">{landing.title}</span>
+        <span className="truncate text-sm font-medium">{landingTitle}</span>
         <PublishStatusBadge status={publishStatus} />
         {hasUnsavedChanges && (
           <Badge

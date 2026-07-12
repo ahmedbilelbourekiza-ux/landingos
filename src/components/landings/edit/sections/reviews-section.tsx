@@ -19,7 +19,7 @@ import {
 import { Star, Plus, AlertCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { mockReviewsData, type ReviewItem } from "@/lib/landing/mock-reviews";
+import { type ReviewItem } from "@/lib/landing/mock-reviews";
 import {
   SectionShell,
   useSectionState,
@@ -27,9 +27,6 @@ import {
 import { ReviewCardEditor } from "./review-card-editor";
 import { AvatarPickerDialog } from "./avatar-picker-dialog";
 
-// The preview values the Reviews section lifts to the parent: just the
-// reviews array. The preview renders them as cards matching the public
-// landing template.
 export interface ReviewsPreviewValues {
   reviews: ReviewItem[];
 }
@@ -37,14 +34,34 @@ export interface ReviewsPreviewValues {
 const MAX_REVIEWS = 20;
 
 export function ReviewsSection({
+  landingId,
+  initialValues,
   onPreviewChange,
 }: {
+  landingId: string;
+  initialValues: ReviewsPreviewValues;
   onPreviewChange: (values: ReviewsPreviewValues) => void;
 }) {
-  const section = useSectionState();
-  const [reviews, setReviews] = React.useState<ReviewItem[]>(
-    mockReviewsData.reviews,
-  );
+  const [reviews, setReviews] = React.useState<ReviewItem[]>(initialValues.reviews);
+
+  const section = useSectionState({
+    save: async () => {
+      const payload = reviews.map((r, i) => ({
+        customerName: r.customerName,
+        customerAvatar: r.avatarUrl,
+        rating: r.rating,
+        reviewText: r.reviewText,
+        displayOrder: i,
+      }));
+      const res = await fetch(`/api/landings/${landingId}/reviews`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviews: payload }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error?.message || "Save failed");
+    },
+  });
   const [validationError, setValidationError] = React.useState<string | null>(
     null,
   );
@@ -132,7 +149,7 @@ export function ReviewsSection({
   };
 
   const handleCancel = () => {
-    setReviews(mockReviewsData.reviews);
+    setReviews(initialValues.reviews);
     setValidationError(null);
     section.reset();
   };

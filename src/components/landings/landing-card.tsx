@@ -12,7 +12,13 @@ import { LandingActionsMenu } from "./landing-actions-menu";
 // title/slug/price/status stacked in the middle, actions menu on the right.
 // Designed to read like a list item, not a tile — dense and scannable on a
 // narrow screen.
-export function LandingCard({ landing }: { landing: LandingListItem }) {
+export function LandingCard({
+  landing,
+  onRowActions,
+}: {
+  landing: LandingListItem;
+  onRowActions?: (landing: LandingListItem) => import("./landing-actions-menu").LandingRowActions;
+}) {
   return (
     <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
       <div className="relative size-14 shrink-0 overflow-hidden rounded-lg border bg-muted">
@@ -42,7 +48,14 @@ export function LandingCard({ landing }: { landing: LandingListItem }) {
         </div>
       </div>
 
-      <LandingActionsMenu landing={landing} className="shrink-0" />
+      <LandingActionsMenu
+        landing={landing}
+        actions={onRowActions ? onRowActions(landing) : {
+          onPreview: () => {}, onEdit: () => {}, onDuplicate: () => {},
+          onPublish: () => {}, onArchive: () => {}, onDelete: () => {},
+        }}
+        className="shrink-0"
+      />
     </div>
   );
 }

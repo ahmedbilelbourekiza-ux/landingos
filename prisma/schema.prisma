@@ -46,8 +46,10 @@ model LandingPage {
   description    String?
   price          Decimal
   oldPrice       Decimal?
-  currency       String            @default("USD")
-  buttonText     String            @default("Order Now")
+  currency       String            @default("DZD")
+  buttonText     String            @default("اطلب الآن")
+  ctaButtonText  String?
+  announcement   String?
   seoTitle       String?
   seoDescription String?
   facebookPixel  String?
@@ -173,6 +175,9 @@ model LandingSetting {
   showReviews      Boolean      @default(true)
   showFAQ          Boolean      @default(true)
   showFeatures     Boolean      @default(true)
+  shipping         Decimal      @default(0)
+  freeShipping     Boolean      @default(false)
+  orderFormConfig  String?
 
   landingPage      LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
 

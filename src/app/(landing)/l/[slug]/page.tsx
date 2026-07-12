@@ -1,22 +1,45 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 
+import { db } from "@/lib/db";
+import { toLandingPageData } from "@/lib/landing/mappers";
 import { LandingTemplate } from "@/components/landing/landing-template";
-import { mockLandingPage } from "@/lib/landing/mock-data";
 
-export const metadata: Metadata = {
-  title: mockLandingPage.seoTitle ?? mockLandingPage.title,
-  description: mockLandingPage.seoDescription ?? mockLandingPage.description ?? "",
-};
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const page = await db.landingPage.findUnique({
+    where: { slug },
+    select: { title: true, seoTitle: true, seoDescription: true, description: true },
+  });
+  if (!page) return { title: "Not Found" };
+  return {
+    title: page.seoTitle ?? page.title,
+    description: page.seoDescription ?? page.description ?? "",
+  };
+}
 
-// Mock public landing route. In production, this would be /:slug served from
-// a Prisma query. Today it renders the Task 3 mock data so the "Open Landing"
-// button in the edit workspace has a real target.
+// Public landing route. Serves the landing page from Prisma by slug.
 export default async function LandingPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  void slug;
-  return <LandingTemplate page={mockLandingPage} />;
+  const page = await db.landingPage.findUnique({
+    where: { slug },
+    include: {
+      media: { orderBy: { displayOrder: "asc" } },
+      variants: { orderBy: { displayOrder: "asc" } },
+      reviews: { orderBy: { displayOrder: "asc" } },
+      setting: true,
+    },
+  });
+
+  if (!page) notFound();
+
+  return <LandingTemplate page={toLandingPageData(page)} />;
 }

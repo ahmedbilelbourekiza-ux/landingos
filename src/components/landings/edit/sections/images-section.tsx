@@ -20,7 +20,7 @@ import { Image as ImageIcon, Plus, AlertCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { mockImagesData, type MediaItem } from "@/lib/landing/mock-media";
+import { type MediaItem } from "@/lib/landing/mock-media";
 import {
   SectionShell,
   useSectionState,
@@ -39,16 +39,49 @@ export interface ImagesPreviewValues {
 const MAX_IMAGES = 12;
 
 export function ImagesSection({
+  landingId,
+  initialValues,
   onPreviewChange,
 }: {
+  landingId: string;
+  initialValues: ImagesPreviewValues;
   onPreviewChange: (values: ImagesPreviewValues) => void;
 }) {
-  const section = useSectionState();
+  // Build initial MediaItem arrays from the preview values (which only carry
+  // URLs). When loading from Prisma, the hero is the first media row and
+  // the gallery is the rest.
+  const initialHero: MediaItem | null = initialValues.heroUrl
+    ? { id: "hero", url: initialValues.heroUrl, filename: "hero" }
+    : null;
+  const initialGallery: MediaItem[] = initialValues.galleryUrls.map((url, i) => ({
+    id: `gallery-${i}`,
+    url,
+    filename: `image-${i + 1}`,
+  }));
 
-  // Image state is plain useState, not RHF — it's a reorderable list, not a
-  // field-based form. Every mutation calls section.markDirty().
-  const [hero, setHero] = React.useState<MediaItem | null>(mockImagesData.hero);
-  const [gallery, setGallery] = React.useState<MediaItem[]>(mockImagesData.gallery);
+  const section = useSectionState({
+    save: async () => {
+      const allMedia = [
+        ...(hero ? [{ type: "IMAGE" as const, url: hero.url, altText: hero.filename, displayOrder: 0 }] : []),
+        ...gallery.map((m, i) => ({
+          type: "IMAGE" as const,
+          url: m.url,
+          altText: m.filename,
+          displayOrder: i + 1,
+        })),
+      ];
+      const res = await fetch(`/api/landings/${landingId}/media`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ media: allMedia }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error?.message || "Save failed");
+    },
+  });
+
+  const [hero, setHero] = React.useState<MediaItem | null>(initialHero);
+  const [gallery, setGallery] = React.useState<MediaItem[]>(initialGallery);
   const [pickerOpen, setPickerOpen] = React.useState(false);
 
   // Validation error (max 12 images total, at least 1 hero). Shown inline
@@ -137,8 +170,8 @@ export function ImagesSection({
   };
 
   const handleCancel = () => {
-    setHero(mockImagesData.hero);
-    setGallery(mockImagesData.gallery);
+    setHero(initialHero);
+    setGallery(initialGallery);
     setValidationError(null);
     section.reset();
   };

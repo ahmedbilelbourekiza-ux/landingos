@@ -20,7 +20,13 @@ import { LandingActionsMenu } from "./landing-actions-menu";
 // takes over. Columns are tuned for scannability: thumbnail + title lead,
 // slug is muted, price is tabular, status is a badge, and the updated
 // column uses a relative format for recency.
-export function LandingTable({ landings }: { landings: LandingListItem[] }) {
+export function LandingTable({
+  landings,
+  onRowActions,
+}: {
+  landings: LandingListItem[];
+  onRowActions?: (landing: LandingListItem) => import("./landing-actions-menu").LandingRowActions;
+}) {
   return (
     <div className="overflow-hidden rounded-xl border bg-card">
       <Table>
@@ -68,7 +74,13 @@ export function LandingTable({ landings }: { landings: LandingListItem[] }) {
                 {formatRelative(landing.updatedAt)}
               </TableCell>
               <TableCell className="text-right">
-                <LandingActionsMenu landing={landing} />
+                <LandingActionsMenu
+                  landing={landing}
+                  actions={onRowActions ? onRowActions(landing) : {
+                    onPreview: () => {}, onEdit: () => {}, onDuplicate: () => {},
+                    onPublish: () => {}, onArchive: () => {}, onDelete: () => {},
+                  }}
+                />
               </TableCell>
             </TableRow>
           ))}

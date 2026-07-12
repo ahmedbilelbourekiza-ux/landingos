@@ -9,16 +9,12 @@ import { Settings2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { slugify } from "@/lib/landing/create";
-import { mockLandings, mockGeneralData, currentEditSlug } from "@/lib/landing/mock-landings";
 import {
   SectionShell,
   useSectionState,
 } from "@/components/landings/edit/section";
 import { Field } from "./field";
 
-// The 4 display values the preview panel needs. Lifted to the parent via
-// onPreviewChange — no global store, just the minimum state lifted to the
-// nearest common ancestor (EditWorkspace).
 export interface GeneralPreviewValues {
   title: string;
   description: string;
@@ -26,27 +22,10 @@ export interface GeneralPreviewValues {
   announcement: string;
 }
 
-// Slug uniqueness check — mocks the server query. Excludes the current
-// landing's own slug so the user can keep it without a false error.
-const otherSlugs = new Set(
-  mockLandings.map((l) => l.slug).filter((s) => s !== currentEditSlug),
-);
-
 const generalSchema = z.object({
-  title: z
-    .string()
-    .min(2, "Title must be at least 2 characters")
-    .max(120, "Title must be at most 120 characters"),
-  slug: z
-    .string()
-    .min(2, "Slug must be at least 2 characters")
-    .regex(/^[a-z0-9-]+$/, "Use lowercase letters, numbers, and hyphens only")
-    .refine((v) => !otherSlugs.has(v), "This slug is already taken"),
-  description: z
-    .string()
-    .max(300, "Description must be at most 300 characters")
-    .optional()
-    .or(z.literal("")),
+  title: z.string().min(2, "Title must be at least 2 characters").max(120, "Title must be at most 120 characters"),
+  slug: z.string().min(2, "Slug must be at least 2 characters").regex(/^[a-z0-9-]+$/, "Use lowercase letters, numbers, and hyphens only"),
+  description: z.string().max(300, "Description must be at most 300 characters").optional().or(z.literal("")),
   buttonText: z.string().min(1, "Button text is required"),
   announcement: z.string().optional().or(z.literal("")),
 });
@@ -54,23 +33,41 @@ const generalSchema = z.object({
 type GeneralFormValues = z.infer<typeof generalSchema>;
 
 export function GeneralSection({
+  landingId,
+  initialValues,
   onPreviewChange,
 }: {
+  landingId: string;
+  initialValues: GeneralPreviewValues;
   onPreviewChange: (values: GeneralPreviewValues) => void;
 }) {
-  const section = useSectionState();
+  const section = useSectionState({
+    save: async () => {
+      const values = form.getValues();
+      const res = await fetch(`/api/landings/${landingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: values.title,
+          slug: values.slug,
+          description: values.description || null,
+          ctaButtonText: values.buttonText,
+          announcement: values.announcement || null,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error?.message || "Save failed");
+    },
+  });
 
   const form = useForm<GeneralFormValues>({
     resolver: zodResolver(generalSchema),
-    defaultValues: mockGeneralData,
+    defaultValues: initialValues,
     mode: "onBlur",
   });
 
   const { register, control, setValue, trigger, reset } = form;
 
-  // --- Slug auto-generation ---
-  // Same pattern as the create form: auto-generate from title until the user
-  // manually edits the slug field, then stop overriding.
   const slugTouched = React.useRef(false);
   const titleValue = useWatch({ control, name: "title" });
 
@@ -79,15 +76,11 @@ export function GeneralSection({
     setValue("slug", slugify(titleValue ?? ""), { shouldValidate: false });
   }, [titleValue, setValue]);
 
-  // --- Mark dirty on any field change ---
   React.useEffect(() => {
     const sub = form.watch(() => section.markDirty());
     return () => sub.unsubscribe();
   }, [form, section]);
 
-  // --- Lift preview values to parent ---
-  // Individual useWatch calls so the effect only fires when a primitive
-  // actually changes — not on every render.
   const descriptionValue = useWatch({ control, name: "description" });
   const buttonValue = useWatch({ control, name: "buttonText" });
   const announcementValue = useWatch({ control, name: "announcement" });
@@ -99,15 +92,8 @@ export function GeneralSection({
       buttonText: buttonValue ?? "",
       announcement: announcementValue ?? "",
     });
-  }, [
-    titleValue,
-    descriptionValue,
-    buttonValue,
-    announcementValue,
-    onPreviewChange,
-  ]);
+  }, [titleValue, descriptionValue, buttonValue, announcementValue, onPreviewChange]);
 
-  // --- Save / Cancel ---
   const handleSave = async () => {
     const valid = await trigger();
     if (!valid) return;
@@ -115,7 +101,7 @@ export function GeneralSection({
   };
 
   const handleCancel = () => {
-    reset(mockGeneralData);
+    reset(initialValues);
     slugTouched.current = false;
     section.reset();
   };
@@ -140,62 +126,26 @@ export function GeneralSection({
     >
       <form className="flex flex-col gap-5" onSubmit={(e) => e.preventDefault()}>
         <Field label="Landing title" error={form.formState.errors.title?.message} htmlFor="title" required>
-          <Input
-            id="title"
-            placeholder="e.g. Lumière Vitamin C Serum"
-            aria-invalid={!!form.formState.errors.title}
-            {...register("title")}
-          />
+          <Input id="title" placeholder="e.g. Lumière Vitamin C Serum" aria-invalid={!!form.formState.errors.title} {...register("title")} />
         </Field>
 
         <Field label="Slug" error={form.formState.errors.slug?.message} htmlFor="slug" required hint="The URL of your landing page">
           <div className="flex items-stretch overflow-hidden rounded-md border focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
-            <span className="grid select-none place-items-center bg-muted px-3 text-sm text-muted-foreground">
-              /
-            </span>
-            <Input
-              id="slug"
-              className="rounded-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-              placeholder="lumiere-vitamin-c-serum"
-              aria-invalid={!!form.formState.errors.slug}
-              value={slugValue ?? ""}
-              onChange={onSlugChange}
-            />
+            <span className="grid select-none place-items-center bg-muted px-3 text-sm text-muted-foreground">/</span>
+            <Input id="slug" className="rounded-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0" placeholder="lumiere-vitamin-c-serum" aria-invalid={!!form.formState.errors.slug} value={slugValue ?? ""} onChange={onSlugChange} />
           </div>
         </Field>
 
-        <Field
-          label="Short description"
-          error={form.formState.errors.description?.message}
-          htmlFor="description"
-          hint={`${descLength}/300`}
-        >
-          <Textarea
-            id="description"
-            rows={3}
-            maxLength={300}
-            placeholder="A short product description shown on the landing page."
-            {...register("description")}
-          />
+        <Field label="Short description" error={form.formState.errors.description?.message} htmlFor="description" hint={`${descLength}/300`}>
+          <Textarea id="description" rows={3} maxLength={300} placeholder="A short product description shown on the landing page." {...register("description")} />
         </Field>
 
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="CTA button text" error={form.formState.errors.buttonText?.message} htmlFor="buttonText" required>
-            <Input
-              id="buttonText"
-              dir="auto"
-              placeholder="اشتر الآن"
-              aria-invalid={!!form.formState.errors.buttonText}
-              {...register("buttonText")}
-            />
+            <Input id="buttonText" dir="auto" placeholder="اشتر الآن" aria-invalid={!!form.formState.errors.buttonText} {...register("buttonText")} />
           </Field>
-
           <Field label="Announcement bar" error={form.formState.errors.announcement?.message} htmlFor="announcement" hint="Optional">
-            <Input
-              id="announcement"
-              placeholder="Free delivery nationwide · Cash on Delivery available"
-              {...register("announcement")}
-            />
+            <Input id="announcement" placeholder="Free delivery nationwide · Cash on Delivery available" {...register("announcement")} />
           </Field>
         </div>
       </form>
