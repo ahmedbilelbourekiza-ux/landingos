@@ -8,13 +8,13 @@ import { Settings2 } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { slugify } from "@/lib/landing/create";
 import { mockLandings, mockGeneralData, currentEditSlug } from "@/lib/landing/mock-landings";
 import {
   SectionShell,
   useSectionState,
 } from "@/components/landings/edit/section";
+import { Field } from "./field";
 
 // The 4 display values the preview panel needs. Lifted to the parent via
 // onValuesChange — no global store, just the minimum state lifted to the
@@ -200,39 +200,5 @@ export function GeneralSection({
         </div>
       </form>
     </SectionShell>
-  );
-}
-
-function Field({
-  label,
-  error,
-  hint,
-  htmlFor,
-  required,
-  children,
-}: {
-  label: string;
-  error?: string;
-  hint?: string;
-  htmlFor: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <Label htmlFor={htmlFor}>
-          {label}
-          {required && <span className="ml-0.5 text-destructive">*</span>}
-        </Label>
-        {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-      </div>
-      {children}
-      {error && (
-        <p className="text-xs text-destructive" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
   );
 }

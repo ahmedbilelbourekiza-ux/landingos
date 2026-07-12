@@ -7,15 +7,18 @@ import { Button } from "@/components/ui/button";
 import { PreviewDeviceToggle, type PreviewDevice } from "./preview-device-toggle";
 import { PreviewContent } from "./preview-content";
 import type { GeneralPreviewValues } from "./sections/general-section";
+import type { PricingPreviewValues } from "./sections/pricing-section";
 
 // Sticky right-column preview panel. Owns one piece of state — the selected
 // device — which swaps the preview frame size. The preview values come from
-// the parent (lifted state from the General section). Refresh and Open are
-// disabled until live iframe preview lands.
+// the parent (lifted state from the General + Pricing sections). Refresh and
+// Open are disabled until live iframe preview lands.
 export function PreviewPanel({
   values,
+  pricing,
 }: {
   values: GeneralPreviewValues;
+  pricing: PricingPreviewValues;
 }) {
   const [device, setDevice] = React.useState<PreviewDevice>("desktop");
 
@@ -27,7 +30,7 @@ export function PreviewPanel({
           <PreviewDeviceToggle value={device} onChange={setDevice} />
         </div>
 
-        <PreviewContent device={device} values={values} />
+        <PreviewContent device={device} values={values} pricing={pricing} />
 
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="flex-1" disabled>

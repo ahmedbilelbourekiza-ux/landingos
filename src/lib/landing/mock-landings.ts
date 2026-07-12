@@ -89,3 +89,15 @@ export const mockGeneralData = {
 // uniqueness check so the user can keep the existing slug without an error.
 // When Prisma lands, the server query excludes the current page's id.
 export const currentEditSlug = mockLandings[0].slug;
+
+// Initial values for the Pricing section. `shipping` and `freeShipping` are
+// not yet on the Prisma schema — they'll be added to LandingSetting (or a
+// dedicated pricing fields block) in a future schema task. For now they're
+// mock-only, shaped exactly like the form's values.
+export const mockPricingData = {
+  price: 4900,
+  oldPrice: 7900,
+  currency: "DZD",
+  shipping: 400,
+  freeShipping: false,
+};
