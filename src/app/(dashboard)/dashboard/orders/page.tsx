@@ -89,7 +89,7 @@ export default function OrdersPage() {
   };
 
   const handleRowActions = (order: OrderListItem) => ({
-    onView: () => console.log("[Orders] view", order.id),
+    onView: () => router.push(`/dashboard/orders/${order.id}`),
     onCopyPhone: () => handleCopyPhone(order),
     onDelete: () => handleDelete(order),
   });
