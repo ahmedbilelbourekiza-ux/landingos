@@ -44,7 +44,7 @@ export function GeneralSection({
   const section = useSectionState({
     save: async () => {
       const values = form.getValues();
-      const res = await fetch(`/api/landings/${landingId}`, {
+      const res = await fetch(`/api/landings/${landingId}/general`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

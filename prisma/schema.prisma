@@ -62,6 +62,7 @@ model LandingPage {
   reviews        LandingReview[]
   faqs           LandingFAQ[]
   setting        LandingSetting?
+  deliveryPrices LandingDeliveryPrice[]
 
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
@@ -183,4 +184,53 @@ model LandingSetting {
 
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
+}
+
+// Algerian wilaya. Shared dataset — not per-landing. Every landing reads
+// from this single table to populate its delivery price configuration.
+// The wilaya code (01–58) is the official Algerian administrative code.
+model Wilaya {
+  id              Int                     @id
+  code            String                  @unique
+  name            String
+  nameAr          String?
+  baladias        Baladia[]
+  deliveryPrices  LandingDeliveryPrice[]
+
+  createdAt       DateTime                @default(now())
+}
+
+// Commune within a wilaya. Also shared — not per-landing.
+model Baladia {
+  id        Int      @id
+  name      String
+  nameAr    String?
+  wilayaId  Int
+
+  wilaya    Wilaya   @relation(fields: [wilayaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([wilayaId])
+}
+
+// Per-landing delivery prices for each wilaya. Every landing owns its own
+// prices — no defaults, no auto-generation. The admin manually enters home
+// and desk delivery prices for each wilaya they want to serve.
+// `deskPrice` is optional because not all wilayas offer desk delivery.
+model LandingDeliveryPrice {
+  id           String      @id @default(cuid())
+  landingPageId String
+  wilayaId     Int
+  homePrice    Decimal
+  deskPrice    Decimal?
+
+  landingPage  LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+  wilaya       Wilaya      @relation(fields: [wilayaId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([landingPageId, wilayaId])
+  @@index([landingPageId])
 }

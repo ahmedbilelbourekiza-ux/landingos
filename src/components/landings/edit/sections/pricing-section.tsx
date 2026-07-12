@@ -81,7 +81,7 @@ export function PricingSection({
   const section = useSectionState({
     save: async () => {
       const values = form.getValues();
-      const res = await fetch(`/api/landings/${landingId}`, {
+      const res = await fetch(`/api/landings/${landingId}/pricing`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
