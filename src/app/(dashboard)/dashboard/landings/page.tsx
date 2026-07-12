@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
 import { mockLandings, type LandingListItem } from "@/lib/landing/mock-landings";
@@ -28,8 +29,9 @@ export default function LandingsPage() {
   const [filter, setFilter] = React.useState<FilterValue>("ALL");
   const [sort, setSort] = React.useState<SortValue>("updated");
 
+  const router = useRouter();
   const handleCreate = () => {
-    console.log("[LandingOS] create new landing (stub)");
+    router.push("/dashboard/landings/new");
   };
 
   // Counts per status for the filter tabs. "All" is the total. Computed once
