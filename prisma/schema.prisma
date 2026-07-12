@@ -1,13 +1,14 @@
-// LandingOS — Prisma schema (foundation)
+// LandingOS — Prisma schema
 //
-// Database provider is SQLite in this sandbox. The schema is written to be
-// provider-portable: switching to PostgreSQL is a one-line change — set
-// `provider = "postgresql"` below and point DATABASE_URL at a Postgres
-// connection string. Avoid SQLite-specific column types (e.g. use String
-// timestamps via @default(now())) to keep that migration frictionless.
+// Provider is SQLite in this sandbox. The schema is provider-portable:
+// switching to PostgreSQL is a one-line change — set `provider = "postgresql"`
+// and point DATABASE_URL at a Postgres connection string. No @db.* native
+// type annotations are used so the same schema compiles on both providers.
 //
-// No business models yet — they will be added incrementally in later tasks
-// (products, landing pages, form submissions, CRM webhook configs, etc.).
+// Data model scope (Task 2): the landing-page data engine. One LandingPage
+// represents one COD product. All child records (media, variants, features,
+// reviews, faqs, setting) cascade-delete with their parent. Form submissions
+// and CRM webhook delivery belong to later tasks and are intentionally absent.
 
 generator client {
   provider = "prisma-client-js"
@@ -16,4 +17,165 @@ generator client {
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
+}
+
+// Editorial lifecycle of a landing page. DRAFT while the admin is editing,
+// PUBLISHED once it is live, ARCHIVED to take it offline without deleting it.
+enum LandingPageStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// Media is either an image or a video. Kept as an enum because the public
+// renderer treats the two types differently (poster frame vs. player).
+enum LandingMediaType {
+  IMAGE
+  VIDEO
+}
+
+// A landing page represents a single COD product. One page = one product =
+// one purchase form. `published` is the public visibility flag; `status` is
+// the editorial lifecycle. `webhookUrl` optionally overrides the global
+// CRM_WEBHOOK_URL so different products can route to different CRM pipelines.
+model LandingPage {
+  id             String            @id @default(cuid())
+  title          String
+  slug           String            @unique
+  status         LandingPageStatus @default(DRAFT)
+  description    String?
+  price          Decimal
+  oldPrice       Decimal?
+  currency       String            @default("USD")
+  buttonText     String            @default("Order Now")
+  seoTitle       String?
+  seoDescription String?
+  facebookPixel  String?
+  webhookUrl     String?
+  published      Boolean           @default(false)
+
+  media          LandingMedia[]
+  variants       LandingVariant[]
+  features       LandingFeature[]
+  reviews        LandingReview[]
+  faqs           LandingFAQ[]
+  setting        LandingSetting?
+
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([status])
+  @@index([published])
+  @@index([createdAt])
+}
+
+// Images and videos attached to a landing page. `displayOrder` controls the
+// carousel/gallery sequence. `url` holds either a stored path or a remote URL.
+model LandingMedia {
+  id            String          @id @default(cuid())
+  landingPageId String
+  type          LandingMediaType
+  url           String
+  altText       String?
+  displayOrder  Int             @default(0)
+
+  landingPage   LandingPage     @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([landingPageId, displayOrder])
+}
+
+// A selectable product option, e.g. name "Size" / value "Large". Flat model:
+// each row is one choosable option with an optional extra price. The purchase
+// form reads these to build its variant selectors.
+model LandingVariant {
+  id            String      @id @default(cuid())
+  landingPageId String
+  name          String
+  value         String
+  extraPrice    Decimal     @default(0)
+  displayOrder  Int         @default(0)
+
+  landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([landingPageId, displayOrder])
+}
+
+// A product highlight shown in the features grid. `icon` stores an icon key
+// (e.g. a lucide name) that the UI maps to a rendered icon component — not a
+// file path.
+model LandingFeature {
+  id            String      @id @default(cuid())
+  landingPageId String
+  icon          String
+  title         String
+  description   String?
+  displayOrder  Int         @default(0)
+
+  landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([landingPageId, displayOrder])
+}
+
+// Social-proof testimonial. `rating` is an Int (1–5); the 1–5 range is
+// enforced at the API/validation layer since Prisma has no portable CHECK
+// constraint. `customerAvatar` is optional — not every review has a photo.
+model LandingReview {
+  id             String      @id @default(cuid())
+  landingPageId  String
+  customerName   String
+  customerAvatar String?
+  rating         Int
+  reviewText     String
+  displayOrder   Int         @default(0)
+
+  landingPage    LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([landingPageId, displayOrder])
+}
+
+// A question/answer pair rendered in the FAQ section.
+model LandingFAQ {
+  id            String      @id @default(cuid())
+  landingPageId String
+  question      String
+  answer        String
+  displayOrder  Int         @default(0)
+
+  landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([landingPageId, displayOrder])
+}
+
+// 1:1 with LandingPage. Feature flags that control which sections and
+// conversion boosters render on the public page. Optional on the page so a
+// page renders with sensible defaults until settings are customized.
+model LandingSetting {
+  id               String      @id @default(cuid())
+  landingPageId    String      @unique
+  countdownEnabled Boolean      @default(false)
+  stickyBuyButton  Boolean      @default(true)
+  floatingWhatsapp Boolean      @default(false)
+  showReviews      Boolean      @default(true)
+  showFAQ          Boolean      @default(true)
+  showFeatures     Boolean      @default(true)
+
+  landingPage      LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 }
