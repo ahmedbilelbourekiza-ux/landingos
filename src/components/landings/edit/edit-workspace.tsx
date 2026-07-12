@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 
 import type { LandingListItem } from "@/lib/landing/mock-landings";
 import {
@@ -12,14 +13,16 @@ import { mockImagesData } from "@/lib/landing/mock-media";
 import { mockReviewsData } from "@/lib/landing/mock-reviews";
 import { mockOrderFormData } from "@/lib/landing/mock-order-form";
 import type { PreviewState } from "@/types/preview";
-import { EditWorkspaceHeader } from "./edit-workspace-header";
+import { EditWorkspaceHeader, type PublishStatus } from "./edit-workspace-header";
 import { EditSections } from "./edit-sections";
 import { PreviewPanel } from "./preview-panel";
+import { PreviewDrawer } from "./preview-drawer";
+import { PublishDialog } from "./publish-dialog";
+import { LeaveWarningDialog } from "./leave-warning-dialog";
 
-// Client wrapper for the edit workspace. Owns exactly one preview object —
-// the single source of truth. Each section updates only its own slice via
-// onPreviewChange. No global store, no per-section useState in the parent.
 export function EditWorkspace({ landing }: { landing: LandingListItem }) {
+  const router = useRouter();
+
   const [preview, setPreview] = React.useState<PreviewState>({
     general: {
       title: mockGeneralData.title,
@@ -38,28 +41,85 @@ export function EditWorkspace({ landing }: { landing: LandingListItem }) {
       heroUrl: mockImagesData.hero.url,
       galleryUrls: mockImagesData.gallery.map((g) => g.url),
     },
-    variants: {
-      groups: mockVariantsData.groups,
-    },
-    reviews: {
-      reviews: mockReviewsData.reviews,
-    },
-    orderForm: {
-      config: mockOrderFormData,
-    },
+    variants: { groups: mockVariantsData.groups },
+    reviews: { reviews: mockReviewsData.reviews },
+    orderForm: { config: mockOrderFormData },
   });
 
-  // One memoized callback. Each section calls this with its slice key + new
-  // values; the parent merges it into the single preview object.
+  // --- Publish lifecycle ---
+  const [publishStatus, setPublishStatus] = React.useState<PublishStatus>("DRAFT");
+  const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
+  const [publishDialogOpen, setPublishDialogOpen] = React.useState(false);
+  const [leaveDialogOpen, setLeaveDialogOpen] = React.useState(false);
+  const [previewDrawerOpen, setPreviewDrawerOpen] = React.useState(false);
+
+  // Ref that tracks whether the landing has been published. Used inside the
+  // stable handlePreviewChange callback to set hasUnsavedChanges without
+  // breaking the callback's memoization (which sections depend on).
+  const publishedRef = React.useRef(false);
+
+  // One memoized callback. After publishing, any change sets unsaved = true.
   const handlePreviewChange = React.useCallback(
-    <K extends keyof PreviewState>(slice: K, values: PreviewState[K]) =>
-      setPreview((prev) => ({ ...prev, [slice]: values })),
+    <K extends keyof PreviewState>(slice: K, values: PreviewState[K]) => {
+      setPreview((prev) => ({ ...prev, [slice]: values }));
+      if (publishedRef.current) {
+        setHasUnsavedChanges(true);
+      }
+    },
     [],
   );
 
+  // --- Publish / Update ---
+  const handlePublishClick = () => setPublishDialogOpen(true);
+
+  const handlePublishConfirm = () => {
+    setPublishStatus("PUBLISHING");
+    setPublishDialogOpen(false);
+    // Mock publishing delay
+    setTimeout(() => {
+      setPublishStatus("PUBLISHED");
+      setHasUnsavedChanges(false);
+      publishedRef.current = true;
+    }, 1500);
+  };
+
+  // --- Copy Link ---
+  const handleCopyLink = () => {
+    const url = `https://landing.local/${landing.slug}`;
+    navigator.clipboard?.writeText(url);
+  };
+
+  // --- Open Landing ---
+  const handleOpenLanding = () => {
+    window.open(`/l/${landing.slug}`, "_blank");
+  };
+
+  // --- Back with warning ---
+  const handleBack = () => {
+    if (hasUnsavedChanges) {
+      setLeaveDialogOpen(true);
+    } else {
+      router.push("/dashboard/landings");
+    }
+  };
+
+  const handleLeaveConfirm = () => {
+    setLeaveDialogOpen(false);
+    router.push("/dashboard/landings");
+  };
+
   return (
     <div className="flex flex-col">
-      <EditWorkspaceHeader landing={landing} />
+      <EditWorkspaceHeader
+        landing={landing}
+        publishStatus={publishStatus}
+        hasUnsavedChanges={hasUnsavedChanges}
+        onPreview={() => setPreviewDrawerOpen(true)}
+        onPublish={handlePublishClick}
+        onCopyLink={handleCopyLink}
+        onOpenLanding={handleOpenLanding}
+        onBack={handleBack}
+      />
 
       <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
         <div className="grid gap-6 lg:grid-cols-[1fr_320px] lg:gap-8">
@@ -72,6 +132,24 @@ export function EditWorkspace({ landing }: { landing: LandingListItem }) {
           </div>
         </div>
       </div>
+
+      <PreviewDrawer
+        open={previewDrawerOpen}
+        onOpenChange={setPreviewDrawerOpen}
+        preview={preview}
+      />
+      <PublishDialog
+        open={publishDialogOpen}
+        onOpenChange={setPublishDialogOpen}
+        isPublishing={publishStatus === "PUBLISHING"}
+        isUpdate={publishStatus === "PUBLISHED"}
+        onConfirm={handlePublishConfirm}
+      />
+      <LeaveWarningDialog
+        open={leaveDialogOpen}
+        onOpenChange={setLeaveDialogOpen}
+        onConfirm={handleLeaveConfirm}
+      />
     </div>
   );
 }
