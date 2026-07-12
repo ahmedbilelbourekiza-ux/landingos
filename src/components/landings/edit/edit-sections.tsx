@@ -17,6 +17,7 @@ import { EditSectionCard } from "./edit-section-card";
 import { SectionComingSoon } from "./section-coming-soon";
 import { GeneralSection, type GeneralPreviewValues } from "./sections/general-section";
 import { PricingSection, type PricingPreviewValues } from "./sections/pricing-section";
+import { ImagesSection, type ImagesPreviewValues } from "./sections/images-section";
 
 // The nine editing sections, owned by this client component because the
 // icon references (lucide components) can't cross a server→client boundary.
@@ -86,16 +87,17 @@ const SECTIONS: {
   },
 ];
 
-// Renders the full stack of section cards. The General and Pricing sections
-// are real (working forms); all others still show "Coming Soon". As each
-// section gets its real editor, it's swapped in here the same way — one
-// conditional, no restructuring.
+// Renders the full stack of section cards. The General, Pricing, and Images
+// sections are real (working editors); all others still show "Coming Soon".
+// As each section gets its real editor, it's swapped in here the same way.
 export function EditSections({
   onGeneralValuesChange,
   onPricingValuesChange,
+  onImagesValuesChange,
 }: {
   onGeneralValuesChange: (values: GeneralPreviewValues) => void;
   onPricingValuesChange: (values: PricingPreviewValues) => void;
+  onImagesValuesChange: (values: ImagesPreviewValues) => void;
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -113,6 +115,14 @@ export function EditSections({
             <PricingSection
               key={section.id}
               onValuesChange={onPricingValuesChange}
+            />
+          );
+        }
+        if (section.id === "images") {
+          return (
+            <ImagesSection
+              key={section.id}
+              onValuesChange={onImagesValuesChange}
             />
           );
         }

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { ImageOff } from "lucide-react";
 
@@ -8,6 +9,7 @@ import { formatPrice, discountPercentage } from "@/lib/landing/format";
 import type { PreviewDevice } from "./preview-device-toggle";
 import type { GeneralPreviewValues } from "./sections/general-section";
 import type { PricingPreviewValues } from "./sections/pricing-section";
+import type { ImagesPreviewValues } from "./sections/images-section";
 
 // Mini landing-page preview. Renders the General section's 4 display fields
 // plus the Pricing section's price block — announcement, image, title,
@@ -21,10 +23,12 @@ export function PreviewContent({
   device,
   values,
   pricing,
+  images,
 }: {
   device: PreviewDevice;
   values: GeneralPreviewValues;
   pricing: PricingPreviewValues;
+  images: ImagesPreviewValues;
 }) {
   const isMobile = device === "mobile";
 
@@ -55,14 +59,54 @@ export function PreviewContent({
           <div className="h-7 bg-muted/40" />
         )}
 
-        {/* Product image placeholder */}
-        <div className="flex aspect-[4/3] items-center justify-center bg-muted/30">
-          <ImageOff
-            className="size-8 text-muted-foreground/40"
-            strokeWidth={1.5}
-            aria-hidden
-          />
+        {/* Product image — real hero when set, placeholder when empty */}
+        <div className="relative aspect-[4/3] bg-muted/30">
+          {images.heroUrl ? (
+            <motion.div
+              key={images.heroUrl}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0"
+            >
+              <Image
+                src={images.heroUrl}
+                alt="Product hero"
+                fill
+                sizes="(max-width: 1024px) 100vw, 320px"
+                className="object-cover"
+              />
+            </motion.div>
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <ImageOff
+                className="size-8 text-muted-foreground/40"
+                strokeWidth={1.5}
+                aria-hidden
+              />
+            </div>
+          )}
         </div>
+
+        {/* Gallery thumbnails strip (when present) */}
+        {images.galleryUrls.length > 0 && (
+          <div className="flex gap-1 overflow-x-auto px-2 py-1.5">
+            {images.galleryUrls.slice(0, 6).map((url, i) => (
+              <div
+                key={i}
+                className="relative size-9 shrink-0 overflow-hidden rounded border"
+              >
+                <Image
+                  src={url}
+                  alt=""
+                  fill
+                  sizes="36px"
+                  className="object-cover"
+                />
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Text + pricing content */}
         <div className="flex flex-col gap-2 p-3">
