@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
     const shippingPrice = deliveryPrice.homePrice.toNumber();
     const totalPrice = productPrice * quantity + shippingPrice;
 
-    // 7. Create order
+    // 7. Create order + initial status history entry
     const order = await db.order.create({
       data: {
         landingPageId: landingId,
@@ -156,6 +156,12 @@ export async function POST(req: NextRequest) {
         shippingPrice,
         totalPrice,
         status: "NEW",
+        statusHistory: {
+          create: {
+            fromStatus: null,
+            toStatus: "NEW",
+          },
+        },
       },
       select: { id: true },
     });

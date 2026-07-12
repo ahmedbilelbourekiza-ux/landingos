@@ -268,6 +268,7 @@ model Order {
   status        OrderStatus @default(NEW)
 
   landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+  statusHistory OrderStatusHistory[]
 
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -275,4 +276,21 @@ model Order {
   @@index([landingPageId])
   @@index([status])
   @@index([createdAt])
+}
+
+// Timestamped record of every status transition. The initial NEW status is
+// recorded as a history entry with fromStatus = null on order creation.
+// This gives a complete audit trail: each row shows when the order moved
+// from one status to the next.
+model OrderStatusHistory {
+  id        String      @id @default(cuid())
+  orderId   String
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime    @default(now())
+
+  @@index([orderId])
 }

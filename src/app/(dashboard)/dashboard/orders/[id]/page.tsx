@@ -6,6 +6,7 @@ import { formatPrice } from "@/lib/landing/format";
 import { formatDate } from "@/lib/landing/date";
 import { OrderDetailsActions, BackToOrdersButton } from "@/components/orders/order-details-actions";
 import { OrderStatusBadge } from "@/components/orders/order-status-badge";
+import { StatusWorkflowCard } from "@/components/orders/status-workflow-card";
 
 export const metadata: Metadata = {
   title: "Order Details",
@@ -33,6 +34,10 @@ export default async function OrderDetailsPage({
           slug: true,
           media: { take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
         },
+      },
+      statusHistory: {
+        orderBy: { createdAt: "asc" },
+        select: { id: true, fromStatus: true, toStatus: true, createdAt: true },
       },
     },
   });
@@ -116,7 +121,7 @@ export default async function OrderDetailsPage({
             )}
           </div>
 
-          {/* Right column: Pricing + Timeline */}
+          {/* Right column: Pricing + Status Workflow */}
           <div className="flex flex-col gap-6">
             {/* Pricing Card */}
             <DetailCard title="Pricing">
@@ -132,15 +137,23 @@ export default async function OrderDetailsPage({
               </div>
             </DetailCard>
 
-            {/* Timeline Card */}
+            {/* Status Workflow Card (replaces Timeline) */}
+            <StatusWorkflowCard
+              orderId={order.id}
+              currentStatus={order.status}
+              initialHistory={order.statusHistory.map((h) => ({
+                id: h.id,
+                fromStatus: h.fromStatus,
+                toStatus: h.toStatus,
+                createdAt: h.createdAt.toISOString(),
+              }))}
+            />
+
+            {/* Timeline info (created/updated) */}
             <DetailCard title="Timeline">
               <div className="flex flex-col gap-3">
                 <DetailRow label="Created" value={formatDate(order.createdAt.toISOString())} />
                 <DetailRow label="Updated" value={formatDate(order.updatedAt.toISOString())} />
-                <div className="flex items-center justify-between border-t pt-3">
-                  <span className="text-sm text-muted-foreground">Current Status</span>
-                  <OrderStatusBadge status={order.status} />
-                </div>
               </div>
             </DetailCard>
           </div>

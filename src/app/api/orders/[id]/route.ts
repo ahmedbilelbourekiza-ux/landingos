@@ -21,6 +21,10 @@ export async function GET(
             media: { take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
           },
         },
+        statusHistory: {
+          orderBy: { createdAt: "asc" },
+          select: { id: true, fromStatus: true, toStatus: true, createdAt: true },
+        },
       },
     });
 
@@ -51,6 +55,12 @@ export async function GET(
             thumbnail: order.landingPage.media[0]?.url ?? "",
           }
         : null,
+      statusHistory: order.statusHistory.map((h) => ({
+        id: h.id,
+        fromStatus: h.fromStatus,
+        toStatus: h.toStatus,
+        createdAt: h.createdAt.toISOString(),
+      })),
     };
 
     return ok(data);
