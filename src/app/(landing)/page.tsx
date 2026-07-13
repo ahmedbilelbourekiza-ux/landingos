@@ -141,10 +141,13 @@ export default function HomePage() {
                 </motion.p>
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.2 }}
                   className="mt-6">
-                  <a href="#categories" className="inline-flex h-12 items-center justify-center rounded-xl bg-primary px-8 text-sm font-bold text-primary-foreground shadow-lg transition-all hover:shadow-xl">
+                  <button
+                    onClick={() => document.getElementById("categories")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    className="inline-flex h-12 items-center justify-center rounded-xl bg-primary px-8 text-sm font-bold text-primary-foreground shadow-lg transition-all hover:shadow-xl"
+                  >
                     <ShoppingBag className="ml-2 size-4" />
                     ابدأ التسوق
-                  </a>
+                  </button>
                 </motion.div>
               </div>
             </section>
