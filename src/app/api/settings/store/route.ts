@@ -1,10 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { ok, fail, fromZodError, serverError } from "@/lib/api-response";
-import { verifySession, getSessionCookieName } from "@/lib/auth/session";
+import { getAuthenticatedAdmin } from "@/lib/auth/require-auth";
 
 const storeSettingsSchema = z.object({
   storeName: z.string().optional(),
@@ -24,10 +23,17 @@ const storeSettingsSchema = z.object({
   telegram: z.string().optional().nullable(),
 });
 
-// GET /api/settings/store — returns store settings
+// GET /api/settings/store — returns store settings.
+//
+// Auth is enforced by the middleware (this route is in the protected matcher).
+// The dashboard Settings page reads from here; the storefront reads store
+// info directly from Prisma in its server components, so this endpoint does
+// not need to be public.
 export async function GET() {
   try {
-    const settings = await db.storeSettings.findUnique({ where: { id: "singleton" } });
+    const settings = await db.storeSettings.findUnique({
+      where: { id: "singleton" },
+    });
     return ok(settings ?? {});
   } catch (error) {
     console.error("[api/settings/store] GET error:", error);
@@ -35,13 +41,21 @@ export async function GET() {
   }
 }
 
-// PUT /api/settings/store — update store settings
+// PUT /api/settings/store — update store settings. Requires auth.
+// The middleware enforces this at the edge; we re-check here as a defence in
+// depth so the route is safe even if the matcher changes.
 export async function PUT(req: NextRequest) {
   try {
-    const token = (await cookies()).get(getSessionCookieName())?.value;
-    if (!token) return fail("UNAUTHORIZED", "Not authenticated", 401);
-    const session = await verifySession(token);
-    if (!session) return fail("UNAUTHORIZED", "Session expired", 401);
+    const admin = await getAuthenticatedAdmin();
+    if (!admin) return fail("UNAUTHORIZED", "Not authenticated", 401);
+
+    if (admin.mustChangePassword) {
+      return fail(
+        "MUST_CHANGE_PASSWORD",
+        "يجب تغيير كلمة المرور الافتراضية قبل تعديل الإعدادات",
+        403,
+      );
+    }
 
     const body = await req.json();
     const parsed = storeSettingsSchema.safeParse(body);

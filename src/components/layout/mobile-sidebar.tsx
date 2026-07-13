@@ -16,7 +16,11 @@ import { DashboardNav } from "./dashboard-nav";
 
 // Mobile navigation drawer. Mirrors the desktop sidebar's content. Opens on
 // demand so it never steals screen space on small viewports.
-export function MobileSidebar() {
+export function MobileSidebar({
+  mustChangePassword = false,
+}: {
+  mustChangePassword?: boolean;
+}) {
   const [open, setOpen] = React.useState(false);
 
   return (
@@ -40,7 +44,7 @@ export function MobileSidebar() {
           <Logo />
         </div>
         <div className="px-3 py-4" onClick={() => setOpen(false)}>
-          <DashboardNav />
+          <DashboardNav mustChangePassword={mustChangePassword} />
         </div>
       </SheetContent>
     </Sheet>

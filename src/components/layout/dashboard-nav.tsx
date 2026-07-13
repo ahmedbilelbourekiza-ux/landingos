@@ -16,7 +16,15 @@ export const dashboardNav = [
   { title: "Profile", href: "/dashboard/profile", icon: User },
 ] as const;
 
-export function DashboardNav() {
+// The Profile link is always available — it's the page the force-change flow
+// redirects to. Every other link is disabled while mustChangePassword=true.
+const FORCE_CHANGE_ALLOWED_HREF = "/dashboard/profile";
+
+export function DashboardNav({
+  mustChangePassword = false,
+}: {
+  mustChangePassword?: boolean;
+}) {
   const pathname = usePathname();
 
   return (
@@ -27,6 +35,26 @@ export function DashboardNav() {
             ? pathname === "/"
             : pathname.startsWith(item.href);
         const Icon = item.icon;
+        const disabled =
+          mustChangePassword && item.href !== FORCE_CHANGE_ALLOWED_HREF;
+
+        if (disabled) {
+          // Render as a non-interactive, dimmed row so the user sees the
+          // shape of the nav but cannot navigate. ARIA-disabled keeps the
+          // state accessible to assistive tech.
+          return (
+            <span
+              key={item.href}
+              aria-disabled="true"
+              className={cn(
+                "group flex cursor-not-allowed items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground/50",
+              )}
+            >
+              <Icon className="size-4 shrink-0" />
+              {item.title}
+            </span>
+          );
+        }
 
         return (
           <Link

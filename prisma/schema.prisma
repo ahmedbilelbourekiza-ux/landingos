@@ -339,12 +339,23 @@ model LandingTheme {
 
 // Single admin account. Only one row expected. Password is bcrypt-hashed.
 // Session is managed via signed cookies (no separate session table needed).
+//
+// Security fields:
+//   mustChangePassword   — true on the seeded default admin (admin/admin123).
+//                          Forces a password change on first login before any
+//                          dashboard page other than /dashboard/profile can be
+//                          opened. Flipped to false by the change-password API.
+//   lastLoginAt          — updated on every successful login. Shown in Profile.
+//   lastPasswordChangeAt — updated on every successful password change.
 model Admin {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  username              String   @unique
+  passwordHash          String
+  mustChangePassword    Boolean  @default(true)
+  lastLoginAt           DateTime?
+  lastPasswordChangeAt  DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 // Global store settings — single row (id = "singleton"). Covers store info,
