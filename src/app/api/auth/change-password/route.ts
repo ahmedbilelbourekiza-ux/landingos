@@ -9,6 +9,7 @@ import {
   createSession,
   getSessionCookieName,
   getSessionCookieOptions,
+  AuthSecretMissingError,
 } from "@/lib/auth/session";
 
 const changePasswordSchema = z
@@ -106,6 +107,23 @@ export async function POST(req: NextRequest) {
     );
     return res;
   } catch (error) {
+    if (error instanceof AuthSecretMissingError) {
+      console.error(
+        "[api/auth/change-password] AUTH_SECRET is not configured:",
+        error.message,
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "AUTH_SECRET_MISSING",
+            message:
+              "Server is not configured for authentication. Set AUTH_SECRET in the environment.",
+          },
+        },
+        { status: 500 },
+      );
+    }
     console.error("[api/auth/change-password] error:", error);
     return serverError("Failed to change password");
   }

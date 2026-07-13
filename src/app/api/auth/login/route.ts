@@ -3,11 +3,12 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
-import { ok, fail, fromZodError, serverError } from "@/lib/api-response";
+import { fail, fromZodError, serverError } from "@/lib/api-response";
 import {
   createSession,
   getSessionCookieName,
   getSessionCookieOptions,
+  AuthSecretMissingError,
 } from "@/lib/auth/session";
 import {
   resolveClientIp,
@@ -117,6 +118,24 @@ export async function POST(req: NextRequest) {
     );
     return res;
   } catch (error) {
+    // AUTH_SECRET missing — the credentials were valid but we can't sign a
+    // session. Return a clear 500 with an actionable message instead of a
+    // generic "Login failed" so the operator sees the root cause in the
+    // response body and the server log.
+    if (error instanceof AuthSecretMissingError) {
+      console.error("[api/auth/login] AUTH_SECRET is not configured:", error.message);
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "AUTH_SECRET_MISSING",
+            message:
+              "Server is not configured for authentication. Set AUTH_SECRET in the environment.",
+          },
+        },
+        { status: 500 },
+      );
+    }
     console.error("[api/auth/login] error:", error);
     return serverError("Login failed");
   }

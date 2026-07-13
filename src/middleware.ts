@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
-import {
-  getSessionCookieName,
-} from "@/lib/auth/session";
+import { getSessionCookieName } from "@/lib/auth/session";
 
 // Authentication & force-password-change enforcement.
 //
@@ -65,11 +63,24 @@ interface VerifiedSession {
   mustChangePassword: boolean;
 }
 
+// Edge-runtime session reader. Returns the verified session payload, or null
+// if there is no cookie, the cookie is tampered, the JWT is expired, or
+// AUTH_SECRET is missing. We intentionally swallow all errors here: the
+// middleware treats "no valid session" the same way regardless of cause, and
+// a missing AUTH_SECRET must NOT crash the bootstrap — it simply means no
+// session can ever verify, so the user is sent to /login. The route handlers
+// that actually need to sign tokens (login, change-password) call getAuthSecret()
+// directly and return a clear 500 if the secret is missing.
 async function readSession(req: NextRequest): Promise<VerifiedSession | null> {
   const token = req.cookies.get(getSessionCookieName())?.value;
   if (!token) return null;
   try {
-    const secret = new TextEncoder().encode(process.env.AUTH_SECRET!);
+    const rawSecret = process.env.AUTH_SECRET;
+    if (!rawSecret || rawSecret.trim() === "") {
+      // No secret configured — no session can be valid. Treat as unauthenticated.
+      return null;
+    }
+    const secret = new TextEncoder().encode(rawSecret);
     const { payload } = await jwtVerify(token, secret);
     return {
       adminId: payload.adminId as string,
