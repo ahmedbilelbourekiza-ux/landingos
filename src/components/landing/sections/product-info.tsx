@@ -10,8 +10,6 @@ import { PurchaseForm } from "./purchase-form";
 import type { LandingPageData } from "@/types/landing";
 import type { LandingOrderStore } from "@/lib/landing/store";
 
-// The right-hand column of the product hero: identity, price, trust badges,
-// variant selection, live order summary, and the purchase form.
 export function ProductInfo({
   page,
   store,
@@ -21,13 +19,12 @@ export function ProductInfo({
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut", delay: 0.1 }}
+      transition={{ duration: 0.35, ease: "easeOut", delay: 0.08 }}
       className="flex flex-col gap-6"
       dir="rtl"
     >
-      {/* Title — larger, bolder for stronger hierarchy */}
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
           {page.title}
@@ -39,13 +36,8 @@ export function ProductInfo({
         )}
       </div>
 
-      {/* Price — visually stronger with more vertical presence */}
       <div className="py-1">
-        <PriceBlock
-          price={page.price}
-          oldPrice={page.oldPrice}
-          currency={page.currency}
-        />
+        <PriceBlock price={page.price} oldPrice={page.oldPrice} currency={page.currency} />
       </div>
 
       <BenefitsList />
@@ -54,7 +46,7 @@ export function ProductInfo({
 
       <OrderSummary store={store} currency={page.currency} />
 
-      <div className="border-t pt-6">
+      <div className="border-t pt-6" style={{ borderColor: "var(--theme-border)" }}>
         <PurchaseForm
           store={store}
           landingId={page.id}

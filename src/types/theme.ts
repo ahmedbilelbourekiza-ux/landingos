@@ -1,5 +1,3 @@
-// Semantic theme tokens used by the LandingTemplate. Components reference
-// these via CSS variables — never raw hex values.
 export interface LandingThemeData {
   id: string;
   name: string;
@@ -11,9 +9,14 @@ export interface LandingThemeData {
   text: string;
   muted: string;
   border: string;
+  // Extended visual tokens
+  cardRadius: string;
+  buttonRadius: string;
+  inputRadius: string;
+  cardShadow: string;
+  badgeRadius: string;
 }
 
-// Fallback theme (Luxury Crimson) used when a landing has no theme assigned.
 export const DEFAULT_THEME: LandingThemeData = {
   id: "default",
   name: "Luxury Crimson",
@@ -25,4 +28,9 @@ export const DEFAULT_THEME: LandingThemeData = {
   text: "#111827",
   muted: "#F3F4F6",
   border: "#E5E7EB",
+  cardRadius: "1rem",
+  buttonRadius: "0.75rem",
+  inputRadius: "0.5rem",
+  cardShadow: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+  badgeRadius: "0.5rem",
 };

@@ -4,18 +4,12 @@ import * as React from "react";
 import type { LandingThemeData } from "@/types/theme";
 import { DEFAULT_THEME } from "@/types/theme";
 
-// Theme context — provides the active theme to all landing sections.
 const ThemeContext = React.createContext<LandingThemeData>(DEFAULT_THEME);
 
-// Hook for consuming the theme in any landing section component.
 export function useLandingTheme(): LandingThemeData {
   return React.useContext(ThemeContext);
 }
 
-// Provider that injects CSS variables on a wrapper div. All child components
-// use `var(--theme-primary)` etc. instead of hardcoded colors. This is the
-// single entry point for theme application — no component receives colors
-// via props.
 export function ThemeProvider({
   theme,
   children,
@@ -24,7 +18,6 @@ export function ThemeProvider({
   children: React.ReactNode;
 }) {
   const style: React.CSSProperties = {
-    // Semantic tokens → CSS variables
     "--theme-primary": theme.primary,
     "--theme-primary-foreground": theme.primaryForeground,
     "--theme-accent": theme.accent,
@@ -33,13 +26,26 @@ export function ThemeProvider({
     "--theme-text": theme.text,
     "--theme-muted": theme.muted,
     "--theme-border": theme.border,
+    "--theme-card-radius": theme.cardRadius,
+    "--theme-button-radius": theme.buttonRadius,
+    "--theme-input-radius": theme.inputRadius,
+    "--theme-card-shadow": theme.cardShadow,
+    "--theme-badge-radius": theme.badgeRadius,
   } as React.CSSProperties;
 
   return (
     <ThemeContext.Provider value={theme}>
-      <div style={style} className="flex min-h-screen flex-col" >
+      <motion.div
+        style={style}
+        className="flex min-h-screen flex-col"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2 }}
+      >
         {children}
-      </div>
+      </motion.div>
     </ThemeContext.Provider>
   );
 }
+
+import { motion } from "framer-motion";

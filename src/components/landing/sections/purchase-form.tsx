@@ -166,7 +166,7 @@ export function PurchaseForm({
         <select
           value={selectedWilaya}
           onChange={(e) => { setSelectedWilaya(e.target.value ? Number(e.target.value) : ""); setSelectedBaladia(""); }}
-          className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+          className="h-9 w-full border border-input bg-transparent px-3 text-sm" style={{ borderRadius: "var(--theme-input-radius)" }}
         >
           <option value="">اختر الولاية...</option>
           {wilayas.map((w) => (
@@ -181,7 +181,7 @@ export function PurchaseForm({
           <select
             value={selectedBaladia}
             onChange={(e) => setSelectedBaladia(e.target.value ? Number(e.target.value) : "")}
-            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+            className="h-9 w-full border border-input bg-transparent px-3 text-sm" style={{ borderRadius: "var(--theme-input-radius)" }}
           >
             <option value="">اختر البلدية...</option>
             {selectedWilayaData.baladias.map((b) => (
@@ -225,8 +225,12 @@ export function PurchaseForm({
         type="submit"
         size="lg"
         disabled={submitting}
-        className="h-14 w-full rounded-xl text-base font-bold shadow-lg transition-all hover:shadow-xl"
-        style={{ backgroundColor: "var(--theme-primary)", color: "var(--theme-primary-foreground)" }}
+        className="h-14 w-full text-base font-bold shadow-lg transition-all hover:shadow-xl"
+        style={{
+          backgroundColor: "var(--theme-primary)",
+          color: "var(--theme-primary-foreground)",
+          borderRadius: "var(--theme-button-radius)",
+        }}
       >
         {submitting ? <Loader2 className="size-5 animate-spin" /> : null}
         {submitting ? "جاري الإرسال..." : `${buttonText} · ${formatPrice(grandTotal, currency)}`}

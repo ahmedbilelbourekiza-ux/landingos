@@ -1,6 +1,5 @@
 import { discountPercentage, formatPrice } from "@/lib/landing/format";
 
-// Price display — uses theme CSS variables. No hardcoded colors.
 export function PriceBlock({
   price,
   oldPrice,
@@ -18,12 +17,12 @@ export function PriceBlock({
       </span>
       {oldPrice && off && (
         <>
-          <span className="text-xl text-muted-foreground line-through tabular-nums" style={{ color: "var(--theme-muted)" }}>
+          <span className="text-xl line-through tabular-nums" style={{ color: "var(--theme-muted)" }}>
             {formatPrice(oldPrice, currency)}
           </span>
           <span
-            className="rounded-lg px-2.5 py-1 text-sm font-bold text-white"
-            style={{ backgroundColor: "var(--theme-accent)" }}
+            className="px-2.5 py-1 text-sm font-bold text-white"
+            style={{ backgroundColor: "var(--theme-accent)", borderRadius: "var(--theme-badge-radius)" }}
           >
             −{off}%
           </span>

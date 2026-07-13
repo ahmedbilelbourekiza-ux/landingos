@@ -20,6 +20,8 @@ type LandingWithRelations = LandingPage & {
 // Convert a Prisma LandingTheme to the client LandingThemeData shape.
 export function toThemeData(theme: LandingTheme | null): LandingThemeData {
   if (!theme) return DEFAULT_THEME;
+  const isLuxury = theme.id === "theme-luxury-crimson";
+  const isTech = theme.id === "theme-modern-tech";
   return {
     id: theme.id,
     name: theme.name,
@@ -31,6 +33,15 @@ export function toThemeData(theme: LandingTheme | null): LandingThemeData {
     text: theme.text,
     muted: theme.muted,
     border: theme.border,
+    cardRadius: isLuxury ? "1rem" : isTech ? "0.5rem" : "0.875rem",
+    buttonRadius: isLuxury ? "0.75rem" : isTech ? "0.375rem" : "0.625rem",
+    inputRadius: isLuxury ? "0.5rem" : isTech ? "0.25rem" : "0.5rem",
+    cardShadow: isLuxury
+      ? "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)"
+      : isTech
+        ? "0 1px 2px rgba(0,0,0,0.08)"
+        : "0 2px 8px rgba(0,0,0,0.06)",
+    badgeRadius: isLuxury ? "0.5rem" : isTech ? "0.25rem" : "0.375rem",
   };
 }
 

@@ -1,6 +1,5 @@
 import { Truck, Wallet, ShieldCheck, Award } from "lucide-react";
 
-// Trust badges with accent-colored icons.
 const BENEFITS = [
   { icon: Truck, label: "توصيل سريع" },
   { icon: Wallet, label: "الدفع عند الاستلام" },
@@ -14,8 +13,15 @@ export function BenefitsList() {
       {BENEFITS.map(({ icon: Icon, label }) => (
         <li
           key={label}
-          className="flex items-center gap-2.5 rounded-xl border bg-card px-3 py-3 text-sm font-medium shadow-sm"
-          style={{ borderColor: "var(--theme-border)", backgroundColor: "var(--theme-card)" }}
+          className="flex items-center gap-2.5 px-3 py-3 text-sm font-medium transition-shadow hover:shadow-sm"
+          style={{
+            borderColor: "var(--theme-border)",
+            backgroundColor: "var(--theme-card)",
+            borderWidth: "1px",
+            borderStyle: "solid",
+            borderRadius: "var(--theme-card-radius)",
+            boxShadow: "var(--theme-card-shadow)",
+          }}
         >
           <Icon className="size-4 shrink-0" style={{ color: "var(--theme-accent)" }} aria-hidden />
           <span className="truncate">{label}</span>
