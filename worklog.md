@@ -444,3 +444,48 @@ Bugs Found: 0 real bugs
 - All "failures" during testing were caused by the sandbox's 4GB memory limit OOM-killing the dev server when compiling multiple routes simultaneously, not by code bugs
 
 No code changes needed — all previously fixed bugs remain fixed and no new bugs were discovered during acceptance testing.
+
+---
+Task ID: upload-bugfix
+Agent: main
+Task: Fix broken image upload — POST /api/upload route was missing
+
+Root Cause:
+The frontend images-section.tsx posts files to POST /api/upload (line 180),
+but this route did not exist. The src/app/api/upload/ directory was missing
+entirely. Every upload attempt returned 404, which the frontend caught as
+"Network error during upload".
+
+Work Log:
+- Searched codebase: found 1 call site (images-section.tsx line 180)
+- Verified the frontend expects: { success: true, data: { url: string } }
+- Created src/app/api/upload/route.ts:
+  • POST handler accepts multipart/form-data with "file" field
+  • Auth required (getAuthenticatedAdmin + middleware deny-by-default)
+  • Validates MIME type (JPEG, PNG, WebP, AVIF only)
+  • Validates file size (max 8 MB)
+  • Processes image with sharp: auto-rotate, max 2000px, quality 82
+  • Saves to public/uploads/<uuid>.<ext>
+  • Returns { success: true, data: { url, filename, size } }
+  • Handles edge cases: no file → 400, invalid type → 400, parse error → 400
+- Verified public/uploads directory exists and is served by Next.js
+- Also restored AUTH_SECRET in .env (was missing again)
+
+Verification:
+1. Upload without auth → 401 UNAUTHORIZED ✅
+2. Upload with auth → 200, returns URL ✅
+3. Uploaded file accessible at /uploads/<uuid>.png → 200 ✅
+4. Second upload (different image) → 200 ✅
+5. Save uploaded images to landing media → 200 ✅
+6. Reload landing — images persisted ✅ (both URLs in media array)
+7. No file → 400 NO_FILE ✅
+8. Invalid file type (text/plain) → 400 INVALID_FILE_TYPE ✅
+9. Build succeeds — /api/upload route appears in build output ✅
+10. ESLint: 0 errors ✅
+
+Files Changed:
+1. src/app/api/upload/route.ts — NEW: image upload API (sharp processing, local storage)
+2. .env — restored AUTH_SECRET (was missing)
+
+No frontend changes needed — the images-section.tsx upload code was correct;
+only the backend route was missing.
