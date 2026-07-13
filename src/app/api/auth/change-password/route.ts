@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
-import { ok, fail, fromZodError, serverError } from "@/lib/api-response";
+import { fail, fromZodError, serverError } from "@/lib/api-response";
 import { getAdminWithHash } from "@/lib/auth/require-auth";
 import {
   createSession,

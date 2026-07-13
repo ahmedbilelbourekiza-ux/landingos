@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  Plus, GripVertical, Eye, EyeOff, Pencil, Trash2, Loader2, X,
+  Plus, GripVertical, Eye, EyeOff, Pencil, Trash2, Loader2, X, AlertCircle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { slugify } from "@/lib/landing/create";
 
@@ -35,15 +36,26 @@ export default function CategoriesPage() {
   const router = useRouter();
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<Category | null>(null);
   const [creating, setCreating] = React.useState(false);
 
   const fetchCategories = React.useCallback(async () => {
     setLoading(true);
-    const res = await fetch("/api/categories");
-    const json = await res.json();
-    if (json.success) setCategories(json.data);
-    setLoading(false);
+    setError(null);
+    try {
+      const res = await fetch("/api/categories");
+      const json = await res.json();
+      if (json.success) {
+        setCategories(json.data);
+      } else {
+        setError(json.error?.message || "فشل تحميل التصنيفات");
+      }
+    } catch {
+      setError("تعذّر الاتصال بالخادم. تحقّق من اتصالك بالشبكة.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   React.useEffect(() => { fetchCategories(); }, [fetchCategories]);
@@ -85,6 +97,18 @@ export default function CategoriesPage() {
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : error ? (
+          <div className="mx-auto max-w-md py-20">
+            <Alert variant="destructive">
+              <AlertCircle className="size-4" />
+              <AlertTitle>تعذّر تحميل التصنيفات</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+            <Button onClick={fetchCategories} variant="outline" className="mt-4 w-full">
+              <Loader2 className="size-4" />
+              إعادة المحاولة
+            </Button>
           </div>
         ) : categories.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">

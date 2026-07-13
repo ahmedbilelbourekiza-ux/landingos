@@ -2,12 +2,13 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { Store, Phone, Globe, Share2, Loader2, Check } from "lucide-react";
+import { Store, Phone, Globe, Share2, Loader2, Check, AlertCircle, WifiOff } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface StoreSettings {
   storeName?: string;
@@ -25,23 +26,50 @@ interface StoreSettings {
   tiktok?: string | null;
   whatsapp?: string | null;
   telegram?: string | null;
+  updatedAt?: string;
 }
 
+type LoadState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "success"; settings: StoreSettings };
+
 export default function SettingsPage() {
+  const [state, setState] = React.useState<LoadState>({ status: "loading" });
   const [settings, setSettings] = React.useState<StoreSettings>({});
-  const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+
+  const loadSettings = React.useCallback(async () => {
+    setState({ status: "loading" });
+    try {
+      const res = await fetch("/api/settings/store");
+      const json = await res.json();
+      if (json.success) {
+        setSettings(json.data ?? {});
+        setState({ status: "success", settings: json.data ?? {} });
+      } else {
+        setState({
+          status: "error",
+          message: json.error?.message || "فشل تحميل الإعدادات",
+        });
+      }
+    } catch {
+      setState({
+        status: "error",
+        message: "تعذّر الاتصال بالخادم. تحقّق من اتصالك بالشبكة.",
+      });
+    }
+  }, []);
 
   React.useEffect(() => {
-    fetch("/api/settings/store")
-      .then((r) => r.json())
-      .then((json) => { if (json.success) setSettings(json.data); })
-      .finally(() => setLoading(false));
-  }, []);
+    loadSettings();
+  }, [loadSettings]);
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
       const res = await fetch("/api/settings/store", {
         method: "PUT",
@@ -51,8 +79,13 @@ export default function SettingsPage() {
       const json = await res.json();
       if (json.success) {
         setSaved(true);
+        setSettings(json.data);
         setTimeout(() => setSaved(false), 2000);
+      } else {
+        setSaveError(json.error?.message || "فشل حفظ الإعدادات");
       }
+    } catch {
+      setSaveError("تعذّر الاتصال بالخادم");
     } finally {
       setSaving(false);
     }
@@ -62,10 +95,26 @@ export default function SettingsPage() {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
-  if (loading) {
+  if (state.status === "loading") {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="flex items-center justify-center py-20" dir="rtl">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <div className="mx-auto w-full max-w-md px-4 py-20" dir="rtl">
+        <Alert variant="destructive">
+          <WifiOff className="size-4" />
+          <AlertTitle>تعذّر تحميل الإعدادات</AlertTitle>
+          <AlertDescription>{state.message}</AlertDescription>
+        </Alert>
+        <Button onClick={loadSettings} variant="outline" className="mt-4 w-full">
+          <Loader2 className="size-4" />
+          إعادة المحاولة
+        </Button>
       </div>
     );
   }
@@ -113,10 +162,18 @@ export default function SettingsPage() {
           </div>
         </SettingsCard>
 
+        {/* Save error */}
+        {saveError && (
+          <Alert variant="destructive">
+            <AlertCircle className="size-4" />
+            <AlertDescription>{saveError}</AlertDescription>
+          </Alert>
+        )}
+
         {/* Save button */}
         <div className="flex items-center justify-between border-t pt-4">
           <p className="text-sm text-muted-foreground">
-            {saved ? "تم الحفظ" : "آخر تحديث: " + (settings as { updatedAt?: string }).updatedAt ?? "—"}
+            {saved ? "تم الحفظ" : settings.updatedAt ? `آخر تحديث: ${settings.updatedAt}` : "—"}
           </p>
           <Button onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="size-4 animate-spin" /> : saved ? <Check className="size-4" /> : null}

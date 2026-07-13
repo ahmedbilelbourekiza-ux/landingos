@@ -140,3 +140,102 @@ Stage Summary:
 - Missing AUTH_SECRET produces clear, actionable errors at the API layer
 - .env.example documents the requirement for new developers
 - All auth flows verified end-to-end
+
+---
+Task ID: stabilization-pass
+Agent: main
+Task: Full production-quality stabilization pass
+
+Root Cause Analysis:
+The critical bug was in src/middleware.ts. During the force-change flow
+(mustChangePassword=true), the middleware blocked ALL protected API routes
+except POST /api/auth/change-password. This included GET /api/auth/me,
+which the Profile page depends on to load admin data. The result: after
+first login, the user was redirected to /dashboard/profile, but the page's
+fetch to /api/auth/me returned 403 MUST_CHANGE_PASSWORD, so the Profile
+page's loading state never resolved — infinite spinner.
+
+Architecture Decisions:
+1. Middleware now distinguishes HTTP methods during force-change:
+   - GET /api/auth/me → ALLOWED (Profile page must load admin data)
+   - POST /api/auth/change-password → ALLOWED (escape hatch)
+   - PATCH /api/auth/me → blocked at route handler level (not middleware)
+   - All other protected APIs → 403 MUST_CHANGE_PASSWORD
+   - All dashboard pages except /dashboard/profile → 307 redirect
+
+2. Middleware now uses the shared verifySession() from session.ts instead
+   of duplicating JWT verification logic. This removes ~20 lines of
+   duplicated code and ensures the middleware and route handlers apply
+   identical verification rules.
+
+3. All async dashboard pages now have explicit loading/error/success states.
+   No page can get stuck in an infinite spinner — every fetch failure
+   shows an Arabic error alert with a retry button.
+
+4. Package.json scripts are now cross-platform:
+   - Removed `2>&1 | tee dev.log` (shell-specific)
+   - Removed `cp -r` (not available on Windows CMD)
+   - Removed `bun .next/standalone/server.js` (requires bun)
+   - All scripts now use standard `next dev`, `next build`, `next start`
+
+5. Prisma seed is configured via package.json "prisma": { "seed": "tsx prisma/seed.ts" }
+   so `npx prisma db seed` executes the master seed automatically. The master
+   seed (prisma/seed.ts) runs seed-admin → seed-themes → seed-algeria in order.
+
+6. DATABASE_URL uses portable relative path "file:./db/custom.db" instead
+   of the Linux absolute path. Works on Windows, Linux, and macOS.
+
+Files Changed:
+1. src/middleware.ts — Fixed GET /api/auth/me 403 bug, use shared verifySession
+2. src/app/(dashboard)/dashboard/profile/page.tsx — Explicit loading/error/unauthorized/success states
+3. src/app/(dashboard)/dashboard/settings/page.tsx — Added error state + retry UI
+4. src/app/(dashboard)/dashboard/landings/page.tsx — Added error state + retry UI
+5. src/app/(dashboard)/dashboard/orders/page.tsx — Added error state + retry UI, fixed missing useRouter
+6. src/app/(dashboard)/dashboard/delivery-prices/page.tsx — Added error state + retry UI
+7. src/app/(dashboard)/dashboard/categories/page.tsx — Added error state + retry UI
+8. src/app/(auth)/login/page.tsx — Improved network error message
+9. src/app/api/auth/change-password/route.ts — Removed unused `ok` import
+10. package.json — Cross-platform scripts, prisma.seed config, tsx devDependency
+11. .env — Portable DATABASE_URL="file:./db/custom.db"
+12. .env.example — Portable path + setup documentation
+13. .gitignore — Added !.env.example exception
+14. prisma/seed.ts — NEW: master seed running admin/themes/algeria in order
+15. prisma/seed-admin.ts — Refactored to export seedAdmin() function
+16. prisma/seed-themes.ts — Refactored to export seedThemes() function
+17. prisma/seed-algeria.ts — Refactored to export seedAlgeria() function
+
+Browser Verification:
+- Bootstrap: clean (no AUTH_SECRET crash, no module-evaluation error)
+- Login (admin/admin123): 200, returns mustChangePassword=true
+- GET /api/auth/me with mustChangePassword=true: 200 (FIXED — was 403)
+- Change password: 200, mustChangePassword=false, lastPasswordChangeAt set
+- GET /api/auth/me after change: 200, full admin profile
+- Logout: 200, cookie cleared
+- After logout, /api/auth/me: 401 UNAUTHORIZED
+- npx prisma db seed: runs all 3 seeders successfully (admin, themes, algeria)
+- ESLint: 0 errors, 2 pre-existing warnings (untouched files)
+
+Production Readiness Checklist:
+[✓] Login works
+[✓] Logout works
+[✓] Session survives refresh (httpOnly cookie, 7-day JWT)
+[✓] Password change works
+[✓] Force-change flow works end-to-end
+[✓] Settings APIs blocked during force-change
+[✓] Dashboard pages blocked during force-change (except /profile)
+[✓] GET /api/auth/me works during force-change (Profile page loads)
+[✓] No infinite loading states
+[✓] All async pages have error/retry UI
+[✓] Cross-platform scripts (no tee/cp/bun)
+[✓] Prisma seed configured (npx prisma db seed)
+[✓] Portable DATABASE_URL
+[✓] .env.example with documentation
+[✓] Lazy AUTH_SECRET loading (no bootstrap crash)
+[✓] ESLint 0 errors
+
+Fresh-clone setup (5 commands only):
+  npm install
+  npx prisma generate
+  npx prisma db push
+  npx prisma db seed
+  npm run dev

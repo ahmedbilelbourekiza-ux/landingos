@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { Truck, Search, Loader2, Check } from "lucide-react";
+import { Truck, Search, Loader2, Check, AlertCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface WilayaPrice {
   id: number;
@@ -20,19 +21,33 @@ interface WilayaPrice {
 export default function DeliveryPricesPage() {
   const [wilayas, setWilayas] = React.useState<WilayaPrice[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [edits, setEdits] = React.useState<Record<number, { home: string; desk: string }>>({});
 
-  React.useEffect(() => {
-    fetch("/api/settings/delivery-prices")
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.success) setWilayas(json.data);
-      })
-      .finally(() => setLoading(false));
+  const fetchPrices = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/settings/delivery-prices");
+      const json = await res.json();
+      if (json.success) {
+        setWilayas(json.data);
+      } else {
+        setError(json.error?.message || "فشل تحميل أسعار التوصيل");
+      }
+    } catch {
+      setError("تعذّر الاتصال بالخادم. تحقّق من اتصالك بالشبكة.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  React.useEffect(() => {
+    fetchPrices();
+  }, [fetchPrices]);
 
   const handleEdit = (id: number, field: "home" | "desk", value: string) => {
     setEdits((prev) => ({
@@ -61,10 +76,7 @@ export default function DeliveryPricesPage() {
         setSaved(true);
         setEdits({});
         setTimeout(() => setSaved(false), 2000);
-        // Refetch
-        const refetch = await fetch("/api/settings/delivery-prices");
-        const refetchJson = await refetch.json();
-        if (refetchJson.success) setWilayas(refetchJson.data);
+        await fetchPrices();
       }
     } finally {
       setSaving(false);
@@ -107,6 +119,18 @@ export default function DeliveryPricesPage() {
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : error ? (
+          <div className="mx-auto max-w-md py-20">
+            <Alert variant="destructive">
+              <AlertCircle className="size-4" />
+              <AlertTitle>تعذّر تحميل أسعار التوصيل</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+            <Button onClick={fetchPrices} variant="outline" className="mt-4 w-full">
+              <Loader2 className="size-4" />
+              إعادة المحاولة
+            </Button>
           </div>
         ) : (
           <>

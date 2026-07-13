@@ -86,4 +86,20 @@ async function main() {
   console.log(`Done. ${count} themes seeded.`);
 }
 
-main().catch(console.error).finally(() => db.$disconnect());
+// Exported for the master seed. Idempotent.
+export async function seedThemes() {
+  for (const t of THEMES) {
+    await db.landingTheme.upsert({
+      where: { id: t.id },
+      create: t,
+      update: t,
+    });
+  }
+  const count = await db.landingTheme.count();
+  console.log(`  ✓ ${count} themes seeded`);
+}
+
+// Backwards-compatible CLI entry point.
+if (require.main === module) {
+  main().catch(console.error).finally(() => db.$disconnect());
+}

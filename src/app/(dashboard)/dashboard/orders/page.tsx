@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Package, Search, X, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Package, Search, X, ChevronLeft, ChevronRight, Loader2, AlertCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { OrdersTable, type OrderListItem } from "@/components/orders/orders-table";
 import { OrderCard } from "@/components/orders/order-card";
-import { OrderStatusBadge } from "@/components/orders/order-status-badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type StatusFilter = "ALL" | "NEW" | "CONFIRMED" | "PREPARING" | "SHIPPED" | "DELIVERED" | "CANCELLED";
 
@@ -39,12 +40,14 @@ interface OrdersResponse {
 }
 
 export default function OrdersPage() {
+  const router = useRouter();
   const [search, setSearch] = React.useState("");
   const [status, setStatus] = React.useState<StatusFilter>("ALL");
   const [sort, setSort] = React.useState("newest");
   const [page, setPage] = React.useState(1);
   const [data, setData] = React.useState<OrdersResponse | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   // Debounce search
   const debouncedSearch = React.useDeferredValue(search);
@@ -53,35 +56,40 @@ export default function OrdersPage() {
     setPage(1);
   }, [debouncedSearch, status, sort]);
 
-  React.useEffect(() => {
+  const fetchOrders = React.useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({
-      page: String(page),
-      limit: "20",
-      sort,
-      status,
-    });
-    if (debouncedSearch) params.set("search", debouncedSearch);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: "20",
+        sort,
+        status,
+      });
+      if (debouncedSearch) params.set("search", debouncedSearch);
 
-    fetch(`/api/orders?${params}`)
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.success) setData(json.data);
-      })
-      .finally(() => setLoading(false));
+      const res = await fetch(`/api/orders?${params}`);
+      const json = await res.json();
+      if (json.success) {
+        setData(json.data);
+      } else {
+        setError(json.error?.message || "فشل تحميل الطلبات");
+      }
+    } catch {
+      setError("تعذّر الاتصال بالخادم. تحقّق من اتصالك بالشبكة.");
+    } finally {
+      setLoading(false);
+    }
   }, [page, sort, status, debouncedSearch]);
+
+  React.useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
 
   const handleDelete = async (order: OrderListItem) => {
     if (!confirm(`Delete order ${order.orderNumber}?`)) return;
     await fetch(`/api/orders/${order.id}`, { method: "DELETE" });
-    // Refetch
-    setLoading(true);
-    const params = new URLSearchParams({ page: String(page), limit: "20", sort, status });
-    if (debouncedSearch) params.set("search", debouncedSearch);
-    const res = await fetch(`/api/orders?${params}`);
-    const json = await res.json();
-    if (json.success) setData(json.data);
-    setLoading(false);
+    fetchOrders();
   };
 
   const handleCopyPhone = (order: OrderListItem) => {
@@ -174,6 +182,18 @@ export default function OrdersPage() {
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : error ? (
+          <div className="mx-auto max-w-md py-20">
+            <Alert variant="destructive">
+              <AlertCircle className="size-4" />
+              <AlertTitle>تعذّر تحميل الطلبات</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+            <Button onClick={fetchOrders} variant="outline" className="mt-4 w-full">
+              <Loader2 className="size-4" />
+              إعادة المحاولة
+            </Button>
           </div>
         ) : isEmpty ? (
           <div className="flex flex-col items-center justify-center gap-5 py-20 text-center">

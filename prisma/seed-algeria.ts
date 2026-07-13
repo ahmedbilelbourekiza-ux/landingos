@@ -1,13 +1,13 @@
 // Seeds the Wilaya + Baladia tables with the Algeria administrative dataset.
-// Run with: bunx tsx prisma/seed-algeria.ts
-// Idempotent — safe to run multiple times (upserts by wilaya code).
+// Idempotent — safe to run multiple times (upserts by wilaya code, checks
+// baladia existence before insert).
+//
+// Exported so the master seed (prisma/seed.ts) can call it in order.
 
 import { db } from "../src/lib/db";
 import { algeriaWilayas } from "./algeria-data";
 
-async function main() {
-  console.log("Seeding Algeria wilayas + baladias...");
-
+export async function seedAlgeria() {
   let baladiaId = 1;
 
   for (const w of algeriaWilayas) {
@@ -19,7 +19,6 @@ async function main() {
     });
 
     for (const baladiaName of w.baladias) {
-      // Check if baladia already exists for this wilaya
       const existing = await db.baladia.findFirst({
         where: { name: baladiaName, wilayaId },
         select: { id: true },
@@ -35,14 +34,21 @@ async function main() {
 
   const wilayaCount = await db.wilaya.count();
   const baladiaCount = await db.baladia.count();
-  console.log(`Done. ${wilayaCount} wilayas, ${baladiaCount} baladias seeded.`);
+  console.log(`  ✓ ${wilayaCount} wilayas, ${baladiaCount} baladias seeded`);
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await db.$disconnect();
-  });
+// Backwards-compatible CLI entry point (bun prisma/seed-algeria.ts).
+async function main() {
+  console.log("Seeding Algeria wilayas + baladias...");
+  await seedAlgeria();
+  console.log("Done.");
+}
+
+if (require.main === module) {
+  main()
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(() => db.$disconnect());
+}

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 
 import type { LandingListItem } from "@/lib/landing/mock-landings";
 import type { LandingPageStatus } from "@/types/landing";
@@ -15,6 +15,8 @@ import { LandingTable } from "@/components/landings/landing-table";
 import { LandingCard } from "@/components/landings/landing-card";
 import { LandingEmptyState } from "@/components/landings/landing-empty-state";
 import { LandingActionsMenu } from "@/components/landings/landing-actions-menu";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 export default function LandingsPage() {
   const [query, setQuery] = React.useState("");
@@ -22,16 +24,24 @@ export default function LandingsPage() {
   const [sort, setSort] = React.useState<SortValue>("updated");
   const [landings, setLandings] = React.useState<LandingListItem[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   const router = useRouter();
   const handleCreate = () => router.push("/dashboard/landings/new");
 
   const fetchLandings = React.useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/landings");
       const json = await res.json();
-      if (json.success) setLandings(json.data);
+      if (json.success) {
+        setLandings(json.data);
+      } else {
+        setError(json.error?.message || "فشل تحميل الصفحات");
+      }
+    } catch {
+      setError("تعذّر الاتصال بالخادم. تحقّق من اتصالك بالشبكة.");
     } finally {
       setLoading(false);
     }
@@ -101,6 +111,18 @@ export default function LandingsPage() {
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : error ? (
+          <div className="mx-auto max-w-md py-20">
+            <Alert variant="destructive">
+              <AlertCircle className="size-4" />
+              <AlertTitle>تعذّر تحميل الصفحات</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+            <Button onClick={fetchLandings} variant="outline" className="mt-4 w-full">
+              <Loader2 className="size-4" />
+              إعادة المحاولة
+            </Button>
           </div>
         ) : (
           <>

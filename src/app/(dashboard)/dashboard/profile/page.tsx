@@ -3,9 +3,16 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Loader2, ShieldAlert } from "lucide-react";
+import {
+  Loader2,
+  ShieldAlert,
+  AlertCircle,
+  WifiOff,
+  LogIn,
+} from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import {
   AccountCard,
   SecurityCard,
@@ -15,15 +22,27 @@ import {
 } from "@/components/profile/profile-cards";
 
 // Profile page — Arabic UI, four sections (Account, Security, Session,
-// Logout). The page owns the form state and handlers; the section components
-// in profile-cards.tsx own the presentation. When mustChangePassword is true,
-// a destructive banner explains the lock and the Account section's username
-// edit is disabled. The Security section stays enabled — it's the escape
-// hatch from the force-change lock.
+// Logout). Handles every async state explicitly so the page never gets
+// stuck in an infinite spinner:
+//
+//   loading    → centered spinner (bounded)
+//   error      → network-error card with retry button
+//   unauthorized → redirect-to-login card
+//   success    → the full profile UI
+//
+// When mustChangePassword is true, a destructive banner explains the lock
+// and the Account section's username edit is disabled. The Security section
+// stays enabled — it's the escape hatch from the force-change lock.
+
+type LoadState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "unauthorized" }
+  | { status: "success"; profile: AdminProfile };
+
 export default function ProfilePage() {
   const router = useRouter();
-  const [profile, setProfile] = React.useState<AdminProfile | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  const [state, setState] = React.useState<LoadState>({ status: "loading" });
 
   const [username, setUsername] = React.useState("");
   const [savingProfile, setSavingProfile] = React.useState(false);
@@ -40,13 +59,29 @@ export default function ProfilePage() {
   const [loggingOut, setLoggingOut] = React.useState(false);
 
   const loadProfile = React.useCallback(async () => {
-    const res = await fetch("/api/auth/me");
-    const json = await res.json();
-    if (json.success) {
-      setProfile(json.data);
-      setUsername(json.data.username);
+    setState({ status: "loading" });
+    try {
+      const res = await fetch("/api/auth/me");
+      if (res.status === 401) {
+        setState({ status: "unauthorized" });
+        return;
+      }
+      const json = await res.json();
+      if (json.success) {
+        setState({ status: "success", profile: json.data });
+        setUsername(json.data.username);
+      } else {
+        setState({
+          status: "error",
+          message: json.error?.message || "فشل تحميل البيانات",
+        });
+      }
+    } catch {
+      setState({
+        status: "error",
+        message: "تعذّر الاتصال بالخادم. تحقّق من اتصالك بالشبكة.",
+      });
     }
-    setLoading(false);
   }, []);
 
   React.useEffect(() => {
@@ -65,13 +100,17 @@ export default function ProfilePage() {
       const json = await res.json();
       if (json.success) {
         setProfileSaved(true);
-        setProfile((p) => (p ? { ...p, username: json.data.username } : p));
+        setState((s) =>
+          s.status === "success"
+            ? { ...s, profile: { ...s.profile, username: json.data.username } }
+            : s,
+        );
         setTimeout(() => setProfileSaved(false), 2500);
       } else {
         setProfileError(json.error?.message || "فشل التحديث");
       }
     } catch {
-      setProfileError("خطأ في الشبكة");
+      setProfileError("تعذّر الاتصال بالخادم");
     } finally {
       setSavingProfile(false);
     }
@@ -115,7 +154,7 @@ export default function ProfilePage() {
         setPasswordError(json.error?.message || "فشل تغيير كلمة المرور");
       }
     } catch {
-      setPasswordError("خطأ في الشبكة");
+      setPasswordError("تعذّر الاتصال بالخادم");
     } finally {
       setSavingPassword(false);
     }
@@ -132,7 +171,8 @@ export default function ProfilePage() {
     }
   };
 
-  if (loading || !profile) {
+  // --- Loading ---
+  if (state.status === "loading") {
     return (
       <div className="flex items-center justify-center py-20" dir="rtl">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -140,6 +180,47 @@ export default function ProfilePage() {
     );
   }
 
+  // --- Network / server error ---
+  if (state.status === "error") {
+    return (
+      <div className="mx-auto w-full max-w-md px-4 py-20" dir="rtl">
+        <Alert variant="destructive">
+          <WifiOff className="size-4" />
+          <AlertTitle>تعذّر تحميل الملف الشخصي</AlertTitle>
+          <AlertDescription>{state.message}</AlertDescription>
+        </Alert>
+        <Button onClick={loadProfile} variant="outline" className="mt-4 w-full">
+          <Loader2 className="size-4" />
+          إعادة المحاولة
+        </Button>
+      </div>
+    );
+  }
+
+  // --- Unauthorized (session expired) ---
+  if (state.status === "unauthorized") {
+    return (
+      <div className="mx-auto w-full max-w-md px-4 py-20" dir="rtl">
+        <Alert>
+          <AlertCircle className="size-4" />
+          <AlertTitle>انتهت الجلسة</AlertTitle>
+          <AlertDescription>
+            يرجى تسجيل الدخول مرة أخرى للوصول إلى الملف الشخصي.
+          </AlertDescription>
+        </Alert>
+        <Button
+          onClick={() => router.push("/login?next=/dashboard/profile")}
+          className="mt-4 w-full"
+        >
+          <LogIn className="size-4" />
+          تسجيل الدخول
+        </Button>
+      </div>
+    );
+  }
+
+  // --- Success ---
+  const profile = state.profile;
   const mustChange = profile.mustChangePassword;
 
   return (

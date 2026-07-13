@@ -89,7 +89,7 @@ function LoginForm() {
       router.push(target);
       router.refresh();
     } catch {
-      setError("خطأ في الشبكة");
+      setError("تعذّر الاتصال بالخادم. تحقّق من اتصالك بالشبكة.");
       setLoading(false);
     }
   };
