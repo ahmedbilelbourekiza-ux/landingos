@@ -15,14 +15,17 @@ export async function GET() {
       orderBy: { code: "asc" },
     });
 
-    const data = wilayas.map((w) => ({
-      id: w.id,
-      code: w.code,
-      name: w.name,
-      nameAr: w.nameAr,
-      homePrice: w.deliveryPrices[0]?.homePrice.toNumber() ?? null,
-      deskPrice: w.deliveryPrices[0]?.deskPrice.toNumber() ?? null,
-    }));
+    const data = wilayas.map((w) => {
+      const dp = w.deliveryPrices[0];
+      return {
+        id: w.id,
+        code: w.code,
+        name: w.name,
+        nameAr: w.nameAr,
+        homePrice: dp ? dp.homePrice.toNumber() : null,
+        deskPrice: dp?.deskPrice ? dp.deskPrice.toNumber() : null,
+      };
+    });
 
     return ok(data);
   } catch (error) {

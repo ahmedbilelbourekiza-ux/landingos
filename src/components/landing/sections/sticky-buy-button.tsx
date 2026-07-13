@@ -28,19 +28,26 @@ export function StickyBuyButton({
   const targetRef = React.useRef<HTMLElement | null>(null);
 
   React.useEffect(() => {
-    // The purchase form is wrapped in a section with id="product". Observing
-    // it means the sticky button hides whenever the form is on-screen.
-    const el = document.getElementById("product");
+    // Use scroll listener instead of IntersectionObserver because the form
+    // can be taller than the viewport, making IntersectionObserver unreliable.
+    // Show sticky when the CTA button's top scrolls above 60% of the viewport
+    // height (i.e., the user has scrolled past most of the form).
+    const cta = document.querySelector('button[type="submit"]');
+    const el = cta || document.getElementById("product");
     targetRef.current = el;
     if (!el) return;
 
-    const observer = new IntersectionObserver(
-      ([entry]) => setVisible(!entry.isIntersecting),
-      // Trigger when the form has fully left the viewport bottom.
-      { threshold: 0, rootMargin: "0px 0px -10% 0px" },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
+    const onScroll = () => {
+      const rect = el.getBoundingClientRect();
+      // Show sticky when the CTA button is in the upper 20% of the viewport
+      // or has scrolled completely above it. At this point the user has
+      // scrolled past the CTA and needs the sticky button to take action.
+      setVisible(rect.bottom < window.innerHeight * 0.8);
+    };
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   const scrollToForm = () => {
