@@ -5,13 +5,34 @@ import type { VariantGroup } from "@/lib/landing/mock-landings";
 import type { LandingPageData } from "@/types/landing";
 import type { OrderFormConfig } from "@/lib/landing/mock-order-form";
 import { mockOrderFormData } from "@/lib/landing/mock-order-form";
+import type { LandingTheme } from "@prisma/client";
+import type { LandingThemeData } from "@/types/theme";
+import { DEFAULT_THEME } from "@/types/theme";
 
 type LandingWithRelations = LandingPage & {
   media: LandingMedia[];
   variants: LandingVariant[];
   reviews: LandingReview[];
   setting: LandingSetting | null;
+  theme: LandingTheme | null;
 };
+
+// Convert a Prisma LandingTheme to the client LandingThemeData shape.
+export function toThemeData(theme: LandingTheme | null): LandingThemeData {
+  if (!theme) return DEFAULT_THEME;
+  return {
+    id: theme.id,
+    name: theme.name,
+    primary: theme.primary,
+    primaryForeground: theme.primaryForeground,
+    accent: theme.accent,
+    background: theme.background,
+    card: theme.card,
+    text: theme.text,
+    muted: theme.muted,
+    border: theme.border,
+  };
+}
 
 // Convert a Prisma landing page (with relations) to a LandingListItem for
 // the CMS table view.
@@ -81,6 +102,7 @@ export function toPreviewState(page: LandingWithRelations): PreviewState {
       buttonText: page.ctaButtonText ?? page.buttonText,
       announcement: page.announcement ?? "",
       categoryId: page.categoryId,
+      themeId: page.themeId,
     },
     pricing: {
       price: page.price.toNumber(),

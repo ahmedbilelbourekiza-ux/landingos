@@ -7,25 +7,29 @@ import { SiteNav } from "./sections/site-nav";
 import { ProductSection } from "./sections/product-section";
 import { SiteFooter } from "./sections/site-footer";
 import { StickyBuyButton } from "./sections/sticky-buy-button";
+import { ThemeProvider } from "./theme-provider";
 import type { LandingPageData } from "@/types/landing";
+import type { LandingThemeData } from "@/types/theme";
+import { DEFAULT_THEME } from "@/types/theme";
 import { createLandingOrderStore, type LandingOrderStore } from "@/lib/landing/store";
 
-// The default landing-page template. Given a LandingPageData object, it wires
-// up a per-page order store and renders the product section + footer. Reviews
-// and FAQ are removed for the MVP — the landing page is intentionally short.
-// The Reviews editor in the dashboard stays intact; it just doesn't render
-// on the public page yet.
-//
-// The store is created once per mount via useState's lazy initializer; the
-// page prop is treated as immutable for the lifetime of the route.
-export function LandingTemplate({ page }: { page: LandingPageData }) {
+// The default landing-page template. Accepts a page + optional theme.
+// Wraps everything in ThemeProvider which injects CSS variables. All child
+// components consume theme tokens via var(--theme-primary) etc.
+export function LandingTemplate({
+  page,
+  theme = DEFAULT_THEME,
+}: {
+  page: LandingPageData;
+  theme?: LandingThemeData;
+}) {
   const [store] = React.useState<LandingOrderStore>(() =>
     createLandingOrderStore(page),
   );
   const setting = page.setting;
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <ThemeProvider theme={theme}>
       <AnnouncementBar />
       <SiteNav />
       <main className="flex-1">
@@ -39,6 +43,6 @@ export function LandingTemplate({ page }: { page: LandingPageData }) {
           currency={page.currency}
         />
       )}
-    </div>
+    </ThemeProvider>
   );
 }

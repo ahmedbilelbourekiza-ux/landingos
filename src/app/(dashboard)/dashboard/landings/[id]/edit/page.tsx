@@ -24,6 +24,7 @@ export default async function EditLandingPage({
       variants: { orderBy: { displayOrder: "asc" } },
       reviews: { orderBy: { displayOrder: "asc" } },
       setting: true,
+      theme: true,
     },
   });
 

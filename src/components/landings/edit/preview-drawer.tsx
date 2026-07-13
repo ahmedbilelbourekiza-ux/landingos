@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import {
   Sheet,
   SheetContent,
@@ -9,13 +10,12 @@ import {
 } from "@/components/ui/sheet";
 import { LandingTemplate } from "@/components/landing/landing-template";
 import { previewToLandingPage } from "@/lib/landing/preview-to-landing";
+import { DEFAULT_THEME, type LandingThemeData } from "@/types/theme";
 import type { PreviewState } from "@/types/preview";
 
 // Full-width drawer that renders the actual LandingTemplate with the current
-// preview state. No iframe — the real component tree renders directly, so
-// every unsaved change is reflected immediately. The mapper converts the
-// edit workspace's PreviewState into the LandingPageData shape the template
-// expects.
+// preview state. Loads the selected theme from the API so the preview matches
+// the published landing exactly.
 export function PreviewDrawer({
   open,
   onOpenChange,
@@ -25,6 +25,21 @@ export function PreviewDrawer({
   onOpenChange: (open: boolean) => void;
   preview: PreviewState;
 }) {
+  const [theme, setTheme] = React.useState<LandingThemeData>(DEFAULT_THEME);
+
+  React.useEffect(() => {
+    const themeId = preview.general.themeId;
+    if (!themeId) { setTheme(DEFAULT_THEME); return; }
+    fetch("/api/themes")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success) {
+          const found = json.data.find((t: LandingThemeData) => t.id === themeId);
+          setTheme(found ?? DEFAULT_THEME);
+        }
+      });
+  }, [preview.general.themeId]);
+
   const landingPage = previewToLandingPage(preview);
 
   return (
@@ -37,7 +52,7 @@ export function PreviewDrawer({
           </SheetDescription>
         </SheetHeader>
         <div className="min-h-[calc(100vh-3rem)]">
-          <LandingTemplate page={landingPage} />
+          <LandingTemplate page={landingPage} theme={theme} />
         </div>
       </SheetContent>
     </Sheet>

@@ -68,6 +68,8 @@ model LandingPage {
   published      Boolean           @default(false)
   categoryId     String?
   category       Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  themeId        String?
+  theme          LandingTheme?     @relation(fields: [themeId], references: [id], onDelete: SetNull)
 
   media          LandingMedia[]
   variants       LandingVariant[]
@@ -310,4 +312,27 @@ model Category {
 
   @@index([isVisible])
   @@index([sortOrder])
+}
+
+// Reusable visual theme for landing pages. Each LandingPage references one
+// theme. The theme provides semantic color tokens (primary, accent, etc.)
+// that the LandingTemplate consumes via CSS variables.
+model LandingTheme {
+  id                String   @id @default(cuid())
+  name              String
+  primary           String
+  primaryForeground String
+  accent            String
+  background        String
+  card             String
+  text              String
+  muted             String
+  border            String
+  isBuiltIn         Boolean  @default(false)
+  sortOrder         Int      @default(0)
+
+  landingPages      LandingPage[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }

@@ -36,10 +36,11 @@ export function VariantSelectors({
                   role="radio"
                   aria-checked={isSelected}
                   onClick={() => select(group.name, option.value)}
+                  style={isSelected ? { backgroundColor: "var(--theme-primary)", color: "var(--theme-primary-foreground)", borderColor: "var(--theme-primary)" } : undefined}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                     isSelected
-                      ? "border-foreground bg-foreground text-background"
+                      ? ""
                       : "border-border bg-background hover:border-foreground/40 hover:bg-accent/50",
                   )}
                 >

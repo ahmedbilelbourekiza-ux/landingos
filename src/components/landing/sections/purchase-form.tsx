@@ -226,14 +226,15 @@ export function PurchaseForm({
         size="lg"
         disabled={submitting}
         className="h-14 w-full rounded-xl text-base font-bold shadow-lg transition-all hover:shadow-xl"
+        style={{ backgroundColor: "var(--theme-primary)", color: "var(--theme-primary-foreground)" }}
       >
         {submitting ? <Loader2 className="size-5 animate-spin" /> : null}
         {submitting ? "جاري الإرسال..." : `${buttonText} · ${formatPrice(grandTotal, currency)}`}
       </Button>
 
       <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3.5" style={{ color: "var(--gold)" }} /> ضمان 30 يوم</span>
-        <span className="inline-flex items-center gap-1.5"><Truck className="size-3.5" style={{ color: "var(--gold)" }} /> توصيل 24-72 ساعة</span>
+        <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3.5" style={{ color: "var(--theme-accent)" }} /> ضمان 30 يوم</span>
+        <span className="inline-flex items-center gap-1.5"><Truck className="size-3.5" style={{ color: "var(--theme-accent)" }} /> توصيل 24-72 ساعة</span>
       </div>
     </form>
   );

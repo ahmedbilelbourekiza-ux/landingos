@@ -11,6 +11,7 @@ const generalSchema = z.object({
   ctaButtonText: z.string().optional().nullable(),
   announcement: z.string().optional().nullable(),
   categoryId: z.string().nullable().optional(),
+  themeId: z.string().nullable().optional(),
 });
 
 // PATCH /api/landings/[id]/general — update title, slug, description, CTA, announcement
@@ -43,6 +44,7 @@ export async function PATCH(
         ctaButtonText: parsed.data.ctaButtonText || null,
         announcement: parsed.data.announcement || null,
         categoryId: parsed.data.categoryId || null,
+        themeId: parsed.data.themeId || null,
       },
     });
 

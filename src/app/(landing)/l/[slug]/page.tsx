@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { db } from "@/lib/db";
-import { toLandingPageData } from "@/lib/landing/mappers";
+import { toLandingPageData, toThemeData } from "@/lib/landing/mappers";
 import { LandingTemplate } from "@/components/landing/landing-template";
 
 export async function generateMetadata({
@@ -36,10 +36,11 @@ export default async function LandingPage({
       variants: { orderBy: { displayOrder: "asc" } },
       reviews: { orderBy: { displayOrder: "asc" } },
       setting: true,
+      theme: true,
     },
   });
 
   if (!page) notFound();
 
-  return <LandingTemplate page={toLandingPageData(page)} />;
+  return <LandingTemplate page={toLandingPageData(page)} theme={toThemeData(page.theme)} />;
 }
