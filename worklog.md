@@ -239,3 +239,73 @@ Fresh-clone setup (5 commands only):
   npx prisma db push
   npx prisma db seed
   npm run dev
+
+---
+Task ID: final-audit
+Agent: main
+Task: Final production audit
+
+Work Log:
+- Searched entire codebase for TODO/FIXME/HACK/mock/fake/Math.random — found:
+  • use-section-state.ts: mock save with Math.random() 20% failure + 800ms delay → REMOVED (dead code, all sections pass real save fn)
+  • sidebar.tsx: Math.random() in SidebarMenuSkeleton → REPLACED with deterministic "70%" (prevents hydration mismatch)
+  • Multiple "mock-*.ts" files: contained type definitions (used) + dead mock data arrays (unused) → cleaned up
+- Removed dead code:
+  • delivery-section.tsx (231 lines) — component defined but never imported (delivery pricing is global now)
+  • mockLandings, mockGeneralData, mockPricingData, mockVariantsData, currentEditSlug arrays in mock-landings.ts
+  • mockReviewsData array in mock-reviews.ts
+  • mockImagesData object in mock-media.ts
+  • Renamed mockOrderFormData → defaultOrderFormConfig (it's a default config, not mock data)
+- Fixed stale comments:
+  • new/page.tsx: removed "mock id and redirects to (not-yet-built) edit route" comment
+  • landings-header.tsx: removed "stub for now (frontend only)" comment
+  • config/site.ts: removed "Placeholder" comment
+- Verified Prisma usage is server-side only: all 31 files importing @/lib/db are server components or server-only lib files (none have "use client")
+- Verified no console.log/debug/info/warn in production code (only console.error in catch blocks)
+- Verified no artificial delays (all setTimeout calls are legitimate UI timeouts for toast/saved-state dismissal)
+- Ran ESLint: 0 errors, 2 pre-existing warnings (React Hook Form library compatibility)
+- Ran npx next build: SUCCESS — all 26 pages compiled and generated
+
+Files Changed:
+1. src/components/landings/edit/section/use-section-state.ts — Removed mock save fallback (Math.random + 800ms delay)
+2. src/components/ui/sidebar.tsx — Replaced Math.random() with deterministic width (hydration fix)
+3. src/lib/landing/mock-landings.ts — Removed dead mock data arrays, kept type definitions
+4. src/lib/landing/mock-reviews.ts — Removed dead mockReviewsData, kept ReviewItem type + avatar options
+5. src/lib/landing/mock-media.ts — Removed dead mockImagesData, kept MediaItem type + media options
+6. src/lib/landing/mock-order-form.ts — Renamed mockOrderFormData → defaultOrderFormConfig
+7. src/lib/landing/mappers.ts — Updated import to use defaultOrderFormConfig
+8. src/components/landings/edit/sections/delivery-section.tsx — DELETED (dead code, never imported)
+9. src/app/(dashboard)/dashboard/landings/new/page.tsx — Fixed stale comment
+10. src/components/landings/landings-header.tsx — Fixed stale comment
+11. src/config/site.ts — Fixed stale comment
+
+Browser Verification:
+- Build: SUCCESS (all 26 pages compiled)
+- ESLint: 0 errors
+- /api/health: 200 (public, no auth)
+- /api/wilayas: 200 (public, no auth)
+- /api/auth/me without auth: 401 UNAUTHORIZED (protected)
+- Login (admin/admin123): 200, returns mustChangePassword=true
+- GET /api/auth/me with auth: 200, returns full admin profile
+- Change password: 200, mustChangePassword=false, lastPasswordChangeAt set
+- Logout: 200, cookie cleared
+- After logout: 401 (session invalidated)
+
+Production Readiness Checklist:
+[✓] No TODO/FIXME/HACK comments
+[✓] No Math.random in production code (only in unused shadcn skeleton, fixed)
+[✓] No artificial delays or mock save logic
+[✓] No dead code (removed delivery-section, mock data arrays)
+[✓] Prisma server-side only (verified all 31 imports)
+[✓] No console.log in production code
+[✓] ESLint: 0 errors
+[✓] Build: SUCCESS (26 pages)
+[✓] All auth flows work (login, me, change-password, logout)
+[✓] Public routes accessible without auth
+[✓] Protected routes return 401 without auth
+[✓] Force-change flow works (GET /api/auth/me allowed, PATCH blocked)
+
+Known Limitations:
+1. /preview route uses sample data (mockLandingPage) — this is intentional, it's a design reference page, not a production route
+2. SectionComingSoon component renders for unbuilt sections (benefits, faq, seo, integrations) — these are honestly labeled placeholders, not mocks
+3. Sandbox memory (4GB) causes OOM kills when compiling multiple routes simultaneously; this is an environment limitation, not a code issue

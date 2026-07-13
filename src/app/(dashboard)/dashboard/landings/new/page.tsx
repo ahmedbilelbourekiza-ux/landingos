@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 
 // Create-landing flow. Deliberately short — the goal is a page record in
 // under 30 seconds. Everything else (media, variants, content, settings)
-// is added later on the edit page. No Prisma, no API: the form generates a
-// mock id and redirects to the (not-yet-built) edit route.
+// is added later on the edit page. The form POSTs to /api/landings and
+// redirects to the edit route with the real id.
 export default function NewLandingPage() {
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6 sm:py-10">

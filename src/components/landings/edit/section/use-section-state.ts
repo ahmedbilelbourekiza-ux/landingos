@@ -19,28 +19,31 @@ export interface SectionState {
   error: string | null;
 }
 
-// The hook every section will use to manage its save lifecycle. Today the
-// save is mocked — it resolves after a delay and randomly fails ~20% of the
-// time so the error state is testable. When the real API lands, the `save`
-// function passed in replaces the mock; the state machine stays identical.
+// The hook every section uses to manage its save lifecycle. The `save`
+// function passed in performs the real API call; the state machine handles
+// the idle → dirty → saving → saved/error transitions and exposes the
+// current state for the SectionShell to render.
 //
-// Usage in a future section:
+// Usage:
 //   const form = useForm(...);
 //   const section = useSectionState({
-//     save: async (values) => await fetch('/api/landings/[id]', { ... }),
+//     save: async () => {
+//       const values = form.getValues();
+//       await fetch(`/api/landings/${landingId}/general`, { ... });
+//     },
 //   });
 //   <SectionShell state={section.state} onSave={section.save} onCancel={section.reset} ...>
 //     ...form fields that call section.markDirty() onChange...
 //   </SectionShell>
-export function useSectionState(options?: {
-  save?: () => Promise<void>;
+export function useSectionState(options: {
+  save: () => Promise<void>;
   // How long the "saved" success state lingers before reverting to idle.
   // Default 1.5s — long enough to read, short enough not to annoy.
   savedDurationMs?: number;
 }) {
   const [status, setStatus] = React.useState<SectionStatus>("idle");
   const [error, setError] = React.useState<string | null>(null);
-  const savedTimer = React.useRef<ReturnType<typeof setTimeout>>();
+  const savedTimer = React.useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const markDirty = React.useCallback(() => {
     setError(null);
@@ -57,18 +60,12 @@ export function useSectionState(options?: {
     setStatus("saving");
     setError(null);
     try {
-      if (options?.save) {
-        await options.save();
-      } else {
-        // Mock save: 800ms delay, ~20% failure rate so the error state is
-        // exercisable in the demo. Real sections pass a real save fn.
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        if (Math.random() < 0.2) {
-          throw new Error("Mock save failed — this is a simulated error.");
-        }
-      }
+      await options.save();
       setStatus("saved");
-      savedTimer.current = setTimeout(() => setStatus("idle"), 1500);
+      savedTimer.current = setTimeout(
+        () => setStatus("idle"),
+        options.savedDurationMs ?? 1500,
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
       setStatus("error");

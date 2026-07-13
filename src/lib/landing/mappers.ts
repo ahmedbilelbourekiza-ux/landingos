@@ -4,7 +4,7 @@ import type { LandingListItem } from "@/lib/landing/mock-landings";
 import type { VariantGroup } from "@/lib/landing/mock-landings";
 import type { LandingPageData } from "@/types/landing";
 import type { OrderFormConfig } from "@/lib/landing/mock-order-form";
-import { mockOrderFormData } from "@/lib/landing/mock-order-form";
+import { defaultOrderFormConfig } from "@/lib/landing/mock-order-form";
 import type { LandingTheme } from "@prisma/client";
 import type { LandingThemeData } from "@/types/theme";
 import { DEFAULT_THEME } from "@/types/theme";
@@ -86,17 +86,17 @@ function parseOrderFormConfig(
   buttonText: string,
 ): OrderFormConfig {
   if (!setting?.orderFormConfig) {
-    return { ...mockOrderFormData, buttonText };
+    return { ...defaultOrderFormConfig, buttonText };
   }
   try {
     const stored = JSON.parse(setting.orderFormConfig) as Partial<OrderFormConfig>;
     // Force address to not visible — the field is no longer collected.
-    const merged = { ...mockOrderFormData, ...stored, buttonText };
+    const merged = { ...defaultOrderFormConfig, ...stored, buttonText };
     merged.address.visible = false;
     merged.address.required = false;
     return merged;
   } catch {
-    return { ...mockOrderFormData, buttonText };
+    return { ...defaultOrderFormConfig, buttonText };
   }
 }
 

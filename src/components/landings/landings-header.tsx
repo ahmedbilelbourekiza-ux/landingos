@@ -5,9 +5,8 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Page header for the landings management section. Title + subtitle on the
-// left, primary action on the right. The "+ New Landing" button is wired to
-// a stub for now (frontend only) — when the create flow lands it navigates
-// to the new-page route.
+// left, primary action on the right. The "+ New Landing" button navigates
+// to the new-page route (wired by the parent page).
 export function LandingsHeader({
   onCreate,
 }: {

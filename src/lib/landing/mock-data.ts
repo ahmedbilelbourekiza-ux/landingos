@@ -1,7 +1,9 @@
 import type { LandingPageData, VariantGroup } from "@/types/landing";
 
-// Premium skincare serum — used only by the /preview route (Task 3 template
-// demo). The public landing route /l/[slug] renders entirely from Prisma.
+// Sample landing page used only by the /preview route — a static design
+// reference page. The public landing route /l/[slug] renders entirely from
+// Prisma. This data lets the design be reviewed without a database round-
+// trip; it is never shown to customers.
 export const mockLandingPage: LandingPageData = {
   id: "mock-serum-001",
   title: "Lumière Vitamin C Serum",

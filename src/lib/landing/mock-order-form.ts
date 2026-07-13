@@ -24,7 +24,8 @@ export interface OrderFormConfig {
 // The 5 core fields are always visible by default. Notes and Quantity are
 // disabled (not visible) by default — the admin enables them when needed.
 // Button text defaults to Arabic "اطلب الآن" (Order Now) per the task spec.
-export const mockOrderFormData: OrderFormConfig = {
+// Used as the fallback config when a landing has no stored order-form config.
+export const defaultOrderFormConfig: OrderFormConfig = {
   customerName: {
     visible: true,
     required: true,
