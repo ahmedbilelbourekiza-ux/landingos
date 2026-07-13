@@ -66,6 +66,8 @@ model LandingPage {
   facebookPixel  String?
   webhookUrl     String?
   published      Boolean           @default(false)
+  categoryId     String?
+  category       Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   media          LandingMedia[]
   variants       LandingVariant[]
@@ -286,4 +288,26 @@ model OrderStatusHistory {
   createdAt DateTime    @default(now())
 
   @@index([orderId])
+}
+
+// Product category. One category has many landing pages. Admin manages
+// categories in the dashboard; customers browse them on the homepage and
+// category pages.
+model Category {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  description String?
+  icon        String?
+  coverImage  String?
+  sortOrder   Int          @default(0)
+  isVisible   Boolean      @default(true)
+
+  landingPages LandingPage[]
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([isVisible])
+  @@index([sortOrder])
 }

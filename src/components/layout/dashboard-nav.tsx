@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FileText, Package, Truck } from "lucide-react";
+import { LayoutDashboard, FileText, Package, Truck, FolderOpen } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 export const dashboardNav = [
-  { title: "Dashboard", href: "/", icon: LayoutDashboard },
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Landing Pages", href: "/dashboard/landings", icon: FileText },
+  { title: "Categories", href: "/dashboard/categories", icon: FolderOpen },
   { title: "Orders", href: "/dashboard/orders", icon: Package },
   { title: "Delivery Prices", href: "/dashboard/delivery-prices", icon: Truck },
 ] as const;

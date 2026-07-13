@@ -20,6 +20,7 @@ export interface GeneralPreviewValues {
   description: string;
   buttonText: string;
   announcement: string;
+  categoryId: string | null;
 }
 
 const generalSchema = z.object({
@@ -28,6 +29,7 @@ const generalSchema = z.object({
   description: z.string().max(300, "Description must be at most 300 characters").optional().or(z.literal("")),
   buttonText: z.string().min(1, "Button text is required"),
   announcement: z.string().optional().or(z.literal("")),
+  categoryId: z.string().nullable().optional(),
 });
 
 type GeneralFormValues = z.infer<typeof generalSchema>;
@@ -53,6 +55,7 @@ export function GeneralSection({
           description: values.description || null,
           ctaButtonText: values.buttonText,
           announcement: values.announcement || null,
+          categoryId: values.categoryId || null,
         }),
       });
       const json = await res.json();
@@ -112,7 +115,15 @@ export function GeneralSection({
   };
 
   const slugValue = useWatch({ control, name: "slug" });
+  const categoryIdValue = useWatch({ control, name: "categoryId" });
   const descLength = (descriptionValue ?? "").length;
+
+  const [categories, setCategories] = React.useState<{ id: string; name: string }[]>([]);
+  React.useEffect(() => {
+    fetch("/api/categories").then((r) => r.json()).then((json) => {
+      if (json.success) setCategories(json.data.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+    });
+  }, []);
 
   return (
     <SectionShell
@@ -138,6 +149,20 @@ export function GeneralSection({
 
         <Field label="Short description" error={form.formState.errors.description?.message} htmlFor="description" hint={`${descLength}/300`}>
           <Textarea id="description" rows={3} maxLength={300} placeholder="A short product description shown on the landing page." {...register("description")} />
+        </Field>
+
+        <Field label="Category" htmlFor="categoryId" hint="Optional">
+          <select
+            id="categoryId"
+            value={categoryIdValue ?? ""}
+            onChange={(e) => setValue("categoryId", e.target.value || null, { shouldValidate: true })}
+            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+          >
+            <option value="">Uncategorized</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
         </Field>
 
         <div className="grid gap-5 sm:grid-cols-2">

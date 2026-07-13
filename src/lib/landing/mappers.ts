@@ -80,6 +80,7 @@ export function toPreviewState(page: LandingWithRelations): PreviewState {
       description: page.description ?? "",
       buttonText: page.ctaButtonText ?? page.buttonText,
       announcement: page.announcement ?? "",
+      categoryId: page.categoryId,
     },
     pricing: {
       price: page.price.toNumber(),
