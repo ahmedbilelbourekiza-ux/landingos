@@ -336,3 +336,36 @@ model LandingTheme {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
+
+// Single admin account. Only one row expected. Password is bcrypt-hashed.
+// Session is managed via signed cookies (no separate session table needed).
+model Admin {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Global store settings — single row (id = "singleton"). Covers store info,
+// contact, localization, and social links.
+model StoreSettings {
+  id             String   @id @default("singleton")
+  storeName      String   @default("LandingOS")
+  storeDescription String?
+  logo           String?
+  favicon        String?
+  phone          String?
+  email          String?
+  address        String?
+  currency       String   @default("DZD")
+  timezone       String   @default("Africa/Casablanca")
+  language       String   @default("ar")
+  facebook       String?
+  instagram      String?
+  tiktok         String?
+  whatsapp       String?
+  telegram       String?
+
+  updatedAt      DateTime @updatedAt
+}
