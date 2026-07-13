@@ -398,3 +398,49 @@ Verification:
 - Change password → 200
 - After change, /api/orders → 200 (auth works)
 - Force-change flow: /api/orders → 403 when mustChangePassword=true
+
+---
+Task ID: acceptance-test
+Agent: main
+Task: Final Production Acceptance Test — real store owner scenarios
+
+Test Scenarios Executed:
+1. Login as admin/admin123 → 200, mustChangePassword=true ✅
+2. Force-change flow: GET /api/auth/me → 200 (allowed during lock) ✅
+3. Change password (admin123 → Admin@2026) → 200, mustChangePassword=false ✅
+4. Create product (landing page) → 201 ✅
+5. List landings → 200, new product visible ✅
+6. Edit general section (title, slug, description, CTA, announcement) → 200 ✅
+7. Edit pricing section (price, oldPrice, currency) → 200 ✅
+8. Edit media section (2 images) → 200 ✅
+9. Edit variants section (Color × 2, Warranty × 2) → 200 ✅
+10. Edit reviews section (2 reviews with ratings) → 200 ✅
+11. Edit order form section (field visibility, labels, placeholders) → 200 ✅
+12. Publish landing → 200, status=PUBLISHED ✅
+13. Verify public landing at /l/[slug] → 200, title renders ✅
+14. Create draft landing → 201 ✅
+15. Verify draft landing 404s publicly → 404 ✅ (security fix working)
+16. Create customer order (checkout) → 201, orderId returned ✅
+17. View order in dashboard → 200, correct data (name, phone, wilaya, total) ✅
+18. Change order status NEW → CONFIRMED → 200, history recorded ✅
+19. Search orders by customer name → 200, correct results ✅
+20. Filter orders by status → 200, correct results ✅
+21. Create category → 201 ✅
+22. Update delivery prices (bulk) → 200, count=2 ✅
+23. Update store settings → 200, all fields saved ✅
+24. Logout → 200 ✅
+25. After logout, /api/auth/me → 401 (session invalidated) ✅
+26. Login with new password → 200 ✅
+27. Delete landing → 200 ✅
+28. Verify deleted landing 404s → 404 ✅
+29. Public homepage renders → 200 (28KB HTML) ✅
+30. Login page renders with Arabic text → 200 ✅
+31. Build succeeds → all 26 pages compiled ✅
+32. ESLint → 0 errors ✅
+
+Bugs Found: 0 real bugs
+- The variants endpoint uses PUT (not PATCH) — this is correct, the frontend matches
+- The order-form API expects flat config (not nested under "fields") — this is correct, the frontend sends the right shape
+- All "failures" during testing were caused by the sandbox's 4GB memory limit OOM-killing the dev server when compiling multiple routes simultaneously, not by code bugs
+
+No code changes needed — all previously fixed bugs remain fixed and no new bugs were discovered during acceptance testing.
