@@ -84,6 +84,11 @@ export function checkRateLimit(ip: string): RateLimitResult {
     return { ok: true, attemptsRemaining: MAX_ATTEMPTS, retryAfterSeconds: 0 };
   }
   pruneFailures(bucket, now);
+  // Clean up empty buckets so the Map doesn't grow unboundedly.
+  if (bucket.failures.length === 0) {
+    buckets.delete(ip);
+    return { ok: true, attemptsRemaining: MAX_ATTEMPTS, retryAfterSeconds: 0 };
+  }
   if (bucket.failures.length > MAX_ATTEMPTS) {
     const oldest = bucket.failures[0]!;
     const retryAfterSeconds = Math.ceil(

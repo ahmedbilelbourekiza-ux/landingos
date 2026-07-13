@@ -11,8 +11,8 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const page = await db.landingPage.findUnique({
-    where: { slug },
+  const page = await db.landingPage.findFirst({
+    where: { slug, published: true, status: "PUBLISHED" },
     select: { title: true, seoTitle: true, seoDescription: true, description: true },
   });
   if (!page) return { title: "Not Found" };
@@ -23,14 +23,15 @@ export async function generateMetadata({
 }
 
 // Public landing route. Serves the landing page from Prisma by slug.
+// Only PUBLISHED pages are accessible — draft and archived pages return 404.
 export default async function LandingPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const page = await db.landingPage.findUnique({
-    where: { slug },
+  const page = await db.landingPage.findFirst({
+    where: { slug, published: true, status: "PUBLISHED" },
     include: {
       media: { orderBy: { displayOrder: "asc" } },
       variants: { orderBy: { displayOrder: "asc" } },

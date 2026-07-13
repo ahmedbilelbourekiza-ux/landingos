@@ -124,7 +124,7 @@ export default async function ThankYouPage({
               <span className="text-sm text-muted-foreground">حالة الطلب</span>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground">
                 <span className="size-1.5 rounded-full bg-primary-foreground" />
-                {order.status}
+                جديد
               </span>
             </div>
           </div>

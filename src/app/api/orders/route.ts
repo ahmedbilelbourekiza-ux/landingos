@@ -4,20 +4,23 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { ok, fail, fromZodError, serverError } from "@/lib/api-response";
 
+const statusEnum = z.enum(["NEW", "CONFIRMED", "PREPARING", "SHIPPED", "DELIVERED", "CANCELLED"]);
+
 // GET /api/orders — paginated list with search, filter, sort.
-// Query params: page (default 1), limit (default 20), search, status, sort
-// (newest | oldest). Joins LandingPage for product thumbnail + title.
+// Protected by middleware (requires auth). Joins LandingPage for product
+// thumbnail + title.
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, Number(searchParams.get("page") ?? 1));
     const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit") ?? 20)));
     const search = searchParams.get("search")?.trim() ?? "";
-    const status = searchParams.get("status") ?? "ALL";
+    const rawStatus = searchParams.get("status") ?? "ALL";
+    const status = rawStatus === "ALL" ? "ALL" : statusEnum.parse(rawStatus);
     const sort = searchParams.get("sort") ?? "newest";
 
     const where = {
-      ...(status !== "ALL" && { status: status as never }),
+      ...(status !== "ALL" && { status }),
       ...(search && {
         OR: [
           { id: { contains: search } },

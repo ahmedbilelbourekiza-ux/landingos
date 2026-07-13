@@ -309,3 +309,92 @@ Known Limitations:
 1. /preview route uses sample data (mockLandingPage) — this is intentional, it's a design reference page, not a production route
 2. SectionComingSoon component renders for unbuilt sections (benefits, faq, seo, integrations) — these are honestly labeled placeholders, not mocks
 3. Sandbox memory (4GB) causes OOM kills when compiling multiple routes simultaneously; this is an environment limitation, not a code issue
+
+---
+Task ID: adversarial-audit
+Agent: main
+Task: Adversarial production audit — break the project
+
+CRITICAL Issues Found & Fixed:
+
+C1. Authorization Bypass — ALL admin APIs were public
+   Root cause: Middleware used PUBLIC_API_PREFIXES (path-only match) which made
+   every HTTP method on those paths public. DELETE /api/landings/[id], PUT
+   /api/settings/delivery-prices, GET /api/orders (PII leak), POST /api/landings,
+   POST /api/categories, PATCH /api/categories/[id], DELETE /api/orders/[id],
+   PATCH /api/orders/[id]/status — all had ZERO auth checks.
+   Fix: Rewrote middleware to DENY-BY-DEFAULT model. Explicit (method, path)
+   allowlist for public routes. Everything else requires auth. Matcher changed
+   to catch all routes except static assets.
+   Verified: DELETE /api/landings/test-id → 401 (was 404), PUT delivery-prices
+   → 401 (was 200), GET /api/orders → 401 (was 200 with PII).
+
+C2. Draft/Archived landing pages publicly accessible
+   Root cause: /l/[slug] used findUnique({ where: { slug } }) without filtering
+   by published/status. Draft and archived pages were publicly rendered.
+   Fix: Changed to findFirst({ where: { slug, published: true, status: "PUBLISHED" } })
+   in both generateMetadata and the page component.
+
+C3. Customer PII leak — GET /api/orders was public
+   Root cause: Same as C1. The order list endpoint returned customer names,
+   phone numbers, wilaya/baladia, and order details with no auth.
+   Fix: Fixed by C1 middleware rewrite.
+
+HIGH Issues Found & Fixed:
+
+H1. Homepage had no error state
+   Root cause: fetch().finally(setLoading(false)) — on failure, data stayed null
+   and the page showed "store being prepared" empty state instead of error.
+   Fix: Added error state + catch handler + Arabic error UI with retry button.
+
+H2. Hardcoded fake domain in copy-link
+   Root cause: handleCopyLink used `https://landing.local/${slug}` — a fake URL.
+   Fix: Changed to `window.location.origin + '/l/' + slug`.
+
+H3. Rate limiter memory leak
+   Root cause: checkRateLimit pruned failures but never deleted empty buckets
+   from the Map. Over time, thousands of IPs accumulated.
+   Fix: Added bucket cleanup when failures array becomes empty.
+
+MEDIUM Issues Found & Fixed:
+
+M1. Purchase form error messages in English
+   Fix: Translated "Please select your wilaya and commune" and "Delivery is not
+   available..." to Arabic.
+
+M3. Unsafe Prisma typing `status as never`
+   Root cause: Bypassed TypeScript safety for the status filter.
+   Fix: Added zod enum validation, removed `as never` cast.
+
+LOW Issues Found & Fixed:
+
+L1. Raw enum string on thank-you page
+   Root cause: {order.status} rendered "NEW" in English on the Arabic customer
+   confirmation page.
+   Fix: Hardcoded "جديد" (Arabic for "New") since the thank-you page only shows
+   for newly created orders.
+
+Files Changed:
+1. src/middleware.ts — Complete rewrite: deny-by-default, method-aware allowlist
+2. src/app/(landing)/l/[slug]/page.tsx — Filter by published + status
+3. src/app/(landing)/page.tsx — Added error state + retry UI
+4. src/components/landings/edit/edit-workspace.tsx — Fixed copy-link domain
+5. src/lib/auth/rate-limit.ts — Fixed memory leak (empty bucket cleanup)
+6. src/components/landing/sections/purchase-form.tsx — Arabic error messages
+7. src/app/api/orders/route.ts — Safe status enum validation
+8. src/app/(landing)/thank-you/[orderId]/page.tsx — Arabic status label
+
+Verification:
+- Build: SUCCESS (all pages compiled)
+- ESLint: 0 errors, 2 pre-existing warnings
+- DELETE /api/landings/test-id without auth → 401 (was 404)
+- PUT /api/settings/delivery-prices without auth → 401 (was 200)
+- GET /api/orders without auth → 401 (was 200 with PII)
+- POST /api/landings without auth → 401
+- Public GET /api/health → 200
+- Public GET /api/wilayas → 200
+- Login → 200
+- GET /api/auth/me → 200
+- Change password → 200
+- After change, /api/orders → 200 (auth works)
+- Force-change flow: /api/orders → 403 when mustChangePassword=true

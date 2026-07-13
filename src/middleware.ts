@@ -6,29 +6,47 @@ import {
 
 // Authentication & force-password-change enforcement.
 //
-// Public routes (no auth required):
-//   /                        — storefront homepage
-//   /category/*              — storefront category pages
-//   /l/*                     — public landing pages
-//   /thank-you/*             — post-checkout thank-you page
-//   /api/public/*            — storefront data API
-//   /api/wilayas             — wilaya list for checkout
-//   /api/themes              — theme list
-//   /api/settings/delivery-prices  — delivery prices for checkout
-//   /api/orders              — customer checkout (POST)
-//   /api/landings            — landing CRUD
-//   /api/categories          — category list (public storefront reads)
-//   /api/upload              — media upload
-//   /api/health              — health check
+// DENY-BY-DEFAULT model: every route requires authentication UNLESS it is
+// explicitly listed in the public allowlist below. The previous allowlist
+// approach (PUBLIC_API_PREFIXES) accidentally made every HTTP method on
+// those paths public — including DELETE /api/landings/[id] and
+// PUT /api/settings/delivery-prices — because it matched path prefixes
+// without considering the method.
 //
-// Protected (auth required):
-//   /dashboard/*             — all admin UI
-//   /api/auth/me             — current admin profile (GET always allowed;
-//                              PATCH blocked by route handler when
-//                              mustChangePassword=true)
-//   /api/auth/change-password
-//   /api/auth/profile        — reserved
-//   /api/settings/store      — store settings (PUT)
+// Public routes (no auth required):
+//   Pages:
+//     /                        — storefront homepage
+//     /category/*              — storefront category pages
+//     /l/*                     — public landing pages (published only)
+//     /thank-you/*             — post-checkout thank-you page
+//     /login                   — login page
+//
+//   API GET (storefront reads):
+//     GET  /api/public/*       — storefront data API
+//     GET  /api/wilayas        — wilaya list for checkout
+//     GET  /api/themes         — theme list
+//     GET  /api/settings/delivery-prices — delivery prices for checkout
+//     GET  /api/categories     — category list (storefront)
+//     GET  /api/health         — health check
+//
+//   API POST (customer checkout only):
+//     POST /api/orders         — customer order submission
+//
+// Protected (auth required) — everything else:
+//   /dashboard/*              — all admin UI
+//   /api/auth/*               — auth endpoints
+//   /api/settings/store       — store settings (GET + PUT)
+//   /api/settings/delivery-prices PUT — admin bulk update
+//   /api/landings GET (list)  — admin list
+//   /api/landings POST        — admin create
+//   /api/landings/[id] GET    — admin detail
+//   /api/landings/[id] DELETE — admin delete
+//   /api/landings/[id]/* PATCH/PUT/POST — admin section edits
+//   /api/categories POST      — admin create
+//   /api/categories/[id] PATCH/DELETE — admin edit/delete
+//   /api/orders GET           — admin order list (contains PII!)
+//   /api/orders/[id] GET/DELETE — admin order detail/delete
+//   /api/orders/[id]/status PATCH — admin status update
 //
 // Force-change flow:
 //   If the session JWT carries mustChangePassword=true:
@@ -36,22 +54,22 @@ import {
 //     - GET /api/auth/me → ALLOWED (Profile page must load admin data)
 //     - POST /api/auth/change-password → ALLOWED (escape hatch)
 //     - All other protected APIs → 403 MUST_CHANGE_PASSWORD
-//
-// Edge runtime: verifySession() from session.ts is fully Edge-compatible
-// (jose works in Edge). It swallows AuthSecretMissingError (returns null)
-// so a missing AUTH_SECRET never crashes the middleware bootstrap — the
-// user is simply treated as unauthenticated and sent to /login.
 
-const PUBLIC_API_PREFIXES = [
-  "/api/public",
-  "/api/wilayas",
-  "/api/themes",
-  "/api/settings/delivery-prices",
-  "/api/orders",
-  "/api/landings",
-  "/api/upload",
-  "/api/categories",
-  "/api/health",
+// Exact (method, path) pairs that are public. Checked before auth.
+const PUBLIC_API_ROUTES: { method: string; path: string }[] = [
+  { method: "GET", path: "/api/health" },
+  { method: "GET", path: "/api/wilayas" },
+  { method: "GET", path: "/api/themes" },
+  { method: "GET", path: "/api/settings/delivery-prices" },
+  { method: "GET", path: "/api/categories" },
+  { method: "POST", path: "/api/orders" }, // customer checkout only
+  { method: "POST", path: "/api/auth/login" },
+  { method: "POST", path: "/api/auth/logout" },
+];
+
+// Path prefixes that are public for GET requests (storefront data reads).
+const PUBLIC_GET_PREFIXES = [
+  "/api/public/",
 ];
 
 const PUBLIC_PAGE_PREFIXES = [
@@ -62,10 +80,19 @@ const PUBLIC_PAGE_PREFIXES = [
 
 const AUTH_PAGE_PATHS = new Set(["/login"]);
 
+function isPublicApi(method: string, pathname: string): boolean {
+  // Exact route matches
+  if (PUBLIC_API_ROUTES.some((r) => r.method === method && r.path === pathname)) {
+    return true;
+  }
+  // GET-only prefix matches (storefront data)
+  if (method === "GET" && PUBLIC_GET_PREFIXES.some((p) => pathname.startsWith(p))) {
+    return true;
+  }
+  return false;
+}
+
 // During the force-change lock, these API endpoints remain accessible.
-// GET /api/auth/me is needed so the Profile page can render the admin's
-// data (username, timestamps, the warning banner). POST /api/auth/change-
-// password is the escape hatch that clears the flag.
 function isAllowedDuringForceChange(pathname: string, method: string): boolean {
   if (pathname === "/api/auth/me" && method === "GET") return true;
   if (pathname === "/api/auth/change-password" && method === "POST") return true;
@@ -74,9 +101,10 @@ function isAllowedDuringForceChange(pathname: string, method: string): boolean {
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const method = req.method;
 
-  // 1) Public API routes — short-circuit.
-  if (PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p))) {
+  // 1) Public API routes — short-circuit (method-aware).
+  if (isPublicApi(method, pathname)) {
     return NextResponse.next();
   }
 
@@ -97,13 +125,16 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 4) Determine whether this is a protected route.
+  // 4) Everything else is protected. This includes:
+  //    - /dashboard/*
+  //    - /api/landings (GET list, POST create, [id] GET/DELETE, [id]/* PATCH)
+  //    - /api/orders (GET list, [id] GET/DELETE, [id]/status PATCH)
+  //    - /api/categories POST, [id] PATCH/DELETE
+  //    - /api/settings/store (GET + PUT)
+  //    - /api/settings/delivery-prices PUT
+  //    - /api/auth/* (except login which is public POST)
   const isProtectedPage = pathname.startsWith("/dashboard");
-  const isProtectedApi =
-    pathname === "/api/auth/me" ||
-    pathname === "/api/auth/change-password" ||
-    pathname === "/api/auth/profile" ||
-    pathname.startsWith("/api/settings/store");
+  const isProtectedApi = pathname.startsWith("/api/");
 
   if (!isProtectedPage && !isProtectedApi) {
     return NextResponse.next();
@@ -126,9 +157,7 @@ export async function middleware(req: NextRequest) {
     );
   }
 
-  // 6) Force-change enforcement. GET /api/auth/me and POST /api/auth/change-
-  //    password are the only API calls allowed; everything else is blocked
-  //    so a client can't sneak in edits while the password is still default.
+  // 6) Force-change enforcement.
   if (session.mustChangePassword) {
     if (isProtectedPage && pathname !== "/dashboard/profile") {
       return NextResponse.redirect(new URL("/dashboard/profile", req.url));
@@ -154,20 +183,15 @@ export async function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-// Thin wrapper around the shared verifySession(). Kept here so the middleware
-// reads the cookie from the NextRequest directly (Edge runtime doesn't have
-// next/headers cookies()).
 async function readSession(req: NextRequest) {
   const token = req.cookies.get(getSessionCookieName())?.value;
   if (!token) return null;
   return verifySession(token);
 }
 
+// Match everything except static assets and Next.js internals.
 export const config = {
   matcher: [
-    "/dashboard/:path*",
-    "/api/auth/:path*",
-    "/api/settings/store/:path*",
-    "/login",
+    "/((?!_next/static|_next/image|favicon.ico|logo.svg|products|avatars|uploads).*)",
   ],
 };

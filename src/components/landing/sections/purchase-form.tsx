@@ -106,11 +106,11 @@ export function PurchaseForm({
   const onSubmit = handleSubmit(async (values) => {
     if (submitting) return;
     if (!selectedWilaya || !selectedBaladia) {
-      setSubmitError("Please select your wilaya and commune");
+      setSubmitError("يرجى اختيار الولاية والبلدية");
       return;
     }
     if (shipping === null) {
-      setSubmitError("Delivery is not available for the selected wilaya");
+      setSubmitError("التوصيل غير متاح للولاية المختارة");
       return;
     }
 

@@ -65,13 +65,23 @@ function HomepageSkeleton() {
 export default function HomePage() {
   const [data, setData] = React.useState<HomepageData | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
   const [toast, setToast] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     fetch("/api/public/homepage")
       .then((r) => r.json())
-      .then((json) => { if (json.success) setData(json.data); })
+      .then((json) => {
+        if (json.success) {
+          setData(json.data);
+        } else {
+          setError(json.error?.message || "تعذّر تحميل المتجر");
+        }
+      })
+      .catch(() => {
+        setError("تعذّر الاتصال بالخادم. تحقّق من اتصالك بالشبكة.");
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -104,6 +114,23 @@ export default function HomePage() {
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6"><Logo /></div>
       </header>
       <HomepageSkeleton />
+    </div>
+  );
+
+  if (error) return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4 text-center">
+      <span className="grid size-20 place-items-center rounded-3xl border bg-muted/40 text-muted-foreground">
+        <Package className="size-9" strokeWidth={1.5} />
+      </span>
+      <h1 className="text-xl font-bold" dir="rtl">تعذّر تحميل المتجر</h1>
+      <p className="max-w-sm text-sm text-muted-foreground" dir="rtl">{error}</p>
+      <button
+        onClick={() => window.location.reload()}
+        className="mt-2 rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground"
+        dir="rtl"
+      >
+        إعادة المحاولة
+      </button>
     </div>
   );
 

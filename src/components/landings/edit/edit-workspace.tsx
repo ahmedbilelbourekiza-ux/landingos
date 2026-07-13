@@ -66,7 +66,8 @@ export function EditWorkspace({
 
   // --- Copy Link ---
   const handleCopyLink = () => {
-    navigator.clipboard?.writeText(`https://landing.local/${landingSlug}`);
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    navigator.clipboard?.writeText(`${origin}/l/${landingSlug}`);
   };
 
   // --- Open Landing ---
