@@ -37,9 +37,9 @@ export function ThemeProvider({
 
   return (
     <ThemeContext.Provider value={theme}>
-      <div style={style} className="min-h-screen bg-[var(--theme-background)] text-[var(--theme-text)]">
+      <div style={style} className="flex min-h-screen flex-col" >
         {children}
       </div>
     </ThemeContext.Provider>
-    );
+  );
 }
