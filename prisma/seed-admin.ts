@@ -12,17 +12,34 @@ import bcrypt from "bcryptjs";
 // Exported so the master seed (prisma/seed.ts) can call it in order. Also
 // runnable standalone for backwards compatibility.
 export async function seedAdmin() {
-  const passwordHash = await bcrypt.hash("admin123", 10);
+  // Credentials are configurable via env vars. Defaults are intentionally the
+  // documented local-preview pair (admin/admin123) so nothing changes for
+  // existing devs. In production, set ADMIN_USERNAME + ADMIN_PASSWORD on the
+  // host to secure the account — the upsert below seeds those values into the
+  // database on first boot.
+  const username = process.env.ADMIN_USERNAME || "admin";
+  const password = process.env.ADMIN_PASSWORD || "admin123";
+  // If a custom password was provided via env, the account is considered
+  // already-secured (mustChangePassword=false). The default password still
+  // forces a change on first login.
+  const mustChange =
+    process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD !== "admin123"
+      ? false
+      : true;
+
+  const passwordHash = await bcrypt.hash(password, 10);
   await db.admin.upsert({
-    where: { username: "admin" },
+    where: { username },
     create: {
-      username: "admin",
+      username,
       passwordHash,
-      mustChangePassword: true,
+      mustChangePassword: mustChange,
     },
     update: {}, // do NOT reset an existing admin's password or flags
   });
-  console.log("  ✓ Admin seeded: username=admin password=admin123 (must change on first login)");
+  console.log(
+    `  ✓ Admin seeded: username=${username} password=${"*".repeat(password.length)} (mustChange=${mustChange})`,
+  );
 
   await db.storeSettings.upsert({
     where: { id: "singleton" },
