@@ -49,12 +49,14 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# Create the persistent data directory. Mount a volume here on the host.
-RUN mkdir -p /app/data
-
 # Non-root user for security.
 RUN addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 nextjs
+
+# Create the persistent data directory, owned by the runtime user. Mount a
+# volume here on the host. Without the chown, the container fails at startup
+# with "unable to open database file" since it runs as nextjs, not root.
+RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
 
 # --- Standalone server bundle ---
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
