@@ -78,6 +78,7 @@ model LandingPage {
   faqs           LandingFAQ[]
   setting        LandingSetting?
   orders         Order[]
+  draftOrders    DraftOrder[]
 
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
@@ -275,6 +276,49 @@ model Order {
   @@index([createdAt])
 }
 
+// An abandoned checkout: a visitor who started filling the order form but
+// never submitted it. Captured progressively from the storefront as they
+// type (debounced), so a phone number is recovered even if they leave.
+//
+// This is landingos's equivalent of a Shopify draft order — but it is created
+// by the CUSTOMER, not by staff. There is no admin "create draft order" flow.
+//
+// `token` is a random id the storefront generates per visit and keeps in
+// sessionStorage, so repeated updates from the same visitor update one row
+// instead of creating hundreds. It is the upsert key for the public endpoint.
+//
+// `notifiedAt` records when the draft_order.created webhook was sent, so it
+// fires exactly once no matter how many times the visitor edits the form.
+// `convertedOrderId` is set if they eventually did place the order, which
+// lets the CRM (and the Abandoned dashboard) tell real abandonment apart
+// from a lead that simply took a while to finish.
+model DraftOrder {
+  id               String    @id @default(cuid())
+  token            String    @unique
+  landingPageId    String
+  customerName     String?
+  phone            String?
+  wilaya           String?
+  baladia          String?
+  quantity         Int       @default(1)
+  variants         String    @default("[]")
+  productPrice     Decimal?
+  shippingPrice    Decimal?
+  totalPrice       Decimal?
+  notifiedAt       DateTime?
+  convertedOrderId String?
+  convertedAt      DateTime?
+
+  landingPage      LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([landingPageId])
+  @@index([createdAt])
+  @@index([convertedOrderId])
+}
+
 // Timestamped record of every status transition. The initial NEW status is
 // recorded as a history entry with fromStatus = null on order creation.
 // This gives a complete audit trail: each row shows when the order moved
@@ -358,6 +402,24 @@ model Admin {
   updatedAt             DateTime @updatedAt
 }
 
+// A Meta (Facebook) Pixel + Conversions API connection. Multiple rows can
+// exist and multiple can be active at once — every active row receives a
+// copy of every server-side event (see src/lib/meta/capi.ts). `accessToken`
+// is stored AES-256-GCM encrypted (see src/lib/meta/crypto.ts); it is never
+// returned in full by any API response once saved.
+model MetaPixelConfig {
+  id           String   @id @default(cuid())
+  label        String
+  pixelId      String
+  accessToken  String   // encrypted at rest
+  isActive     Boolean  @default(false)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive])
+}
+
 // Global store settings — single row (id = "singleton"). Covers store info,
 // contact, localization, and social links.
 model StoreSettings {
@@ -378,5 +440,56 @@ model StoreSettings {
   whatsapp       String?
   telegram       String?
 
+  // Browser-side Meta Pixel ID. Deliberately independent of MetaPixelConfig
+  // (which is server-side CAPI only): the storefront pixel keeps firing
+  // PageView/ViewContent/InitiateCheckout even if every CAPI config is
+  // disabled or deleted. The two systems must never depend on each other.
+  metaBrowserPixelId String?
+
   updatedAt      DateTime @updatedAt
+}
+
+// Outgoing webhook receiver (e.g. an external CRM/ERP). Multiple endpoints
+// can exist; each independently subscribes to a set of event types.
+// `secret` is stored AES-256-GCM encrypted and used to sign every payload
+// with HMAC-SHA256 so the receiver can verify authenticity.
+// `events` is a JSON string array of subscribed event names, e.g.
+//   ["order.created","order.updated","product.updated"]
+// (SQLite has no native array type; the app parses/serializes this.)
+model WebhookEndpoint {
+  id         String   @id @default(cuid())
+  label      String
+  url        String
+  secret     String   // encrypted at rest
+  events     String   @default("[]")
+  isActive   Boolean  @default(false)
+
+  deliveries WebhookDelivery[]
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+// Delivery attempt log. Gives the admin visibility into whether the CRM
+// actually received each event, without storing the full payload (which
+// contains customer PII and would bloat the database). `resourceId` is the
+// order or landing-page id the event was about.
+model WebhookDelivery {
+  id          String   @id @default(cuid())
+  endpointId  String
+  event       String
+  resourceId  String
+  success     Boolean
+  statusCode  Int?
+  attempts    Int      @default(1)
+  error       String?
+
+  endpoint    WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@index([endpointId, createdAt])
+  @@index([createdAt])
 }

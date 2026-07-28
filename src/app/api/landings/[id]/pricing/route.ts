@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { ok, fail, fromZodError, serverError } from "@/lib/api-response";
+import { triggerProductWebhook } from "@/lib/webhooks/triggers";
 
 const pricingSchema = z
   .object({
@@ -42,6 +43,9 @@ export async function PATCH(
         currency: parsed.data.currency,
       },
     });
+
+    // Price changes are the main thing the CRM cares about here.
+    triggerProductWebhook("product.updated", id);
 
     return ok({ id });
   } catch (error) {

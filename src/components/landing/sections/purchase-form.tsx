@@ -14,6 +14,8 @@ import { Label } from "@/components/ui/label";
 import { formatPrice } from "@/lib/landing/format";
 import type { LandingOrderStore } from "@/lib/landing/store";
 import { useOrderTotals, useUnitPrice } from "@/lib/landing/store";
+import { readMetaCookies, trackInitiateCheckout } from "@/components/landing/meta-pixel-loader";
+import { useDraftCapture } from "@/lib/landing/use-draft-capture";
 
 const purchaseSchema = z.object({
   fullName: z.string().min(2, "يرجى إدخال الاسم الكامل"),
@@ -57,11 +59,13 @@ function QuantityStepper({ store }: { store: LandingOrderStore }) {
 export function PurchaseForm({
   store,
   landingId,
+  productTitle,
   buttonText,
   currency,
 }: {
   store: LandingOrderStore;
   landingId: string;
+  productTitle: string;
   buttonText: string;
   currency: string;
 }) {
@@ -70,6 +74,24 @@ export function PurchaseForm({
   const unitPrice = useUnitPrice(store);
   const quantity = store((s) => s.quantity);
 
+  // Meta Pixel InitiateCheckout. The form is rendered inline rather than in
+  // a modal, so there is no literal "open" moment — the customer's first
+  // interaction with any field is the equivalent signal. Fired at most once
+  // per page view.
+  const checkoutTracked = React.useRef(false);
+  const handleFirstInteraction = React.useCallback(() => {
+    if (checkoutTracked.current) return;
+    checkoutTracked.current = true;
+    const state = store.getState();
+    trackInitiateCheckout({
+      content_ids: [landingId],
+      content_name: productTitle,
+      value: subtotal,
+      currency,
+      num_items: state.quantity,
+    });
+  }, [store, landingId, productTitle, subtotal, currency]);
+
   const [wilayas, setWilayas] = React.useState<WilayaOption[]>([]);
   const [selectedWilaya, setSelectedWilaya] = React.useState<number | "">("");
   const [selectedBaladia, setSelectedBaladia] = React.useState<number | "">("");
@@ -77,10 +99,32 @@ export function PurchaseForm({
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<PurchaseFormValues>({
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<PurchaseFormValues>({
     resolver: zodResolver(purchaseSchema),
     mode: "onBlur",
   });
+
+  // Abandoned-checkout capture. Saves whatever has been typed so far so a
+  // phone number is recovered even if the customer never submits.
+  const draft = useDraftCapture(landingId);
+  const watchedName = watch("fullName");
+  const watchedPhone = watch("phone");
+  const draftUpdate = draft.update;
+
+  React.useEffect(() => {
+    const state = store.getState();
+    draftUpdate({
+      customerName: watchedName,
+      phone: watchedPhone,
+      wilayaId: selectedWilaya === "" ? null : Number(selectedWilaya),
+      baladiaId: selectedBaladia === "" ? null : Number(selectedBaladia),
+      quantity: state.quantity,
+      variants: state.groups.map((g) => ({
+        name: g.name,
+        value: state.selected[g.name] ?? g.options[0]?.value ?? "",
+      })),
+    });
+  }, [draftUpdate, store, watchedName, watchedPhone, selectedWilaya, selectedBaladia, quantity]);
 
   // Load wilayas + global delivery prices on mount
   React.useEffect(() => {
@@ -123,6 +167,7 @@ export function PurchaseForm({
         value: state.selected[g.name] ?? g.options[0]?.value ?? "",
       }));
 
+      const { fbc, fbp } = readMetaCookies();
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -135,6 +180,9 @@ export function PurchaseForm({
           notes: values.notes || undefined,
           quantity: state.quantity,
           variants: variantSnapshot,
+          fbc: fbc ?? undefined,
+          fbp: fbp ?? undefined,
+          draftToken: draft.token ?? undefined,
         }),
       });
       const json = await res.json();
@@ -143,6 +191,9 @@ export function PurchaseForm({
         setSubmitting(false);
         return;
       }
+      // Stop the capture hook — otherwise navigating away would fire a final
+      // beacon and re-open a lead this customer just converted.
+      draft.markConverted();
       router.push(`/thank-you/${json.data.orderId}`);
     } catch {
       setSubmitError("خطأ في الشبكة — يرجى المحاولة مرة أخرى");
@@ -151,7 +202,13 @@ export function PurchaseForm({
   });
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+    <form
+      onSubmit={onSubmit}
+      onFocusCapture={handleFirstInteraction}
+      onChange={handleFirstInteraction}
+      className="flex flex-col gap-4"
+      noValidate
+    >
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="الاسم الكامل" error={errors.fullName?.message}>
           <Input id="fullName" dir="auto" placeholder="أدخل اسمك الكامل" autoComplete="name" aria-invalid={!!errors.fullName} {...register("fullName")} />

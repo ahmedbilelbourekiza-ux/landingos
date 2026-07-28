@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 
 import { db } from "@/lib/db";
 import { ok, fail, serverError } from "@/lib/api-response";
+import { triggerProductDeletedWebhook } from "@/lib/webhooks/triggers";
 
 // GET /api/landings/[id] — single landing with all relations
 export async function GET(
@@ -35,10 +36,18 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const page = await db.landingPage.findUnique({ where: { id }, select: { id: true } });
+    // Capture the fields the webhook needs BEFORE deleting — once the row is
+    // gone there is nothing left to build a payload from.
+    const page = await db.landingPage.findUnique({
+      where: { id },
+      select: { id: true, title: true, slug: true },
+    });
     if (!page) return fail("NOT_FOUND", "Landing page not found", 404);
 
     await db.landingPage.delete({ where: { id } });
+
+    triggerProductDeletedWebhook(page);
+
     return ok({ id });
   } catch (error) {
     console.error("[api/landings/[id]] DELETE error:", error);

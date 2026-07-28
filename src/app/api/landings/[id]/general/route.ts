@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { ok, fail, fromZodError, serverError } from "@/lib/api-response";
+import { triggerProductWebhook } from "@/lib/webhooks/triggers";
 
 const generalSchema = z.object({
   title: z.string().min(2, "Title must be at least 2 characters").max(120),
@@ -47,6 +48,8 @@ export async function PATCH(
         themeId: parsed.data.themeId || null,
       },
     });
+
+    triggerProductWebhook("product.updated", id);
 
     return ok({ id });
   } catch (error) {

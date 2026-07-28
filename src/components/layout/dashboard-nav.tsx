@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FileText, Package, Truck, FolderOpen, Settings, User } from "lucide-react";
+import { LayoutDashboard, FileText, Package, Truck, FolderOpen, Settings, User, Radio, Webhook, PhoneMissed } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -11,7 +11,10 @@ export const dashboardNav = [
   { title: "Landing Pages", href: "/dashboard/landings", icon: FileText },
   { title: "Categories", href: "/dashboard/categories", icon: FolderOpen },
   { title: "Orders", href: "/dashboard/orders", icon: Package },
+  { title: "Abandoned", href: "/dashboard/abandoned", icon: PhoneMissed },
   { title: "Delivery Prices", href: "/dashboard/delivery-prices", icon: Truck },
+  { title: "Meta Pixels", href: "/dashboard/meta-pixels", icon: Radio },
+  { title: "Webhooks", href: "/dashboard/webhooks", icon: Webhook },
   { title: "Settings", href: "/dashboard/settings", icon: Settings },
   { title: "Profile", href: "/dashboard/profile", icon: User },
 ] as const;

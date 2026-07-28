@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { ok, fail, fromZodError, serverError } from "@/lib/api-response";
+import { triggerProductWebhook } from "@/lib/webhooks/triggers";
 
 const createSchema = z.object({
   title: z.string().min(2, "Title must be at least 2 characters"),
@@ -80,6 +81,8 @@ export async function POST(req: NextRequest) {
       },
       select: { id: true },
     });
+
+    triggerProductWebhook("product.created", page.id);
 
     return ok({ id: page.id }, 201);
   } catch (error) {

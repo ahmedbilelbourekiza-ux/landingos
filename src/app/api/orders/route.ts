@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { ok, fail, fromZodError, serverError } from "@/lib/api-response";
+import { sendPurchaseEvent } from "@/lib/meta/capi";
+import { triggerOrderWebhook } from "@/lib/webhooks/triggers";
 
 const statusEnum = z.enum(["NEW", "CONFIRMED", "PREPARING", "SHIPPED", "DELIVERED", "CANCELLED"]);
 
@@ -85,6 +87,13 @@ const createOrderSchema = z.object({
   notes: z.string().optional(),
   quantity: z.number().int().min(1, "Quantity must be at least 1"),
   variants: z.array(variantItemSchema),
+  // Meta ad-click identifiers, read from cookies by the purchase form.
+  // Optional — absent for organic/non-Meta traffic.
+  fbc: z.string().optional(),
+  fbp: z.string().optional(),
+  // Abandoned-checkout token, if this visitor was captured while typing.
+  // Lets us mark that draft converted so the CRM stops chasing the lead.
+  draftToken: z.string().optional(),
 });
 
 // POST /api/orders — create a real customer order with price + variant snapshots
@@ -94,7 +103,7 @@ export async function POST(req: NextRequest) {
     const parsed = createOrderSchema.safeParse(body);
     if (!parsed.success) return fromZodError(parsed.error);
 
-    const { landingId, customerName, phone, wilayaId, baladiaId, notes, quantity, variants } = parsed.data;
+    const { landingId, customerName, phone, wilayaId, baladiaId, notes, quantity, variants, fbc, fbp, draftToken } = parsed.data;
 
     // 1. Validate landing exists and is published
     const landing = await db.landingPage.findUnique({
@@ -170,9 +179,53 @@ export async function POST(req: NextRequest) {
       select: { id: true },
     });
 
+    // Fire-and-forget: never await this on the customer-facing path. A slow
+    // or failing Meta call must never delay or break a real order. Errors
+    // are caught and logged inside sendPurchaseEvent itself.
+    sendPurchaseEvent({
+      orderId: order.id,
+      customerName,
+      phone,
+      totalPrice,
+      currency: landing.currency,
+      fbc: fbc ?? null,
+      fbp: fbp ?? null,
+      clientIp: getClientIp(req),
+      userAgent: req.headers.get("user-agent"),
+    });
+
+    // If this visitor was captured as an abandoned lead while typing, close
+    // that draft out now. Awaited (unlike the webhooks) so the order.created
+    // payload below can include the draft id — otherwise the CRM would have
+    // no way to link the lead it was already told about to this order.
+    if (draftToken) {
+      try {
+        await db.draftOrder.updateMany({
+          where: { token: draftToken, convertedOrderId: null },
+          data: { convertedOrderId: order.id, convertedAt: new Date() },
+        });
+      } catch (error) {
+        // A failure here must not fail the order — worst case the CRM keeps
+        // the lead open and someone calls a customer who already bought.
+        console.error("[api/orders] failed to mark draft converted:", error);
+      }
+    }
+
+    // Outgoing CRM webhook — also fire-and-forget, for the same reason.
+    triggerOrderWebhook("order.created", order.id);
+
     return ok({ orderId: order.id }, 201);
   } catch (error) {
     console.error("[api/orders] POST error:", error);
     return serverError("Failed to create order");
   }
+}
+
+// Prefer x-forwarded-for (set by Render/Railway/any reverse proxy in front
+// of this app) since req.ip is not reliably populated behind a proxy. Takes
+// the first address in the list — the original client, not the proxy hops.
+function getClientIp(req: NextRequest): string | null {
+  const forwardedFor = req.headers.get("x-forwarded-for");
+  if (forwardedFor) return forwardedFor.split(",")[0].trim();
+  return null;
 }

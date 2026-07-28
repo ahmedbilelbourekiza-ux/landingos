@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { ok, fail, fromZodError, serverError } from "@/lib/api-response";
+import { triggerOrderWebhook } from "@/lib/webhooks/triggers";
 
 // Valid status transitions. Each status maps to the set of statuses it can
 // transition to. CANCELLED is terminal — no transitions out. DELIVERED is
@@ -65,6 +66,14 @@ export async function PATCH(
         },
       }),
     ]);
+
+    // Outgoing CRM webhook. A cancellation gets its own dedicated event so a
+    // CRM can react to it specifically; every other transition is an update.
+    // Fire-and-forget — a webhook problem must not fail the status change.
+    triggerOrderWebhook(
+      parsed.data.toStatus === "CANCELLED" ? "order.cancelled" : "order.updated",
+      id,
+    );
 
     // Return updated order + full history
     const history = await db.orderStatusHistory.findMany({

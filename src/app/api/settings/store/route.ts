@@ -21,6 +21,9 @@ const storeSettingsSchema = z.object({
   tiktok: z.string().optional().nullable(),
   whatsapp: z.string().optional().nullable(),
   telegram: z.string().optional().nullable(),
+  // Browser-side Meta Pixel ID. Independent of the server-side CAPI configs
+  // in MetaPixelConfig — see the Meta Pixels dashboard page.
+  metaBrowserPixelId: z.string().optional().nullable(),
 });
 
 // GET /api/settings/store — returns store settings.

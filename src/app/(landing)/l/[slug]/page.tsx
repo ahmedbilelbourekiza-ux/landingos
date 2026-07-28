@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { toLandingPageData, toThemeData } from "@/lib/landing/mappers";
 import { LandingTemplate } from "@/components/landing/landing-template";
+import { ViewContentTracker } from "@/components/landing/view-content-tracker";
 
 export async function generateMetadata({
   params,
@@ -43,5 +44,15 @@ export default async function LandingPage({
 
   if (!page) notFound();
 
-  return <LandingTemplate page={toLandingPageData(page)} theme={toThemeData(page.theme)} />;
+  return (
+    <>
+      <ViewContentTracker
+        productId={page.id}
+        productName={page.title}
+        price={page.price.toNumber()}
+        currency={page.currency}
+      />
+      <LandingTemplate page={toLandingPageData(page)} theme={toThemeData(page.theme)} />
+    </>
+  );
 }

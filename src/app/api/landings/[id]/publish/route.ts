@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 
 import { db } from "@/lib/db";
 import { ok, fail, serverError } from "@/lib/api-response";
+import { triggerProductWebhook } from "@/lib/webhooks/triggers";
 
 // POST /api/landings/[id]/publish — set status to PUBLISHED + published flag
 export async function POST(
@@ -17,6 +18,8 @@ export async function POST(
       where: { id },
       data: { status: "PUBLISHED", published: true },
     });
+
+    triggerProductWebhook("product.updated", id);
 
     return ok({ id, status: "PUBLISHED" });
   } catch (error) {

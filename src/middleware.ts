@@ -22,7 +22,7 @@ import {
 //     /login                   — login page
 //
 //   API GET (storefront reads):
-//     GET  /api/public/*       — storefront data API
+//     GET  /api/public/*       — storefront data API (includes active pixel IDs, no tokens)
 //     GET  /api/wilayas        — wilaya list for checkout
 //     GET  /api/themes         — theme list
 //     GET  /api/settings/delivery-prices — delivery prices for checkout
@@ -31,12 +31,19 @@ import {
 //
 //   API POST (customer checkout only):
 //     POST /api/orders         — customer order submission
+//     POST /api/draft-orders   — abandoned-checkout capture (rate-limited)
+//                                NOTE: GET on this path stays PROTECTED — it
+//                                returns captured customer phone numbers.
 //
 // Protected (auth required) — everything else:
 //   /dashboard/*              — all admin UI
 //   /api/auth/*               — auth endpoints
 //   /api/settings/store       — store settings (GET + PUT)
 //   /api/settings/delivery-prices PUT — admin bulk update
+//   /api/settings/meta-pixels — Meta pixel/CAPI configs (GET + POST), contains access tokens
+//   /api/settings/meta-pixels/[id] — PATCH/DELETE
+//   /api/settings/webhooks    — outgoing CRM webhook endpoints, contains signing secrets
+//   /api/settings/webhooks/[id] — PATCH/DELETE
 //   /api/landings GET (list)  — admin list
 //   /api/landings POST        — admin create
 //   /api/landings/[id] GET    — admin detail
@@ -63,6 +70,7 @@ const PUBLIC_API_ROUTES: { method: string; path: string }[] = [
   { method: "GET", path: "/api/settings/delivery-prices" },
   { method: "GET", path: "/api/categories" },
   { method: "POST", path: "/api/orders" }, // customer checkout only
+  { method: "POST", path: "/api/draft-orders" }, // abandoned-checkout capture
   { method: "POST", path: "/api/auth/login" },
   { method: "POST", path: "/api/auth/logout" },
 ];

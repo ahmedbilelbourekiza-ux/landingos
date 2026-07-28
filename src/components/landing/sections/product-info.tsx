@@ -50,6 +50,7 @@ export function ProductInfo({
         <PurchaseForm
           store={store}
           landingId={page.id}
+          productTitle={page.title}
           buttonText={page.buttonText}
           currency={page.currency}
         />
