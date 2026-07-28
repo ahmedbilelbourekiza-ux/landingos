@@ -16,20 +16,20 @@
 set -e
 
 DATA_DIR="/app/data"
-UPLOADS_DIR="/app/public/uploads"
+# Uploads live under the data dir, NOT public/uploads: Next.js only serves
+# public/ files that existed at build time, so runtime uploads written there
+# are saved but never served. Keeping them here also means one persistent
+# disk mounted at /app/data preserves both the database and the images.
+UPLOADS_DIR="/app/data/uploads"
 
 echo "=== LandingOS container starting ==="
 
 # 1. Ensure dirs exist (the volume mount may start empty).
 mkdir -p "$DATA_DIR" "$UPLOADS_DIR"
+export UPLOADS_DIR
 echo "  ✓ data dir: $DATA_DIR"
+echo "  ✓ uploads dir: $UPLOADS_DIR"
 echo "  ✓ DATABASE_URL: $DATABASE_URL"
-
-# If uploads volume is empty, copy the default product images shipped in the
-# image so storefront landing pages render their gallery images on first boot.
-if [ -z "$(ls -A "$UPLOADS_DIR" 2>/dev/null)" ]; then
-  echo "  ✓ uploads volume empty — initializing with default images"
-fi
 
 # Fail fast if AUTH_SECRET is not set — the app cannot sign sessions without it.
 if [ -z "$AUTH_SECRET" ]; then

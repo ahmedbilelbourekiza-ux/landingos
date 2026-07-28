@@ -78,6 +78,10 @@ const PUBLIC_API_ROUTES: { method: string; path: string }[] = [
 // Path prefixes that are public for GET requests (storefront data reads).
 const PUBLIC_GET_PREFIXES = [
   "/api/public/",
+  // Uploaded product images. Storefront visitors are not logged in, so these
+  // must be readable without auth — same as any static image. The route only
+  // ever reads image bytes out of the uploads directory.
+  "/api/uploads/",
 ];
 
 const PUBLIC_PAGE_PREFIXES = [

@@ -6,6 +6,7 @@ import sharp from "sharp";
 
 import { ok, fail, serverError } from "@/lib/api-response";
 import { getAuthenticatedAdmin } from "@/lib/auth/require-auth";
+import { getUploadsDir } from "@/lib/uploads";
 
 // POST /api/upload — image upload for the landing builder.
 //
@@ -14,15 +15,22 @@ import { getAuthenticatedAdmin } from "@/lib/auth/require-auth";
 //   1. Validated (type + size ≤ 8 MB)
 //   2. Re-encoded/optimized via sharp (strips EXIF, converts to webp for
 //      photos, preserves format for transparency)
-//   3. Saved to public/uploads/<uuid>.<ext>
+//   3. Saved to the runtime uploads directory (see src/lib/uploads.ts)
 //   4. The public URL is returned: /uploads/<uuid>.<ext>
 //
 // The route is protected by the middleware (deny-by-default: /api/upload is
 // not in the public allowlist). We re-check auth here as defence in depth.
 //
-// Files are stored on the local filesystem under public/uploads. This is
-// suitable for single-instance deployments. For multi-instance or CDN-backed
-// deployments, swap the fs.writeFile call for your storage provider's upload.
+// Storage location: NOT public/uploads. Next.js only serves files that were
+// in public/ at BUILD time, so anything written there at runtime is saved but
+// never served — the image silently 404s. Files therefore go to the uploads
+// directory resolved by getUploadsDir() and are served back by the
+// /api/uploads/[...path] route, with a rewrite in next.config.ts keeping the
+// public-facing /uploads/<file> URLs unchanged.
+//
+// This is single-instance local-disk storage. For multi-instance or
+// CDN-backed deployments, swap the sharp .toFile() call for your storage
+// provider's upload and return its URL instead.
 
 const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8 MB
 
@@ -86,7 +94,7 @@ export async function POST(req: NextRequest) {
     // channels keep working.
     const ext = format === "jpeg" ? "jpg" : format;
     const filename = `${randomUUID()}.${ext}`;
-    const uploadsDir = path.join(process.cwd(), "public", "uploads");
+    const uploadsDir = getUploadsDir();
     const filePath = path.join(uploadsDir, filename);
 
     // Ensure the uploads directory exists (idempotent).
@@ -102,8 +110,8 @@ export async function POST(req: NextRequest) {
       .toFormat(format, { quality: 82 })
       .toFile(filePath);
 
-    // Return the public URL. The /uploads path is served as a static asset
-    // by Next.js (the public/ folder is automatically exposed).
+    // Return the public URL. /uploads/<file> is rewritten to the
+    // /api/uploads/<file> route handler, which streams it back from disk.
     const url = `/uploads/${filename}`;
     return ok({ url, filename, size: file.size });
   } catch (error) {

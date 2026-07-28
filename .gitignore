@@ -43,6 +43,8 @@ yarn-error.log*
 next-env.d.ts
 local-*
 .local-preview/
+# Runtime-uploaded images (see src/lib/uploads.ts) — user content, not source.
+/data/uploads/
 .claude
 .z-ai-config
 *.log
