@@ -1,6 +1,11 @@
 import path from "path";
 
-// Where runtime-uploaded images live on disk.
+// Local-disk fallback location for uploaded images.
+//
+// This is only used when Cloudflare R2 is NOT configured (see src/lib/r2.ts).
+// R2 is the production path — it survives Render's ephemeral filesystem —
+// while this keeps local development and self-hosted deployments working with
+// no cloud account required.
 //
 // IMPORTANT: this is deliberately NOT public/uploads. Next.js only serves
 // files that were present in public/ at BUILD time — anything written there

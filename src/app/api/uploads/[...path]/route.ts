@@ -3,6 +3,7 @@ import path from "path";
 import { promises as fs } from "fs";
 
 import { getUploadsDir, isSafeUploadFilename, contentTypeFor } from "@/lib/uploads";
+import { isR2Configured, getObject, getPublicUrl } from "@/lib/r2";
 
 // GET /api/uploads/<filename> — serves a runtime-uploaded image.
 //
@@ -11,9 +12,18 @@ import { getUploadsDir, isSafeUploadFilename, contentTypeFor } from "@/lib/uploa
 // /uploads/:path* here (as an afterFiles rewrite, so genuine build-time files
 // in public/uploads still win and are served statically as before).
 //
+// Lookup order:
+//   1. R2_PUBLIC_BASE_URL set → 302 to Cloudflare's CDN, so image bytes never
+//      pass through this server at all.
+//   2. R2 configured → stream the object back through this route (keeps the
+//      bucket private; no public bucket setup needed).
+//   3. Otherwise → read from the local uploads directory.
+//
+// Step 3 also runs as a fallback if R2 returns nothing, so images uploaded to
+// disk BEFORE R2 was switched on keep resolving.
+//
 // This route is PUBLIC: storefront product images must be visible to
-// customers who are not logged in. It only ever reads from the uploads
-// directory and only ever returns image bytes.
+// customers who are not logged in. It only ever returns image bytes.
 
 export async function GET(
   _req: NextRequest,
@@ -35,6 +45,31 @@ export async function GET(
       return new Response("Not found", { status: 404 });
     }
 
+    // 1. Public bucket / custom domain — hand the browser straight to
+    //    Cloudflare so this server never carries the image bytes.
+    const publicUrl = getPublicUrl(filename);
+    if (publicUrl) {
+      return Response.redirect(publicUrl, 302);
+    }
+
+    // 2. Private R2 bucket — proxy the object through this route.
+    if (isR2Configured()) {
+      const object = await getObject(filename);
+      if (object) {
+        return new Response(new Uint8Array(object.body), {
+          status: 200,
+          headers: {
+            "Content-Type": object.contentType ?? contentTypeFor(filename),
+            "Content-Length": String(object.body.byteLength),
+            "Cache-Control": "public, max-age=31536000, immutable",
+          },
+        });
+      }
+      // Not in R2 — fall through to disk, which covers images uploaded
+      // before R2 was enabled.
+    }
+
+    // 3. Local disk.
     const uploadsDir = getUploadsDir();
     const filePath = path.join(uploadsDir, filename);
 

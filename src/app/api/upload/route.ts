@@ -6,7 +6,8 @@ import sharp from "sharp";
 
 import { ok, fail, serverError } from "@/lib/api-response";
 import { getAuthenticatedAdmin } from "@/lib/auth/require-auth";
-import { getUploadsDir } from "@/lib/uploads";
+import { getUploadsDir, contentTypeFor } from "@/lib/uploads";
+import { isR2Configured, putObject } from "@/lib/r2";
 
 // POST /api/upload — image upload for the landing builder.
 //
@@ -15,22 +16,25 @@ import { getUploadsDir } from "@/lib/uploads";
 //   1. Validated (type + size ≤ 8 MB)
 //   2. Re-encoded/optimized via sharp (strips EXIF, converts to webp for
 //      photos, preserves format for transparency)
-//   3. Saved to the runtime uploads directory (see src/lib/uploads.ts)
+//   3. Stored (Cloudflare R2 when configured, otherwise local disk)
 //   4. The public URL is returned: /uploads/<uuid>.<ext>
 //
 // The route is protected by the middleware (deny-by-default: /api/upload is
 // not in the public allowlist). We re-check auth here as defence in depth.
 //
-// Storage location: NOT public/uploads. Next.js only serves files that were
-// in public/ at BUILD time, so anything written there at runtime is saved but
-// never served — the image silently 404s. Files therefore go to the uploads
-// directory resolved by getUploadsDir() and are served back by the
-// /api/uploads/[...path] route, with a rewrite in next.config.ts keeping the
-// public-facing /uploads/<file> URLs unchanged.
+// Storage: R2 is used whenever its environment variables are set (see
+// src/lib/r2.ts) — required in production because Render's free tier wipes
+// the container filesystem on every restart. Without R2 configured it falls
+// back to a local directory so development works with no cloud account.
 //
-// This is single-instance local-disk storage. For multi-instance or
-// CDN-backed deployments, swap the sharp .toFile() call for your storage
-// provider's upload and return its URL instead.
+// The returned URL shape is identical either way — always /uploads/<file> —
+// so the database stores the same value regardless of backend and images
+// uploaded before/after enabling R2 both keep working.
+//
+// NOTE: files must never be written into public/. Next.js only serves
+// public/ files that existed at BUILD time, so a runtime write there is saved
+// but silently 404s. Serving happens via /api/uploads/[...path] instead, with
+// a rewrite in next.config.ts preserving the /uploads/<file> URLs.
 
 const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8 MB
 
@@ -94,21 +98,27 @@ export async function POST(req: NextRequest) {
     // channels keep working.
     const ext = format === "jpeg" ? "jpg" : format;
     const filename = `${randomUUID()}.${ext}`;
-    const uploadsDir = getUploadsDir();
-    const filePath = path.join(uploadsDir, filename);
-
-    // Ensure the uploads directory exists (idempotent).
-    await fs.mkdir(uploadsDir, { recursive: true });
 
     // Process the image: strip EXIF metadata, limit max dimensions to 2000px
     // on the longest edge (enough for high-DPI product photos without
     // storing enormous files), and re-encode in the original format at
     // quality 82 (visually identical, ~30% smaller).
-    await sharp(bytes)
+    //
+    // Produced as a buffer rather than written straight to a file, so the
+    // same processed bytes can go to either storage backend.
+    const processed = await sharp(bytes)
       .rotate() // auto-orient based on EXIF
       .resize(2000, 2000, { fit: "inside", withoutEnlargement: true })
       .toFormat(format, { quality: 82 })
-      .toFile(filePath);
+      .toBuffer();
+
+    if (isR2Configured()) {
+      await putObject(filename, processed, contentTypeFor(filename));
+    } else {
+      const uploadsDir = getUploadsDir();
+      await fs.mkdir(uploadsDir, { recursive: true });
+      await fs.writeFile(path.join(uploadsDir, filename), processed);
+    }
 
     // Return the public URL. /uploads/<file> is rewritten to the
     // /api/uploads/<file> route handler, which streams it back from disk.
