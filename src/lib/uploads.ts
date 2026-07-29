@@ -13,9 +13,10 @@ import path from "path";
 // broken images. Uploads are therefore stored outside public/ and served by
 // the /api/uploads/[...path] route handler instead.
 //
-// The default sits under the same /app/data directory the SQLite database
-// uses, so a single persistent disk mounted at /app/data preserves both the
-// database and the uploaded images.
+// The default sits under /app/data in the container. The database no longer
+// lives there — it is external Postgres — so this path only matters when
+// self-hosting without R2, where mounting a volume at /app/data keeps uploads.
+// On a host with an ephemeral filesystem, anything written here is temporary.
 //
 // Override with UPLOADS_DIR if you mount storage somewhere else.
 export function getUploadsDir(): string {

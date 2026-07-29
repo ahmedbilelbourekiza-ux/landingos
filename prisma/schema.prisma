@@ -1,9 +1,17 @@
 // LandingOS — Prisma schema
 //
-// Provider is SQLite in this sandbox. The schema is provider-portable:
-// switching to PostgreSQL is a one-line change — set `provider = "postgresql"`
-// and point DATABASE_URL at a Postgres connection string. No @db.* native
-// type annotations are used so the same schema compiles on both providers.
+// Provider is PostgreSQL (Neon). It was SQLite originally, but a SQLite file
+// only survives where there is a persistent filesystem — and the Render free
+// tier wipes the container on every deploy AND every idle spin-down, which
+// silently destroyed orders, landing pages, and pixel configs within hours.
+//
+// The schema is provider-portable and uses no @db.* native type annotations,
+// which is what kept this migration to a provider swap rather than a rewrite.
+//
+// NOTE for anyone changing queries: Postgres `LIKE` is case-SENSITIVE where
+// SQLite's was not. Prisma's `contains`/`startsWith`/`endsWith` compile to
+// LIKE, so they need `mode: "insensitive"` to behave the way they did on
+// SQLite. See the order search in src/app/api/orders/route.ts.
 //
 // Data model scope (Task 2): the landing-page data engine. One LandingPage
 // represents one COD product. All child records (media, variants, features,
@@ -15,7 +23,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -455,7 +463,9 @@ model StoreSettings {
 // with HMAC-SHA256 so the receiver can verify authenticity.
 // `events` is a JSON string array of subscribed event names, e.g.
 //   ["order.created","order.updated","product.updated"]
-// (SQLite has no native array type; the app parses/serializes this.)
+// Kept as a serialized string rather than a Postgres native array: the app
+// already parses/serializes it, and leaving the column type alone meant the
+// SQLite→Postgres move needed no data migration for existing rows.
 model WebhookEndpoint {
   id         String   @id @default(cuid())
   label      String

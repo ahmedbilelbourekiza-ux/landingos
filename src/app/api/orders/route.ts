@@ -23,11 +23,15 @@ export async function GET(req: NextRequest) {
 
     const where = {
       ...(status !== "ALL" && { status }),
+      // `mode: "insensitive"` is required, not cosmetic: `contains` compiles
+      // to SQL LIKE, which was case-insensitive under SQLite but is
+      // case-sensitive on Postgres. Without it, searching "ahmed" would stop
+      // matching a customer stored as "Ahmed" after the Postgres migration.
       ...(search && {
         OR: [
-          { id: { contains: search } },
-          { customerName: { contains: search } },
-          { phone: { contains: search } },
+          { id: { contains: search, mode: "insensitive" as const } },
+          { customerName: { contains: search, mode: "insensitive" as const } },
+          { phone: { contains: search, mode: "insensitive" as const } },
         ],
       }),
     };

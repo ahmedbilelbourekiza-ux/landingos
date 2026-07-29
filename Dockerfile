@@ -5,9 +5,15 @@
 #   2) builder — prisma generate + next build → standalone output
 #   3) runner  — slim runtime: standalone server + static assets + prisma client
 #
-# Persistence: the app uses SQLite (db/custom.db) and local image uploads
-# (public/uploads). Both live under /app/data, which Railway/Render mount as a
-# persistent volume so data survives redeploys. DATABASE_URL points there.
+# Persistence: NOTHING durable lives inside this image. The database is an
+# external Postgres (Neon) reached via a runtime DATABASE_URL, and uploaded
+# images go to Cloudflare R2. That combination is what lets the app run on a
+# host with a purely ephemeral filesystem — such as the Render free tier, which
+# wipes the container on every deploy and every idle spin-down.
+#
+# /app/data still exists as a local fallback for uploads when R2 is not
+# configured (useful for self-hosting with a mounted volume), but on Render it
+# is scratch space and its contents are expected to disappear.
 
 # ---------- 1) deps ----------
 FROM node:22-alpine AS deps
@@ -32,7 +38,10 @@ COPY . .
 # placeholder so the build doesn't hard-fail, but the real secret MUST be
 # provided as a runtime env var on the host.
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV DATABASE_URL="file:/tmp/build.db"
+# Placeholder only. `prisma generate` and `next build` never open a connection,
+# but Prisma validates that the URL scheme matches the datasource provider — so
+# this has to be a postgresql:// string, not a file: one. Nothing connects here.
+ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 ENV AUTH_SECRET="build-time-placeholder-change-at-runtime"
 
 # Generate the Prisma client, then build the standalone Next.js bundle.
@@ -73,11 +82,15 @@ COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --chown=nextjs:nodejs package.json ./
 
-# Persist SQLite DB + uploads across redeploys. /app/data is the volume mount.
-ENV DATABASE_URL="file:/app/data/custom.db"
+# DATABASE_URL is deliberately NOT set here. It must come from the host at
+# runtime (Render → Environment) pointing at the external Postgres. Baking a
+# default in would be worse than having none: a forgotten host variable would
+# silently fall back to a throwaway database instead of failing, and the
+# entrypoint would happily seed a fresh store over an empty schema. The
+# entrypoint refuses to start without it.
 
-# Entrypoint: push schema, seed admin/themes/wilayas (idempotent), seed demo
-# data, then start the server. The DB file lives on the persistent volume.
+# Entrypoint: verify config, push schema, seed admin/themes/wilayas
+# (idempotent), seed demo data, then start the server.
 COPY --chown=nextjs:nodejs docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
