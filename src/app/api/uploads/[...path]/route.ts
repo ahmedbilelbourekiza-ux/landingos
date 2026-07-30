@@ -19,8 +19,15 @@ import { isR2Configured, getObject, getPublicUrl } from "@/lib/r2";
 //      bucket private; no public bucket setup needed).
 //   3. Otherwise → read from the local uploads directory.
 //
-// Step 3 also runs as a fallback if R2 returns nothing, so images uploaded to
-// disk BEFORE R2 was switched on keep resolving.
+// Step 3 also runs as a fallback when step 2 finds nothing in R2, so images
+// uploaded to disk BEFORE R2 was switched on keep resolving.
+//
+// That fallback does NOT apply to step 1. Redirecting is unconditional and
+// deliberately so — checking the object exists first would mean a round-trip
+// to R2 on every image request, which is exactly the cost the CDN redirect
+// exists to avoid. The consequence: on a host WITH a persistent disk, setting
+// R2_PUBLIC_BASE_URL orphans any image still only on disk. Upload those to the
+// bucket before setting it. On an ephemeral host there is nothing to orphan.
 //
 // This route is PUBLIC: storefront product images must be visible to
 // customers who are not logged in. It only ever returns image bytes.
