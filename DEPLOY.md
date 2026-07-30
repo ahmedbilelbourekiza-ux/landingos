@@ -216,6 +216,32 @@ Check the deploy logs. Note that `next.config.ts` sets
 `typescript.ignoreBuildErrors: true`, so type errors do not block a build — a
 failure there is a genuine build or dependency problem.
 
+**`npm ci` fails with `Missing: <pkg> from lock file`**
+`package.json` and `package-lock.json` disagree — but check the npm *version*
+before assuming the lockfile is wrong. npm 10 and npm 11 resolve optional peer
+dependencies differently, so a lockfile written by one can be rejected by the
+other while installing perfectly on your machine.
+
+The Dockerfile pins `npm@10.9.4` for exactly this reason. Regenerate the
+lockfile with the **same** version, never with your local npm:
+
+```bash
+npx npm@10.9.4 install --package-lock-only
+```
+
+Then verify against both, since a lockfile that satisfies only one is a trap
+for the next person:
+
+```bash
+npx npm@10.9.4 ci --dry-run
+npm ci --dry-run
+```
+
+This bit once already: `next` pins the hoisted `@swc/helpers` to `0.5.15` while
+a transitive peer of `next-intl` wants `>=0.5.17`. npm 11 omitted the nested
+`0.5.23` copy; npm 10 required it, and the Render build died at `npm ci` while
+`npm ci` passed locally.
+
 **Database is empty after a deploy**
 If this happens *now*, `DATABASE_URL` is pointing somewhere unexpected — check
 the host printed in the startup logs. Before the Postgres migration this was
