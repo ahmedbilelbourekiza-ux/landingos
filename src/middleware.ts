@@ -73,6 +73,11 @@ const PUBLIC_API_ROUTES: { method: string; path: string }[] = [
   { method: "POST", path: "/api/draft-orders" }, // abandoned-checkout capture
   { method: "POST", path: "/api/auth/login" },
   { method: "POST", path: "/api/auth/logout" },
+  // GET logout clears the cookie and redirects to /login. Public because it is
+  // the recovery path out of a broken session — gating it behind auth would
+  // mean the states that most need it (orphaned or already-cleared session)
+  // could not reach it. It only ever deletes a cookie.
+  { method: "GET", path: "/api/auth/logout" },
 ];
 
 // Path prefixes that are public for GET requests (storefront data reads).

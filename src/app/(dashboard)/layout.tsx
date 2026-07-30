@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { db } from "@/lib/db";
@@ -17,9 +18,18 @@ export const metadata: Metadata = {
 // middleware already enforces the redirect, so this is a UX hint, not a
 // security control — but it makes the lock obvious to the user.
 //
-// The middleware guarantees that any request reaching this layout is
-// authenticated. If the session cookie is missing or invalid, the user has
-// already been redirected to /login. We still guard defensively.
+// The middleware guarantees the SIGNATURE on any request reaching this layout
+// is valid. It cannot guarantee the admin still exists, because it runs on the
+// Edge runtime with no database access. This layout is therefore the first
+// place on a page navigation where an orphaned session can be detected — a
+// token that verifies but names an admin id that is no longer in the database
+// (see src/lib/auth/require-auth.ts for how that arises).
+//
+// Previously this case fell through to `mustChangePassword = false` and
+// rendered the shell as though everything were fine, which is what produced
+// the failure mode of a dashboard that loads but where every API call returns
+// 401 and the user cannot reach /login to fix it. Redirecting through the
+// logout route clears the cookie and lands them on the login form.
 export default async function DashboardLayout({
   children,
 }: {
@@ -36,7 +46,13 @@ export default async function DashboardLayout({
         where: { id: session.adminId },
         select: { mustChangePassword: true },
       });
-      mustChangePassword = admin?.mustChangePassword ?? false;
+      if (!admin) {
+        // Orphaned session. GET /api/auth/logout clears the cookie and then
+        // redirects to /login; redirecting straight to /login instead would
+        // bounce off the middleware back to /dashboard forever.
+        redirect("/api/auth/logout");
+      }
+      mustChangePassword = admin.mustChangePassword;
     }
   }
 
