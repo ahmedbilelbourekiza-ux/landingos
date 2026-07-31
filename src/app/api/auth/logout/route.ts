@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import {
   getSessionCookieName,
   getSessionCookieOptions,
@@ -28,8 +28,20 @@ export async function POST() {
 // (which sees a signature-valid session and sends the user back to /dashboard)
 // into an infinite loop. Routing through here clears the cookie first, so the
 // middleware then sees a logged-out request and lets /login render.
-export async function GET(req: NextRequest) {
+// The Location header is deliberately RELATIVE, and the response is built by
+// hand rather than with NextResponse.redirect(), which requires an absolute URL.
+//
+// Behind Render's proxy the container is addressed internally, so `req.url`
+// resolves to the bind address rather than the public hostname:
+// `new URL("/login", req.url)` produced `https://0.0.0.0:10000/login`, which no
+// browser can follow. The middleware is unaffected because Next rewrites its
+// redirects to relative form; route handlers get no such treatment.
+//
+// A relative Location is valid per RFC 7231 and leaves the browser to resolve
+// it against whatever host it actually used, so this stays correct on any
+// domain — the deployment URL, a custom domain, or localhost.
+export async function GET() {
   return clearSessionCookie(
-    NextResponse.redirect(new URL("/login", req.url), 303),
+    new NextResponse(null, { status: 303, headers: { Location: "/login" } }),
   );
 }
