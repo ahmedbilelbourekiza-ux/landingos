@@ -53,6 +53,11 @@ export function ProductInfo({
           productTitle={page.title}
           buttonText={page.buttonText}
           currency={page.currency}
+          config={page.orderForm}
+          // Defaults match the schema's: a product with no settings row has
+          // always been home-delivery-only.
+          homeDeliveryEnabled={page.setting?.homeDeliveryEnabled ?? true}
+          stopDeskEnabled={page.setting?.stopDeskEnabled ?? false}
         />
       </div>
     </motion.div>

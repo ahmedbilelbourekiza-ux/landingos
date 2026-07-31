@@ -59,7 +59,13 @@ export function triggerProductWebhook(event: WebhookEvent, productId: string): v
       const product = await db.landingPage.findUnique({
         where: { id: productId },
         include: {
-          media: { orderBy: { displayOrder: "asc" } },
+          // Gallery only. The CRM payload's `images` has always meant product
+          // photos; letting long-form description images in would change the
+          // meaning of an existing field for every downstream consumer.
+          media: {
+            where: { placement: "GALLERY" },
+            orderBy: { displayOrder: "asc" },
+          },
           variants: { orderBy: { displayOrder: "asc" } },
           category: { select: { name: true } },
         },

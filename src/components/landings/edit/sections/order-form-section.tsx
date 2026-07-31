@@ -2,11 +2,27 @@
 
 import * as React from "react";
 import { ShoppingCart } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   FIELD_DEFS,
+  normalizeOrder,
   type OrderFormConfig,
   type OrderFormField,
   type FieldKey,
@@ -58,6 +74,37 @@ export function OrderFormSection({
     section.markDirty();
   };
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  // Normalized rather than read raw: a config saved before ordering existed
+  // has no `order`, and one saved before a field was added would omit it.
+  // normalizeOrder guarantees every field appears exactly once, so the list
+  // below can never drop or duplicate a row.
+  const fieldOrder = React.useMemo(() => normalizeOrder(config.order), [config.order]);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setConfig((prev) => {
+      const current = normalizeOrder(prev.order);
+      const oldIndex = current.indexOf(active.id as FieldKey);
+      const newIndex = current.indexOf(over.id as FieldKey);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return { ...prev, order: arrayMove(current, oldIndex, newIndex) };
+    });
+    section.markDirty();
+  };
+
+  // Display names come from FIELD_DEFS; the render order comes from the
+  // config. Kept as a lookup so reordering never has to touch the metadata.
+  const displayNames = React.useMemo(
+    () => Object.fromEntries(FIELD_DEFS.map((d) => [d.key, d.displayName])) as Record<FieldKey, string>,
+    [],
+  );
+
   const handleCancel = () => {
     setConfig(initialValues.config);
     section.reset();
@@ -74,15 +121,30 @@ export function OrderFormSection({
       onCancel={handleCancel}
     >
       <div className="flex flex-col gap-3">
-        {FIELD_DEFS.map((def) => (
-          <OrderFormFieldEditor
-            key={def.key}
-            fieldKey={def.key}
-            displayName={def.displayName}
-            field={config[def.key]}
-            onChange={updateField}
-          />
-        ))}
+        <p className="text-[11px] text-muted-foreground">
+          Drag the handle to reorder. Fields appear on the storefront form in
+          this order, top to bottom.
+        </p>
+
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={fieldOrder} strategy={verticalListSortingStrategy}>
+            <div className="flex flex-col gap-3">
+              {fieldOrder.map((key) => (
+                <OrderFormFieldEditor
+                  key={key}
+                  fieldKey={key}
+                  displayName={displayNames[key]}
+                  field={config[key]}
+                  onChange={updateField}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
 
         <div className="rounded-xl border bg-muted/20 p-3">
           <Label className="text-xs text-muted-foreground">

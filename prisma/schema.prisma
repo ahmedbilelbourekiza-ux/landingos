@@ -42,6 +42,35 @@ enum LandingMediaType {
   VIDEO
 }
 
+// Where a piece of media renders on the public page.
+//
+// GALLERY     — the product slider at the top. media[0] is the hero image.
+// DESCRIPTION — long-form images rendered below the description, the
+//               equivalent of images inside a Shopify product description.
+//
+// One table rather than two: both are ordered image lists owned by a landing
+// page, so a second model would duplicate the upload, reorder, and cascade
+// logic to gain nothing. GALLERY is the default so every pre-existing row
+// keeps its current meaning without a data migration.
+//
+// IMPORTANT: because both live in `media`, every query that wants the slider
+// must filter on placement. Reading page.media unfiltered now yields
+// description images too — which would put them in the slider and, since
+// media[0] is the hero, could silently swap the hero image.
+enum LandingMediaPlacement {
+  GALLERY
+  DESCRIPTION
+}
+
+// Shipping method for an order. Algeria's COD market runs on two: delivery to
+// the customer's address, or pickup at the carrier's desk (stop desk), which
+// is cheaper. Per-wilaya prices for both already live on GlobalDeliveryPrice
+// as homePrice/deskPrice.
+enum ShippingMethod {
+  HOME
+  DESK
+}
+
 // Order lifecycle. NEW when the customer submits, then progresses through
 // CONFIRMED → PREPARING → SHIPPED → DELIVERED. CANCELLED is a terminal state.
 enum OrderStatus {
@@ -105,13 +134,18 @@ model LandingMedia {
   url           String
   altText       String?
   displayOrder  Int             @default(0)
+  // Slider image vs. long-form description image. See LandingMediaPlacement.
+  // displayOrder is scoped to the placement, so each list numbers from 0
+  // independently.
+  placement     LandingMediaPlacement @default(GALLERY)
 
   landingPage   LandingPage     @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
 
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
-  @@index([landingPageId, displayOrder])
+  // placement precedes displayOrder because every read filters by it first.
+  @@index([landingPageId, placement, displayOrder])
 }
 
 // A selectable product option, e.g. name "Size" / value "Large". Flat model:
@@ -204,6 +238,19 @@ model LandingSetting {
   freeShipping     Boolean      @default(false)
   orderFormConfig  String?
 
+  // Which shipping methods this product offers at checkout. Two booleans
+  // rather than a three-value enum (HOME/DESK/BOTH): "both" is not a third
+  // kind of shipping, it is both of the two, and a carrier added later
+  // becomes one more flag instead of an enum with five combinations.
+  //
+  // Defaults reproduce today's behaviour exactly — every existing product was
+  // home-delivery-only — so no product changes until the admin opts in.
+  //
+  // The API rejects turning both off; a product with no shipping method
+  // cannot be ordered.
+  homeDeliveryEnabled Boolean   @default(true)
+  stopDeskEnabled     Boolean   @default(false)
+
   landingPage      LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
 
   createdAt        DateTime    @default(now())
@@ -271,6 +318,12 @@ model Order {
   productPrice  Decimal     // snapshot — unit price including variant extras
   shippingPrice Decimal     // snapshot — delivery price for the selected wilaya
   totalPrice    Decimal     // snapshot — (productPrice * quantity) + shippingPrice
+  // Which method the customer picked, and therefore which of the wilaya's two
+  // prices shippingPrice was taken from. Snapshot like every other field here:
+  // the order must still read correctly after the product stops offering it.
+  // Defaults to HOME because every order predating this column was home
+  // delivery — the only method that existed.
+  shippingMethod ShippingMethod @default(HOME)
   status        OrderStatus @default(NEW)
 
   landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
@@ -313,6 +366,9 @@ model DraftOrder {
   productPrice     Decimal?
   shippingPrice    Decimal?
   totalPrice       Decimal?
+  // Nullable, unlike Order.shippingMethod: a draft is captured mid-typing and
+  // the customer may not have chosen yet. Null means "not picked so far".
+  shippingMethod   ShippingMethod?
   notifiedAt       DateTime?
   convertedOrderId String?
   convertedAt      DateTime?

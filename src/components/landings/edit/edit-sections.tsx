@@ -12,6 +12,8 @@ import {
   HelpCircle,
   Search,
   Plug,
+  Rows3,
+  Truck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -24,6 +26,8 @@ import { ImagesSection } from "./sections/images-section";
 import { VariantsSection } from "./sections/variants-section";
 import { ReviewsSection } from "./sections/reviews-section";
 import { OrderFormSection } from "./sections/order-form-section";
+import { DescriptionImagesSection } from "./sections/description-images-section";
+import { ShippingSection } from "./sections/shipping-section";
 const SECTIONS: {
   id: string;
   title: string;
@@ -32,8 +36,10 @@ const SECTIONS: {
 }[] = [
   { id: "general", title: "General", description: "Title, slug, description, and button text.", icon: Settings2 },
   { id: "images", title: "Images & Media", description: "Product gallery, videos, and thumbnails.", icon: ImageIcon },
+  { id: "description-images", title: "Landing Page Images", description: "Long-form images shown below the product description.", icon: Rows3 },
   { id: "pricing", title: "Pricing", description: "Price, old price, and currency.", icon: Tag },
   { id: "variants", title: "Variants", description: "Colors, sizes, and product options.", icon: Layers },
+  { id: "shipping", title: "Shipping", description: "Home delivery, stop desk, or both.", icon: Truck },
   { id: "order-form", title: "Order Form", description: "Configure the purchase form fields.", icon: ShoppingCart },
   { id: "benefits", title: "Benefits", description: "Trust badges and key selling points.", icon: Sparkles },
   { id: "reviews", title: "Reviews", description: "Customer testimonials and ratings.", icon: Star },
@@ -62,6 +68,9 @@ export function EditSections({
       variants: (v: PreviewState["variants"]) => onPreviewChange("variants", v),
       reviews: (v: PreviewState["reviews"]) => onPreviewChange("reviews", v),
       orderForm: (v: PreviewState["orderForm"]) => onPreviewChange("orderForm", v),
+      descriptionImages: (v: PreviewState["descriptionImages"]) =>
+        onPreviewChange("descriptionImages", v),
+      shipping: (v: PreviewState["shipping"]) => onPreviewChange("shipping", v),
     }),
     [onPreviewChange],
   );
@@ -96,6 +105,26 @@ export function EditSections({
               landingId={landingId}
               initialValues={preview.images}
               onPreviewChange={callbacks.images}
+            />
+          );
+        }
+        if (section.id === "description-images") {
+          return (
+            <DescriptionImagesSection
+              key={section.id}
+              landingId={landingId}
+              initialValues={preview.descriptionImages}
+              onPreviewChange={callbacks.descriptionImages}
+            />
+          );
+        }
+        if (section.id === "shipping") {
+          return (
+            <ShippingSection
+              key={section.id}
+              landingId={landingId}
+              initialValues={preview.shipping}
+              onPreviewChange={callbacks.shipping}
             />
           );
         }

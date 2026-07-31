@@ -3,6 +3,7 @@
 import * as React from "react";
 import { formatPrice } from "@/lib/landing/format";
 import type { PreviewState } from "@/types/preview";
+import { normalizeOrder } from "@/lib/landing/mock-order-form";
 
 // Order form preview. Renders the configured form fields plus a wilaya
 // selector (loaded from the API) and a baladia selector that filters by the
@@ -36,14 +37,13 @@ export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
     });
   }, []);
 
-  const visibleFields = [
-    "customerName",
-    "phone",
-    "wilaya",
-    "baladia",
-    "notes",
-    "quantity",
-  ].filter((k) => config[k as keyof typeof config]?.visible);
+  // Driven by the configured order rather than a hardcoded list, so dragging
+  // a field in the editor moves it here immediately. Indexing by FieldKey
+  // (not `keyof OrderFormConfig`) keeps the element type OrderFormField —
+  // the config also holds `order` and `buttonText`, which are not fields.
+  const visibleFields = normalizeOrder(config.order).filter(
+    (k) => config[k]?.visible,
+  );
 
   // Find the selected wilaya's delivery price from global settings
   const shipping = deliveryPrices[Number(selectedWilaya)] ?? 0;
@@ -69,7 +69,7 @@ export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
       {visibleFields
         .filter((k) => k !== "wilaya" && k !== "baladia")
         .map((key) => {
-          const field = config[key as keyof typeof config];
+          const field = config[key];
           return (
             <div key={key} className="flex flex-col gap-0.5">
               <span className="text-[9px] font-medium text-foreground">

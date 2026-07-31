@@ -5,8 +5,14 @@
 // boundary (Decimal → Number), so swapping mock data for a real row is a
 // type-only change in the loader — no component rewrite.
 
+import type { OrderFormConfig } from "@/lib/landing/mock-order-form";
+
 export type LandingMediaType = "IMAGE" | "VIDEO";
 export type LandingPageStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
+// Where an image renders: the top slider, or inline below the description.
+export type LandingMediaPlacement = "GALLERY" | "DESCRIPTION";
+// Home delivery to the customer's address, or pickup at the carrier's desk.
+export type ShippingMethod = "HOME" | "DESK";
 
 export interface LandingMediaData {
   id: string;
@@ -55,6 +61,11 @@ export interface LandingSettingData {
   showReviews: boolean;
   showFAQ: boolean;
   showFeatures: boolean;
+  // Shipping methods this product offers. The checkout only shows the enabled
+  // ones; if just one is enabled there is nothing to choose and the selector
+  // is skipped entirely.
+  homeDeliveryEnabled: boolean;
+  stopDeskEnabled: boolean;
 }
 
 export interface LandingPageData {
@@ -72,12 +83,21 @@ export interface LandingPageData {
   facebookPixel: string | null;
   webhookUrl: string | null;
   published: boolean;
+  // Slider images only. Description images are deliberately a separate field
+  // rather than a filter applied by each consumer — `media` keeps meaning
+  // exactly what it did, so nothing that reads it needed to change.
   media: LandingMediaData[];
+  // Long-form images rendered below the description, in saved order.
+  descriptionImages: LandingMediaData[];
   variants: LandingVariantData[];
   features: LandingFeatureData[];
   reviews: LandingReviewData[];
   faqs: LandingFAQData[];
   setting: LandingSettingData | null;
+  // Field order, labels, and visibility for the checkout form. The storefront
+  // previously hardcoded all of this; it now renders from here so the admin's
+  // arrangement is what customers actually see.
+  orderForm: OrderFormConfig;
 }
 
 // Variants are stored flat (one row per option value) to match Prisma, but

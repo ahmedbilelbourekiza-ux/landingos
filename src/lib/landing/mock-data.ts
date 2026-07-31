@@ -1,4 +1,5 @@
 import type { LandingPageData, VariantGroup } from "@/types/landing";
+import { defaultOrderFormConfig } from "@/lib/landing/mock-order-form";
 
 // Sample landing page used only by the /preview route — a static design
 // reference page. The public landing route /l/[slug] renders entirely from
@@ -168,7 +169,11 @@ export const mockLandingPage: LandingPageData = {
     showReviews: true,
     showFAQ: true,
     showFeatures: true,
+    homeDeliveryEnabled: true,
+    stopDeskEnabled: true,
   },
+  descriptionImages: [],
+  orderForm: defaultOrderFormConfig,
 };
 
 // Groups flat variants by name, preserving the order each option first

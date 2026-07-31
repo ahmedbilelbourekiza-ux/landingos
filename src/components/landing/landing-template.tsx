@@ -5,6 +5,7 @@ import * as React from "react";
 import { AnnouncementBar } from "./sections/announcement-bar";
 import { SiteNav } from "./sections/site-nav";
 import { ProductSection } from "./sections/product-section";
+import { DescriptionImages } from "./sections/description-images";
 import { SiteFooter } from "./sections/site-footer";
 import { StickyBuyButton } from "./sections/sticky-buy-button";
 import { ThemeProvider } from "./theme-provider";
@@ -34,6 +35,7 @@ export function LandingTemplate({
       <SiteNav />
       <main className="flex-1">
         <ProductSection page={page} store={store} />
+        <DescriptionImages images={page.descriptionImages} />
       </main>
       <SiteFooter />
       {setting?.stickyBuyButton && (

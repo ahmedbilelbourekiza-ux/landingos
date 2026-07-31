@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
           landingPage: {
             select: {
               title: true,
-              media: { take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
+              media: { where: { placement: "GALLERY" }, take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
             },
           },
         },
@@ -91,6 +91,9 @@ const createOrderSchema = z.object({
   notes: z.string().optional(),
   quantity: z.number().int().min(1, "Quantity must be at least 1"),
   variants: z.array(variantItemSchema),
+  // Defaults to HOME so a cached copy of the old storefront bundle, which
+  // does not send this field, keeps submitting valid orders during a deploy.
+  shippingMethod: z.enum(["HOME", "DESK"]).default("HOME"),
   // Meta ad-click identifiers, read from cookies by the purchase form.
   // Optional — absent for organic/non-Meta traffic.
   fbc: z.string().optional(),
@@ -107,12 +110,16 @@ export async function POST(req: NextRequest) {
     const parsed = createOrderSchema.safeParse(body);
     if (!parsed.success) return fromZodError(parsed.error);
 
-    const { landingId, customerName, phone, wilayaId, baladiaId, notes, quantity, variants, fbc, fbp, draftToken } = parsed.data;
+    const { landingId, customerName, phone, wilayaId, baladiaId, notes, quantity, variants, shippingMethod, fbc, fbp, draftToken } = parsed.data;
 
     // 1. Validate landing exists and is published
     const landing = await db.landingPage.findUnique({
       where: { id: landingId },
-      include: { variants: { orderBy: { displayOrder: "asc" } } },
+      include: {
+        variants: { orderBy: { displayOrder: "asc" } },
+        // Needed to check the requested shipping method is actually offered.
+        setting: true,
+      },
     });
     if (!landing) return fail("NOT_FOUND", "Landing page not found", 404);
     if (!landing.published || landing.status !== "PUBLISHED") {
@@ -140,11 +147,37 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 5. Look up shipping price from global delivery settings
+    // 5. Validate the requested shipping method is offered by this product.
+    // Re-checked server-side rather than trusted from the form: the client
+    // sends whichever method it rendered, and a stale page or a crafted
+    // request could otherwise book a desk order at a desk price on a product
+    // that only does home delivery. Absent settings mean home-only, matching
+    // the schema defaults for products predating this feature.
+    const homeEnabled = landing.setting?.homeDeliveryEnabled ?? true;
+    const deskEnabled = landing.setting?.stopDeskEnabled ?? false;
+    if (shippingMethod === "HOME" && !homeEnabled) {
+      return fail("SHIPPING_UNAVAILABLE", "Home delivery is not available for this product", 422);
+    }
+    if (shippingMethod === "DESK" && !deskEnabled) {
+      return fail("SHIPPING_UNAVAILABLE", "Stop desk is not available for this product", 422);
+    }
+
+    // 6. Look up shipping price from global delivery settings
     const deliveryPrice = await db.globalDeliveryPrice.findUnique({
       where: { wilayaId },
     });
     if (!deliveryPrice) return fail("NO_SHIPPING", "Delivery is not available for the selected wilaya", 422);
+
+    // deskPrice is nullable — a wilaya can have home delivery configured but
+    // no desk price. Falling back to homePrice would silently overcharge for
+    // the cheaper method, so an unpriced desk is refused instead.
+    if (shippingMethod === "DESK" && deliveryPrice.deskPrice === null) {
+      return fail(
+        "NO_SHIPPING",
+        "Stop desk delivery is not available for the selected wilaya",
+        422,
+      );
+    }
 
     // 6. Compute snapshots
     const variantExtra = variants.reduce((sum, v) => {
@@ -152,7 +185,13 @@ export async function POST(req: NextRequest) {
       return sum + (match?.extraPrice.toNumber() ?? 0);
     }, 0);
     const productPrice = landing.price.toNumber() + variantExtra;
-    const shippingPrice = deliveryPrice.homePrice.toNumber();
+    // Priced from the method the customer actually chose. The DESK branch is
+    // only reachable after the null check above, so the non-null assertion
+    // here is guarded rather than assumed.
+    const shippingPrice =
+      shippingMethod === "DESK"
+        ? deliveryPrice.deskPrice!.toNumber()
+        : deliveryPrice.homePrice.toNumber();
     const totalPrice = productPrice * quantity + shippingPrice;
 
     // 7. Create order + initial status history entry
@@ -172,6 +211,7 @@ export async function POST(req: NextRequest) {
         productPrice,
         shippingPrice,
         totalPrice,
+        shippingMethod,
         status: "NEW",
         statusHistory: {
           create: {

@@ -12,6 +12,10 @@ import type { MediaItem } from "@/lib/landing/mock-media";
 // Sortable image card for the gallery. The drag handle uses dnd-kit's
 // listeners; the remove button stops propagation so it doesn't trigger a
 // drag. The "Set as Hero" action is a small crown button in the corner.
+//
+// onSetHero is optional so the same card serves the description-image list,
+// which is a flat ordered list with no hero — passing nothing hides the crown
+// button rather than requiring a near-identical second component.
 export function SortableImageCard({
   item,
   onRemove,
@@ -19,7 +23,7 @@ export function SortableImageCard({
 }: {
   item: MediaItem;
   onRemove: (id: string) => void;
-  onSetHero: (id: string) => void;
+  onSetHero?: (id: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
@@ -58,20 +62,25 @@ export function SortableImageCard({
 
       {/* Hover actions overlay */}
       <div className="pointer-events-none absolute inset-0 flex items-end justify-between bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className="pointer-events-auto h-7 gap-1 px-2 text-xs"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onSetHero(item.id);
-          }}
-        >
-          <Crown className="size-3" />
-          Hero
-        </Button>
+        {onSetHero ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="pointer-events-auto h-7 gap-1 px-2 text-xs"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSetHero(item.id);
+            }}
+          >
+            <Crown className="size-3" />
+            Hero
+          </Button>
+        ) : (
+          // Keeps the remove button pinned right when there is no hero action.
+          <span />
+        )}
         <Button
           type="button"
           size="icon"

@@ -18,7 +18,7 @@ export async function GET(
             id: true,
             title: true,
             slug: true,
-            media: { take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
+            media: { where: { placement: "GALLERY" }, take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
           },
         },
         statusHistory: {

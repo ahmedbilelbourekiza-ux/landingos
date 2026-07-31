@@ -14,6 +14,16 @@ const fieldSchema = z.object({
   placeholder: z.string(),
 });
 
+const fieldKeySchema = z.enum([
+  "customerName",
+  "phone",
+  "wilaya",
+  "baladia",
+  "address",
+  "notes",
+  "quantity",
+]);
+
 const orderFormSchema = z.object({
   customerName: fieldSchema,
   phone: fieldSchema,
@@ -22,6 +32,12 @@ const orderFormSchema = z.object({
   address: fieldSchema,
   notes: fieldSchema,
   quantity: fieldSchema,
+  // Render order, top to bottom. Optional so a client that has not been
+  // updated can still save a config; readers repair a missing or partial
+  // order via normalizeOrder(). Not validated for completeness here for the
+  // same reason — the reader is the single place that guarantees the
+  // invariant, rather than duplicating it on the write path.
+  order: z.array(fieldKeySchema).optional(),
   buttonText: z.string(),
 });
 

@@ -29,7 +29,7 @@ export async function GET() {
         currency: true,
         status: true,
         updatedAt: true,
-        media: { take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
+        media: { where: { placement: "GALLERY" }, take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
       },
       orderBy: { updatedAt: "desc" },
     });

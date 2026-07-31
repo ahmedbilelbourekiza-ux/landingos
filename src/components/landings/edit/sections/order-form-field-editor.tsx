@@ -1,6 +1,8 @@
 "use client";
 
-import { Eye, EyeOff, Asterisk } from "lucide-react";
+import { Eye, EyeOff, Asterisk, GripVertical } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +13,11 @@ import type { OrderFormField, FieldKey } from "@/lib/landing/mock-order-form";
 // One field's configuration row. Controls visibility (Enable/Disable),
 // required flag, label, and placeholder. When not visible, the row dims
 // to signal the field won't appear on the form.
+//
+// Sortable: the row's vertical position is the field's position on the
+// storefront form. Only the grip is draggable, not the whole row — the row
+// contains text inputs and switches, and making it all a drag surface would
+// make selecting text inside a label impossible.
 export function OrderFormFieldEditor({
   fieldKey,
   displayName,
@@ -22,16 +29,33 @@ export function OrderFormFieldEditor({
   field: OrderFormField;
   onChange: (key: FieldKey, patch: Partial<OrderFormField>) => void;
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: fieldKey });
+
   return (
     <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
         "rounded-xl border bg-card p-3 transition-opacity",
         !field.visible && "opacity-50",
+        isDragging && "z-10 opacity-80 shadow-lg",
       )}
     >
       {/* Header row: name + toggles */}
       <div className="mb-3 flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">{displayName}</span>
+        <span className="flex items-center gap-1.5">
+          <button
+            type="button"
+            className="cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
+            aria-label={`Reorder ${displayName}`}
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="size-4" />
+          </button>
+          <span className="text-sm font-medium">{displayName}</span>
+        </span>
         <div className="flex items-center gap-4">
           {/* Required toggle */}
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">

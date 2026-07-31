@@ -45,6 +45,15 @@ export function previewToLandingPage(preview: PreviewState): LandingPageData {
     webhookUrl: null,
     published: true,
     media,
+    // Preview state stores these as plain URLs; the public shape wants full
+    // media records, so synthesise ids and ordering from the list position.
+    descriptionImages: preview.descriptionImages.urls.map((url, i) => ({
+      id: `preview-desc-${i}`,
+      type: "IMAGE" as const,
+      url,
+      altText: null,
+      displayOrder: i,
+    })),
     variants: flatVariants,
     features: [],
     reviews: flatReviews,
@@ -56,6 +65,9 @@ export function previewToLandingPage(preview: PreviewState): LandingPageData {
       showReviews: false,
       showFAQ: false,
       showFeatures: true,
+      homeDeliveryEnabled: preview.shipping.homeDeliveryEnabled,
+      stopDeskEnabled: preview.shipping.stopDeskEnabled,
     },
+    orderForm: orderForm.config,
   };
 }

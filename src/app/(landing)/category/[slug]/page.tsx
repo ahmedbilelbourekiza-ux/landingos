@@ -46,7 +46,7 @@ export default async function CategoryPage({
         select: {
           id: true, title: true, slug: true, price: true, oldPrice: true,
           currency: true, createdAt: true,
-          media: { take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
+          media: { where: { placement: "GALLERY" }, take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
           _count: { select: { orders: true } },
         },
       },

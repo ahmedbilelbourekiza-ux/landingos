@@ -4,7 +4,7 @@ import type { LandingListItem } from "@/lib/landing/mock-landings";
 import type { VariantGroup } from "@/lib/landing/mock-landings";
 import type { LandingPageData } from "@/types/landing";
 import type { OrderFormConfig } from "@/lib/landing/mock-order-form";
-import { defaultOrderFormConfig } from "@/lib/landing/mock-order-form";
+import { defaultOrderFormConfig, normalizeOrder } from "@/lib/landing/mock-order-form";
 import type { LandingTheme } from "@prisma/client";
 import type { LandingThemeData } from "@/types/theme";
 import { DEFAULT_THEME } from "@/types/theme";
@@ -81,30 +81,69 @@ function groupVariants(variants: LandingVariant[]): VariantGroup[] {
 
 // Parse the order form config JSON from LandingSetting, merging with
 // defaults so missing fields don't crash the UI.
-function parseOrderFormConfig(
+//
+// The stored value is admin-authored JSON that may predate any given field,
+// so every path here has to survive a partial or stale object — including
+// invalid JSON, which is why the whole thing is wrapped rather than trusted.
+export function parseOrderFormConfig(
   setting: LandingSetting | null,
   buttonText: string,
 ): OrderFormConfig {
-  if (!setting?.orderFormConfig) {
-    return { ...defaultOrderFormConfig, buttonText };
-  }
+  const fallback: OrderFormConfig = {
+    ...defaultOrderFormConfig,
+    order: normalizeOrder(defaultOrderFormConfig.order),
+    buttonText,
+  };
+  if (!setting?.orderFormConfig) return fallback;
+
   try {
     const stored = JSON.parse(setting.orderFormConfig) as Partial<OrderFormConfig>;
-    // Force address to not visible — the field is no longer collected.
-    const merged = { ...defaultOrderFormConfig, ...stored, buttonText };
-    merged.address.visible = false;
-    merged.address.required = false;
+    const merged: OrderFormConfig = {
+      ...defaultOrderFormConfig,
+      ...stored,
+      order: normalizeOrder(stored.order),
+      buttonText,
+    };
+    // Address is forced off regardless of what is stored: POST /api/orders
+    // neither accepts nor persists one (Order.address is written as ""), so
+    // rendering the input would collect something the customer types and the
+    // system then discards. It stays in FIELD_DEFS so the ordering UI keeps
+    // working if the field is wired up later.
+    merged.address = { ...merged.address, visible: false, required: false };
     return merged;
   } catch {
-    return { ...defaultOrderFormConfig, buttonText };
+    return fallback;
   }
+}
+
+// Gallery images only — the top slider, with [0] as the hero.
+function galleryMedia(media: LandingMedia[]): LandingMedia[] {
+  return media.filter((m) => m.placement === "GALLERY");
+}
+
+// Long-form images rendered below the description.
+function descriptionMedia(media: LandingMedia[]): LandingMedia[] {
+  return media.filter((m) => m.placement === "DESCRIPTION");
+}
+
+function toMediaData(m: LandingMedia) {
+  return {
+    id: m.id,
+    type: m.type,
+    url: m.url,
+    altText: m.altText,
+    displayOrder: m.displayOrder,
+  };
 }
 
 // Convert a Prisma landing page (with all relations) to the PreviewState
 // shape that EditWorkspace uses as initial state.
 export function toPreviewState(page: LandingWithRelations): PreviewState {
-  const hero = page.media[0];
-  const gallery = page.media.slice(1);
+  // Slider images only. Taking media[0] unfiltered would let a description
+  // image become the hero purely by sorting first.
+  const slider = galleryMedia(page.media);
+  const hero = slider[0];
+  const gallery = slider.slice(1);
 
   return {
     general: {
@@ -139,6 +178,13 @@ export function toPreviewState(page: LandingWithRelations): PreviewState {
     orderForm: {
       config: parseOrderFormConfig(page.setting, page.buttonText),
     },
+    descriptionImages: {
+      urls: descriptionMedia(page.media).map((m) => m.url),
+    },
+    shipping: {
+      homeDeliveryEnabled: page.setting?.homeDeliveryEnabled ?? true,
+      stopDeskEnabled: page.setting?.stopDeskEnabled ?? false,
+    },
   };
 }
 
@@ -160,13 +206,8 @@ export function toLandingPageData(page: LandingWithRelations): LandingPageData {
     facebookPixel: page.facebookPixel,
     webhookUrl: page.webhookUrl,
     published: page.published,
-    media: page.media.map((m) => ({
-      id: m.id,
-      type: m.type,
-      url: m.url,
-      altText: m.altText,
-      displayOrder: m.displayOrder,
-    })),
+    media: galleryMedia(page.media).map(toMediaData),
+    descriptionImages: descriptionMedia(page.media).map(toMediaData),
     variants: page.variants.map((v) => ({
       id: v.id,
       name: v.name,
@@ -192,7 +233,10 @@ export function toLandingPageData(page: LandingWithRelations): LandingPageData {
           showReviews: page.setting.showReviews,
           showFAQ: page.setting.showFAQ,
           showFeatures: page.setting.showFeatures,
+          homeDeliveryEnabled: page.setting.homeDeliveryEnabled,
+          stopDeskEnabled: page.setting.stopDeskEnabled,
         }
       : null,
+    orderForm: parseOrderFormConfig(page.setting, page.buttonText),
   };
 }

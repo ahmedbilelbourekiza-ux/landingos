@@ -19,7 +19,7 @@ export async function GET() {
             select: {
               id: true, title: true, slug: true, price: true, oldPrice: true,
               currency: true,
-              media: { take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
+              media: { where: { placement: "GALLERY" }, take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
             },
           },
         },
@@ -31,7 +31,7 @@ export async function GET() {
         select: {
           id: true, title: true, slug: true, price: true, oldPrice: true,
           currency: true, createdAt: true,
-          media: { take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
+          media: { where: { placement: "GALLERY" }, take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
           category: { select: { name: true } },
         },
       }),
@@ -40,7 +40,7 @@ export async function GET() {
         select: {
           id: true, title: true, slug: true, price: true, oldPrice: true,
           currency: true, createdAt: true,
-          media: { take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
+          media: { where: { placement: "GALLERY" }, take: 1, orderBy: { displayOrder: "asc" }, select: { url: true } },
           category: { select: { name: true } },
           _count: { select: { orders: true } },
         },

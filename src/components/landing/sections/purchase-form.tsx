@@ -2,28 +2,39 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Minus, Plus, ShieldCheck, Truck, Loader2 } from "lucide-react";
+import { Minus, Plus, ShieldCheck, Truck, Store, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/landing/format";
 import type { LandingOrderStore } from "@/lib/landing/store";
 import { useOrderTotals, useUnitPrice } from "@/lib/landing/store";
 import { readMetaCookies, trackInitiateCheckout } from "@/components/landing/meta-pixel-loader";
 import { useDraftCapture } from "@/lib/landing/use-draft-capture";
+import { normalizeOrder, type OrderFormConfig } from "@/lib/landing/mock-order-form";
+import type { ShippingMethod } from "@/types/landing";
 
-const purchaseSchema = z.object({
-  fullName: z.string().min(2, "يرجى إدخال الاسم الكامل"),
-  phone: z.string().min(6, "يرجى إدخال رقم هاتف صحيح"),
-  notes: z.string().optional(),
-});
-
-type PurchaseFormValues = z.infer<typeof purchaseSchema>;
+// The customer-facing checkout.
+//
+// Field order, labels, placeholders, and visibility all come from the admin's
+// OrderFormConfig — this component used to hardcode them, which is why the
+// Order Form editor had no effect on the live page. `order` drives a switch
+// rather than a fixed JSX sequence, so dragging a field in the dashboard
+// moves it here.
+//
+// Three kinds of state, deliberately not unified:
+//   - react-hook-form  — free-text inputs that need validation messages
+//   - local useState   — wilaya/baladia, which cascade and are <select>s
+//   - the order store  — quantity, shared with the sticky buy button
+//
+// Validation is built from the config rather than fixed, because whether a
+// field is required is now the admin's decision.
 
 interface WilayaOption {
   id: number;
@@ -33,12 +44,32 @@ interface WilayaOption {
   baladias: { id: number; name: string; nameAr: string | null }[];
 }
 
-function QuantityStepper({ store }: { store: LandingOrderStore }) {
+interface WilayaPrices {
+  home: number | null;
+  desk: number | null;
+}
+
+// Fixed shape regardless of config: the same three inputs always exist, and
+// only their required-ness changes. Declaring it here keeps useForm's generic
+// stable while the zod schema below varies per product.
+type PurchaseFormValues = {
+  fullName?: string;
+  phone?: string;
+  notes?: string;
+};
+
+function QuantityStepper({
+  store,
+  label,
+}: {
+  store: LandingOrderStore;
+  label: string;
+}) {
   const quantity = store((s) => s.quantity);
   const setQuantity = store((s) => s.setQuantity);
   return (
     <div>
-      <Label className="mb-2">الكمية</Label>
+      <Label className="mb-2">{label}</Label>
       <div className="inline-flex items-center rounded-lg border">
         <button type="button" aria-label="Decrease quantity" onClick={() => setQuantity(quantity - 1)}
           className="grid size-10 place-items-center rounded-l-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -62,12 +93,18 @@ export function PurchaseForm({
   productTitle,
   buttonText,
   currency,
+  config,
+  homeDeliveryEnabled,
+  stopDeskEnabled,
 }: {
   store: LandingOrderStore;
   landingId: string;
   productTitle: string;
   buttonText: string;
   currency: string;
+  config: OrderFormConfig;
+  homeDeliveryEnabled: boolean;
+  stopDeskEnabled: boolean;
 }) {
   const router = useRouter();
   const { subtotal } = useOrderTotals(store);
@@ -95,12 +132,36 @@ export function PurchaseForm({
   const [wilayas, setWilayas] = React.useState<WilayaOption[]>([]);
   const [selectedWilaya, setSelectedWilaya] = React.useState<number | "">("");
   const [selectedBaladia, setSelectedBaladia] = React.useState<number | "">("");
-  const [deliveryPrices, setDeliveryPrices] = React.useState<Record<number, number>>({});
+  const [prices, setPrices] = React.useState<Record<number, WilayaPrices>>({});
+  const [shippingMethod, setShippingMethod] = React.useState<ShippingMethod | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
 
+  const fieldOrder = React.useMemo(() => normalizeOrder(config.order), [config.order]);
+
+  // Required-ness follows the config, so a field the admin marked optional
+  // stops blocking submission. Gated on `visible` too — validating a field
+  // the customer cannot see would produce an unfixable error.
+  const schema = React.useMemo(() => {
+    const req = (key: "customerName" | "phone") =>
+      config[key].visible && config[key].required;
+    return z.object({
+      fullName: req("customerName")
+        ? z.string().min(2, "يرجى إدخال الاسم الكامل")
+        : z.string().optional(),
+      phone: req("phone")
+        ? z.string().min(6, "يرجى إدخال رقم هاتف صحيح")
+        : z.string().optional(),
+      notes: z.string().optional(),
+    });
+  }, [config]);
+
   const { register, handleSubmit, watch, formState: { errors } } = useForm<PurchaseFormValues>({
-    resolver: zodResolver(purchaseSchema),
+    // Cast because the schema is assembled at runtime from the config: each
+    // branch infers a different type (string vs string | undefined), so the
+    // resolver's generic cannot match the single form-values type. The fields
+    // are the same either way — only whether they are required changes.
+    resolver: zodResolver(schema) as unknown as Resolver<PurchaseFormValues>,
     mode: "onBlur",
   });
 
@@ -126,7 +187,8 @@ export function PurchaseForm({
     });
   }, [draftUpdate, store, watchedName, watchedPhone, selectedWilaya, selectedBaladia, quantity]);
 
-  // Load wilayas + global delivery prices on mount
+  // Load wilayas + global delivery prices on mount. Both prices are kept now,
+  // not just home, because stop desk quotes from deskPrice.
   React.useEffect(() => {
     Promise.all([
       fetch("/api/wilayas").then((r) => r.json()),
@@ -134,17 +196,49 @@ export function PurchaseForm({
     ]).then(([wJson, pJson]) => {
       if (wJson.success) setWilayas(wJson.data);
       if (pJson.success) {
-        const map: Record<number, number> = {};
+        const map: Record<number, WilayaPrices> = {};
         for (const p of pJson.data) {
-          if (p.homePrice !== null) map[p.wilayaId ?? p.id] = p.homePrice;
+          map[p.id] = { home: p.homePrice ?? null, desk: p.deskPrice ?? null };
         }
-        setDeliveryPrices(map);
+        setPrices(map);
       }
     });
   }, []);
 
   const selectedWilayaData = wilayas.find((w) => w.id === Number(selectedWilaya));
-  const shipping = deliveryPrices[Number(selectedWilaya)] ?? null;
+  const wilayaPrices: WilayaPrices | null =
+    selectedWilaya === "" ? null : prices[Number(selectedWilaya)] ?? null;
+
+  // A method is offered only if the product enables it AND the chosen wilaya
+  // has a price for it. Both conditions matter: a product can offer stop desk
+  // while a particular wilaya has no desk price configured, and quoting the
+  // home price for it would undercharge the customer.
+  const availableMethods = React.useMemo<ShippingMethod[]>(() => {
+    if (!wilayaPrices) return [];
+    const methods: ShippingMethod[] = [];
+    if (homeDeliveryEnabled && wilayaPrices.home !== null) methods.push("HOME");
+    if (stopDeskEnabled && wilayaPrices.desk !== null) methods.push("DESK");
+    return methods;
+  }, [wilayaPrices, homeDeliveryEnabled, stopDeskEnabled]);
+
+  // Keep the selection valid as the wilaya changes: default to the first
+  // available method, and drop a selection that the new wilaya cannot serve.
+  React.useEffect(() => {
+    if (availableMethods.length === 0) {
+      setShippingMethod(null);
+      return;
+    }
+    setShippingMethod((current) =>
+      current && availableMethods.includes(current) ? current : availableMethods[0],
+    );
+  }, [availableMethods]);
+
+  const shipping =
+    shippingMethod === "DESK"
+      ? wilayaPrices?.desk ?? null
+      : shippingMethod === "HOME"
+        ? wilayaPrices?.home ?? null
+        : null;
   const grandTotal = subtotal + (shipping ?? 0);
 
   const onSubmit = handleSubmit(async (values) => {
@@ -153,7 +247,7 @@ export function PurchaseForm({
       setSubmitError("يرجى اختيار الولاية والبلدية");
       return;
     }
-    if (shipping === null) {
+    if (!shippingMethod || shipping === null) {
       setSubmitError("التوصيل غير متاح للولاية المختارة");
       return;
     }
@@ -180,6 +274,7 @@ export function PurchaseForm({
           notes: values.notes || undefined,
           quantity: state.quantity,
           variants: variantSnapshot,
+          shippingMethod,
           fbc: fbc ?? undefined,
           fbp: fbp ?? undefined,
           draftToken: draft.token ?? undefined,
@@ -201,6 +296,118 @@ export function PurchaseForm({
     }
   });
 
+  // One field, chosen by key. Returning null for a hidden field keeps the
+  // ordering logic in one place instead of filtering in several.
+  const renderField = (key: string) => {
+    switch (key) {
+      case "customerName":
+        if (!config.customerName.visible) return null;
+        return (
+          <Field key={key} label={config.customerName.label} error={errors.fullName?.message}>
+            <Input
+              id="fullName"
+              dir="auto"
+              placeholder={config.customerName.placeholder}
+              autoComplete="name"
+              aria-invalid={!!errors.fullName}
+              {...register("fullName")}
+            />
+          </Field>
+        );
+
+      case "phone":
+        if (!config.phone.visible) return null;
+        return (
+          <Field key={key} label={config.phone.label} error={errors.phone?.message}>
+            <Input
+              id="phone"
+              type="tel"
+              dir="auto"
+              placeholder={config.phone.placeholder}
+              autoComplete="tel"
+              aria-invalid={!!errors.phone}
+              {...register("phone")}
+            />
+          </Field>
+        );
+
+      case "wilaya":
+        if (!config.wilaya.visible) return null;
+        return (
+          <Field
+            key={key}
+            label={config.wilaya.label}
+            error={!selectedWilaya && submitError ? "يرجى اختيار الولاية" : undefined}
+          >
+            <select
+              value={selectedWilaya}
+              onChange={(e) => {
+                setSelectedWilaya(e.target.value ? Number(e.target.value) : "");
+                // Baladias belong to a wilaya, so a stale selection here would
+                // submit a commune from the previous wilaya.
+                setSelectedBaladia("");
+              }}
+              className="h-9 w-full border border-input bg-transparent px-3 text-sm"
+              style={{ borderRadius: "var(--theme-input-radius)" }}
+            >
+              <option value="">{config.wilaya.placeholder}</option>
+              {wilayas.map((w) => (
+                <option key={w.id} value={w.id}>{w.code} — {w.nameAr ?? w.name}</option>
+              ))}
+            </select>
+          </Field>
+        );
+
+      case "baladia":
+        // Only meaningful once a wilaya is chosen — it has nothing to list
+        // before that.
+        if (!config.baladia.visible || !selectedWilayaData) return null;
+        return (
+          <Field
+            key={key}
+            label={config.baladia.label}
+            error={!selectedBaladia && submitError ? "يرجى اختيار البلدية" : undefined}
+          >
+            <select
+              value={selectedBaladia}
+              onChange={(e) => setSelectedBaladia(e.target.value ? Number(e.target.value) : "")}
+              className="h-9 w-full border border-input bg-transparent px-3 text-sm"
+              style={{ borderRadius: "var(--theme-input-radius)" }}
+            >
+              <option value="">{config.baladia.placeholder}</option>
+              {selectedWilayaData.baladias.map((b) => (
+                <option key={b.id} value={b.id}>{b.nameAr ?? b.name}</option>
+              ))}
+            </select>
+          </Field>
+        );
+
+      case "notes":
+        if (!config.notes.visible) return null;
+        return (
+          <Field key={key} label={config.notes.label} error={errors.notes?.message}>
+            <Textarea
+              id="notes"
+              dir="auto"
+              rows={2}
+              placeholder={config.notes.placeholder}
+              {...register("notes")}
+            />
+          </Field>
+        );
+
+      case "quantity":
+        if (!config.quantity.visible) return null;
+        return <QuantityStepper key={key} store={store} label={config.quantity.label} />;
+
+      // `address` is intentionally unhandled: POST /api/orders neither accepts
+      // nor stores one, so rendering it would collect a value the system
+      // discards. parseOrderFormConfig also forces it hidden.
+      default:
+        return null;
+    }
+  };
+
   return (
     <form
       onSubmit={onSubmit}
@@ -209,50 +416,54 @@ export function PurchaseForm({
       className="flex flex-col gap-4"
       noValidate
     >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="الاسم الكامل" error={errors.fullName?.message}>
-          <Input id="fullName" dir="auto" placeholder="أدخل اسمك الكامل" autoComplete="name" aria-invalid={!!errors.fullName} {...register("fullName")} />
-        </Field>
-        <Field label="رقم الهاتف" error={errors.phone?.message}>
-          <Input id="phone" type="tel" dir="auto" placeholder="06 12 34 56 78" autoComplete="tel" aria-invalid={!!errors.phone} {...register("phone")} />
-        </Field>
-      </div>
+      {fieldOrder.map(renderField)}
 
-      {/* Wilaya select */}
-      <Field label="الولاية" error={!selectedWilaya && submitError ? "يرجى اختيار الولاية" : undefined}>
-        <select
-          value={selectedWilaya}
-          onChange={(e) => { setSelectedWilaya(e.target.value ? Number(e.target.value) : ""); setSelectedBaladia(""); }}
-          className="h-9 w-full border border-input bg-transparent px-3 text-sm" style={{ borderRadius: "var(--theme-input-radius)" }}
-        >
-          <option value="">اختر الولاية...</option>
-          {wilayas.map((w) => (
-            <option key={w.id} value={w.id}>{w.code} — {w.nameAr ?? w.name}</option>
-          ))}
-        </select>
-      </Field>
-
-      {/* Baladia select — filtered by selected wilaya */}
-      {selectedWilayaData && (
-        <Field label="البلدية" error={!selectedBaladia && submitError ? "يرجى اختيار البلدية" : undefined}>
-          <select
-            value={selectedBaladia}
-            onChange={(e) => setSelectedBaladia(e.target.value ? Number(e.target.value) : "")}
-            className="h-9 w-full border border-input bg-transparent px-3 text-sm" style={{ borderRadius: "var(--theme-input-radius)" }}
-          >
-            <option value="">اختر البلدية...</option>
-            {selectedWilayaData.baladias.map((b) => (
-              <option key={b.id} value={b.id}>{b.nameAr ?? b.name}</option>
-            ))}
-          </select>
-        </Field>
+      {/* Shipping method. Hidden unless the customer actually has a choice —
+          with one method there is nothing to pick and a single locked radio
+          is just noise. It still submits, because shippingMethod is set. */}
+      {availableMethods.length > 1 && (
+        <div className="flex flex-col gap-1.5">
+          <Label>طريقة التوصيل</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {availableMethods.map((method) => {
+              const active = shippingMethod === method;
+              const price = method === "DESK" ? wilayaPrices?.desk : wilayaPrices?.home;
+              const Icon = method === "DESK" ? Store : Truck;
+              return (
+                <button
+                  key={method}
+                  type="button"
+                  onClick={() => setShippingMethod(method)}
+                  aria-pressed={active}
+                  className={cn(
+                    "flex flex-col items-center gap-1 border px-3 py-2.5 text-sm transition-colors",
+                    active
+                      ? "border-transparent font-semibold"
+                      : "border-input hover:bg-accent",
+                  )}
+                  style={{
+                    borderRadius: "var(--theme-input-radius)",
+                    ...(active
+                      ? {
+                          backgroundColor: "var(--theme-primary)",
+                          color: "var(--theme-primary-foreground)",
+                        }
+                      : {}),
+                  }}
+                >
+                  <Icon className="size-4" />
+                  <span>{method === "DESK" ? "مكتب التوصيل" : "التوصيل للمنزل"}</span>
+                  {price !== null && price !== undefined && (
+                    <span className="text-xs tabular-nums opacity-80">
+                      {formatPrice(price, currency)}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
-
-      <Field label="ملاحظات الطلب (اختياري)" error={errors.notes?.message}>
-        <Textarea id="notes" dir="auto" rows={2} placeholder="معلم، تفضيل وقت التوصيل..." {...register("notes")} />
-      </Field>
-
-      <QuantityStepper store={store} />
 
       {/* Shipping + total summary */}
       {selectedWilaya !== "" && (
@@ -262,7 +473,14 @@ export function PurchaseForm({
             <span className="tabular-nums">{formatPrice(subtotal, currency)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">سعر التوصيل</span>
+            <span className="text-muted-foreground">
+              سعر التوصيل
+              {shippingMethod && availableMethods.length > 1 && (
+                <span className="mr-1 text-xs">
+                  ({shippingMethod === "DESK" ? "مكتب" : "منزل"})
+                </span>
+              )}
+            </span>
             <span className="tabular-nums">
               {shipping !== null ? formatPrice(shipping, currency) : "غير متاح"}
             </span>
