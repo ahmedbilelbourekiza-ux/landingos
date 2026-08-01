@@ -1268,8 +1268,24 @@ function handleShopifyProductCreate(product, res) {
   return res.status(200).json({ message: 'received', productId: newProduct.id });
 }
 
-// ---- ORDERS ----
-app.get('/api/orders', (req, res) => res.json(loadData().orders));
+/* ---- ORDERS ----
+ * Scoped per caller (audit SEC-01, record-level half). Authenticating the route
+ * stopped strangers reading the order book, but every signed-in agent could
+ * still pull EVERY order in the business — customer names, phone numbers and
+ * revenue for accounts that are none of their concern. The agent PWA only ever
+ * displayed its own rows, so it was filtering client-side over data it should
+ * never have received.
+ *
+ * A manager sees everything. Anyone else sees the orders assigned to them,
+ * either as the confirmation agent or as the follow-up agent, plus unassigned
+ * orders — the unassigned-overdue queue exists precisely so somebody can pick
+ * them up. */
+app.get('/api/orders', (req, res) => {
+  const all = loadData().orders;
+  if (req.user.isManager) return res.json(all);
+  const me = req.user.name;
+  res.json(all.filter(o => o.agent === me || o.followupAgent === me || !o.agent));
+});
 
 app.post('/api/orders', (req, res) => {
   const data = loadData();

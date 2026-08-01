@@ -312,3 +312,41 @@ describe('static clients are served same-origin', () => {
     assert.match(r.headers.get('content-type') || '', /json/);
   });
 });
+
+describe('record-level scoping of the order book', () => {
+  test('an agent sees only their own and unassigned orders', async () => {
+    await srv.api('POST', '/api/auth/login', ADMIN);
+    const mine = 'Mine ' + uid();
+    const other = 'Other ' + uid();
+    await srv.api('POST', '/api/agents', { name: mine, pass: 'minepass123', role: 'confirmation' });
+    await srv.api('POST', '/api/agents', { name: other, pass: 'otherpass123', role: 'confirmation' });
+
+    const { body: a } = await srv.api('POST', '/api/orders', { client: 'A', phone: '0555777001', agent: mine });
+    const { body: b } = await srv.api('POST', '/api/orders', { client: 'B', phone: '0555777002', agent: other });
+    const { body: c } = await srv.api('POST', '/api/orders', { client: 'C', phone: '0555777003' });
+
+    const agent = await srv.as(mine, 'minepass123');
+    const { body: visible } = await agent.api('GET', '/api/orders');
+    const ids = visible.map((o) => o.id);
+
+    assert.ok(ids.includes(a.id), 'their own order is visible');
+    assert.ok(ids.includes(c.id), 'unassigned orders stay visible so they can be picked up');
+    assert.ok(!ids.includes(b.id), "another agent's order is NOT visible");
+
+    // The manager still sees the whole book.
+    const { body: all } = await srv.api('GET', '/api/orders');
+    assert.ok(all.map((o) => o.id).includes(b.id));
+  });
+
+  test('a follow-up agent sees the orders assigned to them for follow-up', async () => {
+    await srv.api('POST', '/api/auth/login', ADMIN);
+    const fu = 'Suivi ' + uid();
+    await srv.api('POST', '/api/agents', { name: fu, pass: 'suivipass1', role: 'followup' });
+    const { body: o } = await srv.api('POST', '/api/orders', { client: 'F', phone: '0555777004', agent: 'someone-else' });
+    await srv.api('PUT', `/api/orders/${o.id}`, { followupAgent: fu });
+
+    const agent = await srv.as(fu, 'suivipass1');
+    const { body: visible } = await agent.api('GET', '/api/orders');
+    assert.ok(visible.map((x) => x.id).includes(o.id), 'visible via followupAgent');
+  });
+});

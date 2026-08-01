@@ -217,7 +217,7 @@ body{font-family:'IBM Plex Sans Arabic',sans-serif;background:var(--bg);color:va
       <button class="lang-btn" onclick="setLang('fr',this)">FR</button>
       <button class="lang-btn" onclick="setLang('en',this)">EN</button>
     </div>
-    <div class="form-group"><label id="lName">اسمك</label><select id="loginName"><option value="">—</option></select></div>
+    <div class="form-group"><label id="lName">اسمك</label><input type="text" id="loginName" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"></div>
     <div class="form-group"><label id="lPass">كلمة المرور</label><input type="password" id="loginPass" onkeydown="if(event.key==='Enter')doLogin()"></div>
     <div class="login-err" id="loginErr"></div>
     <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()" id="lBtn">دخول</button>
@@ -342,7 +342,17 @@ body{font-family:'IBM Plex Sans Arabic',sans-serif;background:var(--bg);color:va
 </div>
 
 <script>
-const SERVER = localStorage.getItem('crm_server_url') || 'https://erp-serveur.onrender.com';
+const SERVER = (function(){
+  /* Default to the origin this page was served from (audit: the clients are now
+   * served by the API itself, so same-origin is the normal case). The old
+   * hardcoded production URL remains the fallback for a page opened from
+   * file:// or still hosted separately, and an explicit value saved in
+   * Settings always wins. */
+  var saved = localStorage.getItem('crm_server_url');
+  if (saved) return saved;
+  if (location.protocol === 'http:' || location.protocol === 'https:') return location.origin;
+  return 'https://erp-serveur.onrender.com';
+})();
 const L = {
   ar:{dir:'rtl',sub:'واجهة المؤكد',name:'اسمك',pass:'كلمة المرور',login:'دخول',logout:'خروج',greeting:'مرحباً، ',hsub:'طلباتك اليوم',o_all:'كل الحالات',o_pending:'في الانتظار',o_no_answer:'لم يرد',o_callback:'إعادة الاتصال',o_tentative1:'مبدئي 1',o_tentative2:'مبدئي 2',o_tentative3:'مبدئي 3',o_unreachable:'العميل غير متاح',o_confirmed:'مؤكد',o_cancelled:'ملغي',s_pending:'في الانتظار',s_no_answer:'لم يرد',s_callback:'إعادة الاتصال',s_tentative1:'مبدئي 1',s_tentative2:'مبدئي 2',s_tentative3:'مبدئي 3',s_unreachable:'العميل غير متاح',s_confirmed:'مؤكد',s_cancelled:'ملغي',search:'بحث...',stat_orders:'طلباتي',stat_conf:'مؤكد',stat_pend:'انتظار',stat_over:'متأخر',modal_title:'تسجيل مكالمة',r1:'لم يرد',r1s:'الهاتف رن ولم يجب',r2:'إعادة الاتصال',r2s:'طلب الاتصال لاحقاً',r3:'تم التأكيد',r3s:'وافق على الطلب',r4:'إلغاء',r4s:'رفض أو ألغى',r5:'مبدئي 1',r5s:'محاولة أولى',r6:'مبدئي 2',r6s:'محاولة ثانية',r7:'مبدئي 3',r7s:'محاولة ثالثة',r8:'العميل غير متاح',r8s:'لا يمكن الوصول إليه',note:'ملاحظة',cancel:'إلغاء',save:'تسجيل',hist:'المكالمات السابقة',no_calls:'لم يتم الاتصال بعد',call_now:'اتصل الآن',log_res:'تسجيل النتيجة',not_called:'لم يتصل بعد',no_orders:'لا توجد طلبات',loading:'جاري التحميل...',overdue:'متأخر',calls:'مكالمات',done_conf:'✓ تم التأكيد — جاهز للشحن',done_canc:'✗ تم الإلغاء',no_res:'اختر نتيجة أولاً',call_logged:'تم تسجيل وقت الاتصال ✓',suspicious:'⚠️ مدة قصيرة جداً',last_note:'آخر ملاحظة',notif_title:'الإشعارات',clear_notif:'مسح',no_notif:'لا توجد إشعارات',new_order_notif:'طلب جديد',assigned_notif:'تم تعيين طلب لك',err_select:'اختر اسمك',err_pass:'كلمة المرور خاطئة',err_suspended:'الحساب موقوف. يرجى التواصل مع المدير',err_agent:'مؤكد غير موجود',phone:'رقم الهاتف',wilaya:'الولاية',product:'المنتج',timer_title:'وقت المكالمة',no_start:'لم تضغط اتصل الآن — الوقت لن يُسجَّل على السيرفر',duration:'مدة المكالمة',audit_title:'تفاصيل التحقيق',manip:'⚠️ تلاعب محتمل',manip_click:'انقر للتفاصيل',manip_short:'مدة المكالمة {dur} ثانية أقل من الحد الأدنى {thr} ثانية.',manip_nostart:'لم يُضغط زر الاتصال — لا يوجد وقت بداية مسجَّل على السيرفر.',a_order:'الطلب',a_client:'العميل',a_agent:'المؤكد',a_status:'الحالة الحالية',a_thr:'الحد الأدنى الحالي',a_log:'سجل المكالمات الكامل',a_call:'مكالمة',a_result:'النتيجة',a_start:'وقت البداية',a_end:'وقت النهاية',a_dur:'المدة',a_rthr:'الحد المسجَّل',a_flag:'مُعلَّم',a_yes:'نعم',a_note:'ملاحظة',a_close:'إغلاق',no_call_hist:'لا توجد مكالمات',conn_err:'تعذّر الاتصال بالخادم',server_err:'خطأ في الخادم',err_generic:'خطأ',trk_title:'تتبع التوصيل',trk_loading:'جاري التحميل...',trk_none:'لا توجد شحنة لهذا الطلب بعد',trk_create:'إنشاء شحنة',trk_confirm_first:'أكّد الطلب أولاً',trk_no_events:'لا توجد أحداث تتبّع بعد',trk_refresh:'تحديث',trk_tracknum:'رقم التتبّع',trk_carrier:'المزوّد',trk_shipid:'معرّف الشحنة',trk_events:'الأحداث',trk_open:'تتبع',trk_delivered:'تم التسليم',trk_ship_created:'تم إنشاء الشحنة',trk_ship_failed:'فشل إنشاء الشحنة',trk_updated:'تم التحديث',trk_err:'خطأ',trk_status:'الحالة',fup_title:'متابعة الطلبات',fup_count:'متابعة',fup_empty:'لا توجد مهام متابعة',fup_resolve:'تم الاتصال بالعميل',fup_countdown:'متبقٍ',fup_overdue:'🚨 تذكير متابعة متأخر',fup_reason:'السبب',fup_open:'متابعة',add_note:'إضافة ملاحظة',order_type_draft:'طلب مسودة',
   ai_open:'المساعد الذكي',ai_title:'مساعدك الذكي',ai_sub:'اسأل عن طلباتك أو أفضل وقت للاتصال',ai_send:'إرسال',ai_thinking:'يفكّر…',ai_ph:'مثال: لخّص طلباتي المعلّقة',ai_hi:'مرحباً! كيف أساعدك؟',ai_need:'المساعد غير مهيّأ بعد — تواصل مع المدير.',ai_err:'خطأ من الخادم',ai_clear:'مسح',ai_q1:'لخّص طلباتي المعلّقة',ai_q2:'أفضل وقت للاتصال بالعميل؟',ai_q3:'كم طلبي المؤكد اليوم؟',ai_role:'أنت',ai_bot:'المساعد'},
@@ -418,7 +428,11 @@ function toast(msg, type='') {
 }
 
 async function api(method, path, body) {
-  const r = await fetch(SERVER + path, { method, headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined });
+  // credentials:'include' carries the HttpOnly session cookie. Same-origin
+  // when served from the API itself; still required cross-origin for the
+  // separately-hosted copy.
+  const r = await fetch(SERVER + path, { method, headers: {'Content-Type':'application/json'}, credentials: 'include', body: body ? JSON.stringify(body) : undefined });
+  if (r.status === 401) { const e = new Error('UNAUTHENTICATED'); e.code = 401; throw e; }
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
 }
@@ -427,7 +441,7 @@ async function api(method, path, body) {
 function connectSSE() {
   if (!agent) return;
   if (sseSource) sseSource.close();
-  sseSource = new EventSource(SERVER + '/api/notifications/subscribe?agent=' + encodeURIComponent(agent.name));
+  sseSource = new EventSource(SERVER + '/api/notifications/subscribe', { withCredentials: true });
   sseSource.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
@@ -573,43 +587,82 @@ function renderNotifList() {
   el.innerHTML = notifications.slice(0, 20).map(n => `<div class="notif-item ${n.type}"><div class="notif-title">${n.title}</div><div style="font-size:12px;color:var(--text2)">${n.body}</div><div class="notif-time">${fmt(n.time)}</div></div>`).join('');
 }
 
-// ---- LOGIN ----
+/* ---- LOGIN (audit SEC-02) ----
+ * This used to fetch GET /api/agents — which returned every agent's password
+ * in cleartext — and compare the password HERE, in the browser. That check was
+ * bypassable from devtools, the whole credential list was one unauthenticated
+ * request away, and the same client-side branch enforced suspension.
+ * Authentication is now entirely server-side: POST /api/auth/login sets an
+ * HttpOnly session cookie the page cannot read, and GET /api/auth/me is the
+ * only thing that decides whether a session is live. */
 async function initLogin() {
   applyLang();
-  const saved = localStorage.getItem('agent_sess');
-  if (saved) {
-    try {
-      const agents = await api('GET', '/api/agents');
-      const ag = agents.find(a => a.name === saved);
-      if (ag && ag.suspended) { localStorage.removeItem('agent_sess'); document.getElementById('loginErr').textContent = t('err_suspended'); }
-      else if (ag) { agent = ag; showApp(); return; }
-    } catch(e) {}
-    localStorage.removeItem('agent_sess');
-  }
   try {
-    const agents = await api('GET', '/api/agents');
-    const sel = document.getElementById('loginName');
-    sel.innerHTML = `<option value="">— ${t('err_select')} —</option>` + agents.map(a => `<option value="${a.name}">${a.name}</option>`).join('');
-  } catch(e) { document.getElementById('loginErr').textContent = t('conn_err'); }
+    const me = await api('GET', '/api/auth/me');
+    agent = { name: me.user.name, role: me.user.role, accountRole: me.user.accountRole };
+    showApp();
+    return;
+  } catch (e) {
+    // 401 simply means "not signed in" — fall through to the login form.
+    if (e.code !== 401) document.getElementById('loginErr').textContent = t('conn_err');
+  }
+  // Pre-fill the last name used. Convenience only: it grants nothing without
+  // the password, unlike the old dropdown which listed every employee.
+  const last = localStorage.getItem('agent_last_name');
+  if (last) document.getElementById('loginName').value = last;
 }
 
-function doLogin() {
-  const name = document.getElementById('loginName').value;
+async function doLogin() {
+  const name = document.getElementById('loginName').value.trim();
   const pass = document.getElementById('loginPass').value;
   const err = document.getElementById('loginErr');
+  const btn = document.getElementById('lBtn');
   if (!name) { err.textContent = t('err_select'); return; }
-  api('GET', '/api/agents').then(agents => {
-    const ag = agents.find(a => a.name === name);
-    if (!ag) { err.textContent = t('err_agent'); return; }
-    if (ag.pass && ag.pass !== pass) { err.textContent = t('err_pass'); return; }
-    if (ag.suspended) { err.textContent = t('err_suspended'); return; }
-    agent = ag;
-    localStorage.setItem('agent_sess', ag.name);
+
+  err.textContent = '';
+  btn.disabled = true;
+  try {
+    const r = await fetch(SERVER + '/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', body: JSON.stringify({ name, password: pass }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      err.textContent = data.code === 'SUSPENDED' ? t('err_suspended') : t('err_pass');
+      return;
+    }
+    localStorage.setItem('agent_last_name', name);
+    agent = { name: data.user.name, role: data.user.role, accountRole: data.user.accountRole };
+    document.getElementById('loginPass').value = '';
     showApp();
-  }).catch(() => err.textContent = t('server_err'));
+  } catch (e) {
+    err.textContent = t('conn_err');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
+/** Any request rejected as unauthenticated drops straight back to the login
+ *  screen — a session can expire or be revoked mid-shift (e.g. a manager
+ *  suspends the account), and the app must not sit there failing silently. */
+function handleAuthLoss() {
+  if (sseSource) { sseSource.close(); sseSource = null; }
+  agent = null;
+  document.getElementById('mainApp').classList.remove('visible');
+  document.getElementById('loginWrap').style.display = '';
+  const fab = document.getElementById('aiFab'); if (fab) fab.style.display = 'none';
+  document.getElementById('loginErr').textContent = t('err_suspended');
+}
+
+/* One global net for an expired or revoked session: every api() rejection with
+ * code 401 lands here rather than in each caller's own catch, which would
+ * otherwise show a generic "server error" and leave the agent stuck. */
+window.addEventListener('unhandledrejection', (e) => {
+  if (e.reason && e.reason.code === 401 && agent) { handleAuthLoss(); e.preventDefault(); }
+});
+
 function doLogout() {
+  fetch(SERVER + '/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
   localStorage.removeItem('agent_sess');
   if (sseSource) { sseSource.close(); sseSource = null; }
   hideFupPanel(); // stop the countdown ticker + clear tasks

@@ -506,14 +506,52 @@ tr.selected td{background:var(--purple-bg);box-shadow:inset 3px 0 0 var(--purple
 @keyframes hlFlash{0%{background:var(--blue-bg);box-shadow:0 0 0 1px var(--blue)}100%{background:var(--bg2);box-shadow:none}}
 .lv-card.hl-flash,tr.hl-flash td{animation:hlFlash 3s ease-out}
 .hl-highlight{border-color:var(--blue)!important}
+
+/* ---- login gate ---- */
+.login-gate{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:var(--bg,#0f0f13);padding:20px}
+.login-gate.hidden{display:none}
+.login-card{width:100%;max-width:360px;background:var(--card,#1a1a20);border:1px solid var(--border,#2a2a33);border-radius:14px;padding:30px 26px;display:flex;flex-direction:column;gap:8px;box-shadow:0 20px 60px -20px rgba(0,0,0,.6)}
+.login-card h1{margin:0;font-size:26px;letter-spacing:-.02em}
+.login-sub{margin:0 0 14px;font-size:13px;color:var(--text3,#8a8a96)}
+.login-card label{font-size:12px;color:var(--text2,#b0b0bd);margin-top:6px}
+.login-card input{width:100%;padding:11px 12px;border-radius:8px;border:1px solid var(--border,#2a2a33);background:var(--bg2,#141419);color:var(--text,#eaeaf0);font-size:14px}
+.login-card input:focus{outline:2px solid var(--blue,#4a7dff);outline-offset:1px}
+.login-card button{margin-top:16px;width:100%;justify-content:center;padding:11px}
+.login-error{min-height:18px;font-size:12.5px;color:var(--red,#ff5c7a)}
+.sidebar-user{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border,#2a2a33);font-size:12px;color:var(--text2,#b0b0bd)}
+.sidebar-user span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
+<!-- =============================================================================
+  LOGIN GATE (audit SEC-01/SEC-02).
+  The manager console previously had NO login of any kind — opening the URL made
+  you the manager. The whole app now sits behind this overlay until
+  GET /api/auth/me confirms a live manager session.
+============================================================================== -->
+<div class="login-gate" id="loginGate">
+  <form class="login-card" id="loginForm" onsubmit="event.preventDefault();doLogin()">
+    <h1>CRM</h1>
+    <p class="login-sub" data-i18n="login_sub">Manager console</p>
+    <label for="lgName" data-i18n="login_name">Name</label>
+    <input type="text" id="lgName" autocomplete="username" autofocus>
+    <label for="lgPass" data-i18n="password">Password</label>
+    <input type="password" id="lgPass" autocomplete="current-password">
+    <div class="login-error" id="lgErr"></div>
+    <button type="submit" class="btn btn-primary" id="lgBtn" data-i18n="login_btn">Sign in</button>
+  </form>
+</div>
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 <div class="sidebar" id="sidebar">
   <div class="sidebar-logo">
     <h1 data-i18n="nav_orders">CRM التأكيدات</h1>
-    <p data-i18n="nav_agents">لوحة المدير</p>
+    <p data-i18n="login_sub">لوحة المدير</p>
+    <!-- Signed-in identity + the way out. Neither existed before, because
+         there was no session to show or end. -->
+    <div class="sidebar-user" id="sidebarUser">
+      <span id="sidebarUserName"></span>
+      <button class="btn btn-sm" onclick="doLogout()" data-i18n="logout">Sign out</button>
+    </div>
   </div>
   <nav class="sidebar-nav">
     <button class="nav-item active" onclick="showPage('orders',this)">
@@ -1550,7 +1588,7 @@ const I18N = {
     st_total:'إجمالي الطلبات',st_confirmed:'مؤكد',st_pending:'في الانتظار',st_nocall:'لم يُتصل',st_revenue:'الإيراد المؤكد',
     manip:'⚠️ تلاعب محتمل',manip_click:'انقر للتفاصيل',manip_short:'مدة المكالمة {dur} ثانية أقل من الحد الأدنى {thr} ثانية.',manip_nostart:'لم يُضغط زر الاتصال — لا يوجد وقت بداية مسجَّل على السيرفر.',
     audit_title:'تفاصيل التحقيق',audit_order:'الطلب',audit_client:'العميل',audit_agent:'المؤكد',audit_status:'الحالة الحالية',audit_thr:'الحد الأدنى الحالي',audit_log:'سجل المكالمات الكامل',audit_call:'مكالمة',audit_result:'النتيجة',audit_start:'وقت البداية',audit_end:'وقت النهاية',audit_dur:'المدة',audit_rthr:'الحد المسجَّل',audit_flag:'مُعلَّم',audit_yes:'نعم',audit_note:'ملاحظة',
-    t_err:'خطأ',t_no_orders:'لا توجد طلبات',t_no_agents:'لا يوجد مؤكدون',t_no_products:'لا توجد منتجات — أضف منتجاً للبدء',t_no_calls:'لا توجد مكالمات سابقة',t_loading:'جاري التحميل...',t_call_start:'وقت المكالمة مسجَّل ✓',t_select_result:'اختر نتيجة أولاً',t_name_req:'يرجى إدخال الاسم والهاتف',t_name_prod_req:'يرجى إدخال اسم المنتج',t_del_confirm:'حذف الطلب',t_undo:'لا يمكن التراجع.',t_del_agent_confirm:'حذف المؤكد',t_del_product_confirm:'حذف المنتج؟',t_archive_product_confirm:'أرشفة هذا المنتج؟ يختفي من القائمة النشطة بس تاريخه وإحصائياته يبقاو محفوظين للأبد، وتقدر ترجعه فأي وقت.',archive_product:'أرشفة',t_archived:'تم الأرشفة ✓',t_unarchived:'تم إرجاعه للنشط ✓',show_archived_products:'عرض المؤرشف',show_active_products:'عرض النشط',unarchive:'إرجاع',t_no_archived_products:'لا توجد منتجات مؤرشفة',archived_on:'أُرشف فـ {date}',t_update_err:'خطأ في التحديث',t_delete_err:'خطأ في الحذف',t_no_confirmed:'لا توجد طلبات مؤكدة',t_connect_err:'تعذّر الاتصال بالخادم',t_added_order:'تم إضافة الطلب',t_updated:'تم التحديث',t_deleted:'تم الحذف',t_added_agent:'تم إضافة المؤكد',t_added_product:'تم إضافة المنتج',t_exported_zr:'تم تصدير ZR Express ✓',t_exported_ecom:'تم تصدير Ecom Delivery ✓',t_exported_ecotrac:'تم تصدير Ecotrac ✓',t_exported_report:'تم تصدير التقرير ✓',t_exported_backup:'تم تصدير النسخة الاحتياطية ✓',t_imported:'طلب تم الاستيراد',t_settings_saved:'تم حفظ الإعدادات ✓',t_url_saved:'تم حفظ الرابط ✓',
+    t_err:'خطأ',t_no_orders:'لا توجد طلبات',t_no_agents:'لا يوجد مؤكدون',t_no_products:'لا توجد منتجات — أضف منتجاً للبدء',t_no_calls:'لا توجد مكالمات سابقة',t_loading:'جاري التحميل...',t_call_start:'وقت المكالمة مسجَّل ✓',t_select_result:'اختر نتيجة أولاً',t_name_req:'يرجى إدخال الاسم والهاتف',t_name_prod_req:'يرجى إدخال اسم المنتج',t_del_confirm:'حذف الطلب',t_undo:'لا يمكن التراجع.',t_del_agent_confirm:'حذف المؤكد',t_del_product_confirm:'حذف المنتج؟',t_archive_product_confirm:'أرشفة هذا المنتج؟ يختفي من القائمة النشطة بس تاريخه وإحصائياته يبقاو محفوظين للأبد، وتقدر ترجعه فأي وقت.',archive_product:'أرشفة',t_archived:'تم الأرشفة ✓',t_unarchived:'تم إرجاعه للنشط ✓',show_archived_products:'عرض المؤرشف',show_active_products:'عرض النشط',unarchive:'إرجاع',t_no_archived_products:'لا توجد منتجات مؤرشفة',archived_on:'أُرشف فـ {date}',t_update_err:'خطأ في التحديث',t_delete_err:'خطأ في الحذف',t_no_confirmed:'لا توجد طلبات مؤكدة',t_connect_err:'تعذّر الاتصال بالخادم',t_added_order:'تم إضافة الطلب',t_updated:'تم التحديث',t_deleted:'تم الحذف',t_added_agent:'تم إضافة المؤكد',t_added_product:'تم إضافة المنتج',t_exported_zr:'تم تصدير ZR Express ✓',t_exported_ecom:'تم تصدير Ecom Delivery ✓',t_exported_ecotrac:'تم تصدير Ecotrac ✓',t_exported_report:'تم تصدير التقرير ✓',t_exported_backup:'تم تصدير النسخة الاحتياطية ✓',t_imported:'طلب تم الاستيراد',t_settings_saved:'تم حفظ الإعدادات ✓',t_url_saved:'تم حفظ الرابط ✓',login_sub:'لوحة المدير',login_name:'الاسم',login_btn:'دخول',login_bad:'الاسم أو كلمة المرور غير صحيحة',login_suspended:'الحساب موقوف. تواصل مع الإدارة',login_not_manager:'هذا الحساب ليس حساب مدير — استعمل واجهة المؤكد',login_need_name:'أدخل اسمك',login_conn:'تعذّر الاتصال بالخادم',logout:'خروج',err_forbidden:'ليس لديك صلاحية لهذا الإجراء',
     qty_label:'الكمية',unit_label:'سعر الوحدة',subtotal_lbl:'المجموع',disc_lbl:'الخصم',ship_lbl:'الشحن',grand_lbl:'الإجمالي النهائي',delivery_lbl:'التوصيل',mgr_note_lbl:'ملاحظة المدير',ship_note_lbl:'ملاحظة للمنصة',ph_internal:'ملاحظة داخلية...',ph_platform:'ملاحظة للمنصة...',expr:'Express',sold:'مباع',conf_rate:'تأكيد',
     a_conf_rate:'نسبة التأكيد',a_canc_rate:'نسبة الإلغاء',a_avg_order:'متوسط الطلب',a_orders:'الطلبات',a_unknown:'غير محدد',a_by_status:'حسب الحالة',a_by_channel:'حسب منصة التوصيل',a_by_product:'حسب المنتج',a_by_wilaya:'حسب الولاية',a_by_conf_agent:'حسب المؤكد',a_by_marketer:'حسب المسوّق',a_by_delivery:'حسب حالة التوصيل',a_marketer:'المسوّق',a_delivery_status:'حالة التوصيل',a_customer:'العميل',a_pricing:'الأسعار',a_prod_price:'سعر المنتج',a_delivery_cost:'التوصيل',a_discount:'الخصم',a_notes:'الملاحظات',a_internal_note:'ملاحظة داخلية',a_delivery_note:'ملاحظة التوصيل',a_calls:'المكالمات',a_normal_order:'طلب عادي',a_order:'الطلب',a_actions:'إجراءات',a_product_col:'المنتج',a_status_col:'الحالة',a_price_col:'السعر',a_client_col:'العميل',
     nav_ai:'الذكاء الاصطناعي',nav_ai_chat:'محادثة AI',nav_ai_insights:'رؤى AI',nav_ai_settings:'إعدادات AI',ai_platform:'منصة الذكاء الاصطناعي',ai_no_provider:'لا يوجد مزوّد AI مهيّأ — أضف مفتاحاً للبدء',ai_need_provider:'لتفعيل المحادثة، أضف مزوّد AI من الإعدادات.',ai_chat_title:'مساعد الذكاء الاصطناعي',ai_chat_sub:'اسأل عن طلباتك، الأداء، أو أفضل إجراء تالي',ai_agent_role:'المساعد',ai_send:'إرسال',ai_stop:'إيقاف',ai_thinking:'يفكّر…',ai_placeholder:'مثال: كم طلباً مؤكداً اليوم؟',ai_clear:'مسح المحادثة',ai_welcome:'مرحباً! كيف أساعدك؟',ai_error:'خطأ من المزوّد',ai_clear_confirm:'مسح كل المحادثة؟',ai_insights_title:'رؤى فورية',ai_insights_sub:'تحليل آلي لبياناتك — يُحدَّث لحظياً',ai_deep_analysis:'تحليل AI عميق',ai_deep_loading:'الذكاء الاصطناعي يحلّل…',ai_no_insights:'لا توجد رؤى بعد',ai_severity_warning:'تنبيه',ai_severity_ok:'جيد',ai_severity_info:'معلومة',ai_refresh_insights:'تحديث',ai_providers:'مزوّدو الذكاء الاصطناعي',ai_agents_cfg:'وكلاء الذكاء الاصطناعي',ai_add_provider:'إضافة مزوّد AI',ai_add_agent:'إضافة وكيل AI',ai_provider_name:'اسم المزوّد',ai_provider_type:'النوع',ai_base_url:'الرابط الأساسي (Base URL)',ai_api_key:'مفتاح API',ai_default_model:'النموذج الافتراضي',ai_temperature:'درجة الحرارة (Temperature)',ai_max_tokens:'أقصى رموز (Max Tokens)',ai_timeout:'المهلة (ms)',ai_apply_preset:'تعبئة افتراضات',ai_agent_name:'اسم الوكيل',ai_agent_desc:'الوصف',ai_agent_prompt:'التعليمات (System Prompt)',ai_agent_perms:'الصلاحيات',ai_agent_model:'النموذج (اختياري — يستخدم افتراضي المزوّد)',ai_role:'الدور',ai_enabled:'مفعّل',ai_no_agents_cfg:'لا يوجد وكلاء',ai_test_ok:'الاتصال ناجح',ai_test_fail:'فشل الاتصال',ai_perms_read_orders:'قراءة الطلبات',ai_perms_read_customers:'قراءة العملاء',ai_perms_read_products:'قراءة المنتجات',ai_perms_read_delivery:'قراءة التوصيل',ai_perms_read_analytics:'قراءة التحليلات',ai_perms_read_agent_notes:'قراءة ملاحظات المؤكدين',ai_perms_generate_reports:'إنشاء التقارير',ai_perms_suggest_actions:'اقتراح إجراءات',ai_perms_note:'لا توجد صلاحيات تدميرية — الذكاء الاصطناعي يحلّل ويوصي فقط.',ai_role_general:'عام',ai_role_manager:'مدير',ai_role_sales:'مبيعات',ai_role_confirmation:'تأكيد',ai_role_delivery:'توصيل',ai_role_analytics:'تحليلات',ai_role_support:'دعم',
@@ -1602,7 +1640,7 @@ const I18N = {
     st_total:'Total commandes',st_confirmed:'Confirmé',st_pending:'En attente',st_nocall:'Non appelé',st_revenue:'Revenu confirmé',
     manip:'⚠️ Manipulation possible',manip_click:'Cliquez pour détails',manip_short:"Durée d'appel {dur}s inférieure au minimum {thr}s.",manip_nostart:'Bouton "Appeler" non pressé — aucune heure de début enregistrée.',
     audit_title:"Détails de l'audit",audit_order:'Commande',audit_client:'Client',audit_agent:'Agent',audit_status:'Statut actuel',audit_thr:'Seuil minimum actuel',audit_log:'Journal complet des appels',audit_call:'Appel',audit_result:'Résultat',audit_start:'Heure début',audit_end:'Heure fin',audit_dur:'Durée',audit_rthr:'Seuil enregistré',audit_flag:'Signalé',audit_yes:'Oui',audit_note:'Note',
-    t_err:'Erreur',t_no_orders:'Aucune commande',t_no_agents:'Aucun agent',t_no_products:'Aucun produit — ajoutez-en un',t_no_calls:'Aucun appel précédent',t_loading:'Chargement...',t_call_start:"Heure d'appel enregistrée ✓",t_select_result:'Sélectionnez un résultat',t_name_req:'Veuillez saisir nom et téléphone',t_name_prod_req:'Veuillez saisir le nom du produit',t_del_confirm:'Supprimer la commande',t_undo:'Irréversible.',t_del_agent_confirm:"Supprimer l'agent",t_del_product_confirm:'Supprimer le produit ?',t_archive_product_confirm:'Archiver ce produit ? Il disparaît de la liste active mais son historique et ses statistiques restent conservés pour toujours — vous pouvez le restaurer à tout moment.',archive_product:'Archiver',t_archived:'Archivé ✓',t_unarchived:'Restauré ✓',show_archived_products:'Voir les archivés',show_active_products:'Voir les actifs',unarchive:'Restaurer',t_no_archived_products:'Aucun produit archivé',archived_on:'Archivé le {date}',t_update_err:'Erreur de mise à jour',t_delete_err:'Erreur de suppression',t_no_confirmed:'Aucune commande confirmée',t_connect_err:'Connexion au serveur impossible',t_added_order:'Commande ajoutée',t_updated:'Mis à jour',t_deleted:'Supprimé',t_added_agent:'Agent ajouté',t_added_product:'Produit ajouté',t_exported_zr:'Export ZR Express ✓',t_exported_ecom:'Export Ecom Delivery ✓',t_exported_ecotrac:'Export Ecotrac ✓',t_exported_report:'Rapport exporté ✓',t_exported_backup:'Sauvegarde exportée ✓',t_imported:'commandes importées',t_settings_saved:'Paramètres enregistrés ✓',t_url_saved:'URL enregistrée ✓',
+    t_err:'Erreur',t_no_orders:'Aucune commande',t_no_agents:'Aucun agent',t_no_products:'Aucun produit — ajoutez-en un',t_no_calls:'Aucun appel précédent',t_loading:'Chargement...',t_call_start:"Heure d'appel enregistrée ✓",t_select_result:'Sélectionnez un résultat',t_name_req:'Veuillez saisir nom et téléphone',t_name_prod_req:'Veuillez saisir le nom du produit',t_del_confirm:'Supprimer la commande',t_undo:'Irréversible.',t_del_agent_confirm:"Supprimer l'agent",t_del_product_confirm:'Supprimer le produit ?',t_archive_product_confirm:'Archiver ce produit ? Il disparaît de la liste active mais son historique et ses statistiques restent conservés pour toujours — vous pouvez le restaurer à tout moment.',archive_product:'Archiver',t_archived:'Archivé ✓',t_unarchived:'Restauré ✓',show_archived_products:'Voir les archivés',show_active_products:'Voir les actifs',unarchive:'Restaurer',t_no_archived_products:'Aucun produit archivé',archived_on:'Archivé le {date}',t_update_err:'Erreur de mise à jour',t_delete_err:'Erreur de suppression',t_no_confirmed:'Aucune commande confirmée',t_connect_err:'Connexion au serveur impossible',t_added_order:'Commande ajoutée',t_updated:'Mis à jour',t_deleted:'Supprimé',t_added_agent:'Agent ajouté',t_added_product:'Produit ajouté',t_exported_zr:'Export ZR Express ✓',t_exported_ecom:'Export Ecom Delivery ✓',t_exported_ecotrac:'Export Ecotrac ✓',t_exported_report:'Rapport exporté ✓',t_exported_backup:'Sauvegarde exportée ✓',t_imported:'commandes importées',t_settings_saved:'Paramètres enregistrés ✓',t_url_saved:'URL enregistrée ✓',login_sub:'Console manager',login_name:'Nom',login_btn:'Connexion',login_bad:'Nom ou mot de passe incorrect',login_suspended:'Compte suspendu. Contactez la direction',login_not_manager:"Ce compte n'est pas un compte manager — utilisez l'interface agent",login_need_name:'Saisissez votre nom',login_conn:'Connexion au serveur impossible',logout:'Déconnexion',err_forbidden:"Vous n'avez pas la permission pour cette action",
     qty_label:'Qté',unit_label:'Prix unitaire',subtotal_lbl:'Sous-total',disc_lbl:'Remise',ship_lbl:'Livraison',grand_lbl:'Total final',delivery_lbl:'Livraison',mgr_note_lbl:'Note manager',ship_note_lbl:'Note plateforme',ph_internal:'Note interne...',ph_platform:'Note pour la plateforme...',expr:'Express',sold:'vendus',conf_rate:'confirmation',
     a_conf_rate:'Taux confirmation',a_canc_rate:"Taux d'annulation",a_avg_order:'Panier moyen',a_orders:'Commandes',a_unknown:'Non défini',a_by_status:'Par statut',a_by_channel:'Par canal',a_by_product:'Par produit',a_by_wilaya:'Par wilaya',a_by_conf_agent:'Par agent',a_by_marketer:'Par marketeur',a_by_delivery:'Par livraison',a_marketer:'Marketeur',a_delivery_status:'Statut livraison',a_customer:'Client',a_pricing:'Prix',a_prod_price:'Prix produit',a_delivery_cost:'Livraison',a_discount:'Remise',a_notes:'Notes',a_internal_note:'Note interne',a_delivery_note:'Note livraison',a_calls:'Appels',a_normal_order:'Commande normale',a_order:'Commande',a_actions:'Actions',a_product_col:'Produit',a_status_col:'Statut',a_price_col:'Prix',a_client_col:'Client',
     nav_ai:'IA',nav_ai_chat:'Chat IA',nav_ai_insights:'Insights IA',nav_ai_settings:'Paramètres IA',ai_platform:'Plateforme IA',ai_no_provider:'Aucun fournisseur IA configuré — ajoutez une clé pour commencer',ai_need_provider:'Pour activer le chat, ajoutez un fournisseur IA dans les paramètres.',ai_chat_title:'Assistant IA',ai_chat_sub:'Posez vos questions : commandes, performance, meilleure action',ai_agent_role:'Assistant',ai_send:'Envoyer',ai_stop:'Stop',ai_thinking:'Réflexion…',ai_placeholder:'Ex : combien de commandes confirmées aujourd\'hui ?',ai_clear:'Effacer',ai_welcome:'Bonjour ! Comment puis-je aider ?',ai_error:'Erreur fournisseur',ai_clear_confirm:'Effacer toute la conversation ?',ai_insights_title:'Insights instantanés',ai_insights_sub:'Analyse automatique — mise à jour en direct',ai_deep_analysis:'Analyse IA approfondie',ai_deep_loading:'L\'IA analyse…',ai_no_insights:'Aucun insight',ai_severity_warning:'Alerte',ai_severity_ok:'OK',ai_severity_info:'Info',ai_refresh_insights:'Rafraîchir',ai_providers:'Fournisseurs IA',ai_agents_cfg:'Agents IA',ai_add_provider:'Ajouter fournisseur IA',ai_add_agent:'Ajouter agent IA',ai_provider_name:'Nom',ai_provider_type:'Type',ai_base_url:'URL de base',ai_api_key:'Clé API',ai_default_model:'Modèle par défaut',ai_temperature:'Température',ai_max_tokens:'Tokens max',ai_timeout:'Délai (ms)',ai_apply_preset:'Préremplir',ai_agent_name:'Nom',ai_agent_desc:'Description',ai_agent_prompt:'Instructions (System Prompt)',ai_agent_perms:'Permissions',ai_agent_model:'Modèle (optionnel — sinon défaut du fournisseur)',ai_role:'Rôle',ai_enabled:'Activé',ai_no_agents_cfg:'Aucun agent',ai_test_ok:'Connexion OK',ai_test_fail:'Échec connexion',ai_perms_read_orders:'Lire commandes',ai_perms_read_customers:'Lire clients',ai_perms_read_products:'Lire produits',ai_perms_read_delivery:'Lire livraison',ai_perms_read_analytics:'Lire statistiques',ai_perms_read_agent_notes:'Lire notes agents',ai_perms_generate_reports:'Générer rapports',ai_perms_suggest_actions:'Suggérer actions',ai_perms_note:'Aucune permission destructive — l\'IA analyse et recommande seulement.',ai_role_general:'Général',ai_role_manager:'Manager',ai_role_sales:'Ventes',ai_role_confirmation:'Confirmation',ai_role_delivery:'Livraison',ai_role_analytics:'Analystes',ai_role_support:'Support',
@@ -1654,7 +1692,7 @@ const I18N = {
     st_total:'Total orders',st_confirmed:'Confirmed',st_pending:'Pending',st_nocall:'Not called',st_revenue:'Confirmed revenue',
     manip:'⚠️ Possible manipulation',manip_click:'Click for details',manip_short:'Call duration {dur}s is below the minimum of {thr}s.',manip_nostart:'Call button was not pressed — no start time recorded on the server.',
     audit_title:'Audit details',audit_order:'Order',audit_client:'Client',audit_agent:'Agent',audit_status:'Current status',audit_thr:'Current minimum threshold',audit_log:'Full call log',audit_call:'Call',audit_result:'Result',audit_start:'Start time',audit_end:'End time',audit_dur:'Duration',audit_rthr:'Recorded threshold',audit_flag:'Flagged',audit_yes:'Yes',audit_note:'Note',
-    t_err:'Error',t_no_orders:'No orders',t_no_agents:'No agents',t_no_products:'No products — add one to start',t_no_calls:'No previous calls',t_loading:'Loading...',t_call_start:'Call start time logged ✓',t_select_result:'Select a result first',t_name_req:'Please enter name and phone',t_name_prod_req:'Please enter product name',t_del_confirm:'Delete order',t_undo:'Cannot be undone.',t_del_agent_confirm:'Delete agent',t_del_product_confirm:'Delete product?',t_archive_product_confirm:'Archive this product? It disappears from the active list, but its history and stats stay saved forever — you can restore it anytime.',archive_product:'Archive',t_archived:'Archived ✓',t_unarchived:'Restored ✓',show_archived_products:'Show archived',show_active_products:'Show active',unarchive:'Restore',t_no_archived_products:'No archived products',archived_on:'Archived on {date}',t_update_err:'Update error',t_delete_err:'Delete error',t_no_confirmed:'No confirmed orders',t_connect_err:'Cannot connect to server',t_added_order:'Order added',t_updated:'Updated',t_deleted:'Deleted',t_added_agent:'Agent added',t_added_product:'Product added',t_exported_zr:'Exported ZR Express ✓',t_exported_ecom:'Exported Ecom Delivery ✓',t_exported_ecotrac:'Exported Ecotrac ✓',t_exported_report:'Report exported ✓',t_exported_backup:'Backup exported ✓',t_imported:'orders imported',t_settings_saved:'Settings saved ✓',t_url_saved:'URL saved ✓',
+    t_err:'Error',t_no_orders:'No orders',t_no_agents:'No agents',t_no_products:'No products — add one to start',t_no_calls:'No previous calls',t_loading:'Loading...',t_call_start:'Call start time logged ✓',t_select_result:'Select a result first',t_name_req:'Please enter name and phone',t_name_prod_req:'Please enter product name',t_del_confirm:'Delete order',t_undo:'Cannot be undone.',t_del_agent_confirm:'Delete agent',t_del_product_confirm:'Delete product?',t_archive_product_confirm:'Archive this product? It disappears from the active list, but its history and stats stay saved forever — you can restore it anytime.',archive_product:'Archive',t_archived:'Archived ✓',t_unarchived:'Restored ✓',show_archived_products:'Show archived',show_active_products:'Show active',unarchive:'Restore',t_no_archived_products:'No archived products',archived_on:'Archived on {date}',t_update_err:'Update error',t_delete_err:'Delete error',t_no_confirmed:'No confirmed orders',t_connect_err:'Cannot connect to server',t_added_order:'Order added',t_updated:'Updated',t_deleted:'Deleted',t_added_agent:'Agent added',t_added_product:'Product added',t_exported_zr:'Exported ZR Express ✓',t_exported_ecom:'Exported Ecom Delivery ✓',t_exported_ecotrac:'Exported Ecotrac ✓',t_exported_report:'Report exported ✓',t_exported_backup:'Backup exported ✓',t_imported:'orders imported',t_settings_saved:'Settings saved ✓',t_url_saved:'URL saved ✓',login_sub:'Manager console',login_name:'Name',login_btn:'Sign in',login_bad:'Incorrect name or password',login_suspended:'Account suspended. Contact your administrator',login_not_manager:'This is not a manager account — use the agent interface',login_need_name:'Enter your name',login_conn:'Cannot connect to server',logout:'Sign out',err_forbidden:'You do not have permission for that action',
     qty_label:'Qty',unit_label:'Unit price',subtotal_lbl:'Subtotal',disc_lbl:'Discount',ship_lbl:'Shipping',grand_lbl:'Final total',delivery_lbl:'Delivery',mgr_note_lbl:'Manager note',ship_note_lbl:'Platform note',ph_internal:'Internal note...',ph_platform:'Note for platform...',expr:'Express',sold:'sold',conf_rate:'confirmation',
     a_conf_rate:'Confirmation rate',a_canc_rate:'Cancellation rate',a_avg_order:'Avg. order',a_orders:'Orders',a_unknown:'Unspecified',a_by_status:'By status',a_by_channel:'By channel',a_by_product:'By product',a_by_wilaya:'By wilaya',a_by_conf_agent:'By agent',a_by_marketer:'By marketer',a_by_delivery:'By delivery',a_marketer:'Marketer',a_delivery_status:'Delivery status',a_customer:'Customer',a_pricing:'Pricing',a_prod_price:'Product price',a_delivery_cost:'Delivery',a_discount:'Discount',a_notes:'Notes',a_internal_note:'Internal note',a_delivery_note:'Delivery note',a_calls:'Calls',a_normal_order:'Normal order',a_order:'Order',a_actions:'Actions',a_product_col:'Product',a_status_col:'Status',a_price_col:'Price',a_client_col:'Client',
     nav_ai:'AI',nav_ai_chat:'AI Chat',nav_ai_insights:'AI Insights',nav_ai_settings:'AI Settings',ai_platform:'AI Platform',ai_no_provider:'No AI provider configured — add a key to start',ai_need_provider:'To enable chat, add an AI provider in Settings.',ai_chat_title:'AI Assistant',ai_chat_sub:'Ask about orders, performance, or the best next action',ai_agent_role:'Assistant',ai_send:'Send',ai_stop:'Stop',ai_thinking:'Thinking…',ai_placeholder:'e.g. how many confirmed orders today?',ai_clear:'Clear chat',ai_welcome:'Hi! How can I help?',ai_error:'Provider error',ai_clear_confirm:'Clear the whole conversation?',ai_insights_title:'Instant insights',ai_insights_sub:'Automatic analysis of your data — live',ai_deep_analysis:'Deep AI analysis',ai_deep_loading:'AI is analyzing…',ai_no_insights:'No insights yet',ai_severity_warning:'Warning',ai_severity_ok:'OK',ai_severity_info:'Info',ai_refresh_insights:'Refresh',ai_providers:'AI Providers',ai_agents_cfg:'AI Agents',ai_add_provider:'Add AI Provider',ai_add_agent:'Add AI Agent',ai_provider_name:'Provider Name',ai_provider_type:'Type',ai_base_url:'Base URL',ai_api_key:'API Key',ai_default_model:'Default Model',ai_temperature:'Temperature',ai_max_tokens:'Max Tokens',ai_timeout:'Timeout (ms)',ai_apply_preset:'Fill defaults',ai_agent_name:'Agent Name',ai_agent_desc:'Description',ai_agent_prompt:'Instructions (System Prompt)',ai_agent_perms:'Permissions',ai_agent_model:'Model (optional — uses provider default)',ai_role:'Role',ai_enabled:'Enabled',ai_no_agents_cfg:'No agents',ai_test_ok:'Connection OK',ai_test_fail:'Connection failed',ai_perms_read_orders:'Read Orders',ai_perms_read_customers:'Read Customers',ai_perms_read_products:'Read Products',ai_perms_read_delivery:'Read Delivery',ai_perms_read_analytics:'Read Analytics',ai_perms_read_agent_notes:'Read Agent Notes',ai_perms_generate_reports:'Generate Reports',ai_perms_suggest_actions:'Suggest Actions',ai_perms_note:'No destructive permissions — the AI only analyzes and recommends.',ai_role_general:'General',ai_role_manager:'Manager',ai_role_sales:'Sales',ai_role_confirmation:'Confirmation',ai_role_delivery:'Delivery',ai_role_analytics:'Analytics',ai_role_support:'Support',
@@ -1678,7 +1716,17 @@ const ORDER_STATUSES = ['pending','no_answer','callback','tentative1','tentative
 // fallback map is used only before providers load / for legacy display.
 
 const SERVER_KEY='crm_server_url', SETTINGS_KEY='crm_settings';
-let serverUrl = localStorage.getItem(SERVER_KEY) || 'https://erp-serveur.onrender.com';
+let serverUrl = (function(){
+  /* Default to the origin this page was served from (audit: the clients are now
+   * served by the API itself, so same-origin is the normal case). The old
+   * hardcoded production URL remains the fallback for a page opened from
+   * file:// or still hosted separately, and an explicit value saved in
+   * Settings always wins. */
+  var saved = localStorage.getItem(SERVER_KEY);
+  if (saved) return saved;
+  if (location.protocol === 'http:' || location.protocol === 'https:') return location.origin;
+  return 'https://erp-serveur.onrender.com';
+})();
 let settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{"alertMinutes":60}');
 let orders=[], agents=[], products=[], storesCache=[], providersCache=[];
 let editingOrderId=null, callingOrderId=null, editingProductId=null, selectedResult=null;
@@ -1797,7 +1845,14 @@ function setSyncStatus(msg,color=''){ const el=document.getElementById('syncStat
 function openSidebar(){document.getElementById('sidebar').classList.add('open');document.getElementById('sidebarOverlay').classList.add('open');}
 function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('open');}
 
-async function api(method,path,body){ const r=await fetch(serverUrl+path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
+async function api(method,path,body){
+  // credentials:'include' carries the HttpOnly session cookie.
+  const r=await fetch(serverUrl+path,{method,headers:{'Content-Type':'application/json'},credentials:'include',body:body?JSON.stringify(body):undefined});
+  if(r.status===401){ const e=new Error('UNAUTHENTICATED'); e.code=401; showLoginGate(); throw e; }
+  if(r.status===403){ const e=new Error('FORBIDDEN'); e.code=403; toast(t('err_forbidden'),'error'); throw e; }
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return r.json();
+}
 
 /* ---------- Notification sounds (Web Audio, no asset files) ----------
  * Signature sounds:
@@ -1899,7 +1954,7 @@ function buildResultGrid(){ document.getElementById('resultGrid').innerHTML=RESU
 
 function connectSSE(){
   if(sseSource) sseSource.close();
-  sseSource=new EventSource(serverUrl+'/api/notifications/subscribe?agent=manager');
+  sseSource=new EventSource(serverUrl+'/api/notifications/subscribe',{withCredentials:true});
   sseSource.onmessage=e=>{ try{ const data=JSON.parse(e.data); if(data.type==='connected')return; handleNotif(data);}catch(err){} };
   sseSource.onerror=()=>setTimeout(connectSSE,5000);
 }
@@ -4261,7 +4316,7 @@ const AI_ADAPTER_TYPES = [
 let aiProvidersCache=[], aiAgentsCache=[], aiAdaptersCache=AI_ADAPTER_TYPES.slice(), aiPermissionsCache={};
 let aiCurrentAgentId=null, aiStreamSource=null, aiStreaming=false, aiInsightsCache=null;
 
-async function aiGet(url){ const r=await fetch(serverUrl+url); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
+async function aiGet(url){ const r=await fetch(serverUrl+url,{credentials:'include'}); if(r.status===401){ showLoginGate(); throw new Error('UNAUTHENTICATED'); } if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
 async function aiCall(method,path,body){ return api(method,path,body); } // reuse shared api()
 
 async function ensureAiMeta(){
@@ -4614,10 +4669,96 @@ async function init(){
   loadSoundSettings();
   if('Notification'in window&&Notification.permission==='default')Notification.requestPermission();
 }
-init();
-connectSSE();
-loadServerSettings();
-setInterval(async()=>{await fetchOrders();await fetchAgents();await fetchStores();refresh();updateStockNavBadge();},30000);
+/* =============================================================================
+ * AUTHENTICATION (audit SEC-01/SEC-02).
+ * The console had no login at all — opening the URL made you the manager.
+ * Nothing boots now until GET /api/auth/me confirms a live manager session.
+ * ========================================================================== */
+let currentUser = null;
+let bootedOnce = false;
+let refreshTimer = null;
+
+function showLoginGate(){
+  const gate=document.getElementById('loginGate');
+  if(gate) gate.classList.remove('hidden');
+  if(sseSource){ sseSource.close(); sseSource=null; }
+  if(refreshTimer){ clearInterval(refreshTimer); refreshTimer=null; }
+  currentUser=null;
+  const p=document.getElementById('lgPass'); if(p) p.value='';
+}
+function hideLoginGate(){
+  const gate=document.getElementById('loginGate');
+  if(gate) gate.classList.add('hidden');
+}
+
+async function doLogin(){
+  const name=document.getElementById('lgName').value.trim();
+  const pass=document.getElementById('lgPass').value;
+  const err=document.getElementById('lgErr');
+  const btn=document.getElementById('lgBtn');
+  if(!name){ err.textContent=t('login_need_name'); return; }
+  err.textContent=''; btn.disabled=true;
+  try{
+    const r=await fetch(serverUrl+'/api/auth/login',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      credentials:'include',body:JSON.stringify({name,password:pass})
+    });
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok){
+      err.textContent = data.code==='SUSPENDED' ? t('login_suspended') : t('login_bad');
+      return;
+    }
+    if(!data.user.isManager){
+      // A confirmation agent has their own interface; the console would 403 on
+      // nearly everything, which reads as a broken app rather than a refusal.
+      err.textContent=t('login_not_manager');
+      await fetch(serverUrl+'/api/auth/logout',{method:'POST',credentials:'include'}).catch(()=>{});
+      return;
+    }
+    currentUser=data.user;
+    localStorage.setItem('crm_last_user',name);
+    hideLoginGate();
+    await startApp();
+  }catch(e){
+    err.textContent=t('login_conn');
+  }finally{
+    btn.disabled=false;
+  }
+}
+
+async function doLogout(){
+  try{ await fetch(serverUrl+'/api/auth/logout',{method:'POST',credentials:'include'}); }catch(e){}
+  showLoginGate();
+}
+
+/** Everything that used to run unconditionally at page load. */
+async function startApp(){
+  const nameEl=document.getElementById('sidebarUserName');
+  if(nameEl && currentUser) nameEl.textContent=currentUser.name;
+  await init();
+  connectSSE();
+  loadServerSettings();
+  if(refreshTimer) clearInterval(refreshTimer);
+  refreshTimer=setInterval(async()=>{
+    try{ await fetchOrders(); await fetchAgents(); await fetchStores(); refresh(); updateStockNavBadge(); }
+    catch(e){ /* a 401 already routed to the login gate */ }
+  },30000);
+  bootedOnce=true;
+}
+
+/** Decide on load whether we already have a session. */
+(async function boot(){
+  const last=localStorage.getItem('crm_last_user');
+  if(last){ const el=document.getElementById('lgName'); if(el) el.value=last; }
+  try{
+    const r=await fetch(serverUrl+'/api/auth/me',{credentials:'include'});
+    if(r.ok){
+      const me=await r.json();
+      if(me.user.isManager){ currentUser=me.user; hideLoginGate(); await startApp(); return; }
+    }
+  }catch(e){ /* offline or wrong server URL — fall through to the form */ }
+  showLoginGate();
+})();
 </script>
 </body>
 </html>
