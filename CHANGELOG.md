@@ -636,3 +636,28 @@ filter, sort and statistic in it is computed client-side over one `orders` array
 Moving it onto the paginated endpoint means rewriting that pipeline, which
 belongs with splitting the 4,600-line file up rather than being bolted on here.
 The server side is ready and tested for when that happens.
+
+#### Backend features that had no UI
+The audit listed nine routes with no caller in any client. Two were repaired in
+Phase 1 (the notification list and read-sync). The rest, resolved:
+
+| route | outcome |
+|---|---|
+| `GET/PUT /api/stores/:id/default-carrier` | **Exposed** — a dropdown in the store modal, populated from the live provider registry so a newly added carrier appears without a code change. |
+| `POST /api/followup/assign` | **Exposed** — an assign button on every Suivi row, offering each follow-up-capable agent plus "auto" to re-run the workload-balanced choice. |
+| `POST /api/abandoned` | **Removed** — superseded by the per-store checkout and contact webhooks, which do the same job with signature verification and platform-aware parsing. |
+| `GET /api/financial-records/versions` | Kept as an API. The append-only version history is real, but surfacing it needs a drill-down the calculator does not have; it belongs with that page's rework. |
+| `GET /api/agents/:name/payroll` | Kept. The bulk endpoint covers the UI; the single-agent form is a reasonable API to leave in place. |
+| `POST /api/ai/chat` | Kept — the non-streaming fallback for a provider that cannot stream. |
+| `GET /api/statuses` | Kept. Wiring the clients to it would mean rewriting how both render status labels, which belongs with the frontend work. |
+
+**Why it mattered.** Per-store default carrier and manual follow-up assignment
+were *fully built and completely unreachable* — the manager could not use
+features that already existed and were being maintained.
+**Files.** `index.html`, `index.js`.
+**Risk.** Low. Both were verified in a browser: the carrier dropdown populates,
+saves, and reads back on reopen; the assign button renders on every Suivi row and
+the assignment persists.
+
+*Note: `POST /api/followup/assign` is manager-only as of the Phase 1 review, so
+the new button is a manager action — which is what it should be.*

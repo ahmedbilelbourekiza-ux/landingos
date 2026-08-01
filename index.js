@@ -1864,43 +1864,10 @@ app.get('/api/orders/:id/audit', (req, res) => {
   });
 });
 
-// Abandoned cart — ingested from Shopify (POST /api/abandoned) or via webhook.
-// Stored as an order with status 'abandoned' so it appears in the same list,
-// is filterable, and can be assigned + followed-up like any order.
-app.post('/api/abandoned', (req, res) => {
-  const c = req.body || {};
-  if (!c.client && !c.phone) return res.status(400).json({ error: 'client or phone required' });
-  const dupKey = c.shopifyId ? db.findOrder(o => o.shopifyId === String(c.shopifyId)) : null;
-  if (dupKey) return res.status(200).json({ message: 'duplicate' });
-  const agent = resolveAgent(c.agent || '');
-  const data = loadData();
-  const cart = {
-    id: genId(data.orders),
-    shopifyId: c.shopifyId ? String(c.shopifyId) : '',
-    shopifyName: c.shopifyName || '',
-    client: c.client || (c.phone ? 'Client' : ''),
-    phone: normalizePhone(c.phone || ''),
-    product: c.product || '',
-    productVariant: c.productVariant || '',
-    quantity: c.quantity || 1,
-    price: Number(c.price) || 0,
-    wilaya: c.wilaya || '', commune: c.commune || '',
-    agent,
-    // Abandoned cart is now METADATA (req §4): orderType='abandoned' instead of
-    // a status. We keep status='abandoned' for back-compat with existing rows
-    // and filters; both signals are honored in the order mapper.
-    orderType: 'abandoned',
-    status: 'abandoned',
-    note: c.note || '', managerNote: '',
-    delivery: 'zr', deliveryStatus: '', trackingNumber: '',
-    source: 'shopify_abandoned',
-    createdAt: Date.now()
-  };
-  const saved = db.insertOrder(cart);
-  logInfo('abandoned', 'cart imported', { id: cart.id, agent });
-  notifyNewOrder(saved, agent, 'abandoned_cart');
-  res.status(200).json({ message: 'received', id: cart.id, agent });
-});
+/* POST /api/abandoned was removed. It had no caller in any client and was
+ * superseded by the per-store checkout and contact webhooks
+ * (/webhook/store/:id/checkout and /contact), which do the same job with
+ * signature verification and platform-aware parsing. */
 
 /* =============================================================================
  * DELIVERY TRACKING — shipment lifecycle routes.
