@@ -387,7 +387,13 @@ function broadcast(payload, target = null) {
     logError('sse', 'broadcast() called with a non-object payload — event dropped', { payload: String(payload) });
     return;
   }
-  const msg = `data: ${JSON.stringify(payload)}\n\n`;
+  /* A stored notification carries an `id:` line so the browser records it as
+   * Last-Event-ID and can ask for everything after it on reconnect. Transient
+   * data-changed events (new_order, call_logged…) deliberately do NOT get an
+   * id — they are not replayable and setting one would make the client skip
+   * real notifications after a reconnect. */
+  const idLine = payload.notificationId ? `id: ${payload.notificationId}\n` : '';
+  const msg = `${idLine}data: ${JSON.stringify(payload)}\n\n`;
   if (target) {
     sendToChannel(target, msg);
     if (target !== 'manager') sendToChannel('manager', msg);   // managers see everything
@@ -447,6 +453,12 @@ setInterval(() => {
     const n = db.deleteExpiredSessions();
     if (n) logInfo('auth', 'pruned expired sessions', { count: n });
   } catch (e) { logError('auth', 'session prune failed', { err: e.message }); }
+  try {
+    // Notifications are a feed, not an audit record — audit_log is that. The
+    // table had no retention policy at all and grew forever.
+    const n = db.pruneNotifications(Number(process.env.NOTIFICATION_RETENTION) || 5000);
+    if (n) logInfo('notifications', 'pruned old notifications', { count: n });
+  } catch (e) { logError('notifications', 'prune failed', { err: e.message }); }
 }, 60 * 60 * 1000);
 jobs.start(broadcast, log);
 
@@ -608,6 +620,23 @@ function autoAssign() {
   }
 }
 
+
+/* A new order is the single most important thing that happens in this system,
+ * and it was broadcast only — so it disappeared on refresh, and anything that
+ * arrived while the console was closed was never seen at all. Raised through
+ * notifications.push() it is stored, replayable and counted by the badge.
+ * `extra` carries the full order object the client's existing handler expects. */
+function notifyNewOrder(saved, agent, kind = 'new_order') {
+  notifications.push({
+    type: kind,
+    title: kind === 'abandoned_cart' ? '🛒 Panier abandonné' : '🆕 Nouvelle commande',
+    body: [saved.client, saved.phone].filter(Boolean).join(' — '),
+    orderId: saved.id,
+    target: agent || notifications.EVERYONE,
+    extra: { order: saved },
+  });
+}
+
 /** Resolve the agent for an inbound order: explicit non-empty value wins, else auto-assign. */
 function resolveAgent(requestedAgent) {
   if (requestedAgent && String(requestedAgent).trim() !== '') return requestedAgent;
@@ -632,7 +661,7 @@ async function tryAutoCreateShipment(order, actor) {
       body: [order.id, shipment.trackingNumber].filter(Boolean).join(' · '),
       orderId: order.id,
       shipmentId: shipment.id,
-      target: order.agent || null,
+      target: order.agent || notifications.MANAGER_ONLY,
     });
     broadcast({ type: 'shipment_created', orderId: order.id, shipmentId: shipment.id, trackingNumber: shipment.trackingNumber }, order.agent || null);
     return shipment;
@@ -643,7 +672,7 @@ async function tryAutoCreateShipment(order, actor) {
       title: '⚠️ Shipment creation failed',
       body: [order.id, e.message].filter(Boolean).join(' · '),
       orderId: order.id,
-      target: order.agent || null,
+      target: order.agent || notifications.MANAGER_ONLY,
     });
     return null;
   }
@@ -753,14 +782,17 @@ function runOverdueSweep() {
     db.audit('order', order.id, 'overdue_missed', 'system', {
       agent: originalAgent, minutes, thresholdMinutes: Number(s.reassignMinutes) || 5, missedOrders: newCount,
     });
+    // MANAGER_ONLY, not null. `target: null` meant "everyone", so this alert
+    // about an agent's own missed order was stored for that agent to read.
+    // push() already broadcasts; the extra broadcast() here was a duplicate
+    // that arrived without a notificationId and so could not be replayed.
     notifications.push({
       type: 'agent_overdue',
       title: '🚨 Overdue order',
       body: order.id + ' · ' + originalAgent + ' (' + newCount + ' missed)',
       orderId: order.id,
-      target: null,
+      target: notifications.MANAGER_ONLY,
     });
-    broadcast({ type: 'agent_overdue', orderId: order.id, agent: originalAgent, missedOrders: newCount }, 'manager');
 
     if (s.autoReassign) {
       try {
@@ -811,9 +843,8 @@ function runOverdueSweep() {
           type: 'agent_suspended',
           title: '⛔ Agent auto-suspended',
           body: originalAgent + ' — ' + newCount + ' missed orders',
-          target: null,
+          target: notifications.MANAGER_ONLY,
         });
-        broadcast({ type: 'agent_suspended', agent: originalAgent, missedOrders: newCount }, 'manager');
         logInfo('overdue-sweep', 'agent auto-suspended', { agent: originalAgent, missedOrders: newCount });
       }
     }
@@ -961,7 +992,32 @@ app.get('/api/notifications/subscribe', (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no');   // stop reverse proxies buffering the stream
   res.flushHeaders();
   const send = (msg) => { try { res.write(msg); } catch (e) { logError('sse', 'write failed', { channel, err: e.message }); } };
-  send(`data: ${JSON.stringify({ type: 'connected', channel })}\n\n`);
+
+  /* Replay anything stored while this client was disconnected.
+   *
+   * An SSE connection drops constantly in normal use — a phone locking, a
+   * tunnel timing out, a redeploy — and EventSource reconnects silently. Every
+   * notification raised in that window used to be lost from the live feed, and
+   * because nothing read the table, lost entirely. The browser sends back the
+   * last id it saw in the Last-Event-ID header; ?lastEventId= covers clients
+   * that reconnect by opening a fresh EventSource instead. */
+  const lastSeen = Number(req.headers['last-event-id'] || req.query.lastEventId || 0);
+  send(`data: ${JSON.stringify({ type: 'connected', channel, replayFrom: lastSeen || null })}\n\n`);
+  if (lastSeen > 0) {
+    try {
+      const missed = db.getNotificationsSince(req.user, lastSeen);
+      for (const n of missed) {
+        send(`id: ${n.id}\ndata: ${JSON.stringify({
+          type: n.type ? 'notif_' + n.type : 'notification',
+          notificationId: n.id, notifType: n.type, title: n.title, body: n.body,
+          orderId: n.orderId, shipmentId: n.shipmentId, time: n.createdAt, replayed: true,
+        })}\n\n`);
+      }
+      if (missed.length) logInfo('sse', 'replayed missed notifications', { channel, count: missed.length, since: lastSeen });
+    } catch (e) {
+      logError('sse', 'replay failed', { channel, err: e.message });
+    }
+  }
 
   const unsubscribe = addSseClient(channel, send);
   // Keep-alive comment frame: proxies and mobile networks drop idle connections.
@@ -1122,9 +1178,8 @@ app.post('/webhook/shopify', (req, res) => {
   // Inventory: reserve stock immediately if the policy is 'immediate' (req §9).
   try { inventory.reserveOnOrder(saved, 'system'); }
   catch (e) { logError('inventory', 'reserve on import failed', { orderId: saved.id, err: e.message }); }
-  broadcast({ type: 'new_order', order: saved }, agent || null);
+  notifyNewOrder(saved, agent);
   if (agent) sendPushToAgent(agent, { title: '📦 طلب جديد', body: saved.id + ' — ' + (saved.client || '') });
-  if (!agent) broadcast({ type: 'new_order', order: saved });
 
   res.status(200).json({ message: 'received', id: newOrder.id, agent });
 });
@@ -1222,8 +1277,7 @@ function handleAbandonedCheckout(checkout, res) {
   };
   const saved = db.insertOrder(cart);
   logInfo('abandoned', 'cart imported from checkout webhook', { id: cart.id, checkoutId, agent });
-  broadcast({ type: 'abandoned_cart', order: saved }, agent || null);
-  if (!agent) broadcast({ type: 'abandoned_cart', order: saved });
+  notifyNewOrder(saved, agent, 'abandoned_cart');
   return res.status(200).json({ message: 'received', id: cart.id, agent });
 }
 
@@ -1334,9 +1388,8 @@ function handleDraftOrder(draft, res) {
   logInfo('shopify', 'draft order imported', { id: newOrder.id, agent, draftId });
   try { inventory.reserveOnOrder(saved, 'system'); }
   catch (e) { logError('inventory', 'reserve on draft import failed', { orderId: saved.id, err: e.message }); }
-  broadcast({ type: 'new_order', order: saved }, agent || null);
+  notifyNewOrder(saved, agent);
   if (agent) sendPushToAgent(agent, { title: '📦 طلب جديد', body: saved.id + ' — ' + (saved.client || '') });
-  if (!agent) broadcast({ type: 'new_order', order: saved });
 
   return res.status(200).json({ message: 'received', id: newOrder.id, agent });
 }
@@ -1444,7 +1497,7 @@ app.post('/api/orders', (req, res) => {
   // Inventory: reserve stock immediately if the policy is 'immediate' (req §9).
   try { inventory.reserveOnOrder(saved, 'system'); }
   catch (e) { logError('inventory', 'reserve on create failed', { orderId: saved.id, err: e.message }); }
-  broadcast({ type: 'new_order', order: saved }, agent || null);
+  notifyNewOrder(saved, agent);
   if (agent) sendPushToAgent(agent, { title: '📦 طلب جديد', body: saved.id + ' — ' + (saved.client || '') });
   res.json(saved);
 });
@@ -1543,7 +1596,16 @@ app.post('/api/orders/:id/call', async (req, res) => {
   db.addCall(order.id, call);
   const updated = db.patchOrder(order.id, { status: result, pendingCallStart: null });
 
-  if (suspicious) broadcast({ type: 'suspicious_call', order: updated, call: { duration, threshold, result, agent: order.agent } });
+  if (suspicious) {
+    notifications.push({
+      type: 'suspicious_call',
+      title: '⚠️ Appel suspect',
+      body: [order.id, order.agent, (duration === null ? 'aucun appel' : duration + 's')].filter(Boolean).join(' · '),
+      orderId: order.id,
+      target: notifications.MANAGER_ONLY,
+      extra: { order: updated, call: { duration, threshold, result, agent: order.agent } },
+    });
+  }
   broadcast({ type: 'call_logged', orderId: order.id, result, duration, suspicious }, order.agent);
 
   // ---- DELIVERY WORKFLOW: auto-create the shipment on confirm ----
@@ -1658,8 +1720,7 @@ app.post('/api/abandoned', (req, res) => {
   };
   const saved = db.insertOrder(cart);
   logInfo('abandoned', 'cart imported', { id: cart.id, agent });
-  broadcast({ type: 'abandoned_cart', order: saved }, agent || null);
-  if (!agent) broadcast({ type: 'abandoned_cart', order: saved });
+  notifyNewOrder(saved, agent, 'abandoned_cart');
   res.status(200).json({ message: 'received', id: cart.id, agent });
 });
 
@@ -1849,7 +1910,11 @@ app.post('/api/agents/:name/suspend', (req, res) => {
   // cookie happens to expire.
   auth.destroySessionsFor(name);
   db.audit('agent', name, 'manual_suspend', req.user.name, {});
-  broadcast({ type: 'agent_suspended', agent: name }, 'manager');
+  notifications.push({
+    type: 'agent_suspended', title: '⛔ Agent suspended',
+    body: name + ' — suspended by ' + req.user.name,
+    target: notifications.MANAGER_ONLY,
+  });
   res.json({ message: 'suspended', agent: db.getAgents().find(a => a.name === name) });
 });
 
@@ -2272,7 +2337,7 @@ app.post('/webhook/store/:id', express.raw({ type: '*/*' }), async (req, res) =>
           db.patchOrder(existingLead.id, upgrade);
           logInfo('store', 'lead upgraded to real order (matched by phone)', { id: existingLead.id, storeId: store.id, phone: normalizedPhone });
           db.logIntegration('store', req.params.id, 'webhook_lead_upgraded', 'success', store.platform, {}, { orderId: existingLead.id });
-          broadcast({ type: 'new_order', order: db.getOrder(existingLead.id) }, existingLead.agent || null);
+          notifyNewOrder(db.getOrder(existingLead.id), existingLead.agent);
           return res.status(200).json({ ok: true, orderId: existingLead.id, message: 'upgraded from lead' });
         }
 
@@ -2311,7 +2376,7 @@ app.post('/webhook/store/:id', express.raw({ type: '*/*' }), async (req, res) =>
         };
         const saved = db.insertOrder(newOrder);
         logInfo('store', 'webhook order saved', { id: saved.id, storeId: store.id });
-        broadcast({ type: 'new_order', order: saved }, agent || null);
+        notifyNewOrder(saved, agent);
   if (agent) sendPushToAgent(agent, { title: '📦 طلب جديد', body: saved.id + ' — ' + (saved.client || '') });
         db.logIntegration('store', req.params.id, 'webhook_order_created', 'success', store.platform, {}, { orderId: saved.id });
         return res.status(200).json({ ok: true, orderId: saved.id });
@@ -2381,8 +2446,7 @@ app.post('/webhook/store/:id/checkout', express.raw({ type: '*/*' }), async (req
     };
     const saved = db.insertOrder(cart);
     logInfo('store', 'cart imported from checkout webhook', { id: cart.id, storeId: store.id, agent });
-    broadcast({ type: 'abandoned_cart', order: saved }, agent || null);
-    if (!agent) broadcast({ type: 'abandoned_cart', order: saved });
+    notifyNewOrder(saved, agent, 'abandoned_cart');
     db.logIntegration('store', req.params.id, 'webhook_checkout_created', 'success', store.platform, {}, { orderId: cart.id });
     return res.status(200).json({ ok: true, id: cart.id });
   } catch (e) {
@@ -2449,8 +2513,7 @@ app.post('/webhook/store/:id/contact', express.raw({ type: '*/*' }), async (req,
     };
     const saved = db.insertOrder(lead);
     logInfo('store', 'lead imported from contact webhook', { id: lead.id, storeId: store.id, agent });
-    broadcast({ type: 'abandoned_cart', order: saved }, agent || null);
-    if (!agent) broadcast({ type: 'abandoned_cart', order: saved });
+    notifyNewOrder(saved, agent, 'abandoned_cart');
     db.logIntegration('store', req.params.id, 'webhook_contact_created', 'success', store.platform, {}, { orderId: lead.id });
     return res.status(200).json({ ok: true, id: lead.id });
   } catch (e) {
@@ -2509,8 +2572,7 @@ app.post('/webhook/store/:id/lead-capture', express.json(), async (req, res) => 
   };
   const saved = db.insertOrder(lead);
   logInfo('store', 'lead captured directly from checkout page script', { id: lead.id, storeId: store.id, agent });
-  broadcast({ type: 'abandoned_cart', order: saved }, agent || null);
-  if (!agent) broadcast({ type: 'abandoned_cart', order: saved });
+  notifyNewOrder(saved, agent, 'abandoned_cart');
   return res.status(200).json({ ok: true, id: lead.id });
 });
 
@@ -2790,13 +2852,26 @@ app.post('/api/ai/insights/deep', async (req, res) => {
 /* =============================================================================
  * NOTIFICATIONS — persistent store (also pushed live via SSE broadcast).
  * ========================================================================== */
+/* History for the signed-in account, newest first. This endpoint existed but
+ * had no caller, so notifications were live-only: everything vanished on
+ * refresh and the badge reset to zero. Both clients now load this on boot. */
 app.get('/api/notifications', (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 50, 200);
-  res.json({ items: db.getNotifications(limit), unread: db.getUnreadCount() });
+  const beforeId = req.query.beforeId ? Number(req.query.beforeId) : null;
+  res.json({
+    items: db.getNotifications(req.user, { limit, beforeId }),
+    unread: db.getUnreadCount(req.user),
+    lastReadId: db.getLastReadNotificationId(req.user.name),
+  });
 });
+
+/* Advance this account's read watermark. `upToId` is the newest id the client
+ * has actually displayed — passing it (rather than "mark everything") means a
+ * notification arriving between render and click is not silently swallowed. */
 app.post('/api/notifications/read', (req, res) => {
-  db.markNotificationsRead(req.body?.olderThanId || null);
-  res.json({ message: 'marked read', unread: db.getUnreadCount() });
+  const upToId = req.body?.upToId ?? req.body?.olderThanId ?? null;
+  const lastReadId = db.markNotificationsRead(req.user.name, upToId);
+  res.json({ message: 'marked read', unread: db.getUnreadCount(req.user), lastReadId });
 });
 
 // --- Delivery status labels (for the UI) ---

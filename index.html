@@ -1954,7 +1954,8 @@ function buildResultGrid(){ document.getElementById('resultGrid').innerHTML=RESU
 
 function connectSSE(){
   if(sseSource) sseSource.close();
-  sseSource=new EventSource(serverUrl+'/api/notifications/subscribe',{withCredentials:true});
+  const since = highestNotifId>0 ? ('?lastEventId='+highestNotifId) : '';
+  sseSource=new EventSource(serverUrl+'/api/notifications/subscribe'+since,{withCredentials:true});
   sseSource.onmessage=e=>{ try{ const data=JSON.parse(e.data); if(data.type==='connected')return; handleNotif(data);}catch(err){} };
   sseSource.onerror=()=>setTimeout(connectSSE,5000);
 }
@@ -1988,9 +1989,28 @@ function handleNotif(data){
   else if(data.type==='shipment_created'){ title='📦 '+t('shipment_created_lbl'); body=[data.orderId,data.trackingNumber].filter(Boolean).join(' · '); fetchOrders().then(refresh); if(currentTrackingOrderId===data.orderId) openTracking(data.orderId); }
   else if(data.type==='shipment_failed'){ title='⚠️ '+t('shipment_failed_lbl'); body=[data.orderId,data.body].filter(Boolean).join(' · '); toast(title,'warning'); }
   else if(String(data.type).indexOf('notif_')===0||data.type==='stale_orders'||String(data.type).indexOf('delivery_')===0){ title=data.title||'🔔 '; body=data.body||''; fetchOrders().then(refresh); }
+  // Any STORED notification the branches above do not name explicitly still
+  // renders from its own title/body — without this, types like agent_overdue
+  // and agent_suspended fell through to `return` and were silently dropped.
+  else if(data.notificationId){ title=data.title||'🔔'; body=data.body||''; }
   else return;
-  notifications.unshift({title,body,type:data.type,time:Date.now()});
-  unreadCount++; updateNotifBadge(); renderNotifList();
+  // A stored notification carries an id; transient data-changed events do not.
+  // Tracking the id is what lets the read watermark be exact, and what stops a
+  // replayed event (after an SSE reconnect) appearing twice.
+  const nid = data.notificationId || null;
+  if(nid){
+    if(notifications.some(n=>n.id===nid)) return;   // already have it (replay)
+    highestNotifId = Math.max(highestNotifId, nid);
+  }
+  notifications.unshift({id:nid,title,body,type:data.notifType||data.type,time:data.time||Date.now()});
+  if(notifications.length>200) notifications.length=200;
+  // Only STORED notifications move the badge. Transient data-changed events
+  // (call_logged, order_classified, followup_assigned…) still refresh the UI
+  // and appear in the list, but counting them made the badge drift away from
+  // the server's unread total, so "mark read" cleared a number that had never
+  // meant anything.
+  if(nid) unreadCount++;
+  updateNotifBadge(); renderNotifList();
   if(Notification.permission==='granted'){ try{ new Notification('CRM — '+title,{body, tag:data.orderId||data.type}); }catch(e){} }
   toast('🔔 '+title+(body?': '+body:''), (data.type==='suspicious_call'||data.type==='followup_overdue')?'error':'');
 }
@@ -2006,10 +2026,60 @@ function highlightOrder(orderId){
     });
   },150);
 }
-function toggleNotifPanel(){ const p=document.getElementById('notifPanel'); p.classList.toggle('open'); if(p.classList.contains('open')){unreadCount=0;updateNotifBadge();} }
-function clearNotifs(){notifications=[];renderNotifList();}
+/* ---------- Notifications ----------
+ * Previously entirely in-memory: the list started empty on every load, the
+ * badge reset to zero, and anything raised while the tab was closed was gone.
+ * The server stored all of it and was never asked. Now history is loaded on
+ * boot, the badge comes from the server's unread count, and opening the panel
+ * advances a per-account read watermark so the count is right on the next
+ * device too. */
+let highestNotifId = 0;
+
+async function loadNotifications(){
+  try{
+    const r = await api('GET','/api/notifications?limit=50');
+    notifications = (r.items||[]).map(n=>({
+      id:n.id, title:n.title, body:n.body, type:n.notifType||n.type||'', time:n.createdAt
+    }));
+    highestNotifId = notifications.reduce((m,n)=>Math.max(m,n.id||0), 0);
+    unreadCount = r.unread || 0;
+    updateNotifBadge(); renderNotifList();
+  }catch(e){ /* 401 already routes to the login gate */ }
+}
+
+async function toggleNotifPanel(){
+  const p=document.getElementById('notifPanel');
+  p.classList.toggle('open');
+  if(!p.classList.contains('open')) return;
+  // Tell the server what has actually been seen, so the badge stays cleared
+  // after a refresh and on any other device this account uses.
+  unreadCount=0; updateNotifBadge();
+  if(highestNotifId>0){
+    try{ await api('POST','/api/notifications/read',{upToId:highestNotifId}); }catch(e){}
+  }
+}
+
+async function clearNotifs(){
+  notifications=[]; unreadCount=0;
+  updateNotifBadge(); renderNotifList();
+  if(highestNotifId>0){ try{ await api('POST','/api/notifications/read',{upToId:highestNotifId}); }catch(e){} }
+}
+
 function updateNotifBadge(){ const b=document.getElementById('notifBadge'); if(!b)return; if(unreadCount>0){b.style.display='flex';b.textContent=unreadCount>9?'9+':unreadCount;} else b.style.display='none'; }
-function renderNotifList(){ const el=document.getElementById('notifList'); if(!el)return; if(!notifications.length){el.innerHTML='<div style="padding:14px;text-align:center;font-size:12px;color:var(--text3)">'+t('no_notif')+'</div>';return;} el.innerHTML=notifications.slice(0,20).map(n=>'<div class="notif-item '+n.type+'"><div style="font-weight:500;margin-bottom:2px">'+n.title+'</div><div style="color:var(--text2);font-size:12px">'+n.body+'</div><div style="font-size:10px;color:var(--text3);margin-top:2px">'+fmt(n.time)+'</div></div>').join(''); }
+
+function renderNotifList(){
+  const el=document.getElementById('notifList'); if(!el)return;
+  if(!notifications.length){ el.innerHTML='<div style="padding:14px;text-align:center;font-size:12px;color:var(--text3)">'+t('no_notif')+'</div>'; return; }
+  // escapeHtml on every field: title/body are built from webhook-supplied
+  // customer names and carrier status text, so a customer called
+  // <img src=x onerror=...> executed script in this console.
+  el.innerHTML = notifications.slice(0,50).map(n=>
+    '<div class="notif-item '+escapeHtml(String(n.type||''))+'">'+
+      '<div style="font-weight:500;margin-bottom:2px">'+escapeHtml(String(n.title||''))+'</div>'+
+      '<div style="color:var(--text2);font-size:12px">'+escapeHtml(String(n.body||''))+'</div>'+
+      '<div style="font-size:10px;color:var(--text3);margin-top:2px">'+escapeHtml(fmt(n.time))+'</div>'+
+    '</div>').join('');
+}
 
 function showPage(name,btn){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -4736,6 +4806,7 @@ async function startApp(){
   const nameEl=document.getElementById('sidebarUserName');
   if(nameEl && currentUser) nameEl.textContent=currentUser.name;
   await init();
+  await loadNotifications();
   connectSSE();
   loadServerSettings();
   if(refreshTimer) clearInterval(refreshTimer);

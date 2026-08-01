@@ -330,3 +330,78 @@ none and are not the CSRF threat. **Tests.** 4.
 - `x-powered-by` disabled.
 
 **Test count after review: 188, all passing** (133 before).
+
+---
+
+## Phase 1 — notifications
+
+The audit found this subsystem built twice and connected once. Rows were written
+to the database and never read back by anything, so the persisted half was dead
+code and every notification vanished on refresh. `target` was accepted by
+`push()` but had no column to land in, so the live hop was targeted and the
+stored row was not. The badge was a bare in-memory counter, and the `read` flag
+was global — one person opening their panel marked everything read for everyone.
+
+#### Recipient targeting
+`notifications.target` added (`NULL`/`''` = everyone, `'manager'` = managers only,
+`'<name>'` = that agent plus managers), matching `broadcast(payload, target)`
+exactly so the live and stored paths cannot disagree about audience. Every
+producer was audited: `agent_overdue`, `agent_suspended`, `stale_orders`,
+`followup_overdue` and `suspicious_call` are now **manager-only** — they were
+stored with `target: null`, meaning an alert about an agent's own missed order
+was stored for that agent to read. Delivery notifications go to the order's
+follow-up or confirming agent.
+
+#### Read state and badge counts
+Replaced the global `read` flag with a per-account watermark
+(`agents.lastReadNotificationId`). Unread is "visible to me AND id > my
+watermark" — one indexed comparison, no join table to grow. The watermark only
+ever moves forward, and is clamped to the newest existing id: an unclamped
+`{"upToId": 999999999}` parked it in the future and silently suppressed that
+account's badge until a million notifications had been raised (found by probing,
+not by the tests).
+
+The badge now counts **only stored notifications**. It previously incremented on
+every SSE frame including transient data-changed events, so it drifted away from
+the server's total — verified in a browser showing 16 against a real unread of 6.
+
+#### Persistence and history
+Both clients call `GET /api/notifications` on boot and `POST
+/api/notifications/read` when the panel opens. History and the correct badge now
+survive a refresh, a restart and a different device. `beforeId` paginates.
+`pruneNotifications()` runs hourly (5000 rows, `NOTIFICATION_RETENTION`) — the
+table had no retention policy and grew forever, while being a feed rather than
+an audit record (`audit_log` is that).
+
+#### Events that were never stored at all
+`new_order`, `abandoned_cart` and `suspicious_call` were broadcast-only, so the
+single most important event in the system disappeared on refresh and anything
+arriving while the console was closed was never seen. All three are stored
+notifications now. The broadcast type stays **unprefixed** so existing client
+branches keep working; what marks an event as storable is the presence of
+`notificationId`, which is also the only thing the badge counts.
+
+#### SSE reliability
+The stream now emits `id:` lines for stored notifications, and on reconnect
+replays everything missed — via the browser's own `Last-Event-ID` header or an
+explicit `?lastEventId=`. An SSE connection drops constantly in normal use (a
+phone locking, a tunnel timing out, a redeploy) and every notification raised in
+that window used to be lost from the live feed and, since nothing read the
+table, lost entirely. Clients de-duplicate replays by id.
+
+#### XSS
+`renderNotifList` in both clients interpolated `title` and `body` straight into
+`innerHTML`. Those strings are built from webhook-supplied customer names, so a
+customer called `<img src=x onerror=…>` executed script in the manager console —
+which, before authentication existed, was already a fully privileged context.
+Both now escape every field. Verified in a browser: the payload renders as text,
+no elements are created, nothing executes.
+
+**Tests.** 24 covering persistence across restart, pagination, manager-only
+targeting (asserting the agent an alert is *about* cannot see it), per-account
+unread counts, badge survival across refresh, watermark monotonicity and
+clamping, live delivery with ids, replay after reconnect, two tabs receiving
+independently, one tab closing without killing the other, unauthenticated
+subscription refusal, XSS-safety of both renderers, and retention.
+
+**Test count: 212, all passing.**
