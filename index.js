@@ -116,6 +116,17 @@ try {
 } catch (e) {
   logError('db', 'legacy migration failed (continuing with empty DB)', { err: e.message });
 }
+
+// One-time recovery of orders.deliveryOutcome from the append-only carrier
+// event history (audit BUG-02). Idempotent and non-destructive — see the
+// function's own comment. Runs after the legacy migration so imported orders
+// are included.
+try {
+  const r = db.backfillDeliveryOutcomes();
+  if (!r.skipped) logInfo('db', 'delivery-outcome backfill complete', r);
+} catch (e) {
+  logError('db', 'delivery-outcome backfill failed (continuing)', { err: e.message });
+}
 jobs.start(broadcast, log);
 
 // Overdue-order reassignment/accountability sweep (spec §4-§7). Runs every

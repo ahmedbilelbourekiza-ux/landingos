@@ -99,6 +99,66 @@ already-called orders, counter reset, reassignment to the least-loaded eligible
 agent, the unassigned queue when nobody is eligible, auto-suspend at threshold,
 the weekly-day-off exclusion, and the working-hours gate.
 
+#### BUG-04 — delivery and follow-up SSE events were malformed
+**What.** The two `broadcaster(...)` calls in `lib/providers/index.js` now pass a
+single payload object with `type` inside it, matching `broadcast(payload, target)`.
+**Why.** They were called with three arguments, event-name first, so the payload
+was the bare string `"delivery_update"` and the target was the object. Clients
+received `data: "delivery_update"`, `JSON.parse` produced a string, `data.type`
+was `undefined`, and the handler fell straight through — so the enriched delivery
+notification the manager console is built to render (order number, customer,
+carrier, old → new status, row highlight) never arrived. Because the target was
+an object rather than a name, the frame also went only to the `manager` key.
+Both the carrier webhook and the 15-minute polling job run through this path.
+**Files.** `lib/providers/index.js`, `test/delivery-outcome.test.js` (new).
+**Migration.** None.
+**Risk.** Low. The payload shape already matched what `handleNotif` expects; only
+the call signature changed. A test now subscribes to the real SSE stream and
+asserts a well-formed `delivery_update` object arrives with no string-only frames.
+
+#### BUG-02 — `deliveryOutcome` was read in eight places and written in none
+**What.** `ingestTrackingEvents()` now settles `orders.deliveryOutcome` and
+`deliveryOutcomeAt` when a carrier reports a terminal state, plus a one-time
+non-destructive backfill (`db.backfillDeliveryOutcomes()`) that recovers the
+outcome for parcels already delivered before this fix existed.
+**Why.** Nothing wrote these columns, so every figure derived from them was
+permanently zero: the profit calculator's *Synchroniser* (units sold, returns,
+real revenue, average buy price), `clients.deliveredOrders` / `totalSpent` and
+therefore every customer's lifetime value, `products.deliveredOrders` /
+`totalRevenue` / `totalProfit`, and `computeAgentPayroll`'s `deliveredPay` — so
+the `payPerDeliveredOrder` rate never paid out. The FIFO cost machinery
+underneath was correct and simply being fed nothing.
+Per the schema contract the value is set **once**, only from a carrier-reported
+terminal state, and only for `delivered` or `returned` — `cancelled` and `refused`
+stay provisional until the parcel settles. It is deliberately not derived from
+the confirmation-call status: under cash-on-delivery a phone confirmation is not
+a sale. All newly-inserted events are scanned rather than only the newest,
+because carriers commonly replay their whole history in one response; the
+earliest settling event wins, since `deliveryOutcomeAt` is what date-range profit
+queries attribute against.
+**Files.** `lib/providers/index.js`, `lib/db.js`, `index.js`,
+`test/delivery-outcome.test.js` (new), `test/backfill.test.js` (new).
+**Migration.** `backfillDeliveryOutcomes()` runs once on boot, after the legacy
+migration. Non-destructive: it only fills rows where `deliveryOutcome` is empty
+and never overwrites an existing value. It reads the append-only `shipment_events`
+history, routes each update through `patchOrder()` so client and product lifetime
+counters move on the same transition they would have at the time, writes a
+`delivery_outcome_backfilled` audit row per order, and records a settings marker
+so later boots skip the scan entirely.
+**Risk.** *Reporting numbers will change on first boot after deploy* — this is the
+point, but it is a visible jump. Historic revenue, delivered counts and lifetime
+customer spend will go from zero to their true values, and any agent on a
+`payPerDeliveredOrder` rate will show back-pay for every parcel already delivered.
+**Recommended:** take a copy of `crm.db` before deploying, then reconcile the
+first payroll run manually. The migration is idempotent and re-running it cannot
+double-count.
+**Tests.** 14 new tests: settlement on delivery, settle-once, in-flight parcels
+staying unsettled, phone-confirmation never settling, client lifetime spend,
+product sales-summary revenue and cost basis, delivered-pay payroll, plus a
+backfill suite that stages a real pre-fix database, restarts the server, and
+asserts recovery, timestamp fidelity, counter rebuild, the audit trail,
+no-double-count on a second boot, and never overwriting an existing outcome.
+
 #### Carrier adapters could not create shipments (found while testing)
 **What.** `getAdapter()` now fills every adapter against a default contract, and
 `mock.js` declares a real `statusMap` derived from its own pipeline.
