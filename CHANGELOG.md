@@ -12,6 +12,99 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 3 — Platform foundations
 
+### 3.3 Tenant isolation, verified against a real database
+
+The first milestone validated against live PostgreSQL 18.4 rather than offline.
+
+#### R-05 resolved — and it needed a second database role
+**What.** Prisma can bind a tenant per transaction. Nine preflight checks pass.
+**Why it took a probe.** The first run failed **five of five** isolation checks,
+and the cause was not Prisma: Neon's default role, `neondb_owner`, carries
+`BYPASSRLS`. A role with that attribute ignores row-level security entirely —
+`FORCE ROW LEVEL SECURITY` does nothing and policies are never consulted. Had
+the probe been skipped, the isolation suite would have gone green while
+enforcing **nothing**, which is the exact false-confidence failure R-01 exists
+to prevent and strictly worse than having no suite at all.
+**Resolution.** Two roles, which production needed anyway:
+`neondb_owner` for migrations and DDL (owns the tables, never serves a
+request), and `landingos_app` for everything the application does —
+`NOBYPASSRLS`, owner of nothing, so RLS genuinely applies.
+**Files.** `scripts/preflight.ts`, `scripts/setup-roles.ts` (both new).
+**Note.** The attributes are *verified*, not asserted: Postgres allows only a
+superuser to change `SUPERUSER` or `BYPASSRLS` — even to turn them off — so an
+`ALTER ROLE` fails against any managed provider. `CREATE ROLE` already defaults
+to both being off.
+
+#### Two findings that would otherwise have been silent
+**Writes were not constrained.** A policy with only `USING` governs what a
+tenant can *see*. Without `WITH CHECK`, tenant A can `INSERT` a row stamped
+with tenant B's id — invisible to A afterwards, and very visible to the victim.
+Every policy now carries both clauses.
+
+**`SET` would have leaked across the connection pool.** A bare `SET`, or
+`set_config(..., false)`, persists on a pooled connection, so the next request
+to borrow it reads another tenant's rows. `set_config(..., true)` gives true
+`SET LOCAL` semantics; proven not to survive its transaction, and proven again
+under concurrency by the isolation suite.
+
+#### Layer 3 — row-level security (M-07)
+**What.** `ENABLE` + `FORCE ROW LEVEL SECURITY` and a `tenant_isolation` policy
+with `USING` and `WITH CHECK` on **all 46 tenant-scoped tables**.
+**Why derived, not listed.** `scripts/apply-rls.ts` discovers the tables from
+the live database by looking for a `tenantId` column, so a table added by a
+later migration is covered the next time it runs rather than only if someone
+remembers. It refuses to finish if a table has no `tenantId` and is not on an
+explicit, justified exemption list.
+**Not scoped, by design.** `Tenant`, `User`, `Session` — all three are part of
+resolving *who the caller is*, which necessarily happens before a tenant is
+known — and `Wilaya`, `Baladia`, which are platform reference data shared by
+every tenant.
+
+#### Layer 2 — the tenant-bound client
+**What.** `src/tenant-client.ts` — `withTenant()`, `forTenant()`,
+`asPlatform()`.
+**Why it exists at all, given layer 3.** "The database refused" is a 0-row
+result, not an error. Without this layer a forgotten filter is a page that
+silently renders empty rather than a bug anyone notices.
+**What it deliberately does not do.** It does not add `where: { tenantId }`.
+That would be a second, weaker copy of a rule the database already enforces,
+and the two would eventually disagree. The tenant binding *is* the filter.
+Cross-tenant work goes through `asPlatform()` — named so it cannot appear in a
+diff unnoticed.
+
+#### R-01 — the isolation suite
+**What.** 18 tests covering structural and behavioural isolation: every scoped
+table checked in `pg_catalog`; reads, writes, updates, deletes and tenant
+reassignment attempted across the boundary; raw SQL (where layer 2 does not
+apply); a deliberately hostile `WHERE 1=1 OR tenantId = '<other>'`; sequential
+and **concurrent** interleaved access; and per-tenant uniqueness — two tenants
+holding the same landing-page slug and the same customer phone number.
+**Verified to fail.** Disabling RLS on a **single** table trips **10 failures**
+across every category. A green isolation suite that cannot go red proves
+nothing, so this was checked rather than assumed.
+
+#### The development database was not empty
+**What.** The provided Neon database held the deployed website-builder's
+pre-tenant schema and 783 rows, including **12 orders with real customer names,
+phones and addresses**. `prisma db push` refused, since `tenantId` cannot be
+added to populated tables without a default.
+**Resolution.** Surfaced with alternatives (a Neon branch, a second database);
+the user confirmed the data was disposable and consented explicitly to the
+reset. All 783 rows were exported to the scratchpad first, so the content
+survives even though the database did not.
+**Risk.** A credential for this database was accidentally printed into the
+working transcript during inspection. **It must be rotated**, along with the
+`AUTH_SECRET` and `DATABASE_URL` still sitting in 8 commits of imported
+website-builder history.
+
+#### Applied schema
+51 tables, 157 indexes, 8 enums live. The offline predictions held: **37
+numeric money columns, 0 `double precision`**, 46 tables carrying `tenantId`.
+
+**Suite totals.** ERP 298 (297 pass, 1 skipped) · db 29 · product-registry 35.
+
+---
+
 ### 3.2 Unified schema (`packages/db`)
 
 One Prisma schema for the whole platform: **51 tables, 87 indexes, 36 foreign
