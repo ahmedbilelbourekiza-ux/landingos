@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calculateur Profit / Perte — DA</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0f1117;
+    --surface:   #1a1d27;
+    --card:      #21263a;
+    --border:    #2e3452;
+    --accent:    #4f8ef7;
+    --accent2:   #7c5cfc;
+    --green:     #22c55e;
+    --red:       #ef4444;
+    --gold:      #f59e0b;
+    --teal:      #14b8a6;
+    --text:      #e8eaf0;
+    --muted:     #8b92a8;
+    --input-bg:  #13162a;
+    --radius:    12px;
+    --radius-sm: 8px;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0 0 60px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: linear-gradient(135deg, #0f1117 0%, #1a1d27 50%, #13162a 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 28px 24px 24px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content:'';
+    position:absolute; inset:0;
+    background: radial-gradient(ellipse 80% 60% at 50% -20%, rgba(79,142,247,.18), transparent);
+    pointer-events:none;
+  }
+  .header-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(79,142,247,.12); border: 1px solid rgba(79,142,247,.3);
+    border-radius: 20px; padding: 4px 14px; font-size: 12px;
+    color: var(--accent); font-weight: 600; margin-bottom: 14px;
+    letter-spacing: .5px;
+  }
+  header h1 {
+    font-size: clamp(22px, 5vw, 34px);
+    font-weight: 800; color: #fff;
+    letter-spacing: -.5px; line-height: 1.15;
+  }
+  header h1 span { color: var(--accent); }
+  header p {
+    margin-top: 8px; color: var(--muted); font-size: 14px;
+  }
+
+  /* ── LAYOUT ── */
+  .container { max-width: 860px; margin: 0 auto; padding: 0 20px; }
+
+  /* ── RESULT BANNER ── */
+  .result-banner {
+    margin: 28px auto 0;
+    max-width: 860px; padding: 0 20px;
+  }
+  .banner-inner {
+    border-radius: var(--radius);
+    padding: 22px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 14px;
+    transition: all .3s;
+  }
+  .banner-inner.win  { background: linear-gradient(135deg,#14532d,#166534); border:1px solid #22c55e55; }
+  .banner-inner.lose { background: linear-gradient(135deg,#450a0a,#7f1d1d); border:1px solid #ef444455; }
+  .banner-inner.zero { background: linear-gradient(135deg,#1e293b,#334155); border:1px solid var(--border); }
+  .banner-label { font-size: 13px; font-weight: 600; opacity: .75; text-transform: uppercase; letter-spacing: .8px; }
+  .banner-value { font-family:'JetBrains Mono',monospace; font-size: clamp(26px,5vw,38px); font-weight: 700; }
+  .banner-value.win  { color: var(--green); }
+  .banner-value.lose { color: var(--red); }
+  .banner-verdict { font-size: 22px; font-weight: 700; }
+
+  /* ── GRID ── */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 28px; }
+  @media(max-width:640px){ .grid { grid-template-columns:1fr; } }
+  .full { grid-column: 1/-1; }
+
+  /* ── CARD ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .card-icon { font-size: 18px; }
+  .card-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+  .card-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+
+  /* ── INPUT GROUP ── */
+  .field { display:flex; flex-direction:column; gap:5px; }
+  .field label { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .3px; }
+  .field-hint { font-size: 11px; color: #5a6180; margin-top: -2px; }
+  .input-wrap { position: relative; }
+  .input-wrap input {
+    width: 100%; padding: 10px 44px 10px 14px;
+    background: var(--input-bg); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text);
+    font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600;
+    outline: none; transition: border .2s, box-shadow .2s;
+  }
+  .input-wrap input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(79,142,247,.15);
+  }
+  .input-unit {
+    position:absolute; right:12px; top:50%; transform:translateY(-50%);
+    font-size:11px; font-weight:700; color:var(--muted); pointer-events:none;
+  }
+
+  /* ── COMPUTED ROWS ── */
+  .computed {
+    background: rgba(255,255,255,.03);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
+  .computed-label { font-size: 12px; color: var(--muted); }
+  .computed-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px; font-weight: 700; color: var(--text);
+  }
+  .computed-value.pos { color: var(--green); }
+  .computed-value.neg { color: var(--red); }
+  .computed-value.gold { color: var(--gold); }
+
+  /* ── DIVIDERS ── */
+  .divider { height:1px; background: var(--border); margin: 2px 0; }
+
+  /* ── REAL CA CARD ── */
+  .real-card .card-header { background: linear-gradient(90deg,rgba(79,142,247,.15),transparent); }
+  .real-card { border-color: rgba(79,142,247,.35); }
+
+  /* ── SUMMARY TABLE ── */
+  .summary-row {
+    display:flex; justify-content:space-between; align-items:center;
+    padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.05);
+    font-size:13px;
+  }
+  .summary-row:last-child { border-bottom: none; }
+  .summary-row .s-label { color: var(--muted); }
+  .summary-row .s-val {
+    font-family:'JetBrains Mono',monospace; font-weight:600; font-size:13px;
+  }
+
+  /* ── KPIS ── */
+  .kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  @media(max-width:480px){ .kpi-grid{grid-template-columns:1fr 1fr;} }
+  .kpi {
+    background: var(--input-bg); border:1px solid var(--border);
+    border-radius: var(--radius-sm); padding:12px; text-align:center;
+  }
+  .kpi-val { font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:700; }
+  .kpi-val.pos{color:var(--green);} .kpi-val.neg{color:var(--red);} .kpi-val.gold{color:var(--gold);}
+  .kpi-lbl { font-size:10px; font-weight:600; color:var(--muted); margin-top:4px; text-transform:uppercase; letter-spacing:.4px; }
+
+  /* ── TOOLTIP-STYLE NOTE ── */
+  .note {
+    background: rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.25);
+    border-radius: var(--radius-sm); padding:10px 14px;
+    font-size:12px; color:#fcd34d; line-height:1.5;
+  }
+
+  /* ── SECTION LABEL ── */
+  .section-sub { font-size:11px; color:var(--muted); font-style:italic; padding:0 18px 10px; }
+
+  /* accent borders */
+  .card.gold-border  { border-color: rgba(245,158,11,.4); }
+  .card.red-border   { border-color: rgba(239, 68, 68,.35); }
+  .card.green-border { border-color: rgba(34,197, 94,.35); }
+  .card.teal-border  { border-color: rgba(20,184,166,.35); }
+
+  .card.gold-border  .card-header { background: rgba(245,158,11,.08); }
+  .card.red-border   .card-header { background: rgba(239, 68, 68,.08); }
+  .card.green-border .card-header { background: rgba(34, 197, 94,.08); }
+  .card.teal-border  .card-header { background: rgba(20, 184,166,.08); }
+
+  footer { text-align:center; margin-top:40px; color:var(--muted); font-size:12px; }.range-btn-active{border-color:var(--accent)!important;background:rgba(79,142,247,.2)!important;color:var(--accent)!important;font-weight:700;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-badge">📊 Calculateur Business</div>
+  <h1>Profit & Perte <span>en Dinar Algérien</span></h1>
+  <p>Entrez vos chiffres — tout se calcule en temps réel</p>
+</header>
+
+<!-- RESULT BANNER -->
+<div class="result-banner">
+  <div class="banner-inner zero" id="banner">
+    <div>
+      <div class="banner-label">Profit Réel Net</div>
+      <div class="banner-value" id="b-value">0 DA</div>
+    </div>
+    <div class="banner-verdict" id="b-verdict">—</div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="grid" style="margin-top:28px;">
+    <div class="card gold-border full">
+      <div class="card-header">
+        <span class="card-icon">🏢</span>
+        <span class="card-title">Charges Fixes & Imprévues (appliquées une seule fois, à la fin)</span>
+      </div>
+      <p class="section-sub">Salaires, loyer, et toute autre charge qui ne dépend pas du volume de ventes — entrées une fois, soustraites UNE SEULE FOIS du total de tous les produits</p>
+      <div class="card-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;">
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;">🏦 Charges Fixes (mensuelles)</div>
+          <div id="fixed-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+          <button onclick="addFixedCost()" style="background:rgba(245,158,11,.12);border:1px dashed rgba(245,158,11,.4);color:var(--gold);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;width:100%;">+ Ajouter une charge fixe</button>
+          <button onclick="saveFixedCosts()" style="background:rgba(245,158,11,.2);border:1px solid var(--gold);color:var(--gold);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;width:100%;">💾 Enregistrer (appliqué à chaque calcul)</button>
+          <div class="computed">
+            <span class="computed-label">Total charges fixes / mois</span>
+            <span class="computed-value neg" id="fixed_total">0 DA</span>
+          </div>
+          <div id="fixed_prorate_note" style="font-size:10px;color:var(--muted);text-align:end;margin-top:-4px;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:11px;font-weight:700;color:#f472b6;text-transform:uppercase;letter-spacing:.5px;">⚠️ Charges Imprévues</div>
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="unexp_label" placeholder="Ex: Réparation moto" style="flex:2;padding:7px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+            <input type="number" id="unexp_amount" placeholder="DA" style="flex:1;padding:7px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;">
+            <input type="date" id="unexp_date" title="Date de la charge (aujourd'hui par défaut)" style="flex:1;padding:7px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;">
+          </div>
+          <button onclick="addUnexpectedCharge()" style="background:rgba(244,114,182,.12);border:1px dashed rgba(244,114,182,.4);color:#f472b6;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;width:100%;">+ Ajouter une charge imprévue</button>
+          <div style="font-size:10px;color:var(--muted)">La liste ci-dessous montre seulement les charges de la période actuellement sélectionnée (<span id="unexp_period_label"></span>) — changez de période pour voir/gérer les autres.</div>
+          <div id="unexp-list" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;"></div>
+          <div class="computed">
+            <span class="computed-label">Total charges imprévues (période actuelle)</span>
+            <span class="computed-value neg" id="unexp_total">0 DA</span>
+          </div>
+        </div>
+      </div>
+      <div style="padding:0 18px 16px;">
+        <div class="computed" style="background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.3);">
+          <span class="computed-label" style="font-weight:700;color:var(--text);">🏢 TOTAL CHARGES FIXES + IMPRÉVUES</span>
+          <span class="computed-value neg" id="other_costs_total" style="font-size:17px;">0 DA</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card full" style="border-color:rgba(79,142,247,.4);">
+      <div class="card-header">
+        <span class="card-icon">📅</span>
+        <span class="card-title">Période pour les données CRM (Unités Vendues, Retours, CA Réel)</span>
+      </div>
+      <div class="card-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <button onclick="setRange('day')" class="range-btn" id="range-day" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);cursor:pointer;font-size:12px;">Aujourd'hui</button>
+        <button onclick="setRange('week')" class="range-btn" id="range-week" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);cursor:pointer;font-size:12px;">Cette semaine</button>
+        <button onclick="setRange('month')" class="range-btn" id="range-month" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);cursor:pointer;font-size:12px;">Ce mois-ci</button>
+        <button onclick="setRange('quarter')" class="range-btn" id="range-quarter" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);cursor:pointer;font-size:12px;">Ce trimestre</button>
+        <button onclick="setRange('year')" class="range-btn" id="range-year" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);cursor:pointer;font-size:12px;">Cette année</button>
+        <input type="date" id="range_since" style="padding:7px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;">
+        <span style="color:var(--muted);font-size:12px;">à</span>
+        <input type="date" id="range_until" style="padding:7px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;">
+        <button onclick="setRange('custom')" style="padding:8px 14px;border-radius:8px;border:1px solid var(--accent);background:rgba(79,142,247,.15);color:var(--accent);cursor:pointer;font-size:12px;">Appliquer</button>
+        <span id="range_label" style="margin-left:auto;font-size:11px;color:var(--muted);"></span>
+      </div>
+    </div>
+
+    <div class="full" style="margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;">
+      <button onclick="loadProductsFromCRM()" style="flex:1;min-width:220px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:#fff;border-radius:10px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;">📦 Charger mes produits du CRM</button>
+      <button onclick="addProduct()" style="flex:1;min-width:220px;background:linear-gradient(135deg,#4f8ef7,#7c6af7);border:none;color:#fff;border-radius:10px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;">+ Ajouter un produit manuellement</button>
+    </div>
+
+    <div id="products-container" class="full"></div>
+
+    <div class="card full" style="border-color:rgba(34,197,94,.6);margin-top:8px;">
+      <div class="card-header" style="background:linear-gradient(90deg,rgba(34,197,94,.2),transparent);">
+        <span class="card-icon">🏆</span>
+        <span class="card-title" style="color:var(--green);">Résumé Général du Business</span>
+      </div>
+      <div class="card-body">
+        <div id="grand-breakdown" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;"></div>
+        <div class="divider"></div>
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin:8px 0 4px;">Détail agrégé (tous produits) — comme le Résumé Détaillé de chaque produit</div>
+        <div id="grand-detailed-breakdown"></div>
+        <div class="divider"></div>
+        <div class="summary-row"><span class="s-label">Somme des profits de tous les produits</span><span class="s-val pos" id="grand-sum-profit">—</span></div>
+        <div class="summary-row"><span class="s-label">− Charges Fixes + Imprévues</span><span class="s-val neg" id="grand-other-costs">—</span></div>
+        <div class="divider" style="margin:4px 0 8px;"></div>
+        <div class="summary-row" style="padding-top:6px;">
+          <span class="s-label" style="font-size:15px;font-weight:800;">PROFIT NET DU BUSINESS</span>
+          <span class="s-val" id="grand-total" style="font-size:19px;">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card full" style="border-color:rgba(168,85,247,.5);margin-top:8px;">
+      <div class="card-header" style="background:linear-gradient(90deg,rgba(168,85,247,.15),transparent);">
+        <span class="card-icon">💾</span>
+        <span class="card-title" style="color:#a855f7;">Historique Financier Permanent</span>
+      </div>
+      <div class="card-body">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Chaque sauvegarde crée un nouveau dossier permanent — rien n'est jamais écrasé. Les mois/trimestres/années peuvent être calculés automatiquement à partir des semaines/mois déjà sauvegardés, sans recalcul.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+          <input type="text" id="fin_notes" placeholder="Note (optionnel)..." style="flex:1;min-width:200px;padding:8px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;">
+          <button onclick="saveCurrentAsFinancialRecord()" style="background:linear-gradient(135deg,#a855f7,#7c3aed);border:none;color:#fff;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer;">💾 Sauvegarder ce calcul</button>
+          <button onclick="aggregateCurrentPeriod()" style="background:var(--input-bg);border:1px solid #a855f7;color:#a855f7;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;">⚡ Agréger depuis l'historique</button>
+          <button onclick="openFinancialHistory()" style="background:var(--input-bg);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;">📜 Voir l'historique</button>
+          <button onclick="exportFinancialHistory()" style="background:var(--input-bg);border:1px solid #22c55e;color:#22c55e;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;">📥 Exporter (Excel)</button>
+        </div>
+        <div id="fin_aggregate_panel" style="display:none;margin-top:10px;padding:10px;background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.3);border-radius:8px;"></div>
+        <div id="fin_history_panel" style="display:none;margin-top:10px;max-height:320px;overflow:auto;"></div>
+      </div>
+    </div>
+
+  </div><!-- /grid -->
+</div><!-- /container -->
+
+<footer>Calculateur Profit/Perte — Dinar Algérien (DA) · Mise à jour en temps réel</footer>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const fmt = (n, suffix='DA') => {
+    if(isNaN(n)||!isFinite(n)) return '—';
+    return Math.round(n).toLocaleString('fr-DZ') + ' ' + suffix;
+  };
+  const fmtPct = n => isNaN(n)||!isFinite(n) ? '—' : n.toFixed(1)+'%';
+  const color = (el, n) => {
+    if(!el) return;
+    el.classList.remove('pos','neg','gold');
+    if(n>0) el.classList.add('pos');
+    else if(n<0) el.classList.add('neg');
+  };
+
+  // ── Fixed costs & unexpected charges ──────────────────────
+  const API_BASE = 'https://erp-serveur.onrender.com';
+  let fixedCostsList = [];
+  let unexpectedChargesList = [];
+
+  function fixedCostsTotal(){ return fixedCostsList.reduce((s,c)=>s+(Number(c.amount)||0),0); }
+  function unexpectedTotal(){ return unexpectedChargesList.reduce((s,c)=>s+(Number(c.amount)||0),0); }
+
+  function renderFixedList(){
+    const el = document.getElementById('fixed-list');
+    el.innerHTML = fixedCostsList.map((c,i)=>`
+      <div style="display:flex;align-items:center;gap:8px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:8px 10px;">
+        <input type="text" value="${c.label||''}" placeholder="Ex: Salaire Ahmed"
+          style="flex:2;padding:6px 8px;background:#13162a;border:1px solid #2e3452;border-radius:6px;color:#e8eaf0;font-size:12px;"
+          oninput="fixedCostsList[${i}].label=this.value">
+        <input type="number" value="${c.amount||0}" min="0"
+          style="flex:1;padding:6px 8px;background:#13162a;border:1px solid #2e3452;border-radius:6px;color:#e8eaf0;font-family:'JetBrains Mono',monospace;font-size:12px;"
+          oninput="fixedCostsList[${i}].amount=+this.value||0;calcAll();">
+        <button onclick="fixedCostsList.splice(${i},1);renderFixedList();calcAll();"
+          style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#ef4444;border-radius:6px;width:26px;height:26px;font-size:13px;cursor:pointer;">×</button>
+      </div>`).join('');
+  }
+  function addFixedCost(){ fixedCostsList.push({label:'', amount:0}); renderFixedList(); calcAll(); }
+
+  async function loadFixedCosts(){
+    try {
+      const r = await fetch(API_BASE + '/api/settings');
+      const s = await r.json();
+      fixedCostsList = Array.isArray(s.fixedCosts) ? s.fixedCosts : [];
+    } catch(e) { fixedCostsList = []; }
+    renderFixedList(); calcAll();
+  }
+  async function saveFixedCosts(){
+    try {
+      await fetch(API_BASE + '/api/settings', {
+        method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ fixedCosts: fixedCostsList })
+      });
+      alert('Charges fixes enregistrées — appliquées à chaque calcul désormais.');
+    } catch(e) { alert('Erreur de connexion au serveur — vérifiez votre lien internet.'); }
+  }
+
+  function renderUnexpList(){
+    const el = document.getElementById('unexp-list');
+    if(!unexpectedChargesList.length){ el.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:6px;">Aucune charge imprévue enregistrée</div>'; return; }
+    el.innerHTML = unexpectedChargesList.map(c => `
+      <div style="display:flex;align-items:center;gap:8px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;padding:6px 10px;font-size:12px;">
+        <span style="flex:1;color:var(--text);">${(c.label||'').replace(/</g,'&lt;')}</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-weight:600;">${fmt(c.amount)}</span>
+        <button onclick="deleteUnexpectedCharge(${c.id})"
+          style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#ef4444;border-radius:6px;width:22px;height:22px;font-size:12px;cursor:pointer;flex-shrink:0;">×</button>
+      </div>`).join('');
+  }
+  /** BUGFIX: this used to call /api/unexpected-charges with NO since/until
+   *  at all, which — per the backend's own documented behavior — returns
+   *  EVERY unexpected charge ever entered, completely unscoped from
+   *  whatever period is selected. That meant a one-time 5,000 DA charge
+   *  entered once would count in EVERY week's calculation, EVERY month's,
+   *  EVERY year's — and get summed again on top of itself every time a
+   *  month aggregated 4 weeks together. Now it's scoped to the exact same
+   *  [globalSince, globalUntil] window everything else on this page uses. */
+  async function loadUnexpectedCharges(){
+    try {
+      const r = await fetch(API_BASE + '/api/unexpected-charges?since=' + globalSince + '&until=' + globalUntil);
+      const d = await r.json();
+      unexpectedChargesList = d.items || [];
+    } catch(e) { unexpectedChargesList = []; }
+    renderUnexpList(); calcAll();
+  }
+  async function addUnexpectedCharge(){
+    const label = document.getElementById('unexp_label').value.trim();
+    const amount = +document.getElementById('unexp_amount').value || 0;
+    const dateInput = document.getElementById('unexp_date').value;
+    // Defaults to today when left blank — but now EDITABLE, so a charge
+    // that actually happened last week can be logged against last week
+    // instead of always landing in "today" regardless of which period the
+    // manager is currently looking at.
+    const date = dateInput ? new Date(dateInput).getTime() : Date.now();
+    if(!label || !amount){ alert('Entrez une description et un montant.'); return; }
+    try {
+      await fetch(API_BASE + '/api/unexpected-charges', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ label, amount, date })
+      });
+      document.getElementById('unexp_label').value = '';
+      document.getElementById('unexp_amount').value = '';
+      document.getElementById('unexp_date').value = '';
+      await loadUnexpectedCharges();
+    } catch(e) { alert('Erreur de connexion au serveur.'); }
+  }
+  async function deleteUnexpectedCharge(id){
+    try { await fetch(API_BASE + '/api/unexpected-charges/' + id, { method:'DELETE' }); await loadUnexpectedCharges(); }
+    catch(e) { alert('Erreur de connexion au serveur.'); }
+  }
+
+  function productBlockHTML(pid){ return `
+<div class="product-block" id="product-block-${pid}" style="position:relative;">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:rgba(79,142,247,.1);border:1px solid rgba(79,142,247,.3);border-radius:10px 10px 0 0;margin-top:20px;gap:10px;flex-wrap:wrap;">
+    <input type="text" id="product_name_${pid}" value="Produit" placeholder="Nom du produit" oninput="calcAll()"
+      style="background:transparent;border:none;color:var(--accent);font-weight:700;font-size:14px;outline:none;flex:1;min-width:80px;">
+    <span id="product_summary_${pid}" class="s-val" style="font-size:14px;white-space:nowrap;">—</span>
+    <button onclick="syncProductFromCRM('${pid}')" id="product_sync_${pid}"
+      style="background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3);color:var(--green);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">🔄 Sync CRM</button>
+    <button onclick="toggleProduct('${pid}')" id="product_toggle_${pid}"
+      style="background:rgba(79,142,247,.15);border:1px solid rgba(79,142,247,.3);color:var(--accent);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">▼ Réduire</button>
+    <button onclick="removeProduct('${pid}')"
+      style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#ef4444;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">🗑</button>
+  </div>
+  <div class="grid" id="product_body_${pid}" style="border:1px solid rgba(79,142,247,.3);border-top:none;border-radius:0 0 10px 10px;padding:16px;margin-bottom:8px;">
+<div class="card green-border">
+      <div class="card-header">
+        <span class="card-icon">📦</span>
+        <span class="card-title">A — Produit</span>
+      </div>
+      <div class="card-body">
+        <div class="field">
+          <label>Prix de Vente (par unité)</label>
+          <div class="input-wrap">
+            <input type="number" id="sell_price_${pid}" value="2000" min="0">
+            <span class="input-unit">DA</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Coût d'Achat du Produit</label>
+          <div class="input-wrap">
+            <input type="number" id="buy_price_${pid}" value="800" min="0">
+            <span class="input-unit">DA</span>
+          </div>
+        </div>
+        <div class="computed">
+          <span class="computed-label">Marge brute / unité</span>
+          <span class="computed-value" id="gross_margin_${pid}">1 200 DA</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- B — ADS (USD) -->
+    <div class="card gold-border">
+      <div class="card-header">
+        <span class="card-icon">💱</span>
+        <span class="card-title">B — Publicité ($ → DA)</span>
+      </div>
+      <div class="card-body">
+        <div class="field">
+          <label>Taux de Change (1 $ = ? DA)</label>
+          <div class="input-wrap">
+            <input type="number" id="rate_${pid}" value="250" min="1">
+            <span class="input-unit">DA/$</span>
+          </div>
+          <span class="field-hint">Ex: 1 $ = 250 DA</span>
+        </div>
+        <div class="field">
+          <label>Budget Pub Total dépensé ($)</label>
+          <div class="input-wrap">
+            <input type="number" id="ads_usd_${pid}" value="15" min="0" step="0.01">
+            <span class="input-unit">$</span>
+          </div>
+        </div>
+        <div class="computed">
+          <span class="computed-label">Budget pub converti</span>
+          <span class="computed-value gold" id="ads_da_${pid}">3 750 DA</span>
+        </div>
+        <div class="computed">
+          <span class="computed-label">Pub par unité (auto)</span>
+          <span class="computed-value gold" id="ads_unit_${pid}">— DA</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- C — COSTS -->
+    <div class="card red-border">
+      <div class="card-header">
+        <span class="card-icon">💸</span>
+        <span class="card-title">C — Coûts par Unité</span>
+      </div>
+      <div class="card-body">
+        <div class="field">
+          <label>Emballage / Packaging</label>
+          <div class="input-wrap">
+            <input type="number" id="pack_cost_${pid}" value="150" min="0">
+            <span class="input-unit">DA</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Livraison / Confirmation</label>
+          <div class="input-wrap">
+            <input type="number" id="ship_cost_${pid}" value="200" min="0">
+            <span class="input-unit">DA</span>
+          </div>
+        </div>
+        <div class="computed">
+          <span class="computed-label">Coût total / unité</span>
+          <span class="computed-value neg" id="total_unit_cost_${pid}">— DA</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- E — SALES VOLUME -->
+    <div class="card teal-border">
+      <div class="card-header">
+        <span class="card-icon">📈</span>
+        <span class="card-title">E — Volume de Ventes</span>
+      </div>
+      <div class="card-body">
+        <div class="field">
+          <label>Unités Vendues (succès)</label>
+          <div class="input-wrap">
+            <input type="number" id="units_sold_${pid}" value="26" min="0">
+            <span class="input-unit">unités</span>
+          </div>
+          <span class="field-hint">Livraisons réussies uniquement</span>
+        </div>
+        <div class="computed">
+          <span class="computed-label">CA Théorique</span>
+          <span class="computed-value pos" id="ca_theo_${pid}">— DA</span>
+        </div>
+        <div class="computed">
+          <span class="computed-label">Profit théorique / unité</span>
+          <span class="computed-value" id="profit_unit_${pid}">— DA</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- D — INCIDENTS (full width) -->
+    <div class="card red-border full">
+      <div class="card-header">
+        <span class="card-icon">🔄</span>
+        <span class="card-title">D — Retours, Échanges & Pertes Produit</span>
+      </div>
+      <p class="section-sub">Tout ce que vous perdez quand la livraison ne se passe pas bien</p>
+      <div class="card-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">
+
+        <!-- Returns -->
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.5px;">↩ Retours</div>
+          <div class="field">
+            <label>Frais de Retour (par retour)</label>
+            <div class="input-wrap">
+              <input type="number" id="ret_cost_${pid}" value="200" min="0">
+              <span class="input-unit">DA</span>
+            </div>
+          </div>
+          <div class="field">
+            <label>Nombre de Retours</label>
+            <div class="input-wrap">
+              <input type="number" id="ret_count_${pid}" value="2" min="0">
+              <span class="input-unit">colis</span>
+            </div>
+          </div>
+          <div class="computed">
+            <span class="computed-label">Total retours</span>
+            <span class="computed-value neg" id="ret_total_${pid}">400 DA</span>
+          </div>
+        </div>
+
+        <!-- Exchanges -->
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:11px;font-weight:700;color:#f97316;text-transform:uppercase;letter-spacing:.5px;">🔁 Échanges</div>
+          <div id="exch-list_${pid}" style="display:flex;flex-direction:column;gap:8px;"></div>
+          <button onclick="addExchange('${pid}')" style="background:rgba(249,115,22,.12);border:1px dashed rgba(249,115,22,.4);color:#f97316;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;width:100%;letter-spacing:.3px;transition:background .2s;">+ Ajouter un échange</button>
+          <div class="computed">
+            <span class="computed-label">Total échanges (<span id="exch_count_label_${pid}">0</span>)</span>
+            <span class="computed-value neg" id="exch_total_${pid}">0 DA</span>
+          </div>
+        </div>
+
+        <!-- Product Loss -->
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:11px;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:.5px;">📦 Pertes Produit</div>
+          <div class="field">
+            <label>Coût Produit Perdu/Endommagé</label>
+            <div class="input-wrap">
+              <input type="number" id="loss_cost_${pid}" value="800" min="0">
+              <span class="input-unit">DA</span>
+            </div>
+            <span class="field-hint">= coût d'achat du produit</span>
+          </div>
+          <div class="field">
+            <label>Nombre de Produits Perdus</label>
+            <div class="input-wrap">
+              <input type="number" id="loss_count_${pid}" value="0" min="0">
+              <span class="input-unit">unités</span>
+            </div>
+          </div>
+          <div class="computed">
+            <span class="computed-label">Total pertes</span>
+            <span class="computed-value neg" id="loss_total_${pid}">0 DA</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Total incidents -->
+      <div style="padding:0 18px 16px;">
+        <div class="computed" style="background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);">
+          <span class="computed-label" style="font-weight:700;color:var(--text);">⚡ TOTAL INCIDENTS</span>
+          <span class="computed-value neg" id="incidents_total_${pid}" style="font-size:17px;">— DA</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- G — REAL CA (full width, star card) -->
+    <div class="card real-card full" style="border-color:rgba(79,142,247,.5);">
+      <div class="card-header" style="background:linear-gradient(90deg,rgba(79,142,247,.2),transparent);">
+        <span class="card-icon">🏦</span>
+        <span class="card-title" style="color:var(--accent);">G — CA Réel reçu du Livreur  ⭐</span>
+      </div>
+      <div class="card-body">
+        <div class="note">
+          ⭐ C'est ici que vous voyez la <strong>VRAIE situation</strong> de votre business. Entrez le montant exact que la société de livraison vous a versé.
+        </div>
+        <div class="field">
+          <label>CA Réel reçu du Livreur</label>
+          <div class="input-wrap">
+            <input type="number" id="real_ca_${pid}" value="77675" min="0">
+            <span class="input-unit">DA</span>
+          </div>
+          <span class="field-hint">Le montant exact sur votre relevé livreur</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="computed">
+            <span class="computed-label">Écart CA (théo − réel)</span>
+            <span class="computed-value" id="ca_diff_${pid}">— DA</span>
+          </div>
+          <div class="computed">
+            <span class="computed-label">Tous les coûts combinés</span>
+            <span class="computed-value neg" id="all_costs_${pid}">— DA</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- F — SUMMARY -->
+    <div class="card full">
+      <div class="card-header">
+        <span class="card-icon">📊</span>
+        <span class="card-title">F — Résumé Détaillé</span>
+      </div>
+      <div class="card-body">
+        <div class="summary-row"><span class="s-label">CA Réel (livreur)</span><span class="s-val pos" id="s-ca_${pid}">—</span></div>
+        <div class="summary-row"><span class="s-label">− Coût Achat Total</span><span class="s-val neg" id="s-buy_${pid}">—</span></div>
+        <div class="summary-row"><span class="s-label">− Coût Emballage Total</span><span class="s-val neg" id="s-pack_${pid}">—</span></div>
+        <div class="summary-row"><span class="s-label">− Coût Livraison Total</span><span class="s-val neg" id="s-ship_${pid}">—</span></div>
+        <div class="summary-row"><span class="s-label">− Budget Publicité (DA)</span><span class="s-val neg" id="s-ads_${pid}">—</span></div>
+        <div class="summary-row"><span class="s-label">− Total Incidents (retours + échanges + pertes)</span><span class="s-val neg" id="s-inc_${pid}">—</span></div>
+        <div class="divider" style="margin:4px 0 8px;"></div>
+        <div class="summary-row" style="font-size:15px;font-weight:700;">
+          <span style="color:var(--text);">= PROFIT NET RÉEL</span>
+          <span class="s-val" id="s-profit_${pid}" style="font-size:17px;">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="card full">
+      <div class="card-header">
+        <span class="card-icon">🎯</span>
+        <span class="card-title">Indicateurs Clés</span>
+      </div>
+      <div class="card-body">
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="kpi-val" id="kpi-roi_${pid}">—</div>
+            <div class="kpi-lbl">ROI Réel</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val" id="kpi-unit_${pid}">—</div>
+            <div class="kpi-lbl">Profit / Unité</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val" id="kpi-be_${pid}">—</div>
+            <div class="kpi-lbl">Seuil Rentabilité</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val" id="kpi-ret_${pid}">—</div>
+            <div class="kpi-lbl">Taux de Retour</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val gold" id="kpi-ads-unit_${pid}">—</div>
+            <div class="kpi-lbl">Pub / Unité</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val" id="kpi-margin_${pid}">—</div>
+            <div class="kpi-lbl">Marge Nette %</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  
+  </div>
+</div>
+`; }
+
+
+  // ── Multi-product state ──────────────────────────────────
+  let productCounter = 0;
+  let activeProducts = [];
+  let collapsedProducts = {};
+  let exchanges = {};
+  let exchIdCounter = {};
+
+  // ── Date range for CRM data (Unités Vendues, Retours, CA Réel) ──
+  let globalSince = Date.now() - 7*24*3600*1000;
+  let globalUntil = Date.now();
+  let currentPeriodType = 'custom'; // day | week | month | quarter | year | custom — drives proration + what gets saved
+  let proratedFixedCostsAmount = null; // fetched from the server; null until resolved once
+  let lastCalcBreakdown = [];  // per-product {name, profit, revenue} from the most recent calcAll()
+  let lastCalcTotals = { revenue:0, productCosts:0, shipping:0, advertising:0, incidents:0 };
+  const PERIOD_LABELS = { day:'Jour', week:'Semaine', month:'Mois', quarter:'Trimestre', year:'Année', custom:'Période personnalisée' };
+
+  /** Aligned calendar boundaries for each period type — "this week" means
+   *  the actual Monday→Sunday week, not a rolling "last 7 days", so that
+   *  4 saved weeks cleanly tile into a month for the aggregation feature
+   *  (req §6) instead of overlapping or leaving gaps. */
+  function computeAlignedRange(mode){
+    const now = new Date();
+    if(mode==='day'){
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return [d.getTime(), d.getTime()+24*3600*1000-1];
+    }
+    if(mode==='week'){
+      const day = now.getDay(); // 0=Sun..6=Sat
+      const diffToMonday = (day===0? -6 : 1-day);
+      const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate()+diffToMonday);
+      return [monday.getTime(), monday.getTime()+7*24*3600*1000-1];
+    }
+    if(mode==='month'){
+      return [new Date(now.getFullYear(), now.getMonth(), 1).getTime(), new Date(now.getFullYear(), now.getMonth()+1, 1).getTime()-1];
+    }
+    if(mode==='quarter'){
+      const q = Math.floor(now.getMonth()/3);
+      return [new Date(now.getFullYear(), q*3, 1).getTime(), new Date(now.getFullYear(), q*3+3, 1).getTime()-1];
+    }
+    if(mode==='year'){
+      return [new Date(now.getFullYear(),0,1).getTime(), new Date(now.getFullYear()+1,0,1).getTime()-1];
+    }
+    return null;
+  }
+
+  function setRange(mode){
+    currentPeriodType = mode;
+    if(mode==='custom'){
+      const sv = document.getElementById('range_since').value;
+      const uv = document.getElementById('range_until').value;
+      if(!sv || !uv){ alert('Choisissez les deux dates.'); return; }
+      globalSince = new Date(sv).getTime();
+      globalUntil = new Date(uv).getTime() + 24*3600*1000 - 1; // fin de journée incluse
+    } else {
+      const range = computeAlignedRange(mode);
+      globalSince = range[0]; globalUntil = range[1];
+      // BUGFIX: a preset button (Cette semaine, Ce mois-ci...) used to leave
+      // range_since/range_until empty. If the manager then clicked
+      // "Appliquer" (out of habit, or just to confirm), it always ran
+      // setRange('custom') and found both date fields empty -> alert
+      // "Choisissez les deux dates" and nothing applied, even though the
+      // preset itself DID work. Keeping the date inputs in sync with
+      // whatever preset is active makes "Appliquer" idempotent no matter
+      // what was clicked before it.
+      const toDateInputValue = ts => { const d = new Date(ts); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+      document.getElementById('range_since').value = toDateInputValue(globalSince);
+      document.getElementById('range_until').value = toDateInputValue(globalUntil);
+    }
+    document.getElementById('range_label').textContent =
+      new Date(globalSince).toLocaleDateString('fr-DZ') + ' → ' + new Date(globalUntil).toLocaleDateString('fr-DZ') + ' (' + PERIOD_LABELS[mode] + ')';
+    const unexpLabel = document.getElementById('unexp_period_label'); if(unexpLabel) unexpLabel.textContent = PERIOD_LABELS[mode];
+    document.querySelectorAll('.range-btn').forEach(b=>b.classList.remove('range-btn-active'));
+    const activeBtn = document.getElementById('range-'+mode); if(activeBtn) activeBtn.classList.add('range-btn-active');
+    refreshProratedFixedCosts();
+    // BUGFIX: unexpected charges must reload for the NEW period too — see
+    // loadUnexpectedCharges()'s own comment for why this was silently
+    // pulling every charge ever entered instead of just this period's.
+    loadUnexpectedCharges();
+  }
+  /** Pulls the auto-prorated fixed-expense figure for whatever period is
+   *  currently selected (req §7 — the ÷4/×N/day-count rule lives in ONE
+   *  place on the server, see db.js's prorateFixedExpenses()) and
+   *  refreshes the displayed totals with it. */
+  async function refreshProratedFixedCosts(){
+    try{
+      const r = await fetch(API_BASE + '/api/financial-records/prorate-fixed?periodType=' + currentPeriodType + '&startDate=' + globalSince + '&endDate=' + globalUntil);
+      const d = await r.json();
+      proratedFixedCostsAmount = d.prorated;
+    }catch(e){ proratedFixedCostsAmount = null; }
+    calcAll();
+  }
+
+  // ── Real CRM products ──────────────────────────────────
+  let productCrmId = {}; // pid -> real CRM product id (absent/null = manually added)
+
+  async function loadProductsFromCRM(){
+    let products = [];
+    try {
+      const r = await fetch(API_BASE + '/api/products');
+      products = await r.json();
+    } catch(e) { alert('Erreur de connexion au serveur CRM.'); return; }
+    if(!Array.isArray(products) || !products.length){ alert('Aucun produit trouvé dans le CRM.'); return; }
+    for(const p of products) addProduct(p);
+  }
+
+  /** pid = 'p'+counter as before. If `crmProduct` is given (a real product
+   *  from /api/products), pre-fills name/sell/buy/packaging and enables the
+   *  "Sync CRM" button; otherwise this is a blank manually-added product. */
+  function addProduct(crmProduct){
+    productCounter++;
+    const pid = 'p' + productCounter;
+    activeProducts.push(pid);
+    exchanges[pid] = {};
+    exchIdCounter[pid] = 0;
+    collapsedProducts[pid] = false;
+    productCrmId[pid] = crmProduct ? crmProduct.id : null;
+
+    const container = document.getElementById('products-container');
+    const wrap = document.createElement('div');
+    wrap.innerHTML = productBlockHTML(pid);
+    container.appendChild(wrap.firstElementChild);
+    addExchange(pid, 700);
+
+    if(crmProduct){
+      const nameEl = document.getElementById('product_name_' + pid); if(nameEl) nameEl.value = crmProduct.name || 'Produit';
+      const sellEl = document.getElementById('sell_price_' + pid); if(sellEl) sellEl.value = crmProduct.price || 0;
+      const buyEl  = document.getElementById('buy_price_' + pid);  if(buyEl)  buyEl.value  = crmProduct.costPrice || 0;
+      const packEl = document.getElementById('pack_cost_' + pid);  if(packEl) packEl.value = crmProduct.packagingCost || 0;
+    } else {
+      const btn = document.getElementById('product_sync_' + pid);
+      if(btn){ btn.style.opacity = '0.4'; btn.title = 'Produit ajouté manuellement — pas de lien CRM'; }
+    }
+    calcAll();
+  }
+
+  /** Fetches real delivered/returned/CA-réel for THIS product over the
+   *  selected date range — AND, now, the real blended buy/packaging price
+   *  actually paid for whichever units sold in that exact window (pulled
+   *  from the CRM's FIFO cost-lot tracking; falls back to the product's
+   *  flat cost price when nothing in the window was cost-tracked yet).
+   *  Ads and anything else manually entered stay untouched — only these
+   *  5 fields are ever overwritten by a sync. */
+  async function syncProductFromCRM(pid){
+    const crmId = productCrmId[pid];
+    if(!crmId){ alert("Ce produit n'est pas lié au CRM (ajouté manuellement) — impossible de synchroniser."); return; }
+    try {
+      const r = await fetch(API_BASE + '/api/products/' + crmId + '/sales-summary?since=' + globalSince + '&until=' + globalUntil);
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      const u = document.getElementById('units_sold_' + pid); if(u) u.value = d.deliveredCount;
+      const rc = document.getElementById('ret_count_' + pid); if(rc) rc.value = d.returnedCount;
+      const ca = document.getElementById('real_ca_' + pid);   if(ca) ca.value = Math.round(d.realCA);
+      const buyEl  = document.getElementById('buy_price_' + pid);  if(buyEl  && d.avgBuyPrice       !== undefined) buyEl.value  = Math.round(d.avgBuyPrice);
+      const packEl = document.getElementById('pack_cost_' + pid);  if(packEl && d.avgPackagingCost  !== undefined) packEl.value = Math.round(d.avgPackagingCost);
+      calcAll();
+    } catch(e) { alert('Erreur de connexion au serveur CRM.'); }
+  }
+
+  function removeProduct(pid){
+    if(!confirm('Supprimer ce produit du calcul ?')) return;
+    activeProducts = activeProducts.filter(p => p !== pid);
+    delete exchanges[pid];
+    delete exchIdCounter[pid];
+    delete collapsedProducts[pid];
+    const el = document.getElementById('product-block-' + pid);
+    if(el) el.remove();
+    calcAll();
+  }
+
+  /** Shrink/expand ONE product: collapsed shows only the name + its
+   *  profit/loss in the header strip; expanded shows the full A-G detail. */
+  function toggleProduct(pid){
+    collapsedProducts[pid] = !collapsedProducts[pid];
+    const body = document.getElementById('product_body_' + pid);
+    const btn  = document.getElementById('product_toggle_' + pid);
+    if(body) body.style.display = collapsedProducts[pid] ? 'none' : '';
+    if(btn) btn.textContent = collapsedProducts[pid] ? '▶ Agrandir' : '▼ Réduire';
+  }
+
+  function addExchange(pid, cost=700) {
+    exchIdCounter[pid] = (exchIdCounter[pid]||0) + 1;
+    const id = exchIdCounter[pid];
+    exchanges[pid][id] = cost;
+    const div = document.createElement('div');
+    div.id = 'exch-row-' + pid + '-' + id;
+    div.style.cssText = 'display:flex;align-items:center;gap:8px;background:rgba(249,115,22,.06);border:1px solid rgba(249,115,22,.25);border-radius:8px;padding:8px 10px;';
+    div.innerHTML = `
+      <span style="font-size:11px;color:#f97316;font-weight:700;white-space:nowrap;">Échange ${id}</span>
+      <div style="position:relative;flex:1;">
+        <input type="number" value="${cost}" min="0"
+          style="width:100%;padding:7px 40px 7px 10px;background:#13162a;border:1px solid #2e3452;border-radius:6px;color:#e8eaf0;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;outline:none;"
+          oninput="exchanges['${pid}'][${id}]=+this.value||0;calcAll();"
+          onfocus="this.style.borderColor='#4f8ef7'"
+          onblur="this.style.borderColor='#2e3452'">
+        <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:700;color:#8b92a8;pointer-events:none;">DA</span>
+      </div>
+      <button onclick="removeExchange('${pid}',${id})"
+        style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#ef4444;border-radius:6px;width:28px;height:28px;font-size:14px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;">×</button>
+    `;
+    const list = document.getElementById('exch-list_' + pid);
+    if(list) list.appendChild(div);
+    calcAll();
+  }
+  function removeExchange(pid, id) {
+    delete exchanges[pid][id];
+    const row = document.getElementById('exch-row-' + pid + '-' + id);
+    if(row) row.remove();
+    calcAll();
+  }
+  function getExchTotal(pid) {
+    return Object.values(exchanges[pid] || {}).reduce((s,v)=>s+v,0);
+  }
+
+  /** Computes ONE product's profit, updates ITS OWN display elements
+   *  (suffixed _pid) AND its collapsed-view summary, and returns the
+   *  profit number (fixed/unexpected costs are NOT included here — they
+   *  are subtracted exactly once, at the aggregate level, in calcAll). */
+  function calcProduct(pid){
+    const g = base => document.getElementById(base + '_' + pid);
+    const val = base => +(g(base)?.value) || 0;
+
+    const sell = val('sell_price'), buy = val('buy_price'), rate = val('rate') || 1;
+    const ads_usd = val('ads_usd'), pack = val('pack_cost'), ship = val('ship_cost');
+    const units = val('units_sold'), ret_cost = val('ret_cost'), ret_count = val('ret_count');
+    const loss_cost = val('loss_cost'), loss_cnt = val('loss_count'), real_ca = val('real_ca');
+
+    const exch_total_val = getExchTotal(pid);
+    const exch_cnt = Object.keys(exchanges[pid] || {}).length;
+
+    const ads_da = ads_usd * rate;
+    const ads_per_unit = units > 0 ? ads_da / units : 0;
+    const total_unit = buy + pack + ship + ads_per_unit;
+    const gross_margin = sell - buy;
+    const buy_total = buy * units, pack_total = pack * units, ship_total = ship * units;
+    const ret_total = ret_cost * ret_count, loss_total = loss_cost * loss_cnt;
+    const incidents = ret_total + exch_total_val + loss_total;
+    const ca_theo = (sell * units) - incidents;
+    const all_costs = buy_total + pack_total + ship_total + ads_da + incidents;
+    const ca_diff = ca_theo - real_ca;
+    const profit = real_ca - all_costs;
+    const roi = all_costs > 0 ? (profit / all_costs) * 100 : 0;
+    const profit_unit = units > 0 ? profit / units : 0;
+    const total_orders = units + ret_count + exch_cnt;
+    const ret_rate = total_orders > 0 ? (ret_count / total_orders) * 100 : 0;
+    const be = (sell - total_unit) > 0 ? Math.ceil(all_costs / (sell - total_unit)) : null;
+    const margin_pct = real_ca > 0 ? (profit / real_ca) * 100 : 0;
+
+    const set = (base, text) => { const el = g(base); if(el) el.textContent = text; };
+    set('gross_margin', fmt(gross_margin)); color(g('gross_margin'), gross_margin);
+    set('ads_da', fmt(ads_da)); set('ads_unit', fmt(ads_per_unit)); set('total_unit_cost', fmt(total_unit));
+    set('ca_theo', fmt(ca_theo));
+    const p_unit_theo = units > 0 ? (ca_theo - all_costs) / units : 0;
+    set('profit_unit', fmt(p_unit_theo)); color(g('profit_unit'), p_unit_theo);
+    set('ret_total', fmt(ret_total));
+    const lbl = g('exch_count_label'); if(lbl) lbl.textContent = exch_cnt + (exch_cnt===1?' échange':' échanges');
+    set('exch_total', fmt(exch_total_val)); set('loss_total', fmt(loss_total)); set('incidents_total', fmt(incidents));
+    set('ca_diff', fmt(ca_diff)); color(g('ca_diff'), -ca_diff);
+    set('all_costs', fmt(all_costs));
+    set('s-ca', fmt(real_ca)); set('s-buy', fmt(buy_total)); set('s-pack', fmt(pack_total));
+    set('s-ship', fmt(ship_total)); set('s-ads', fmt(ads_da)); set('s-inc', fmt(incidents));
+    set('s-profit', fmt(profit)); color(g('s-profit'), profit);
+    set('kpi-roi', fmtPct(roi)); color(g('kpi-roi'), roi);
+    set('kpi-unit', fmt(profit_unit)); color(g('kpi-unit'), profit_unit);
+    set('kpi-be', be !== null ? be + ' unités' : '∞');
+    set('kpi-ret', fmtPct(ret_rate)); set('kpi-ads-unit', fmt(ads_per_unit));
+    set('kpi-margin', fmtPct(margin_pct)); color(g('kpi-margin'), margin_pct);
+
+    // Collapsed-view summary line (name row) — always visible whether expanded or not
+    const summaryEl = document.getElementById('product_summary_' + pid);
+    if(summaryEl){ summaryEl.textContent = fmt(profit); summaryEl.className = 's-val ' + (profit>0?'pos':profit<0?'neg':''); }
+
+    // Returns every component, not just profit — the financial-record save
+    // (phase D) needs Revenue/Product costs/Shipping/Advertising as
+    // SEPARATE totals across every product, not just their sum.
+    return { profit, real_ca, buy_total, pack_total, ship_total, ads_da, incidents };
+  }
+
+  /** Recomputes every product, then the ONE aggregate business summary AND
+   *  the top banner: sum(profit of each product) − (fixed + unexpected).
+   *  Fixed/unexpected costs are subtracted exactly once here — never inside
+   *  calcProduct — so adding more products never double-counts them. */
+  function calcAll(){
+    const breakdown = [];
+    let sumProfit = 0;
+    // Aggregate totals across every product — this is exactly what a saved
+    // financial record needs (Revenue/Product costs/Shipping/Advertising),
+    // computed fresh every time the inputs change, never stored mid-way.
+    let totalRevenue = 0, totalProductCosts = 0, totalBuy = 0, totalPack = 0, totalShipping = 0, totalAdvertising = 0, totalIncidents = 0;
+    activeProducts.forEach(pid => {
+      const p = calcProduct(pid);
+      sumProfit += p.profit;
+      totalRevenue += p.real_ca; totalProductCosts += p.buy_total + p.pack_total;
+      totalBuy += p.buy_total; totalPack += p.pack_total;
+      totalShipping += p.ship_total; totalAdvertising += p.ads_da; totalIncidents += p.incidents;
+      const nameEl = document.getElementById('product_name_' + pid);
+      breakdown.push({ name: (nameEl ? nameEl.value : pid) || pid, profit: p.profit, revenue: p.real_ca });
+    });
+    lastCalcBreakdown = breakdown;
+    lastCalcTotals = { revenue: totalRevenue, productCosts: totalProductCosts, shipping: totalShipping, advertising: totalAdvertising, incidents: totalIncidents };
+
+    // Fixed costs: use the auto-prorated figure for the CURRENTLY selected
+    // period type (req §7 — ÷4 for a week, full for a month, day-count for
+    // a day) when we have one from the server; fall back to the raw flat
+    // monthly sum only if that call hasn't resolved yet.
+    const fixedPortion = (proratedFixedCostsAmount !== null && proratedFixedCostsAmount !== undefined) ? proratedFixedCostsAmount : fixedCostsTotal();
+    const other = fixedPortion + unexpectedTotal();
+    const grandTotalFinal = sumProfit - other;
+
+    const bEl = document.getElementById('grand-breakdown');
+    if(bEl){
+      bEl.innerHTML = breakdown.length ? breakdown.map(b => `
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;">
+          <span style="color:var(--muted);">${(b.name||'Produit').replace(/</g,'&lt;')}</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:600;${b.profit<0?'color:var(--red)':'color:var(--green)'}">${fmt(b.profit)}</span>
+        </div>`).join('') : '<div style="font-size:12px;color:var(--muted);">Aucun produit ajouté</div>';
+    }
+
+    // Détail agrégé — mêmes 6 lignes que la carte "F — Résumé Détaillé" de
+    // chaque produit, mais sommées sur tous les produits actifs. La somme de
+    // ces 6 lignes doit égaler sumProfit (vérifiable ligne par ligne, comme
+    // pour un seul produit).
+    const dEl = document.getElementById('grand-detailed-breakdown');
+    if(dEl){
+      const row = (label, value, cls) => `<div class="summary-row"><span class="s-label">${label}</span><span class="s-val ${cls}" style="font-family:'JetBrains Mono',monospace;">${fmt(value)}</span></div>`;
+      dEl.innerHTML = activeProducts.length ? (
+        row('CA Réel (livreur) — total', totalRevenue, 'pos') +
+        row('− Coût Achat Total', totalBuy, 'neg') +
+        row('− Coût Emballage Total', totalPack, 'neg') +
+        row('− Coût Livraison Total', totalShipping, 'neg') +
+        row('− Budget Publicité (DA)', totalAdvertising, 'neg') +
+        row('− Total Incidents (retours + échanges + pertes)', totalIncidents, 'neg')
+      ) : '<div style="font-size:12px;color:var(--muted);">Aucun produit ajouté</div>';
+    }
+    const gp = document.getElementById('grand-sum-profit'); if(gp) gp.textContent = fmt(sumProfit);
+    const go = document.getElementById('grand-other-costs'); if(go) go.textContent = fmt(other);
+    const gt = document.getElementById('grand-total');
+    if(gt){ gt.textContent = fmt(grandTotalFinal); gt.className = 's-val ' + (grandTotalFinal>0?'pos':grandTotalFinal<0?'neg':''); }
+
+    // Top banner = the WHOLE BUSINESS's net profit (sum of every product,
+    // minus fixed + unexpected costs once) — NOT any single product's profit.
+    const fixedTotalEl = document.getElementById('fixed_total'); if(fixedTotalEl) fixedTotalEl.textContent = fmt(fixedCostsTotal());
+    const unexpTotalEl = document.getElementById('unexp_total'); if(unexpTotalEl) unexpTotalEl.textContent = fmt(unexpectedTotal());
+    const otherTotalEl = document.getElementById('other_costs_total'); if(otherTotalEl) otherTotalEl.textContent = fmt(other);
+    const fixedProrateNote = document.getElementById('fixed_prorate_note');
+    if(fixedProrateNote){
+      fixedProrateNote.textContent = (proratedFixedCostsAmount !== null && proratedFixedCostsAmount !== undefined && Math.abs(fixedPortion-fixedCostsTotal())>0.5)
+        ? '→ Montant réellement déduit pour "' + PERIOD_LABELS[currentPeriodType] + '": ' + fmt(fixedPortion)
+        : '';
+    }
+
+    const bv = document.getElementById('b-value');
+    const bverd = document.getElementById('b-verdict');
+    const banner = document.getElementById('banner');
+    if(bv && bverd && banner){
+      bv.textContent = fmt(grandTotalFinal);
+      banner.className = 'banner-inner ' + (grandTotalFinal>0?'win':grandTotalFinal<0?'lose':'zero');
+      bv.className = 'banner-value ' + (grandTotalFinal>0?'win':grandTotalFinal<0?'lose':'');
+      bverd.textContent = grandTotalFinal>0 ? '✅ Votre business est rentable !' : grandTotalFinal<0 ? '❌ Votre business est en perte' : '⚖️ Équilibre';
+    }
+  }
+
+  /** Persists the CURRENT calculator state (whatever period is selected,
+   *  whatever the manager has typed/synced) as one immutable financial
+   *  record. Custom (non-aligned) ranges still save fine, they just can't
+   *  later be picked up by the week→month/month→year aggregation, which
+   *  only looks at records whose periodType matches a clean calendar unit
+   *  — the manager is warned about that up front rather than discovering
+   *  it silently later. */
+  async function saveCurrentAsFinancialRecord(){
+    if(currentPeriodType==='custom' && !confirm('Cette période personnalisée ne pourra pas être utilisée pour l\'agrégation automatique (Semaine→Mois→Année). Sauvegarder quand même ?')) return;
+    const notes = document.getElementById('fin_notes').value.trim();
+    const body = {
+      periodType: currentPeriodType, startDate: globalSince, endDate: globalUntil,
+      revenue: lastCalcTotals.revenue, productCosts: lastCalcTotals.productCosts,
+      shippingCosts: lastCalcTotals.shipping, advertisingCosts: lastCalcTotals.advertising,
+      fixedExpenses: (proratedFixedCostsAmount!==null && proratedFixedCostsAmount!==undefined) ? proratedFixedCostsAmount : fixedCostsTotal(),
+      unexpectedExpenses: unexpectedTotal(),
+      notes, source: 'manual', productBreakdown: lastCalcBreakdown, actor: 'manager',
+    };
+    try{
+      const r = await fetch(API_BASE + '/api/financial-records', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const saved = await r.json();
+      alert('✅ Dossier permanent enregistré.\nProfit net: ' + fmt(saved.netProfit) + '\nMarge: ' + saved.margin.toFixed(1) + '%');
+      document.getElementById('fin_notes').value = '';
+    }catch(e){ alert('❌ Erreur de sauvegarde: '+e.message); }
+  }
+
+  async function openFinancialHistory(){
+    const panel = document.getElementById('fin_history_panel');
+    document.getElementById('fin_aggregate_panel').style.display='none';
+    const willShow = panel.style.display==='none' || !panel.style.display;
+    panel.style.display = willShow ? '' : 'none';
+    if(!willShow) return;
+    panel.innerHTML = '<div style="font-size:12px;color:var(--muted)">Chargement...</div>';
+    try{
+      const r = await fetch(API_BASE + '/api/financial-records?periodType=' + currentPeriodType + '&limit=50');
+      const d = await r.json();
+      if(!d.items.length){ panel.innerHTML = '<div style="font-size:12px;color:var(--muted)">Aucun dossier sauvegardé pour "'+PERIOD_LABELS[currentPeriodType]+'" pour le moment.</div>'; return; }
+      panel.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+        '<thead><tr style="text-align:start"><th style="padding:6px">Période</th><th style="padding:6px">Revenu</th><th style="padding:6px">Profit net</th><th style="padding:6px">Marge</th><th style="padding:6px">Notes</th></tr></thead><tbody>' +
+        d.items.map(rec => '<tr style="border-top:1px solid var(--border)">' +
+          '<td style="padding:6px;white-space:nowrap">'+new Date(rec.startDate).toLocaleDateString('fr-DZ')+' → '+new Date(rec.endDate).toLocaleDateString('fr-DZ')+'</td>'+
+          '<td style="padding:6px;font-family:monospace">'+fmt(rec.revenue)+'</td>'+
+          '<td style="padding:6px;font-family:monospace;'+(rec.netProfit>=0?'color:var(--green)':'color:var(--red)')+'">'+fmt(rec.netProfit)+'</td>'+
+          '<td style="padding:6px">'+rec.margin.toFixed(1)+'%</td>'+
+          '<td style="padding:6px;color:var(--muted)">'+(rec.notes?rec.notes.replace(/</g,'&lt;'):'—')+(rec.source==='aggregated'?' <span style="opacity:.6">(agrégé)</span>':'')+'</td>'+
+        '</tr>').join('') + '</tbody></table>';
+    }catch(e){ panel.innerHTML = '<div style="font-size:12px;color:var(--red)">Erreur de chargement.</div>'; }
+  }
+
+  /** Exports the CURRENTLY-SELECTED period-type's saved financial-record
+   *  history to Excel — same records openFinancialHistory() displays, but up
+   *  to the API's 500-record cap rather than the 50 shown on-page. */
+  async function exportFinancialHistory(){
+    try {
+      const r = await fetch(API_BASE + '/api/financial-records?periodType=' + currentPeriodType + '&limit=500');
+      const d = await r.json();
+      if(!d.items.length){ alert('Aucun dossier sauvegardé pour "'+PERIOD_LABELS[currentPeriodType]+'" à exporter.'); return; }
+      const rows = d.items.map(rec => ({
+        'Début période': new Date(rec.startDate).toLocaleDateString('fr-DZ'),
+        'Fin période': new Date(rec.endDate).toLocaleDateString('fr-DZ'),
+        'Type': PERIOD_LABELS[rec.periodType] || rec.periodType,
+        'Revenu': rec.revenue, 'Coûts Produits': rec.productCosts, 'Livraison': rec.shippingCosts,
+        'Publicité': rec.advertisingCosts, 'Charges Fixes': rec.fixedExpenses, 'Charges Imprévues': rec.unexpectedExpenses,
+        'Profit Net': rec.netProfit, 'Marge (%)': +Number(rec.margin).toFixed(1),
+        'Source': rec.source === 'aggregated' ? 'Agrégé' : 'Manuel', 'Notes': rec.notes || '',
+      }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Historique');
+      XLSX.writeFile(wb, 'Historique_Financier_' + currentPeriodType + '_' + new Date().toISOString().slice(0,10) + '.xlsx');
+    } catch(e) { alert('❌ Erreur d\'export: '+e.message); }
+  }
+
+  let lastAggregateResult = null;
+  /** For Mois/Trimestre/Année: rolls up whatever sub-period records are
+   *  ALREADY saved (weeks→month, months→quarter/year) instead of
+   *  recalculating anything from raw orders — req §6's entire point, and
+   *  much faster than re-syncing every product for a full year. */
+  async function aggregateCurrentPeriod(){
+    if(!['month','quarter','year'].includes(currentPeriodType)){
+      alert('L\'agrégation automatique concerne Mois, Trimestre et Année (elle additionne les enregistrements déjà sauvegardés du niveau en dessous — semaines pour un mois, mois pour un trimestre/année).');
+      return;
+    }
+    const panel = document.getElementById('fin_aggregate_panel');
+    document.getElementById('fin_history_panel').style.display='none';
+    panel.style.display = '';
+    panel.innerHTML = 'Chargement...';
+    try{
+      const r = await fetch(API_BASE + '/api/financial-records/aggregate?periodType='+currentPeriodType+'&startDate='+globalSince+'&endDate='+globalUntil);
+      const d = await r.json();
+      if(!d.covered){
+        panel.innerHTML = '<div style="font-size:12px;color:var(--muted)">Aucun enregistrement '+(PERIOD_LABELS[d.subPeriodType]||'')+' sauvegardé pour cette période — sauvegardez d\'abord les sous-périodes individuellement (ex: les 4 semaines avant d\'agréger le mois).</div>';
+        return;
+      }
+      lastAggregateResult = d;
+      panel.innerHTML =
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Agrégé depuis '+d.subRecordsUsed+' enregistrement(s) "'+PERIOD_LABELS[d.subPeriodType]+'" déjà sauvegardé(s) — aucun recalcul depuis les commandes brutes.</div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0"><span>Revenu</span><span style="font-family:monospace">'+fmt(d.revenue)+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0"><span>Coûts produits</span><span style="font-family:monospace">'+fmt(d.productCosts)+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0"><span>Livraison</span><span style="font-family:monospace">'+fmt(d.shippingCosts)+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0"><span>Publicité</span><span style="font-family:monospace">'+fmt(d.advertisingCosts)+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0"><span>Charges fixes (déjà proratées)</span><span style="font-family:monospace">'+fmt(d.fixedExpenses)+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-top:1px solid var(--border);margin-top:4px"><span style="font-weight:700">Profit net</span><span style="font-family:monospace;font-weight:700;'+(d.netProfit>=0?'color:var(--green)':'color:var(--red)')+'">'+fmt(d.netProfit)+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0"><span>Marge</span><span style="font-family:monospace">'+d.margin.toFixed(1)+'%</span></div>'+
+        '<button onclick="saveAggregateAsRecord()" style="margin-top:8px;width:100%;background:rgba(168,85,247,.2);border:1px solid #a855f7;color:#a855f7;border-radius:8px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;">💾 Sauvegarder cet agrégat comme dossier permanent</button>';
+    }catch(e){ panel.innerHTML = '<div style="font-size:12px;color:var(--red)">Erreur.</div>'; }
+  }
+  async function saveAggregateAsRecord(){
+    if(!lastAggregateResult) return;
+    const d = lastAggregateResult;
+    try{
+      const r = await fetch(API_BASE + '/api/financial-records', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+        periodType: d.periodType, startDate: d.startDate, endDate: d.endDate,
+        revenue: d.revenue, productCosts: d.productCosts, shippingCosts: d.shippingCosts, advertisingCosts: d.advertisingCosts,
+        fixedExpenses: d.fixedExpenses, unexpectedExpenses: d.unexpectedExpenses,
+        notes: 'Agrégé automatiquement depuis '+d.subRecordsUsed+' enregistrement(s) '+d.subPeriodType,
+        source: 'aggregated', actor: 'manager',
+      })});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      alert('✅ Agrégat sauvegardé comme dossier permanent.');
+      lastAggregateResult = null;
+    }catch(e){ alert('❌ Erreur: '+e.message); }
+  }
+
+  document.getElementById('products-container').addEventListener('input', e => {
+    if(e.target.tagName === 'INPUT') calcAll();
+  });
+
+  addProduct();
+  loadFixedCosts();
+  setRange('week'); // aligned current week by default; also loads unexpected charges + prorated fixed costs scoped to it
+</script>
+</body>
+</html>

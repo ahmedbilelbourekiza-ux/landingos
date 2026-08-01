@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Database — runtime data, never committed
+crm.db
+crm.db-wal
+crm.db-shm
+*.db
+*.db-wal
+*.db-shm
+
+# Legacy JSON stores, renamed by migrateFromLegacy() on first boot
+*.legacy
+orders.json
+settings.json
+products.json
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Stray artefacts
+{try{return
+_probe.py

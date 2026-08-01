@@ -1,0 +1,1 @@
+{"name":"crm","version":"2.0.0","main":"index.js","dependencies":{"express":"^4.19.2","cors":"^2.8.5","better-sqlite3":"^11.3.0","web-push":"^3.6.7"}}
