@@ -43,6 +43,11 @@ async function startServer(env = {}, opts = {}) {
       NODE_ENV: 'test',
       ADMIN_USERNAME: ADMIN.name,
       ADMIN_PASSWORD: ADMIN.password,
+      // The suite signs in far more often than a human would. Real limits are
+      // exercised deliberately in test/ratelimit.test.js, which sets its own.
+      LOGIN_RATE_LIMIT: '100000',
+      LOGIN_ACCOUNT_RATE_LIMIT: '100000',
+      API_RATE_LIMIT: '100000',
       ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],

@@ -63,6 +63,7 @@ const jobs = require('./lib/jobs');
 const inventory = require('./lib/inventory');
 const followup = require('./lib/followup');
 const auth = require('./lib/auth');
+const { rateLimit, clientIp } = require('./lib/ratelimit');
 const path = require('path');
 
 const app = express();
@@ -121,6 +122,64 @@ app.use('/webhook/shopify', express.raw({ type: 'application/json' }));
 // Default 100KB limit is far too small for variant images, which are stored
 // as base64 data URLs and can be several MB each.
 app.use(express.json({ limit: '25mb' }));
+
+/* =============================================================================
+ * SECURITY HEADERS.
+ *
+ * Hand-written rather than via helmet, to avoid a dependency for six headers
+ * whose values this app can state exactly. Only the ones that do real work here
+ * are set — an HSTS header on a plain-HTTP dev server, or a CSP guessed at
+ * without auditing the inline scripts both clients rely on, would be cargo cult.
+ * ========================================================================== */
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');        // no sniffing an upload into script
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');            // the calculator is iframed by index.html
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
+  // API responses are per-session data and must never be cached.
+  if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  }
+  next();
+});
+
+/* =============================================================================
+ * RATE LIMITING (audit §10 — no brute-force protection).
+ *
+ * Login was completely unthrottled, and every attempt costs a real scrypt
+ * derivation — so it was both a credential-stuffing surface and a cheap way to
+ * burn the server's CPU.
+ *
+ * Two limiters on login: one per client address (stops a single source
+ * hammering) and one per ACCOUNT NAME (stops a distributed attempt against one
+ * account, which a per-IP limit alone would miss entirely).
+ * ========================================================================== */
+const authIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: Number(process.env.LOGIN_RATE_LIMIT || 30),
+  key: (req) => 'ip:' + clientIp(req),
+  message: 'Too many sign-in attempts from this address. Please wait and try again.',
+  onLimit: (req, k) => logError('security', 'login rate limit hit', { key: k, path: req.path }),
+});
+const authAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: Number(process.env.LOGIN_ACCOUNT_RATE_LIMIT || 10),
+  key: (req) => (req.body && req.body.name ? 'acct:' + String(req.body.name).toLowerCase() : null),
+  message: 'Too many sign-in attempts for this account. Please wait and try again.',
+  onLimit: (req, k) => logError('security', 'per-account login rate limit hit', { key: k }),
+});
+app.use('/api/auth/login', authIpLimiter, authAccountLimiter);
+
+/* A wide backstop on everything else — high enough that the console's
+ * 30-second polling and a busy agent never approach it, low enough to blunt a
+ * scripted scrape. The SSE stream is exempt: it is one long-lived connection,
+ * not a request rate. */
+app.use('/api', rateLimit({
+  windowMs: 60 * 1000, max: Number(process.env.API_RATE_LIMIT || 600),
+  key: (req) => 'api:' + (req.user?.name || clientIp(req)),
+  skip: (req) => req.path === '/notifications/subscribe',
+  onLimit: (req, k) => logError('security', 'api rate limit hit', { key: k, path: req.path }),
+}));
 
 /* Resolve the caller's session before any /api route runs. Never rejects.
  * Mounted on /api rather than globally: every call costs a session lookup plus
@@ -1589,7 +1648,13 @@ app.put('/api/orders/:id', async (req, res) => {
       try { await tryAutoCreateShipment(updated, updated.agent || 'agent'); }
       catch (e) { logError('shipment', 'auto-create on manual confirm failed', { orderId: updated.id, err: e.message }); }
       try {
-        const fuAgent = followup.assignFollowup(updated.id, { auto: true, actor: updated.agent || 'agent' });
+        // No `auto: true` here (audit BUG-03). Forcing it made
+        // assignFollowup's `opts.auto || settings.followupAutoAssign` check
+        // short-circuit before it ever read the setting, so the Settings toggle
+        // did nothing at all — follow-up agents were assigned on every
+        // confirmation whether the manager wanted it or not. Omitting it lets
+        // the setting decide, which is what the toggle is for.
+        const fuAgent = followup.assignFollowup(updated.id, { actor: updated.agent || 'agent' });
         if (fuAgent) broadcast({ type: 'followup_assigned', orderId: updated.id, agent: fuAgent }, fuAgent);
       } catch (e) { logError('followup', 'auto-assign failed', { orderId: updated.id, err: e.message }); }
     } else if (newStatus === 'cancelled') {
@@ -1685,7 +1750,8 @@ app.post('/api/orders/:id/call', async (req, res) => {
 
     // Follow-up: assign a Suivi agent to the now-confirmed + shipped order (req §1).
     try {
-      const fuAgent = followup.assignFollowup(order.id, { auto: true, actor: order.agent || 'agent' });
+      // See the PUT handler above — the setting decides, not the caller (BUG-03).
+      const fuAgent = followup.assignFollowup(order.id, { actor: order.agent || 'agent' });
       if (fuAgent) broadcast({ type: 'followup_assigned', orderId: order.id, agent: fuAgent }, fuAgent);
     } catch (e) { logError('followup', 'auto-assign failed', { orderId: order.id, err: e.message }); }
   } else if (result === 'cancelled') {

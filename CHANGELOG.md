@@ -523,3 +523,47 @@ conservative: if a legitimate client field turns out to be missing, it will be
 silently dropped and logged as `ignored non-writable fields on update` — grep for
 that line after deploying.
 **Tests.** 23.
+
+#### BUG-03 — the follow-up auto-assign setting did nothing
+**What.** The two confirm paths no longer pass `{ auto: true }`.
+**Why.** `assignFollowup()` checks `opts.auto || settings.followupAutoAssign`, and
+both callers passed `auto: true` unconditionally — so the expression
+short-circuited before it ever read the setting. Turning the toggle off in
+Settings had no effect: a follow-up agent was assigned on every confirmation
+regardless. Explicit manual assignment (the bulk action and
+`POST /api/followup/assign`) still overrides, as it should.
+**Files.** `index.js`. **Migration.** None.
+**Risk.** *Behaviour change, in the direction the setting always claimed.*
+`followupAutoAssign` defaults to `false`, so after deploying, confirmations will
+stop auto-assigning follow-up agents until the toggle is switched on. If the team
+has been relying on that assignment happening, turn it on.
+
+#### Rate limiting and security headers
+**What.** New `lib/ratelimit.js` (a fixed-window counter, ~40 lines, no
+dependency). Two limiters on login — per client address and **per account name**
+— plus a wide backstop on the rest of `/api`. Six security headers.
+**Why.** Login was completely unthrottled. Every attempt costs a real scrypt
+derivation, so it was both a credential-stuffing surface and a cheap way to burn
+the server's CPU. The per-account limiter matters separately: a per-IP limit
+alone misses a distributed attempt against one account, and a per-account limit
+alone would let one attacker lock out everyone. Verified live: ten `401`s then
+`429`s, with a `Retry-After`, while a *different* account can still sign in.
+The SSE stream is exempt from the backstop (one long-lived connection, not a
+request rate) and `/webhook` is a separate mount, so a carrier replaying a
+backlog is never throttled off.
+Headers are hand-written rather than via helmet — six values this app can state
+exactly, versus a dependency. `X-Frame-Options: SAMEORIGIN` rather than `DENY`
+because `index.html` iframes the profit calculator. No CSP yet: both clients rely
+on inline scripts and handlers, so a guessed policy would either break them or be
+meaningless. That belongs with the frontend rebuild.
+**Files.** `lib/ratelimit.js` (new), `index.js`, `test/ratelimit.test.js` (new),
+`test/helpers.js`.
+**Migration.** None. Tunable via `LOGIN_RATE_LIMIT` (30/15min),
+`LOGIN_ACCOUNT_RATE_LIMIT` (10/15min), `API_RATE_LIMIT` (600/min).
+**Risk.** **Known limitation, stated plainly:** the counters live in this
+process's memory. On the single instance this deploys to that is correct, but
+behind more than one instance each keeps its own count, so the effective limit
+multiplies, and a restart clears everything. The fix at that point is Redis, and
+it belongs with the same work that moves SSE fan-out off in-process state.
+**Tests.** 15, including that per-account throttling cannot be reset by changing
+the capitalisation of the name.
