@@ -1,0 +1,81 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { LayoutDashboard, FileText, Package, Truck, FolderOpen, Settings, User, Radio, Webhook, PhoneMissed } from "lucide-react";
+
+import { cn } from "@/lib/utils";
+
+export const dashboardNav = [
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { title: "Landing Pages", href: "/dashboard/landings", icon: FileText },
+  { title: "Categories", href: "/dashboard/categories", icon: FolderOpen },
+  { title: "Orders", href: "/dashboard/orders", icon: Package },
+  { title: "Abandoned", href: "/dashboard/abandoned", icon: PhoneMissed },
+  { title: "Delivery Prices", href: "/dashboard/delivery-prices", icon: Truck },
+  { title: "Meta Pixels", href: "/dashboard/meta-pixels", icon: Radio },
+  { title: "Webhooks", href: "/dashboard/webhooks", icon: Webhook },
+  { title: "Settings", href: "/dashboard/settings", icon: Settings },
+  { title: "Profile", href: "/dashboard/profile", icon: User },
+] as const;
+
+// The Profile link is always available — it's the page the force-change flow
+// redirects to. Every other link is disabled while mustChangePassword=true.
+const FORCE_CHANGE_ALLOWED_HREF = "/dashboard/profile";
+
+export function DashboardNav({
+  mustChangePassword = false,
+}: {
+  mustChangePassword?: boolean;
+}) {
+  const pathname = usePathname();
+
+  return (
+    <nav aria-label="Dashboard" className="flex flex-col gap-1">
+      {dashboardNav.map((item) => {
+        const isActive =
+          item.href === "/"
+            ? pathname === "/"
+            : pathname.startsWith(item.href);
+        const Icon = item.icon;
+        const disabled =
+          mustChangePassword && item.href !== FORCE_CHANGE_ALLOWED_HREF;
+
+        if (disabled) {
+          // Render as a non-interactive, dimmed row so the user sees the
+          // shape of the nav but cannot navigate. ARIA-disabled keeps the
+          // state accessible to assistive tech.
+          return (
+            <span
+              key={item.href}
+              aria-disabled="true"
+              className={cn(
+                "group flex cursor-not-allowed items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground/50",
+              )}
+            >
+              <Icon className="size-4 shrink-0" />
+              {item.title}
+            </span>
+          );
+        }
+
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={isActive ? "page" : undefined}
+            className={cn(
+              "group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              isActive
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+            )}
+          >
+            <Icon className="size-4 shrink-0" />
+            {item.title}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}

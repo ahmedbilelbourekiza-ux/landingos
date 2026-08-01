@@ -1,0 +1,561 @@
+// LandingOS — Prisma schema
+//
+// Provider is PostgreSQL (Neon). It was SQLite originally, but a SQLite file
+// only survives where there is a persistent filesystem — and the Render free
+// tier wipes the container on every deploy AND every idle spin-down, which
+// silently destroyed orders, landing pages, and pixel configs within hours.
+//
+// The schema is provider-portable and uses no @db.* native type annotations,
+// which is what kept this migration to a provider swap rather than a rewrite.
+//
+// NOTE for anyone changing queries: Postgres `LIKE` is case-SENSITIVE where
+// SQLite's was not. Prisma's `contains`/`startsWith`/`endsWith` compile to
+// LIKE, so they need `mode: "insensitive"` to behave the way they did on
+// SQLite. See the order search in src/app/api/orders/route.ts.
+//
+// Data model scope (Task 2): the landing-page data engine. One LandingPage
+// represents one COD product. All child records (media, variants, features,
+// reviews, faqs, setting) cascade-delete with their parent. Form submissions
+// and CRM webhook delivery belong to later tasks and are intentionally absent.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Editorial lifecycle of a landing page. DRAFT while the admin is editing,
+// PUBLISHED once it is live, ARCHIVED to take it offline without deleting it.
+enum LandingPageStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// Media is either an image or a video. Kept as an enum because the public
+// renderer treats the two types differently (poster frame vs. player).
+enum LandingMediaType {
+  IMAGE
+  VIDEO
+}
+
+// Where a piece of media renders on the public page.
+//
+// GALLERY     — the product slider at the top. media[0] is the hero image.
+// DESCRIPTION — long-form images rendered below the description, the
+//               equivalent of images inside a Shopify product description.
+//
+// One table rather than two: both are ordered image lists owned by a landing
+// page, so a second model would duplicate the upload, reorder, and cascade
+// logic to gain nothing. GALLERY is the default so every pre-existing row
+// keeps its current meaning without a data migration.
+//
+// IMPORTANT: because both live in `media`, every query that wants the slider
+// must filter on placement. Reading page.media unfiltered now yields
+// description images too — which would put them in the slider and, since
+// media[0] is the hero, could silently swap the hero image.
+enum LandingMediaPlacement {
+  GALLERY
+  DESCRIPTION
+}
+
+// Shipping method for an order. Algeria's COD market runs on two: delivery to
+// the customer's address, or pickup at the carrier's desk (stop desk), which
+// is cheaper. Per-wilaya prices for both already live on GlobalDeliveryPrice
+// as homePrice/deskPrice.
+enum ShippingMethod {
+  HOME
+  DESK
+}
+
+// Order lifecycle. NEW when the customer submits, then progresses through
+// CONFIRMED → PREPARING → SHIPPED → DELIVERED. CANCELLED is a terminal state.
+enum OrderStatus {
+  NEW
+  CONFIRMED
+  PREPARING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+// A landing page represents a single COD product. One page = one product =
+// one purchase form. `published` is the public visibility flag; `status` is
+// the editorial lifecycle. `webhookUrl` optionally overrides the global
+// CRM_WEBHOOK_URL so different products can route to different CRM pipelines.
+model LandingPage {
+  id             String            @id @default(cuid())
+  title          String
+  slug           String            @unique
+  status         LandingPageStatus @default(DRAFT)
+  description    String?
+  price          Decimal
+  oldPrice       Decimal?
+  currency       String            @default("DZD")
+  buttonText     String            @default("اطلب الآن")
+  ctaButtonText  String?
+  announcement   String?
+  seoTitle       String?
+  seoDescription String?
+  facebookPixel  String?
+  webhookUrl     String?
+  published      Boolean           @default(false)
+  categoryId     String?
+  category       Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  themeId        String?
+  theme          LandingTheme?     @relation(fields: [themeId], references: [id], onDelete: SetNull)
+
+  media          LandingMedia[]
+  variants       LandingVariant[]
+  features       LandingFeature[]
+  reviews        LandingReview[]
+  faqs           LandingFAQ[]
+  setting        LandingSetting?
+  orders         Order[]
+  draftOrders    DraftOrder[]
+
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([status])
+  @@index([published])
+  @@index([createdAt])
+}
+
+// Images and videos attached to a landing page. `displayOrder` controls the
+// carousel/gallery sequence. `url` holds either a stored path or a remote URL.
+model LandingMedia {
+  id            String          @id @default(cuid())
+  landingPageId String
+  type          LandingMediaType
+  url           String
+  altText       String?
+  displayOrder  Int             @default(0)
+  // Slider image vs. long-form description image. See LandingMediaPlacement.
+  // displayOrder is scoped to the placement, so each list numbers from 0
+  // independently.
+  placement     LandingMediaPlacement @default(GALLERY)
+
+  landingPage   LandingPage     @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // placement precedes displayOrder because every read filters by it first.
+  @@index([landingPageId, placement, displayOrder])
+}
+
+// A selectable product option, e.g. name "Size" / value "Large". Flat model:
+// each row is one choosable option with an optional extra price. The purchase
+// form reads these to build its variant selectors.
+model LandingVariant {
+  id            String      @id @default(cuid())
+  landingPageId String
+  name          String
+  value         String
+  extraPrice    Decimal     @default(0)
+  displayOrder  Int         @default(0)
+
+  landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([landingPageId, displayOrder])
+}
+
+// A product highlight shown in the features grid. `icon` stores an icon key
+// (e.g. a lucide name) that the UI maps to a rendered icon component — not a
+// file path.
+model LandingFeature {
+  id            String      @id @default(cuid())
+  landingPageId String
+  icon          String
+  title         String
+  description   String?
+  displayOrder  Int         @default(0)
+
+  landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([landingPageId, displayOrder])
+}
+
+// Social-proof testimonial. `rating` is an Int (1–5); the 1–5 range is
+// enforced at the API/validation layer since Prisma has no portable CHECK
+// constraint. `customerAvatar` is optional — not every review has a photo.
+model LandingReview {
+  id             String      @id @default(cuid())
+  landingPageId  String
+  customerName   String
+  customerAvatar String?
+  rating         Int
+  reviewText     String
+  displayOrder   Int         @default(0)
+
+  landingPage    LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([landingPageId, displayOrder])
+}
+
+// A question/answer pair rendered in the FAQ section.
+model LandingFAQ {
+  id            String      @id @default(cuid())
+  landingPageId String
+  question      String
+  answer        String
+  displayOrder  Int         @default(0)
+
+  landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([landingPageId, displayOrder])
+}
+
+// 1:1 with LandingPage. Feature flags that control which sections and
+// conversion boosters render on the public page. Optional on the page so a
+// page renders with sensible defaults until settings are customized.
+model LandingSetting {
+  id               String      @id @default(cuid())
+  landingPageId    String      @unique
+  countdownEnabled Boolean      @default(false)
+  stickyBuyButton  Boolean      @default(true)
+  floatingWhatsapp Boolean      @default(false)
+  showReviews      Boolean      @default(true)
+  showFAQ          Boolean      @default(true)
+  showFeatures     Boolean      @default(true)
+  shipping         Decimal      @default(0)
+  freeShipping     Boolean      @default(false)
+  orderFormConfig  String?
+
+  // Which shipping methods this product offers at checkout. Two booleans
+  // rather than a three-value enum (HOME/DESK/BOTH): "both" is not a third
+  // kind of shipping, it is both of the two, and a carrier added later
+  // becomes one more flag instead of an enum with five combinations.
+  //
+  // Defaults reproduce today's behaviour exactly — every existing product was
+  // home-delivery-only — so no product changes until the admin opts in.
+  //
+  // The API rejects turning both off; a product with no shipping method
+  // cannot be ordered.
+  homeDeliveryEnabled Boolean   @default(true)
+  stopDeskEnabled     Boolean   @default(false)
+
+  landingPage      LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+}
+
+// Algerian wilaya. Shared dataset — not per-landing. Every landing reads
+// from this single table to populate its delivery price configuration.
+// The wilaya code (01–58) is the official Algerian administrative code.
+model Wilaya {
+  id              Int                     @id
+  code            String                  @unique
+  name            String
+  nameAr          String?
+  baladias        Baladia[]
+  deliveryPrices  GlobalDeliveryPrice[]
+
+  createdAt       DateTime                @default(now())
+}
+
+// Commune within a wilaya. Also shared — not per-landing.
+model Baladia {
+  id        Int      @id
+  name      String
+  nameAr    String?
+  wilayaId  Int
+
+  wilaya    Wilaya   @relation(fields: [wilayaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([wilayaId])
+}
+
+// Global delivery prices — one row per wilaya, shared by every landing.
+// Configured once in the Delivery Prices dashboard page, used by every
+// checkout automatically.
+model GlobalDeliveryPrice {
+  id        String   @id @default(cuid())
+  wilayaId  Int      @unique
+  homePrice Decimal
+  deskPrice Decimal?
+
+  wilaya    Wilaya   @relation(fields: [wilayaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// A customer order. Every field is a snapshot — the order never changes
+// even if the landing is edited later. `variants` is a JSON string storing
+// the selected options at order time: [{"name":"Color","value":"Black"}].
+// Prices are snapshot Decimals, never recalculated.
+model Order {
+  id            String      @id @default(cuid())
+  landingPageId String
+  customerName  String
+  phone         String
+  wilaya        String      // snapshot of wilaya name
+  baladia       String      // snapshot of baladia name
+  address       String
+  notes         String?
+  quantity      Int
+  variants      String      // JSON snapshot: [{"name":"Color","value":"Black"}]
+  productPrice  Decimal     // snapshot — unit price including variant extras
+  shippingPrice Decimal     // snapshot — delivery price for the selected wilaya
+  totalPrice    Decimal     // snapshot — (productPrice * quantity) + shippingPrice
+  // Which method the customer picked, and therefore which of the wilaya's two
+  // prices shippingPrice was taken from. Snapshot like every other field here:
+  // the order must still read correctly after the product stops offering it.
+  // Defaults to HOME because every order predating this column was home
+  // delivery — the only method that existed.
+  shippingMethod ShippingMethod @default(HOME)
+  status        OrderStatus @default(NEW)
+
+  landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+  statusHistory OrderStatusHistory[]
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([landingPageId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// An abandoned checkout: a visitor who started filling the order form but
+// never submitted it. Captured progressively from the storefront as they
+// type (debounced), so a phone number is recovered even if they leave.
+//
+// This is landingos's equivalent of a Shopify draft order — but it is created
+// by the CUSTOMER, not by staff. There is no admin "create draft order" flow.
+//
+// `token` is a random id the storefront generates per visit and keeps in
+// sessionStorage, so repeated updates from the same visitor update one row
+// instead of creating hundreds. It is the upsert key for the public endpoint.
+//
+// `notifiedAt` records when the draft_order.created webhook was sent, so it
+// fires exactly once no matter how many times the visitor edits the form.
+// `convertedOrderId` is set if they eventually did place the order, which
+// lets the CRM (and the Abandoned dashboard) tell real abandonment apart
+// from a lead that simply took a while to finish.
+model DraftOrder {
+  id               String    @id @default(cuid())
+  token            String    @unique
+  landingPageId    String
+  customerName     String?
+  phone            String?
+  wilaya           String?
+  baladia          String?
+  quantity         Int       @default(1)
+  variants         String    @default("[]")
+  productPrice     Decimal?
+  shippingPrice    Decimal?
+  totalPrice       Decimal?
+  // Nullable, unlike Order.shippingMethod: a draft is captured mid-typing and
+  // the customer may not have chosen yet. Null means "not picked so far".
+  shippingMethod   ShippingMethod?
+  notifiedAt       DateTime?
+  convertedOrderId String?
+  convertedAt      DateTime?
+
+  landingPage      LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([landingPageId])
+  @@index([createdAt])
+  @@index([convertedOrderId])
+}
+
+// Timestamped record of every status transition. The initial NEW status is
+// recorded as a history entry with fromStatus = null on order creation.
+// This gives a complete audit trail: each row shows when the order moved
+// from one status to the next.
+model OrderStatusHistory {
+  id        String      @id @default(cuid())
+  orderId   String
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime    @default(now())
+
+  @@index([orderId])
+}
+
+// Product category. One category has many landing pages. Admin manages
+// categories in the dashboard; customers browse them on the homepage and
+// category pages.
+model Category {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  description String?
+  icon        String?
+  coverImage  String?
+  sortOrder   Int          @default(0)
+  isVisible   Boolean      @default(true)
+
+  landingPages LandingPage[]
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([isVisible])
+  @@index([sortOrder])
+}
+
+// Reusable visual theme for landing pages. Each LandingPage references one
+// theme. The theme provides semantic color tokens (primary, accent, etc.)
+// that the LandingTemplate consumes via CSS variables.
+model LandingTheme {
+  id                String   @id @default(cuid())
+  name              String
+  primary           String
+  primaryForeground String
+  accent            String
+  background        String
+  card             String
+  text              String
+  muted             String
+  border            String
+  isBuiltIn         Boolean  @default(false)
+  sortOrder         Int      @default(0)
+
+  landingPages      LandingPage[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// Single admin account. Only one row expected. Password is bcrypt-hashed.
+// Session is managed via signed cookies (no separate session table needed).
+//
+// Security fields:
+//   mustChangePassword   — true on the seeded default admin (admin/admin123).
+//                          Forces a password change on first login before any
+//                          dashboard page other than /dashboard/profile can be
+//                          opened. Flipped to false by the change-password API.
+//   lastLoginAt          — updated on every successful login. Shown in Profile.
+//   lastPasswordChangeAt — updated on every successful password change.
+model Admin {
+  id                    String   @id @default(cuid())
+  username              String   @unique
+  passwordHash          String
+  mustChangePassword    Boolean  @default(true)
+  lastLoginAt           DateTime?
+  lastPasswordChangeAt  DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// A Meta (Facebook) Pixel + Conversions API connection. Multiple rows can
+// exist and multiple can be active at once — every active row receives a
+// copy of every server-side event (see src/lib/meta/capi.ts). `accessToken`
+// is stored AES-256-GCM encrypted (see src/lib/meta/crypto.ts); it is never
+// returned in full by any API response once saved.
+model MetaPixelConfig {
+  id           String   @id @default(cuid())
+  label        String
+  pixelId      String
+  accessToken  String   // encrypted at rest
+  isActive     Boolean  @default(false)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+// Global store settings — single row (id = "singleton"). Covers store info,
+// contact, localization, and social links.
+model StoreSettings {
+  id             String   @id @default("singleton")
+  storeName      String   @default("LandingOS")
+  storeDescription String?
+  logo           String?
+  favicon        String?
+  phone          String?
+  email          String?
+  address        String?
+  currency       String   @default("DZD")
+  timezone       String   @default("Africa/Casablanca")
+  language       String   @default("ar")
+  facebook       String?
+  instagram      String?
+  tiktok         String?
+  whatsapp       String?
+  telegram       String?
+
+  // Browser-side Meta Pixel ID. Deliberately independent of MetaPixelConfig
+  // (which is server-side CAPI only): the storefront pixel keeps firing
+  // PageView/ViewContent/InitiateCheckout even if every CAPI config is
+  // disabled or deleted. The two systems must never depend on each other.
+  metaBrowserPixelId String?
+
+  updatedAt      DateTime @updatedAt
+}
+
+// Outgoing webhook receiver (e.g. an external CRM/ERP). Multiple endpoints
+// can exist; each independently subscribes to a set of event types.
+// `secret` is stored AES-256-GCM encrypted and used to sign every payload
+// with HMAC-SHA256 so the receiver can verify authenticity.
+// `events` is a JSON string array of subscribed event names, e.g.
+//   ["order.created","order.updated","product.updated"]
+// Kept as a serialized string rather than a Postgres native array: the app
+// already parses/serializes it, and leaving the column type alone meant the
+// SQLite→Postgres move needed no data migration for existing rows.
+model WebhookEndpoint {
+  id         String   @id @default(cuid())
+  label      String
+  url        String
+  secret     String   // encrypted at rest
+  events     String   @default("[]")
+  isActive   Boolean  @default(false)
+
+  deliveries WebhookDelivery[]
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+// Delivery attempt log. Gives the admin visibility into whether the CRM
+// actually received each event, without storing the full payload (which
+// contains customer PII and would bloat the database). `resourceId` is the
+// order or landing-page id the event was about.
+model WebhookDelivery {
+  id          String   @id @default(cuid())
+  endpointId  String
+  event       String
+  resourceId  String
+  success     Boolean
+  statusCode  Int?
+  attempts    Int      @default(1)
+  error       String?
+
+  endpoint    WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@index([endpointId, createdAt])
+  @@index([createdAt])
+}
