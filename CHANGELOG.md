@@ -66,6 +66,39 @@ passing through every phase, so they detect regressions introduced by the fixes.
 
 ### Fixes
 
+#### BUG-01 — the overdue sweep crashed on its first candidate, every run
+**What.** Declared the `minutes` value that `runOverdueSweep()` was already
+passing to the audit log, computed as the elapsed time since the order was
+created. The audit entry now also records `thresholdMinutes` and the resulting
+`missedOrders` count. The sweep interval is overridable via
+`CRM_SWEEP_INTERVAL_MS` (default unchanged at 60s) so it can be tested, and the
+interval's error log now includes a stack trace.
+**Why.** `minutes` was referenced at `index.js:389` but never declared anywhere in
+the file, so the sweep threw `ReferenceError` on the first overdue order of every
+run. The `setInterval` wrapper caught and logged it, so there was no visible
+symptom — but everything downstream of that line never executed. This meant the
+missed-order alert, automatic reassignment, the unassigned-overdue queue and
+auto-suspend had **never worked**, and the `autoReassign`, `autoSuspend`,
+`suspendThreshold`, `reassignMinutes`, `workHoursStart/End` and
+`nightGraceMinutes` settings were all inert.
+Recording the threshold alongside the elapsed time keeps an old audit entry
+explicable after the setting is later changed — the same reasoning already
+applied to `call.threshold`.
+**Files.** `index.js`, `test/overdue-sweep.test.js` (new).
+**Migration.** None.
+**Risk.** *This turns on behaviour that has never run in production.* Once
+deployed, agents will start accumulating `missedOrders`, and if `autoReassign`
+or `autoSuspend` are enabled they will begin moving orders and locking accounts.
+Both default to `false`. **Recommended:** deploy with both off, watch the
+`overdue-sweep` log lines for a day to confirm the thresholds suit the team, then
+enable. Note `reassignMinutes: 0` means *five* minutes, not zero — `Number(0) || 5`
+falls through to the default.
+**Tests.** 12 new tests covering: the sweep not throwing, single-counting per
+timeout, the order flag, the audit payload, protection for in-progress and
+already-called orders, counter reset, reassignment to the least-loaded eligible
+agent, the unassigned queue when nobody is eligible, auto-suspend at threshold,
+the weekly-day-off exclusion, and the working-hours gate.
+
 #### Carrier adapters could not create shipments (found while testing)
 **What.** `getAdapter()` now fills every adapter against a default contract, and
 `mock.js` declares a real `statusMap` derived from its own pipeline.

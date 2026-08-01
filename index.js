@@ -123,9 +123,12 @@ jobs.start(broadcast, log);
 // threshold, so a 1-minute cadence is precise enough without extra load.
 // (Kept as its own interval rather than folded into jobs.js so this feature
 // stays self-contained; safe to move into jobs.js later if preferred.)
+// Interval is overridable so the integration tests can drive the sweep without
+// waiting a real minute; production always uses the 60s default.
+const OVERDUE_SWEEP_INTERVAL_MS = Number(process.env.CRM_SWEEP_INTERVAL_MS) || 60 * 1000;
 setInterval(() => {
-  try { runOverdueSweep(); } catch (e) { logError('overdue-sweep', 'run failed', { err: e.message }); }
-}, 60 * 1000);
+  try { runOverdueSweep(); } catch (e) { logError('overdue-sweep', 'run failed', { err: e.message, stack: e.stack }); }
+}, OVERDUE_SWEEP_INTERVAL_MS);
 
 // ---- DATA HELPERS (thin wrappers over the SQLite layer) ----
 // Kept as local functions so the route handlers read almost exactly like before.
@@ -386,7 +389,18 @@ function runOverdueSweep() {
   for (const order of overdue) {
     const originalAgent = order.agent;
     const newCount = db.incrementMissedOrders(originalAgent);
-    db.audit('order', order.id, 'overdue_missed', 'system', { agent: originalAgent, minutes });
+    // How long this order actually sat with no call logged, and the threshold
+    // that was in force at the time. `minutes` used to be referenced here
+    // without ever being declared anywhere in this file, so EVERY sweep threw
+    // ReferenceError on its first overdue order — the interval below caught and
+    // logged it, so the only symptom was that reassignment, the missed-order
+    // alert and auto-suspend never happened at all. Recording the threshold
+    // alongside the elapsed time means an old audit entry stays explicable even
+    // after the setting is changed (same reasoning as call.threshold).
+    const minutes = Math.round((now - (order.createdAt || now)) / 60000);
+    db.audit('order', order.id, 'overdue_missed', 'system', {
+      agent: originalAgent, minutes, thresholdMinutes: Number(s.reassignMinutes) || 5, missedOrders: newCount,
+    });
     notifications.push({
       type: 'agent_overdue',
       title: '🚨 Overdue order',
