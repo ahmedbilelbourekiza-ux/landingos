@@ -12,6 +12,61 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 3 — Platform foundations
 
+### 3.1a Made the test suite a reliable gate
+
+#### The harness left write-ahead logs unrecovered
+**What.** `startServer().stop()` now resolves only once the server process has
+actually exited, and then folds that server's WAL back into its database file.
+**Why.** Two defects, one visible consequence.
+
+`stop()` resolved on a 3-second timer whether or not the child had exited, so a
+test could begin reading a database another process was still writing to. That
+3s was also shorter than the server's own 8-second shutdown cap (`index.js`),
+so the escalation could SIGKILL it partway through the `wal_checkpoint(TRUNCATE)`
+that keeps the file clean.
+
+More important, the checkpoint cannot be relied on at all: on Windows
+`child.kill()` maps to `TerminateProcess`, so the SIGTERM handler never runs and
+the `-wal` file is always left needing recovery. That matters because **seven
+test files reopen the database after stopping a server, and nine of those opens
+pass `{ readonly: true }`** — and a readonly SQLite connection *cannot* recover
+a WAL, because replaying the log needs write access. A database left mid-log
+fails to open, which better-sqlite3 reports as `SQLITE_ERROR`.
+
+Usually the log is empty, or SQLite's auto-checkpoint has already folded it in,
+and nothing is noticed. It takes enough unflushed frames at the moment of the
+kill — which is exactly why the only file ever seen to fail was
+`indexes.test.js`, the one that seeds 800 orders.
+
+**Files.** `apps/erp/test/helpers.js`, `apps/erp/test/harness.test.js` (new).
+**Migration.** None. No test logic changed: the fix is in the harness, so all
+nine call sites are covered without any of them being edited.
+**Risk.** Low. `stop()` can now reject if a process survives SIGKILL, which is a
+real problem worth surfacing loudly rather than resolving and letting a later
+test fail somewhere that explains nothing.
+
+**Honesty about what this proves.** The original failure was never reproduced —
+8 full runs, 72 stress iterations at 6-way concurrency, and 4 isolated runs of
+the offending file all stayed green, and the one observed failure coincided with
+a fresh `npm install` still churning I/O. So this is not a fix verified against
+a reproduction. What it is: a real, demonstrable defect, consistent with the
+observed error code and with why that particular file was the one to fail. The
+new `harness.test.js` assertion that no WAL is left needing recovery **fails
+against the pre-fix harness and passes after**, so the defect itself is proven
+and now guarded. Post-fix the full suite ran clean 10 times out of 10.
+
+#### Tests for the harness itself
+**What.** `apps/erp/test/harness.test.js` — 5 tests covering the two guarantees
+`stop()` makes: the process is really gone, and the database it leaves behind
+opens cleanly for any later connection including a readonly one.
+**Why.** This suite is the gate for every milestone in the platform work, so the
+thing the gate is built on needs its own coverage. Its absence is why a harness
+defect spent this long looking like a bug in the code under test.
+
+**Suite total.** 298 tests, 297 pass, 1 skipped, 0 failures.
+
+---
+
 ### 3.1 Monorepo foundation
 
 Goal: one workspace holding both products, with no business logic changed and

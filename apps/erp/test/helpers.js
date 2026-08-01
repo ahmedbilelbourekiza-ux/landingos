@@ -12,8 +12,53 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const Database = require('better-sqlite3');
 
 const ROOT = path.join(__dirname, '..');
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Fold a stopped server's write-ahead log back into its database file.
+ *
+ * index.js installs a SIGTERM handler that runs `wal_checkpoint(TRUNCATE)` on
+ * the way out, but it cannot be relied on here: on Windows `child.kill()` maps
+ * to TerminateProcess, so the handler never runs at all, and the -wal file is
+ * left needing recovery.
+ *
+ * That matters because seven test files reopen the database after stopping the
+ * server, and nine of those opens pass `{ readonly: true }`. A readonly
+ * connection CANNOT recover a WAL — replaying the log needs write access — so
+ * a database left mid-log fails to open, which better-sqlite3 reports as
+ * SQLITE_ERROR. Most of the time the log is empty or SQLite's auto-checkpoint
+ * has already folded it in and nothing is noticed; it takes enough unflushed
+ * frames at the moment of the kill, which is why the only file ever seen to
+ * fail was indexes.test.js — the one that seeds 800 orders.
+ *
+ * Doing it once here fixes the whole class, rather than asking nine call sites
+ * to remember. Deliberately best-effort: a test that actually depends on this
+ * database will fail on its own terms with a clearer message than anything
+ * thrown from a cleanup helper.
+ */
+async function checkpointDatabase(dbPath) {
+  if (!dbPath || !fs.existsSync(dbPath)) return;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      // Read-write on purpose — this open is what performs the recovery.
+      const db = new Database(dbPath);
+      try {
+        db.pragma('wal_checkpoint(TRUNCATE)');
+      } finally {
+        db.close();
+      }
+      return;
+    } catch {
+      // Windows can keep a file handle for a few milliseconds after the owning
+      // process is gone.
+      await sleep(20 * (attempt + 1));
+    }
+  }
+}
 
 /* Every test server bootstraps this manager, and startServer() signs in as it
  * before returning — so a test that is not ABOUT authentication does not have
@@ -135,12 +180,48 @@ async function startServer(env = {}, opts = {}) {
     jar,
     logs: () => output,
     dbPath,
-    stop: () => new Promise((resolve) => {
-      if (child.exitCode !== null) return resolve();
-      child.once('exit', () => resolve());
-      child.kill();
-      setTimeout(() => { try { child.kill('SIGKILL'); } catch {} resolve(); }, 3000);
-    }),
+    /**
+     * Stop the server and leave its database in a state any later connection
+     * can open — including a readonly one.
+     *
+     * Resolves only once the process has ACTUALLY exited. The previous version
+     * resolved on a 3s timer whether or not the child was gone, so a test could
+     * start reading a database another process was still writing to. Worse, 3s
+     * is shorter than the server's own 8s shutdown cap (index.js), so the
+     * escalation could SIGKILL it midway through the very checkpoint that keeps
+     * the file clean.
+     */
+    stop: async () => {
+      await new Promise((resolve, reject) => {
+        if (child.exitCode !== null || child.signalCode !== null) return resolve();
+
+        let settled = false;
+        const finish = (fn, arg) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(escalate);
+          clearTimeout(backstop);
+          fn(arg);
+        };
+
+        child.once('exit', () => finish(resolve));
+        child.kill();
+
+        // Give the graceful path room to finish before forcing it.
+        const escalate = setTimeout(() => {
+          try { child.kill('SIGKILL'); } catch { /* already gone */ }
+        }, 10000);
+
+        // Surviving SIGKILL is a real problem. Say so, rather than resolving
+        // and letting the next test fail somewhere that explains nothing.
+        const backstop = setTimeout(
+          () => finish(reject, new Error('test server did not exit after SIGKILL')),
+          20000,
+        );
+      });
+
+      await checkpointDatabase(dbPath);
+    },
   };
 }
 
