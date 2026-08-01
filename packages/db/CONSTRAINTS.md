@@ -63,6 +63,9 @@ Three verdicts are possible:
 | `Invitation(tenantId, email)` | **per-tenant** | One outstanding invitation per address per tenant. |
 | `Session.id` | **platform-global** | The SHA-256 of the token handed to the client — never the token itself, so a database leak cannot be replayed. Carried over from the ERP's existing design. |
 | `Subscription.tenantId` | **per-tenant** | One subscription per tenant. |
+| `ProductSetting(tenantId, product, key)` | **per-tenant** | Replaces the ERP's global `settings` key/value table. Keyed by product so a tenth product needs no new table. |
+| `StoreSettings.tenantId` | **per-tenant** | The primary key *is* the tenant — this is the de-singletonised `StoreSettings`. |
+| `PushSubscription.endpoint` | **public-namespace** | Listed again here because it is the one ERP constraint that stays global. A URL issued by the browser's push service; scoping it per-tenant would let one physical device register twice and receive every notification in duplicate. |
 
 ---
 

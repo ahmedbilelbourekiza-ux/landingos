@@ -1,0 +1,741 @@
+// =============================================================================
+// ERP / CRM domain — ported from SQLite (M-06).
+//
+// 27 SQLite tables became 22 models here. Five did not survive the port, each
+// for a stated reason:
+//
+//   agents        superseded by User + Membership (M-02). Porting it would
+//                 stand up a second identity system in the same database.
+//   sessions      superseded by the platform Session.
+//   audit_log     superseded by the platform AuditEvent, which adds a tenant
+//                 and a product and so can serve every product at once.
+//   notifications moved to platform.prisma. The vision calls notifications a
+//                 shared service and the ERP's table was already
+//                 product-agnostic in shape, so the only real question was
+//                 where it lives; leaving it here would guarantee a move later.
+//   settings      became the platform's ProductSetting, keyed by product, so a
+//                 tenth product needs no new table.
+//
+// TYPE CONVERSIONS applied throughout:
+//   REAL      → Decimal   money never touches binary floating point again
+//   INTEGER   → DateTime  every *At / *Time / ts column held epoch-ms
+//   0/1       → Boolean
+//   TEXT JSON → Json      lineItems, variants, raw payloads, permissions
+//   AUTOINC   → Int @default(autoincrement())
+//
+// IDENTITY: the ERP referenced people by NAME — `agent`, `actor`, `actorName`
+// — because agents.name was a TEXT primary key. Every one of those is now a
+// user id. Where the column records who did something in an append-only
+// history, it is a plain id with NO foreign key: that history has to stay
+// readable and truthful even if the user row is later purged, and a cascade or
+// a SetNull would quietly rewrite the past.
+//
+// NAMING: a few SQLite tables had names that are ambiguous on a platform.
+// `products` is not a product in the product-registry sense; `providers` were
+// carriers, not the AI providers next to them; `stores` were external sales
+// channels, not the builder's StoreSettings. Renamed where the old name would
+// mislead, kept otherwise.
+// =============================================================================
+
+// The ERP's operational order record — mutable throughout its lifecycle, in
+// contrast to SalesOrder which is the frozen commercial snapshot. See the note
+// on SalesOrder: only the names are settled here, the relationship between the
+// two is Phase 5.4 (M-05).
+model FulfillmentOrder {
+  id       String @id
+  tenantId String
+
+  // --- external origin -------------------------------------------------
+  externalId       String? // was shopifyId
+  externalName     String? // was shopifyName
+  externalOrderAt  DateTime? // was shopifyCreatedAt (an ISO string, not epoch-ms)
+  externalProductId String?
+  externalVariantId String?
+  platform         String?
+  salesChannelId   String? // was storeId
+  salesChannelName String? // denormalized for display
+  brand            String?
+  source           String?
+  marketer         String?
+
+  // --- customer --------------------------------------------------------
+  client  String?
+  phone   String?
+  // Normalized 0xxxxxxxxx form — the dedup key against Client.
+  phoneNormalized String?
+  city    String?
+  wilaya  String?
+  commune String?
+
+  // --- contents --------------------------------------------------------
+  // Was a JSON-encoded TEXT column.
+  lineItems      Json?
+  product        String?
+  productVariant String?
+  quantity       Int?
+
+  // --- money. Every one of these was REAL. ------------------------------
+  unitPrice    Decimal?
+  price        Decimal?
+  subtotal     Decimal?
+  discount     Decimal?
+  shippingCost Decimal?
+
+  // --- workflow --------------------------------------------------------
+  // Was `agent`, matching agents.name by value.
+  agentUserId String?
+  status         String?
+  // '' | 'normal' | 'abandoned' — metadata, deliberately NOT a status.
+  orderType      String? @default("normal")
+  // '' | 'fake' — orthogonal to status, which is why it is its own column.
+  classification String? @default("")
+  fakeReason     String?
+  fakeResponsible String?
+  fakeAt         DateTime?
+
+  // --- delivery --------------------------------------------------------
+  carrierCode     String? // was `delivery`, holding a provider CODE
+  carrierId       String? // was providerId
+  deliveryMethod  String?
+  expressDelivery Boolean?
+  deliveryStatus  String?
+  // '' | 'delivered' | 'returned'
+  deliveryOutcome   String?   @default("")
+  deliveryOutcomeAt DateTime?
+  trackingNumber    String?
+  shipmentId        String?
+
+  // --- follow-up (Suivi) -----------------------------------------------
+  followupUserId     String? // was followupAgent
+  followupAssignedAt DateTime?
+  callReminderDue    DateTime?
+  // '' | pending | done | overdue
+  callReminderStatus String?   @default("")
+  overdueFlaggedAt   DateTime?
+  pendingCallStart   DateTime?
+
+  // --- notes -----------------------------------------------------------
+  managerNote  String?
+  shippingNote String?
+  note         String?
+
+  calls OrderCall[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@index([tenantId, agentUserId, status])
+  @@index([tenantId, phoneNormalized])
+  @@index([tenantId, deliveryStatus])
+  @@index([tenantId, deliveryOutcome, deliveryOutcomeAt])
+  @@index([tenantId, followupUserId, callReminderStatus])
+  @@index([tenantId, salesChannelId])
+}
+
+// One confirmation-call attempt against an order.
+model OrderCall {
+  id       Int    @id @default(autoincrement())
+  tenantId String
+  orderId  String
+
+  time          DateTime?
+  callStartTime DateTime?
+  duration      Int?
+  threshold      Int?
+  // Was 0/1/null — nullable Boolean keeps the third state, which meant
+  // "not evaluated" rather than "not suspicious".
+  suspicious    Boolean?
+  result        String?
+  note          String?
+  noteType      String?
+  agentUserId   String?
+
+  order FulfillmentOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, orderId])
+  @@index([tenantId, agentUserId, time])
+}
+
+// A physical catalog item with stock and cost. Named CatalogProduct rather than
+// Product because on this platform "product" also means an application module
+// (see @landingos/product-registry), and one word cannot mean both.
+model CatalogProduct {
+  id       String @id
+  tenantId String
+
+  name        String?
+  sku         String?
+  description String?
+  brand       String?
+  price       Decimal?
+  costPrice    Decimal? @default(0)
+  packagingCost Decimal? @default(0)
+
+  // Both were JSON-encoded TEXT: variants is [{name,image}], optionDefs the
+  // option definitions the variant editor builds from.
+  variants   Json?
+  optionDefs Json?
+
+  // Product-level image, used when there are no variants or a variant has none
+  // of its own.
+  //
+  // NOTE (M-14): the ERP stored these as base64 data URLs inside SQLite, which
+  // is why its JSON body limit is 25MB. Under multi-tenancy that puts every
+  // tenant's image bytes in shared rows and inflates every product query. This
+  // column holds an R2 key from now on; the move is scheduled in Phase 5.5.
+  image String?
+
+  stock     Int?
+  threshold Int? @default(0)
+  archived  Boolean @default(false)
+
+  // Denormalized lifetime counters, maintained by the order pipeline.
+  totalOrders     Int      @default(0)
+  cancelledOrders Int      @default(0)
+  totalRevenue    Decimal  @default(0)
+  firstOrderAt    DateTime?
+
+  links     CatalogProductLink[]
+  events    CatalogProductEvent[]
+  movements InventoryMovement[]
+  lots      StockLot[]
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, archived])
+  @@index([tenantId, sku])
+  @@index([tenantId, name])
+}
+
+// An external storefront the tenant sells through. Was `stores`, renamed
+// because the builder's StoreSettings is a different thing entirely — this is
+// a connected Shopify/LightFunnels/WooCommerce account, not the tenant's own
+// store profile.
+model SalesChannel {
+  id       String @id
+  tenantId String
+
+  name     String
+  platform String?
+  brand    String?
+
+  apiUrl          String?
+  apiKey          String?
+  apiSecret       String?
+  webhookSecret   String?
+  webhookEndpoint String?
+  apiEnabled      Boolean @default(true)
+  webhookEnabled  Boolean @default(true)
+
+  // Legacy JSON blobs, kept because rows written before the flat columns
+  // existed still carry their configuration here.
+  credentials   Json?
+  webhookConfig Json?
+
+  lastTestAt DateTime?
+  active     Boolean   @default(true)
+
+  links CatalogProductLink[]
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, active])
+  @@index([tenantId, platform])
+}
+
+// One CRM product can be sold on several external listings at once. Each row
+// is one (channel, external product) pairing pointing back at one catalog
+// product — many links to one product, never the other way around.
+model CatalogProductLink {
+  id       Int    @id @default(autoincrement())
+  tenantId String
+
+  productId String
+  // Null means the single/primary integration, which has no per-channel
+  // identity of its own.
+  salesChannelId String?
+  platform       String
+  externalProductId String
+  externalVariantId String?
+
+  product      CatalogProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  salesChannel SalesChannel?  @relation(fields: [salesChannelId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, platform, salesChannelId, externalProductId])
+  @@index([tenantId, productId])
+}
+
+// A one-off dated expense for the profit calculator. Deliberately separate from
+// the recurring monthly fixed costs: a fixed cost applies to every period and
+// gets prorated by day count, while this happened on ONE date and only counts
+// toward a calculation whose range includes it.
+model UnexpectedCharge {
+  id       Int    @id @default(autoincrement())
+  tenantId String
+
+  label  String
+  amount Decimal
+  // The day the expense actually happened.
+  date   DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, date])
+}
+
+// One row per (user, device) Web Push subscription. A user can have several —
+// phone plus laptop, or a reinstalled PWA — so this is not unique per user.
+model PushSubscription {
+  id       Int    @id @default(autoincrement())
+  tenantId String
+  userId   String
+
+  // Issued by the browser's push service and unique by construction. Scoping
+  // it per-tenant would let one physical device register twice and receive
+  // every notification in duplicate.
+  endpoint String @unique
+  p256dh   String
+  auth     String
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, userId])
+}
+
+// A delivery company. Was `providers`, renamed because the AI provider registry
+// sits beside it and the two are unrelated.
+model Carrier {
+  id       String @id
+  tenantId String
+
+  name String
+  // Short stable token, e.g. "zr", "ecom", "yalidine". Per-tenant: every tenant
+  // configures their own carriers and will reuse the same well-known codes.
+  code    String?
+  adapter String?
+
+  apiUrl        String?
+  apiKey        String?
+  secretKey     String?
+  // Where the carrier pushes updates TO us, and the shared secret that proves
+  // an inbound webhook really came from them.
+  webhookUrl    String?
+  webhookSecret String?
+
+  trackingEndpoint String?
+  shipmentEndpoint String?
+  statusEndpoint   String?
+  customFields     Json?
+
+  apiEnabled     Boolean @default(true)
+  webhookEnabled Boolean @default(true)
+
+  lastSyncAt DateTime?
+  lastTestAt DateTime?
+  lastTestOk Boolean?
+  isDefault  Boolean   @default(false)
+  active     Boolean   @default(true)
+
+  statusMappings CarrierStatusMapping[]
+  shipments      Shipment[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+  @@index([tenantId, isDefault, active])
+}
+
+// Carrier-native status string ↔ CRM status. The ORIGINAL carrier status is
+// always preserved, here and on ShipmentEvent, so it is never lost.
+model CarrierStatusMapping {
+  id       Int    @id @default(autoincrement())
+  tenantId String
+
+  carrierId      String
+  originalStatus String
+  crmStatus      String?
+
+  carrier Carrier @relation(fields: [carrierId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, carrierId, originalStatus])
+  @@index([tenantId, carrierId])
+}
+
+// Append-only log of every carrier/channel API call, webhook and sync, with
+// request and response context.
+//
+// Distinct from the platform AuditEvent on purpose: that records what a PERSON
+// did, this records what an INTEGRATION did, and it carries request/response
+// bodies that an audit trail should never accumulate.
+model IntegrationLog {
+  id       BigInt @id @default(autoincrement())
+  tenantId String
+
+  // carrier | salesChannel
+  entity   String
+  entityId String
+  // shipment_created | webhook_received | api_request | auth_error | sync_error | …
+  event    String
+  // success | failure
+  result   String?
+  message  String?
+  request  Json?
+  response Json?
+
+  ts DateTime @default(now())
+
+  @@index([tenantId, entity, entityId, ts])
+  @@index([tenantId, ts])
+}
+
+model Shipment {
+  id       String @id
+  tenantId String
+
+  orderId   String
+  carrierId String?
+
+  trackingNumber     String?
+  carrierShipmentId  String?
+  carrierReference   String?
+  crmStatus          String?
+  originalStatus     String?
+  labelUrl           String?
+  // The carrier's raw createShipment response.
+  raw                Json?
+
+  carrier Carrier?        @relation(fields: [carrierId], references: [id], onDelete: SetNull)
+  events  ShipmentEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, orderId])
+  @@index([tenantId, crmStatus])
+  @@index([tenantId, trackingNumber])
+}
+
+// APPEND-ONLY. No UPDATE or DELETE path exists for this table anywhere in the
+// codebase, which is what makes shipment history impossible to rewrite.
+model ShipmentEvent {
+  id       BigInt @id @default(autoincrement())
+  tenantId String
+
+  shipmentId String
+  // When the event happened at the carrier, which is not when we heard about it.
+  eventTime      DateTime?
+  originalStatus String?
+  crmStatus      String?
+  description    String?
+  raw            Json?
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  insertedAt DateTime @default(now())
+
+  // Carriers re-send. This is what makes intake idempotent.
+  @@unique([tenantId, shipmentId, eventTime, originalStatus])
+  @@index([tenantId, shipmentId])
+}
+
+// -----------------------------------------------------------------------------
+// AI PLATFORM. No model is hardcoded anywhere: each row points at a generic
+// adapter plus connection details, so adding a model is adding a row.
+// -----------------------------------------------------------------------------
+
+model AiProvider {
+  id       String @id
+  tenantId String
+
+  name String?
+  // openai-compat | gemini | anthropic
+  type         String?
+  baseUrl      String?
+  // Masked on read and never returned to the client.
+  apiKey       String?
+  defaultModel String?
+
+  temperature Decimal? @default(0.7)
+  maxTokens   Int?     @default(2048)
+  timeoutMs   Int?     @default(30000)
+
+  active     Boolean   @default(true)
+  isDefault  Boolean   @default(false)
+  lastTestAt DateTime?
+  lastTestOk Boolean?
+
+  agents AiAgent[]
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, isDefault, active])
+}
+
+// A role-configured assistant bound to a provider and model, carrying its own
+// prompt and permission set. The CRM core is agnostic to roles — they are data.
+model AiAgent {
+  id       String @id
+  tenantId String
+
+  name        String?
+  description String?
+  // Nullable: falls back to the tenant's default provider.
+  providerId  String?
+  // Overrides the provider's defaultModel when set.
+  model        String?
+  systemPrompt String?
+  // Was a JSON-encoded TEXT array of permission keys.
+  permissions  Json?
+  enabled      Boolean @default(true)
+  // sales | confirmation | delivery | manager | analytics | support
+  role         String?
+
+  provider AiProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, enabled])
+}
+
+// APPEND-ONLY conversation history. The AI never edits history, it appends.
+model AiConversationMessage {
+  id       BigInt @id @default(autoincrement())
+  tenantId String
+
+  // Was actorName, holding "manager" | "agent:<name>" | "anonymous".
+  userId  String?
+  agentId String?
+  // user | assistant | system
+  role       String?
+  content    String?
+  tokenCount Int?
+
+  ts DateTime @default(now())
+
+  @@index([tenantId, userId, agentId, ts])
+}
+
+// -----------------------------------------------------------------------------
+// INVENTORY
+// -----------------------------------------------------------------------------
+
+// APPEND-ONLY quantity ledger. Every stock change is a new row carrying the
+// previous and new quantities, so the history can never be overwritten.
+model InventoryMovement {
+  id       BigInt @id @default(autoincrement())
+  tenantId String
+
+  productId String
+  // '' means product-level, i.e. no variant.
+  variantName String?
+  orderId     String?
+
+  delta   Int?
+  prevQty Int?
+  newQty  Int?
+  // confirm | cancel | reserve | release | adjustment | import | initial
+  reason  String?
+
+  unitCost      Decimal?
+  packagingCost Decimal?
+
+  // No foreign key: this is history, and it must stay truthful even if the
+  // user row is later purged.
+  actorUserId String?
+
+  product     CatalogProduct            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  consumption MovementLotConsumption[]
+
+  ts DateTime @default(now())
+
+  @@index([tenantId, productId, variantName, ts])
+  @@index([tenantId, orderId])
+}
+
+// One purchase batch, or a return rejoining an earlier batch. Mutable — unlike
+// InventoryMovement — because qtyRemaining decreases as FIFO consumes it: this
+// table is CURRENT remaining quantity per batch, not history. What actually
+// happened lives in InventoryMovement and MovementLotConsumption.
+model StockLot {
+  id       BigInt @id @default(autoincrement())
+  tenantId String
+
+  productId   String
+  variantName String?
+
+  unitCost      Decimal @default(0)
+  packagingCost Decimal @default(0)
+  qtyOriginal   Int?
+  qtyRemaining  Int?
+  // purchase | return
+  source        String?
+  actorUserId   String?
+
+  product     CatalogProduct          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  consumption MovementLotConsumption[]
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, productId, variantName, createdAt])
+}
+
+// Which lots a movement touched, and by how much. INSERT-ONLY like the ledger
+// itself: a confirm records what it consumed, and the matching cancel records
+// what it restored, as its own new rows. That is what lets a cancellation put
+// stock back into the exact lots it came from instead of guessing.
+model MovementLotConsumption {
+  id       Int    @id @default(autoincrement())
+  tenantId String
+
+  movementId BigInt
+  lotId      BigInt
+  qty        Int
+
+  movement InventoryMovement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  lot      StockLot          @relation(fields: [lotId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, movementId])
+  @@index([tenantId, lotId])
+}
+
+// Append-only product timeline. Stock changes are NOT duplicated here — they
+// already have a permanent record in InventoryMovement and StockLot. This is
+// everything else: price and cost changes, variants added or removed, supplier
+// changes, and the archived/unarchived/created lifecycle.
+model CatalogProductEvent {
+  id       BigInt @id @default(autoincrement())
+  tenantId String
+
+  productId String
+  // created | price_change | cost_change | variant_added | archived | …
+  eventType String
+  // The exact field that changed, where applicable.
+  field       String?
+  oldValue    String?
+  newValue    String?
+  actorUserId String?
+
+  product CatalogProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, productId, createdAt])
+}
+
+// Permanent profit-and-loss records. INSERT-ONLY: saving the same period twice
+// never updates the old row, it inserts a new one with a later createdAt. The
+// current record for a period is whichever row has the newest createdAt; older
+// ones stay forever as a record of what the business looked like AT THE TIME
+// each calculation was made.
+model FinancialRecord {
+  id       String @id
+  tenantId String
+
+  // day | week | month | quarter | year | custom
+  periodType String
+  startDate  DateTime
+  endDate    DateTime
+
+  revenue          Decimal @default(0)
+  productCosts     Decimal @default(0)
+  shippingCosts    Decimal @default(0)
+  advertisingCosts Decimal @default(0)
+  // Already prorated for this exact period.
+  fixedExpenses      Decimal @default(0)
+  unexpectedExpenses Decimal @default(0)
+  netProfit          Decimal @default(0)
+  // netProfit / revenue * 100
+  margin             Decimal @default(0)
+
+  notes String?
+  // manual (typed into the calculator) | aggregated (rolled up from sub-periods)
+  source String?
+  // Snapshot of the per-product figures behind this total, for drill-down.
+  productBreakdown Json?
+  actorUserId      String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, periodType, startDate, createdAt])
+}
+
+// Call reminders and escalations. Auto-created when a delivery status requires
+// contacting the customer, carrying a due time so the jobs loop can escalate
+// overdue reminders to a manager.
+model FollowupTask {
+  id       String @id
+  tenantId String
+
+  orderId String
+  // call_customer | escalation | contact
+  type   String?
+  // open | done | overdue
+  status String? @default("open")
+  dueAt  DateTime?
+
+  agentUserId String?
+  // The triggering delivery status.
+  reason      String?
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([tenantId, status, dueAt])
+  @@index([tenantId, agentUserId, status])
+  @@index([tenantId, orderId])
+}
+
+// Permanent customer registry — one row per phone number. NEVER deleted
+// automatically: deleting an order does not touch this table, on purpose, so a
+// customer's identity and lifetime history survive.
+//
+// The count columns are LIFETIME EVENT counts, not live snapshots.
+model Client {
+  id       String @id
+  tenantId String
+
+  // Normalized 0xxxxxxxxx form — the dedup key. Per-tenant, and this is the
+  // single most dangerous constraint in the whole port: two tenants will
+  // absolutely have a customer with the same number, and a global unique would
+  // either refuse the second tenant's client or merge them into the first
+  // tenant's record and expose their order history.
+  phone String
+  // Last-seen raw form, for display.
+  phoneDisplay String?
+  name         String?
+  wilaya       String?
+  commune      String?
+  address      String?
+
+  firstOrderAt DateTime?
+  lastOrderAt  DateTime?
+
+  totalOrders     Int     @default(0)
+  confirmedOrders Int     @default(0)
+  cancelledOrders Int     @default(0)
+  deliveredOrders Int     @default(0)
+  totalSpent      Decimal @default(0)
+
+  // Figures carried in from a spreadsheet import, kept separate from the
+  // counters this system maintains so an import can never be mistaken for
+  // observed history.
+  importedTotalOrders     Int      @default(0)
+  importedConfirmedOrders Int      @default(0)
+  importedCancelledOrders Int      @default(0)
+  importedDeliveredOrders Int      @default(0)
+  importedTotalSpent      Decimal  @default(0)
+  importedSource          String?
+  importedAt              DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, phone])
+  @@index([tenantId, lastOrderAt])
+  @@index([tenantId, name])
+}

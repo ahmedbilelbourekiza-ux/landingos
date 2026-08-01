@@ -30,6 +30,7 @@ model Tenant {
   invitations   Invitation[]
   subscription  Subscription?
   auditEvents   AuditEvent[]
+  notifications Notification[]
   sessions      Session[]
 
   createdAt DateTime  @default(now())
@@ -259,8 +260,12 @@ enum SubscriptionStatus {
 }
 
 // Append-only audit trail spanning every product. Generalises the ERP's
-// `audit_log` and `integration_logs`, which were per-entity and had no notion
-// of a tenant or of which application acted.
+// `audit_log`, which had no notion of a tenant or of which application acted.
+//
+// It does NOT absorb `integration_logs`, despite an earlier note in this file
+// saying so: that table records what an INTEGRATION did rather than what a
+// PERSON did, and it carries request and response bodies an audit trail should
+// never accumulate. It survives as IntegrationLog in the ERP domain.
 //
 // No UPDATE or DELETE path exists for this table, matching the ERP's existing
 // discipline for its append-only tables.
@@ -291,4 +296,67 @@ model AuditEvent {
   @@index([tenantId, createdAt])
   @@index([tenantId, entity, entityId])
   @@index([tenantId, product, createdAt])
+}
+
+// An in-app notification. Lives here rather than in the ERP domain, which is
+// where the only implementation exists today: the vision names notifications a
+// shared service, the builder has none at all, and the ERP's table was already
+// product-agnostic in shape. The only real question was where it lives, and
+// leaving it in the ERP domain would have guaranteed a move later.
+//
+// Only the table is placed here. Unifying the delivery channels — the in-app
+// SSE stream and Web Push, both of which exist in the ERP today — is S-06 in
+// Phase 7.4.
+model Notification {
+  id       BigInt @id @default(autoincrement())
+  tenantId String
+
+  // Which product raised it, as a product-registry id. A plain string, so a
+  // new product needs no migration.
+  product String
+
+  type  String?
+  title String?
+  body  String?
+
+  // Who should see it. Null means every member of the tenant. The ERP encoded
+  // this as a free-text `target` holding '' | 'manager' | an agent name; a role
+  // and a user id say the same thing without parsing.
+  targetUserId String?
+  targetRole   TenantRole?
+
+  // Loose references to whatever the notification is about. Deliberately not
+  // foreign keys: a notification about a deleted order should still read, and
+  // the referenced entity lives in a product's domain that the platform must
+  // not depend on.
+  entity   String?
+  entityId String?
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, targetUserId, readAt])
+  @@index([tenantId, readAt, createdAt])
+}
+
+// Per-product key/value configuration. Replaces the ERP's `settings` table,
+// which was a global key/value store — one tenant's configuration applied to
+// every tenant.
+//
+// Keyed by product so a tenth product stores its settings without a new table.
+// Tenant-wide settings that belong to no product use product = "platform".
+model ProductSetting {
+  id       String @id @default(cuid())
+  tenantId String
+
+  product String
+  key     String
+  value   Json?
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, product, key])
+  @@index([tenantId, product])
 }

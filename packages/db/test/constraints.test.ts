@@ -54,6 +54,11 @@ const GLOBAL_UNIQUES = new Set([
   'DraftOrder.token',         // unauthenticated upsert key, resolved tenant-blind
   'LandingSetting.landingPageId', // 1:1; Prisma requires the FK itself unique
   'StoreSettings.tenantId',   // the primary key IS the tenant
+
+  // Issued by the browser's push service and unique by construction. Scoping
+  // it per-tenant would let one physical device register twice and receive
+  // every notification in duplicate.
+  'PushSubscription.endpoint',
 ]);
 
 interface Model {

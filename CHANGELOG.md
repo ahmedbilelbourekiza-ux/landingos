@@ -12,6 +12,104 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 3 — Platform foundations
 
+### 3.2 Unified schema (`packages/db`)
+
+One Prisma schema for the whole platform: **51 tables, 87 indexes, 36 foreign
+keys, 8 enums**. Split across a schema folder by domain — `platform` (10
+models), `builder` (19), `erp` (22) — because one file for fifty models is one
+nobody reads twice. Neither application is wired to it; that is 3.3 and later.
+
+#### Platform models (M-01)
+**What.** `Tenant`, `TenantDomain`, `User`, `Membership`, `Session`,
+`Invitation`, `Subscription`, `AuditEvent`, `Notification`, `ProductSetting`.
+**Why two of those are load-bearing.**
+
+`User` is **global**, not per-tenant — one person, one login, however many
+companies they belong to. That is what lets a session switch tenants without
+signing in again, and it replaces both the builder's single-row `Admin` and the
+ERP's `agents.name` TEXT primary key. Supporting a user in two companies costs
+nothing now and is close to impossible to retrofit once `userId` and `tenantId`
+have been conflated across forty tables.
+
+`Subscription.entitlements` is a **string set**, not a boolean column per
+product. A column per product is exactly the hardcoding the platform must not
+do: a tenth product would need a migration, and "any combination of products"
+would become 2ⁿ schema states instead of a set.
+
+#### ERP domain ported from SQLite (M-06)
+**What.** 27 SQLite tables became 22 models. Five did not survive, each for a
+stated reason: `agents` and `sessions` are superseded by `User`/`Membership`/
+`Session` (M-02); `audit_log` by the platform `AuditEvent`; `notifications`
+moved to the platform, where the vision puts them and where the builder can
+reach them; `settings` became `ProductSetting`, keyed by product so a tenth
+product stores its configuration without a new table.
+
+**Type conversions.** `REAL` → `Decimal`, `INTEGER` epoch-ms → `DateTime`,
+`0/1` → `Boolean`, JSON-in-`TEXT` → `Json`, `AUTOINCREMENT` → identity. Verified
+in the generated DDL: **0 `DOUBLE PRECISION` columns, 37 `DECIMAL`**. Money no
+longer touches binary floating point anywhere — which mattered most in the FIFO
+cost lots and margin calculations that feed permanent financial records, where
+float drift compounds.
+
+**Identity.** The ERP referenced people by NAME (`agent`, `actor`, `actorName`)
+because `agents.name` was a primary key. Every one is now a user id. Where the
+column records who did something in an append-only history, it is a plain id
+with **no foreign key** — that history must stay readable and truthful even if
+the user row is later purged, and a cascade or a SetNull would quietly rewrite
+the past.
+
+**Renames.** Three SQLite names were ambiguous on a platform and would mislead:
+`products` → `CatalogProduct` (on this platform "product" also means an
+application module), `providers` → `Carrier` (the AI provider registry sits
+beside it), `stores` → `SalesChannel` (the builder's `StoreSettings` is a
+different thing entirely).
+
+#### M-04 — every unique constraint has a recorded decision
+**What.** `CONSTRAINTS.md` gives a verdict for every unique constraint in either
+product — *per-tenant*, *platform-global*, or *public-namespace* — with the
+reasoning, and `test/constraints.test.ts` asserts the schema matches.
+**Why.** The architecture called a missed constraint the subtlest failure mode
+in the programme and committed to a mitigation that is *mechanical, not
+vigilant*. This is that mechanism: it asserts every business model has a
+`tenantId`, every unique is scoped or explicitly exempted, every index leads
+with `tenantId`, no column is `Float`, and no timestamp is an integer.
+**Verified to bite.** A globally-unique slug trips two assertions and a `Float`
+money column a third. It also caught a real omission during this work —
+`PushSubscription.endpoint` was documented as deliberately global but missing
+from the allow-list.
+
+The most dangerous one in the port is `Client.phone`, now
+`@@unique([tenantId, phone])`. Two tenants will absolutely have a customer with
+the same number; left global, the second tenant either cannot create the client
+or merges into the first tenant's record and reads their order history.
+
+#### Decisions the merge forced earlier than the roadmap scheduled
+**Order naming.** Both products have a model called `Order` and one schema
+cannot hold two, so the M-05 *names* land now: `SalesOrder` (immutable
+commercial snapshot) and `FulfillmentOrder` (mutable operational record). Only
+the names. The relationship between them, and replacing the webhook with an
+in-process domain event, stay in Phase 5.4 — adopting the target names now
+avoids renaming every reference twice.
+
+**Notification placement.** Not forced by a collision, and worth flagging as a
+judgement call: it sits in `platform.prisma` because the vision names
+notifications a shared service, the builder has none, and the ERP's table was
+already product-agnostic in shape. Only the table is placed — unifying the SSE
+and Web Push channels is S-06 in Phase 7.4.
+
+#### Verification
+**No Postgres on this machine**, so the schema is verified two ways that need no
+database: `prisma validate`, and `prisma migrate diff --from-empty` rendering
+the whole schema to real DDL. A schema that produces valid `CREATE TABLE` output
+is a schema that can be deployed. **What is still unverified: the schema has
+never been applied to a live Postgres, and no query has ever run against it.**
+- `packages/db` — 11 tests, schema validates, DDL generates.
+- ERP — 298 tests, 297 pass, 1 skipped, 0 failures. Unchanged.
+- product-registry — 35/35.
+- website-builder — still builds, all 34 pages.
+
+---
+
 ### 3.1a Made the test suite a reliable gate
 
 #### The harness left write-ahead logs unrecovered
