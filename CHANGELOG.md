@@ -233,3 +233,100 @@ payloads. Set a secret on each, then `REQUIRE_WEBHOOK_SIGNATURES=1`.
 browser tab evicted the first, and the close handler removed the entry
 regardless of which connection had closed — so closing either tab killed live
 updates for both. Files: `index.js`.
+
+---
+
+## Phase 1 — self-review
+
+A deliberate adversarial pass over the Phase 1 work, assuming it was wrong.
+Seven defects were found and demonstrated against a running server before being
+fixed; three were critical, and the worst was introduced *by* Phase 1.
+
+#### REV-01 — `express.static(__dirname)` published the entire application directory
+**Severity: critical. Introduced by Phase 1.**
+Serving the clients from the project root also served everything else in it.
+`GET /crm.db` returned the **live database** — every order, customer phone
+number, password hash and carrier API key — to an unauthenticated caller
+(verified: HTTP 200, 319 KB). `/lib/*.js`, `/index.js`, `/package.json` and any
+`.env` were equally readable. This was strictly worse than the unauthenticated
+API the phase set out to close.
+**Fix.** An explicit allowlist of six client files plus the icons directory.
+Nothing is served unless it is named.
+**Files.** `index.js`. **Tests.** 21, including path-traversal attempts.
+
+#### REV-02 — case-insensitive routing bypassed every manager-only rule
+**Severity: critical.**
+Express matches routes case-insensitively by default, but the authorization
+table matches paths with regexes, which are case-sensitive. `POST /api/AGENTS`
+therefore reached the handler while skipping the manager check. Verified: a
+plain confirmation agent created an account and rewrote global settings.
+**Fix.** Case-sensitive routing enabled, *and* the gate lowercases and strips
+trailing slashes before matching — two independent defences.
+**Files.** `index.js`. **Tests.** 9 casing variants across five routes.
+
+#### REV-03 — order-list scoping was cosmetic
+**Severity: critical.**
+Filtering `GET /api/orders` hid other agents' orders from the list, but every
+per-order route read the id straight from the URL with no ownership check. Any
+agent could read another's `/audit` (customer name, phone, full call history),
+edit the order, reassign it to themselves, or log a confirmed call against it —
+which credits `payPerConfirmedOrder` to the caller, i.e. payroll fraud. All
+verified against a running server.
+**Fix.** A record-level gate on `/api/orders/:id*`, plus a single
+`agentOwnsOrder()` used by both the list filter and the gate so the two can
+never disagree. Non-managers also cannot change `agent`/`followupAgent`.
+**Files.** `index.js`. **Tests.** 14.
+
+#### REV-04 — the same client-supplied-filter mistake in two more places
+`GET /api/followup/tasks?agent=` took the filter from the query string, so any
+agent could list another queue (or omit it and get everything). `/api/clients`
+— the densest PII in the system — was readable by any signed-in agent although
+the agent PWA never calls it.
+**Fix.** Follow-up tasks are pinned to the caller for non-managers; the client
+registry, the Suivi dashboard and follow-up assignment are manager-only.
+Resolving a follow-up task now requires it to be yours.
+**Files.** `index.js`. **Tests.** 3.
+
+#### REV-05 — the password migration mislabelled blank-password accounts
+`setAgentPasswordHash()` third argument was omitted in the migration, so it
+defaulted to `true` and every migrated account reported `hasPassword: true` —
+including the blank-password ones the flag exists to expose. The boot warning
+counted them correctly while the UI showed them as fine.
+**Fix.** The flag is derived from the actual value. **Tests.** 1, which stages a
+real pre-auth database and asserts the flag after migration.
+
+#### REV-06 — login blocked the event loop and had no input bound
+`scryptSync` spends ~100-200 ms of CPU *blocking*, so a handful of concurrent
+logins stalled every other request. Passwords were also unbounded up to the
+25 MB body limit. And the unknown-account decoy was built per request, costing
+two derivations against a real account one — making misses measurably *slower*
+and leaking exactly what the uniform error message was hiding.
+**Fix.** Async `crypto.scrypt` (libuv threadpool), a 1 KB password cap, and one
+lazily-generated decoy hash. **Tests.** 3, including a health check timed during
+a login burst.
+
+#### REV-07 — CSRF once `ALLOWED_ORIGINS` is used
+CORS stops an attacker *reading* a cross-site response; it does not stop the
+request. Same-origin deployments are protected by `SameSite=Lax`, but setting
+`ALLOWED_ORIGINS` forces `SameSite=None`, at which point any page could POST
+with the victim session attached.
+**Fix.** State-changing requests must carry a recognised `Origin`. A missing
+`Origin` is allowed, since non-browser callers (curl, carrier webhooks) send
+none and are not the CSRF threat. **Tests.** 4.
+
+### Also corrected
+- Auto-suspend from the overdue sweep now revokes sessions, matching the manual
+  suspend route.
+- `attachUser` moved from global to `/api`: it was doing a session lookup plus
+  an agent lookup for every static asset request.
+- Session `lastSeenAt` is written at most every 5 minutes instead of on every
+  request — it was an UPDATE per API call against a single-writer database.
+- The delivery-outcome backfill now runs just *after* `listen()`. It walks every
+  order through `patchOrder()`, which on a large database is minutes of
+  synchronous work; blocking the port that long risks the host health check
+  killing the container mid-migration.
+- Auth bootstrap is awaited before `listen()`, so a login cannot race the
+  password migration.
+- `x-powered-by` disabled.
+
+**Test count after review: 188, all passing** (133 before).

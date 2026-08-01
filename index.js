@@ -66,6 +66,23 @@ const auth = require('./lib/auth');
 const path = require('path');
 
 const app = express();
+
+/* Express matches routes case-INSENSITIVELY by default, so POST /api/AGENTS
+ * reaches the same handler as POST /api/agents. The authorization table below
+ * matches on the path with regexes, which ARE case-sensitive — so a plain agent
+ * could bypass every manager-only rule simply by changing the capitalisation of
+ * the URL. Verified: an agent created an account via POST /api/AGENTS and
+ * rewrote settings via PUT /api/Settings.
+ *
+ * Two independent defences, because either alone would be enough and neither
+ * should be the only thing standing there:
+ *   1. Case-sensitive routing, so an odd-cased path matches no route at all.
+ *   2. The gate lowercases before matching (see normalizedPath below), so the
+ *      policy still holds if anyone ever turns setting 1 back off. */
+app.set('case sensitive routing', true);
+app.set('strict routing', false);
+app.set('x-powered-by', false);   // don't advertise the stack
+
 const PORT = process.env.PORT || 3000;
 const SHOPIFY_SECRET = process.env.SHOPIFY_SECRET || '';
 
@@ -105,8 +122,11 @@ app.use('/webhook/shopify', express.raw({ type: 'application/json' }));
 // as base64 data URLs and can be several MB each.
 app.use(express.json({ limit: '25mb' }));
 
-// Resolve the caller's session (if any) before any route runs. Never rejects.
-app.use(auth.attachUser);
+/* Resolve the caller's session before any /api route runs. Never rejects.
+ * Mounted on /api rather than globally: every call costs a session lookup plus
+ * an agent lookup, and running that for each static asset request was pure
+ * waste — none of those routes read req.user. */
+app.use('/api', auth.attachUser);
 
 /* =============================================================================
  * API GATE (audit SEC-01) — everything under /api requires a session unless it
@@ -129,8 +149,52 @@ const PUBLIC_API_PATHS = new Set([
   '/delivery/statuses',       // ditto
 ]);
 
+/* =============================================================================
+ * CSRF.
+ *
+ * CORS does not prevent a cross-site request — it only stops the attacker
+ * READING the response. The request still reaches the handler and its side
+ * effects still happen.
+ *
+ * Same-origin deployments are covered by the session cookie's SameSite=Lax,
+ * which browsers refuse to attach to a cross-site POST. But the moment
+ * ALLOWED_ORIGINS is set the cookie becomes SameSite=None (it has to, to travel
+ * at all), and that protection is gone: any page could POST to this API with
+ * the user's session attached and, say, delete orders.
+ *
+ * So state-changing requests must carry an Origin this server recognises. A
+ * missing Origin is allowed because non-browser callers (curl, carrier
+ * webhooks, the smoke test) do not send one — and those are not the CSRF
+ * threat, since an attacker's leverage here is precisely the victim's browser
+ * attaching the cookie automatically.
+ * ========================================================================== */
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 app.use('/api', (req, res, next) => {
-  if (PUBLIC_API_PATHS.has(req.path)) return next();
+  if (SAFE_METHODS.has(req.method.toUpperCase())) return next();
+  const origin = req.headers.origin;
+  if (!origin) return next();
+  if (ALLOWED_ORIGINS.includes(origin)) return next();
+
+  // Same-origin: the browser sends Origin on same-origin POSTs too.
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const proto = req.headers['x-forwarded-proto'] || req.protocol;
+  if (host && origin === `${proto}://${host}`) return next();
+
+  logError('csrf', 'blocked a state-changing request from an unrecognised origin', {
+    origin, method: req.method, path: req.originalUrl,
+  });
+  return res.status(403).json({ error: 'Cross-origin request refused', code: 'CSRF_ORIGIN' });
+});
+
+/* Lowercased and stripped of any trailing slash, so '/Agents/' and '/agents'
+ * cannot be treated differently from '/agents' by the rules below. */
+function normalizedPath(req) {
+  const p = String(req.path || '').toLowerCase();
+  return p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p;
+}
+
+app.use('/api', (req, res, next) => {
+  if (PUBLIC_API_PATHS.has(normalizedPath(req))) return next();
   return auth.requireAuth(req, res, next);
 });
 
@@ -167,6 +231,17 @@ const MANAGER_ONLY = [
   [/^\/financial-records(\/|$)/, ['GET', 'POST', 'PUT', 'DELETE']],
   [/^\/unexpected-charges(\/|$)/, ['GET', 'POST', 'PUT', 'DELETE']],
 
+  // The customer registry is the densest PII in the system — every client's
+  // name, phone, address and full lifetime order history. The agent PWA never
+  // touches it (it works from the order record it already has), so there is no
+  // reason for a confirmation agent to be able to enumerate it.
+  [/^\/clients(\/|$)/, ['GET', 'POST', 'PUT', 'DELETE']],
+
+  // The Suivi dashboard groups EVERY confirmed order in the business into
+  // buckets. Also console-only.
+  [/^\/followup\/dashboard$/, ['GET']],
+  [/^\/followup\/assign$/, ['POST']],
+
   // Catalogue and stock are managed, not edited by confirmation agents.
   [/^\/products(\/|$)/, ['POST', 'PUT', 'DELETE']],
 
@@ -187,8 +262,66 @@ function isManagerOnly(method, path) {
 }
 
 app.use('/api', (req, res, next) => {
-  if (!isManagerOnly(req.method, req.path)) return next();
+  if (!isManagerOnly(req.method.toUpperCase(), normalizedPath(req))) return next();
   return auth.requireManager(req, res, next);
+});
+
+/* =============================================================================
+ * RECORD-LEVEL AUTHORIZATION for a single order.
+ *
+ * Scoping GET /api/orders was cosmetic on its own: every per-order route takes
+ * the id straight from the URL, so any signed-in agent could read, edit,
+ * reassign or log a call against ANY order just by naming it. Logging a
+ * confirmed call on someone else's order is payroll fraud — it credits
+ * payPerConfirmedOrder to whoever made the request — and /audit exposed the
+ * customer's name and full call history.
+ *
+ * The rule matches the list scoping exactly: your own order, an order you are
+ * the follow-up agent for, or an unassigned one (which anybody may pick up).
+ * ========================================================================== */
+const ORDER_SCOPED_PATH = /^\/orders\/([^/]+)(\/.*)?$/;
+
+/* The single definition of "this order is mine". The list filter and the
+ * per-order gate below MUST agree — if the gate were stricter than the filter,
+ * an agent would see rows in their list that they then could not open; if it
+ * were looser, the list would be hiding records they can still reach by id
+ * (which is exactly the bug this replaced). Defining it once removes the
+ * possibility of the two drifting apart. */
+function agentOwnsOrder(order, agentName) {
+  if (!order) return false;
+  return order.agent === agentName || order.followupAgent === agentName || !order.agent;
+}
+
+app.use('/api', (req, res, next) => {
+  if (req.user?.isManager) return next();
+  const m = ORDER_SCOPED_PATH.exec(normalizedPath(req));
+  if (!m) return next();
+  if (m[1] === 'bulk') return next();          // handled by the manager table
+
+  // The id in the URL is lowercased by normalizedPath, so re-read it from the
+  // raw path to look the order up with its real casing.
+  const rawId = decodeURIComponent((ORDER_SCOPED_PATH.exec(req.path) || [])[1] || '');
+  const order = db.getOrder(rawId);
+  if (!order) return res.status(404).json({ error: 'Not found' });
+
+  const me = req.user.name;
+  if (!agentOwnsOrder(order, me)) {
+    logError('authz', 'agent attempted to act on an order that is not theirs', {
+      actor: me, orderId: order.id, owner: order.agent, method: req.method, path: req.path,
+    });
+    return res.status(403).json({ error: 'This order is not assigned to you', code: 'NOT_YOUR_ORDER' });
+  }
+
+  // Reassigning an order is a manager action. Without this an agent could
+  // hand themselves someone else's work — or dump their own — via PUT.
+  if (req.method === 'PUT' && req.body && typeof req.body === 'object') {
+    for (const field of ['agent', 'followupAgent']) {
+      if (req.body[field] !== undefined && req.body[field] !== order[field]) {
+        return res.status(403).json({ error: 'Only a manager can reassign an order', code: 'FORBIDDEN_FIELD', field });
+      }
+    }
+  }
+  next();
 });
 
 /* ---------------------------------------------------------------------------
@@ -272,25 +405,19 @@ try {
   logError('db', 'legacy migration failed (continuing with empty DB)', { err: e.message });
 }
 
-// One-time recovery of orders.deliveryOutcome from the append-only carrier
-// event history (audit BUG-02). Idempotent and non-destructive — see the
-// function's own comment. Runs after the legacy migration so imported orders
-// are included.
-try {
-  const r = db.backfillDeliveryOutcomes();
-  if (!r.skipped) logInfo('db', 'delivery-outcome backfill complete', r);
-} catch (e) {
-  logError('db', 'delivery-outcome backfill failed (continuing)', { err: e.message });
-}
+// The delivery-outcome backfill (audit BUG-02) runs just after listen() rather
+// than here — see the comment at the bottom of this file.
 
 /* ---- Authentication bootstrap (audit SEC-02) ----
  * Rewrites every legacy plaintext password as a scrypt hash, then makes sure a
  * manager account exists so the console is reachable. Both are idempotent. */
-try {
-  auth.migratePlaintextPasswords(log);
-  auth.ensureManagerAccount(log);
-} catch (e) {
-  logError('auth', 'authentication bootstrap failed', { err: e.message, stack: e.stack });
+async function bootstrapAuth() {
+  try {
+    await auth.migratePlaintextPasswords(log);
+    await auth.ensureManagerAccount(log);
+  } catch (e) {
+    logError('auth', 'authentication bootstrap failed', { err: e.message, stack: e.stack });
+  }
 }
 
 /* ---- Webhook signature posture (audit SEC-04) ----
@@ -676,6 +803,9 @@ function runOverdueSweep() {
       const current = db.getAgents().find(a => a.name === originalAgent);
       if (current && !current.suspended) {
         db.suspendAgent(originalAgent);
+        // Same revocation the manual suspend route performs — otherwise an
+        // auto-suspended agent keeps working until their cookie expires.
+        try { auth.destroySessionsFor(originalAgent); } catch (e) { logError('auth', 'session revoke on auto-suspend failed', { agent: originalAgent, err: e.message }); }
         db.audit('agent', originalAgent, 'auto_suspend', 'system', { missedOrders: newCount, threshold: s.suspendThreshold });
         notifications.push({
           type: 'agent_suspended',
@@ -703,7 +833,7 @@ const cookieOpts = () => ({ crossSite: CROSS_SITE, secure: process.env.NODE_ENV 
 /** Deliberately uniform failure: never reveal whether the account exists. */
 const BAD_CREDENTIALS = { error: 'Incorrect name or password', code: 'BAD_CREDENTIALS' };
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const name = String(req.body?.name || '').trim();
   const password = String(req.body?.password ?? req.body?.pass ?? '');
   if (!name) return res.status(400).json({ error: 'name required' });
@@ -712,11 +842,11 @@ app.post('/api/auth/login', (req, res) => {
   if (!account) {
     // Spend comparable time on a miss so response timing does not enumerate
     // valid account names.
-    auth.verifyPassword(password, auth.hashPassword('decoy'));
+    await auth.verifyAgainstDecoy(password);
     logError('auth', 'login failed — unknown account', { name });
     return res.status(401).json(BAD_CREDENTIALS);
   }
-  if (!auth.verifyPassword(password, account.pass)) {
+  if (!(await auth.verifyPassword(password, account.pass))) {
     logError('auth', 'login failed — wrong password', { name });
     return res.status(401).json(BAD_CREDENTIALS);
   }
@@ -760,16 +890,16 @@ app.get('/api/auth/me', (req, res) => {
 
 /** Change your own password. Requires the current one — a stolen session alone
  *  must not be enough to take over the account permanently. */
-app.post('/api/auth/change-password', auth.requireAuth, (req, res) => {
+app.post('/api/auth/change-password', auth.requireAuth, async (req, res) => {
   const current = String(req.body?.currentPassword ?? '');
   const next = String(req.body?.newPassword ?? '');
   if (next.length < 6) return res.status(400).json({ error: 'The new password must be at least 6 characters', code: 'WEAK_PASSWORD' });
 
   const account = db.getAgentRaw(req.user.name);
-  if (!account || !auth.verifyPassword(current, account.pass)) {
+  if (!account || !(await auth.verifyPassword(current, account.pass))) {
     return res.status(401).json({ error: 'Current password is incorrect', code: 'BAD_CREDENTIALS' });
   }
-  db.setAgentPasswordHash(req.user.name, auth.hashPassword(next), true);
+  db.setAgentPasswordHash(req.user.name, await auth.hashPassword(next), true);
   db.audit('agent', req.user.name, 'change_password', req.user.name, {});
 
   // Every other session for this account is dropped, then a fresh one issued —
@@ -781,12 +911,12 @@ app.post('/api/auth/change-password', auth.requireAuth, (req, res) => {
 });
 
 /** Manager-only: set another account's password (a forgotten-password reset). */
-app.post('/api/agents/:name/password', auth.requireManager, (req, res) => {
+app.post('/api/agents/:name/password', auth.requireManager, async (req, res) => {
   const name = decodeURIComponent(req.params.name);
   const next = String(req.body?.newPassword ?? '');
   if (!db.getAgentRaw(name)) return res.status(404).json({ error: 'Not found' });
   if (next.length < 6) return res.status(400).json({ error: 'The new password must be at least 6 characters', code: 'WEAK_PASSWORD' });
-  db.setAgentPasswordHash(name, auth.hashPassword(next), true);
+  db.setAgentPasswordHash(name, await auth.hashPassword(next), true);
   auth.destroySessionsFor(name);   // force them to sign in again
   db.audit('agent', name, 'password_reset_by_manager', req.user.name, {});
   res.json({ ok: true });
@@ -1283,8 +1413,7 @@ function handleShopifyProductCreate(product, res) {
 app.get('/api/orders', (req, res) => {
   const all = loadData().orders;
   if (req.user.isManager) return res.json(all);
-  const me = req.user.name;
-  res.json(all.filter(o => o.agent === me || o.followupAgent === me || !o.agent));
+  res.json(all.filter(o => agentOwnsOrder(o, req.user.name)));
 });
 
 app.post('/api/orders', (req, res) => {
@@ -1640,7 +1769,7 @@ app.post('/webhook/delivery', async (req, res) => {
 // ---- AGENTS ----
 app.get('/api/agents', (req, res) => res.json(db.getAgents()));
 
-app.post('/api/agents', (req, res) => {
+app.post('/api/agents', async (req, res) => {
   const { name, pass, role, baseSalaryMonthly, payPerConfirmedOrder, payPerDeliveredOrder } = req.body || {};
   if (!name) return res.status(400).json({ error: 'name required' });
   if (db.getAgents().find(a => a.name === name)) return res.status(400).json({ error: 'Exists' });
@@ -1648,7 +1777,7 @@ app.post('/api/agents', (req, res) => {
   // Hashed here, never stored as given (audit SEC-02). An empty password is
   // still accepted so a manager can create the account first and set the
   // password after — hasPassword:false makes that state visible in the UI.
-  db.addAgent(name, auth.hashPassword(pass || ''), validRoles.includes(role) ? role : 'confirmation',
+  db.addAgent(name, await auth.hashPassword(pass || ''), validRoles.includes(role) ? role : 'confirmation',
     { hasPassword: !!pass });
   if (baseSalaryMonthly !== undefined || payPerConfirmedOrder !== undefined || payPerDeliveredOrder !== undefined) {
     db.patchAgent(name, { baseSalaryMonthly, payPerConfirmedOrder, payPerDeliveredOrder });
@@ -3083,15 +3212,29 @@ app.post('/api/followup/assign', (req, res) => {
 app.post('/api/followup/tasks/:id/resolve', (req, res) => {
   const task = db.getFollowupTask(req.params.id);
   if (!task) return res.status(404).json({ error: 'task not found' });
-  followup.resolveReminder(task.orderId, task.id, req.body?.actor || 'agent');
+  // Resolving a reminder asserts "I contacted this customer" — an agent must
+  // not be able to close out somebody else's task, whether by accident or to
+  // hide an overdue one.
+  if (!req.user.isManager && task.agent && task.agent !== req.user.name) {
+    return res.status(403).json({ error: 'This follow-up task is not assigned to you', code: 'NOT_YOUR_TASK' });
+  }
+  followup.resolveReminder(task.orderId, task.id, req.user.name);
   broadcast({ type: 'followup_resolved', orderId: task.orderId, taskId: task.id }, task.agent || null);
   res.json({ ok: true, task: db.getFollowupTask(req.params.id) });
 });
 
 // Open follow-up tasks (optionally filtered by agent) — for the agent panel.
+/* The `agent` filter was taken straight from the query string, so any agent
+ * could list another agent's follow-up queue — or omit it entirely and get
+ * every open task in the business. A manager may still filter freely; everyone
+ * else is pinned to their own name regardless of what they asked for. */
 app.get('/api/followup/tasks', (req, res) => {
   const filter = {};
-  if (req.query.agent) filter.agent = req.query.agent;
+  if (req.user.isManager) {
+    if (req.query.agent) filter.agent = req.query.agent;
+  } else {
+    filter.agent = req.user.name;
+  }
   if (req.query.status) filter.status = req.query.status;
   res.json({ items: db.getFollowupTasks(filter) });
 });
@@ -3206,14 +3349,32 @@ app.put('/api/stores/:id/default-carrier', (req, res) => {
  * separately-hosted copy keeps working via ALLOWED_ORIGINS during the
  * switchover.
  * ========================================================================== */
-app.use(express.static(path.join(__dirname), {
-  index: false,          // '/' stays the JSON health check
-  extensions: ['html'],
-  setHeaders(res, filePath) {
+/* An EXPLICIT allowlist, not express.static(__dirname).
+ *
+ * Serving the application directory wholesale published every file in it —
+ * including `crm.db` itself. `GET /crm.db` returned the entire database
+ * (orders, customer phone numbers, password hashes, carrier API keys) to an
+ * unauthenticated caller, along with `/lib/*.js`, `/package.json` and anything
+ * else that happened to be on disk. That is strictly worse than the
+ * unauthenticated API this work set out to close, so nothing is served unless
+ * it is named here. */
+const CLIENT_FILES = {
+  '/index.html': 'index.html',
+  '/agent.html': 'agent.html',
+  '/calculateur_profit_perte.html': 'calculateur_profit_perte.html',
+  '/manifest.json': 'manifest.json',
+  '/service-worker.js': 'service-worker.js',
+  '/cash-register.mp3': 'cash-register.mp3',
+};
+for (const [route, file] of Object.entries(CLIENT_FILES)) {
+  app.get(route, (req, res) => {
     // The service worker must never be cached, or an old one pins the app.
-    if (filePath.endsWith('service-worker.js')) res.setHeader('Cache-Control', 'no-cache');
-  },
-}));
+    if (file === 'service-worker.js') res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(__dirname, file));
+  });
+}
+// Icons are a whole directory, but a directory of nothing but PNGs.
+app.use('/icons', express.static(path.join(__dirname, 'icons'), { index: false }));
 
 // Convenience entry points.
 app.get('/app', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
@@ -3240,9 +3401,28 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  logInfo('server', `CRM Server listening on port ${PORT}`);
-  logInfo('server', 'clients served at /app (manager) and /agent (confirmation agent)');
-  if (CROSS_SITE) logInfo('server', 'CORS allowlist active', { origins: ALLOWED_ORIGINS });
-  else logInfo('server', 'CORS: same-origin only (set ALLOWED_ORIGINS to permit a separately-hosted frontend)');
+/* Password hashing is async now, so the bootstrap has to finish before the
+ * first request can be served — otherwise a login could race the migration and
+ * be checked against a half-rewritten agents table. The delivery-outcome
+ * backfill is deliberately NOT awaited: it walks every order through
+ * patchOrder(), which on a large database is minutes of synchronous work, and
+ * blocking the port that long risks the host's health check killing the
+ * container mid-migration. It is idempotent, so finishing a moment after the
+ * server starts answering is harmless. */
+bootstrapAuth().then(() => {
+  app.listen(PORT, () => {
+    logInfo('server', `CRM Server listening on port ${PORT}`);
+    logInfo('server', 'clients served at /app (manager) and /agent (confirmation agent)');
+    if (CROSS_SITE) logInfo('server', 'CORS allowlist active', { origins: ALLOWED_ORIGINS });
+    else logInfo('server', 'CORS: same-origin only (set ALLOWED_ORIGINS to permit a separately-hosted frontend)');
+
+    setImmediate(() => {
+      try {
+        const r = db.backfillDeliveryOutcomes();
+        if (!r.skipped) logInfo('db', 'delivery-outcome backfill complete', r);
+      } catch (e) {
+        logError('db', 'delivery-outcome backfill failed (continuing)', { err: e.message });
+      }
+    });
+  });
 });
