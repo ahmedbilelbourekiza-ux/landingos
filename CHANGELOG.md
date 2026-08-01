@@ -405,3 +405,46 @@ independently, one tab closing without killing the other, unauthenticated
 subscription refusal, XSS-safety of both renderers, and retention.
 
 **Test count: 212, all passing.**
+
+---
+
+## Phase 2 — High priority
+
+#### PERF-01 — the missing indexes
+**What.** Twelve indexes across `orders`, `order_calls` and `shipments`, created
+individually rather than as one statement batch, plus a one-time `ANALYZE`.
+**Why.** The busiest table in the system had exactly one index
+(`phoneNormalized`). Every status filter, per-agent lookup, webhook dedup and
+the `ORDER BY createdAt DESC` on the main list was a full table scan. Worse,
+`order_calls` had none at all — SQLite does not index a `FOREIGN KEY`
+automatically — so `attachCalls()` scanned the entire calls table once **per
+order**, making `GET /api/orders` quadratic. The frontend calls it on every SSE
+event and again every 30 seconds.
+
+**Measured on 5,000 orders with call history** (`node test/bench/orders-bench.js`):
+
+| | before | after | |
+|---|---|---|---|
+| `loadOrdersData()` — what `GET /api/orders` runs | 3006.2 ms | 290.5 ms | **10.3×** |
+| `listOverdueUnansweredOrders()` — the sweep | 440.8 ms | 33.9 ms | **13.0×** |
+| `getOrdersByDeliveryOutcome()` — profit calc | 1.1 ms | 0.1 ms | **11×** |
+| `computeAgentPayroll()` — one agent | 2.7 ms | 0.6 ms | **4.5×** |
+
+Query plans went from `SCAN orders | USE TEMP B-TREE FOR ORDER BY` to
+`SCAN orders USING INDEX idx_orders_created`, and the per-order call lookup from
+a full scan to `SEARCH order_calls USING INDEX idx_order_calls_order`.
+
+**Files.** `lib/db.js`, `test/indexes.test.js` (new), `test/bench/orders-bench.js` (new).
+**Migration.** Index creation only — no column or row changes. SQLite builds them
+on first boot after the upgrade; on a large table that is a few seconds, once.
+**Risk.** Low. Each index is created in its own statement with its own
+`try`/`catch`: an index over a column that does not exist would otherwise abort
+the whole batch and take the process down at boot, turning a missing
+optimisation into an outage. A failure now logs and the server still starts.
+**Tests.** 16 — index existence, planner behaviour per query (asserting on query
+plans rather than wall-clock, which would be flaky on shared CI), unchanged API
+results and ordering, and an upgrade test that strips the indexes from a real
+database and confirms boot restores them with the rows intact.
+
+*Note: `GET /api/orders` is still 290 ms at 5,000 orders because it returns the
+entire table and attaches call history row by row. Pagination is PERF-02, next.*
