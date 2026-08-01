@@ -85,6 +85,24 @@ time('getOrdersByDeliveryOutcome() — profit calc', () =>
 time('computeAgentPayroll() — one agent', () =>
   db.computeAgentPayroll('Karim', 0, Date.now(), 'month'));
 
+console.log('');
+console.log('Write path (the cost of ONE field change):');
+let n = 0;
+time('patchOrder({pendingCallStart}) — pressing "Call"', () =>
+  db.patchOrder('ORD-000500', { pendingCallStart: Date.now() + (n++) }), 20);
+time('patchOrder({status}) — logging a result', () =>
+  db.patchOrder('ORD-000501', { status: (n++ % 2) ? 'confirmed' : 'pending' }), 20);
+time('getOrder() — one row with its calls', () => db.getOrder('ORD-000500'), 50);
+
+console.log('');
+console.log('Paginated read path (PERF-02):');
+time('queryOrders({limit:50}) — one page', () => db.queryOrders({ limit: 50 }), 10);
+time('queryOrders({status,limit:50}) — filtered page', () =>
+  db.queryOrders({ status: 'pending', limit: 50 }), 10);
+time('queryOrders({search}) — search a page', () =>
+  db.queryOrders({ search: 'Client 4', limit: 50 }), 10);
+time('countOrdersByStatus() — dashboard tiles', () => db.countOrdersByStatus(), 10);
+
 console.log('\nQuery plans:');
 for (const [label, sql] of [
   ['orders ORDER BY createdAt', 'SELECT * FROM orders ORDER BY createdAt DESC'],

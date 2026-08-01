@@ -567,3 +567,72 @@ multiplies, and a restart clears everything. The fix at that point is Redis, and
 it belongs with the same work that moves SSE fan-out off in-process state.
 **Tests.** 15, including that per-account throttling cannot be reset by changing
 the capitalisation of the name.
+
+#### PERF-02 — filtered, paginated orders in SQL
+**What.** `db.queryOrders()` and `db.countOrdersByStatus()`, exposed as
+`GET /api/orders?limit=&offset=&status=&agent=&wilaya=&since=&until=&search=&sort=&dir=`
+and `GET /api/orders/stats`.
+**Why.** `GET /api/orders` returned the entire table with every call attached —
+291 ms on 5,000 orders *after* the indexes — and the console re-ran it on every
+SSE event and again every 30 seconds. All the filtering the UI does was
+happening in the browser over that full download.
+
+| on 5,000 orders | |
+|---|---|
+| `loadOrdersData()` (whole table) | 291 ms |
+| `queryOrders({limit:50})` | **0.7 ms** |
+| `queryOrders({status, limit:50})` | 0.8 ms |
+| `queryOrders({search})` | 6.1 ms |
+| `countOrdersByStatus()` | 0.6 ms |
+
+Call history is deliberately not attached to a list page — joining it per row is
+what made the old path quadratic, and the list only renders the count, so
+`callCount` is returned instead. The detail view is unchanged.
+The record-level scope is pushed **into** the query rather than applied to the
+result: filtering a page afterwards would silently return short pages, and the
+total would count rows the caller cannot see.
+**Files.** `lib/db.js`, `index.js`, `test/pagination.test.js` (new),
+`test/bench/orders-bench.js`.
+**Migration.** None.
+**Risk.** Low, and deliberately backward-compatible: with **no** query parameters
+the endpoint still returns a bare array, because a browser holding a cached copy
+of the old client calls it that way and changing the shape would break every open
+tab the moment this deploys. That legacy path is still the slow one and now logs
+when it serves more than 500 rows.
+**Tests.** 23 — paging without gaps or repeats, the 200-row cap, filter
+composition, case-insensitive search, whitelisted sorting, SQL-injection
+attempts through `sort` and `search`, scope applied in-query (asserting pages
+stay full), the stats endpoint, and the legacy shape.
+
+#### PERF-03 — the write path re-read the row five times
+**What.** `patchOrder()` hands its already-read row down to `saveOrder()` as the
+before-state, and the client/product lifetime upserts are skipped when no field
+they depend on changed.
+**Why.** A single field change called `getOrder()` **five** times — for the patch
+merge, for `before`, twice to feed the two stat upserts, and once to return —
+each re-reading the row and its call history, then rewrote all ~50 columns.
+Pressing "Call" (which sets one timestamp) did all of that.
+**Files.** `lib/db.js`. **Migration.** None.
+**Risk.** Low, but worth naming: the skip is driven by `STAT_RELEVANT_FIELDS`
+(status, deliveryOutcome, price, phone, product, quantity, shopifyProductId). If
+a future counter starts depending on another field, it must be added to that list
+or its stats will silently stop updating. Measured gain is modest — 2.4 ms → 2.3 ms
+on the call-button path, since the cost is dominated by the transaction commit
+rather than the reads. Kept because it removes the read amplification, not for
+the milliseconds.
+
+#### The console no longer re-downloads on every event
+**What.** `fetchOrders()` de-duplicates in-flight requests and coalesces a burst
+into at most one follow-up; the 30-second poll skips while the tab is hidden and
+catches up on `visibilitychange`.
+**Why.** It is called from 27 places, including once per SSE event, so a busy
+minute meant dozens of full downloads of the order table, each followed by a full
+re-render. **Verified in a browser: 15 concurrent calls now produce 2 network
+requests.**
+**Files.** `index.html`.
+**Risk.** Low — no caller changed.
+**Not done, and why:** the console still fetches the list *whole*, because every
+filter, sort and statistic in it is computed client-side over one `orders` array.
+Moving it onto the paginated endpoint means rewriting that pipeline, which
+belongs with splitting the 4,600-line file up rather than being bolted on here.
+The server side is ready and tested for when that happens.

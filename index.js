@@ -339,6 +339,10 @@ app.use('/api', (req, res, next) => {
  * the follow-up agent for, or an unassigned one (which anybody may pick up).
  * ========================================================================== */
 const ORDER_SCOPED_PATH = /^\/orders\/([^/]+)(\/.*)?$/;
+/* Segments under /orders/ that are NOT an order id. `bulk` is governed by the
+ * manager table; `stats` is an aggregate that already applies the same scope
+ * inside its own query. */
+const ORDER_COLLECTION_ROUTES = new Set(['bulk', 'stats']);
 
 /* The single definition of "this order is mine". The list filter and the
  * per-order gate below MUST agree — if the gate were stricter than the filter,
@@ -355,7 +359,9 @@ app.use('/api', (req, res, next) => {
   if (req.user?.isManager) return next();
   const m = ORDER_SCOPED_PATH.exec(normalizedPath(req));
   if (!m) return next();
-  if (m[1] === 'bulk') return next();          // handled by the manager table
+  // Collection-level routes that only LOOK like an order id. Without this they
+  // would be looked up as orders and 404.
+  if (ORDER_COLLECTION_ROUTES.has(m[1])) return next();
 
   // The id in the URL is lowercased by normalizedPath, so re-read it from the
   // raw path to look the order up with its real casing.
@@ -1531,10 +1537,50 @@ function handleShopifyProductCreate(product, res) {
  * either as the confirmation agent or as the follow-up agent, plus unassigned
  * orders — the unassigned-overdue queue exists precisely so somebody can pick
  * them up. */
+const ORDER_QUERY_PARAMS = [
+  'limit', 'offset', 'status', 'agent', 'followupAgent', 'wilaya', 'storeId',
+  'orderType', 'classification', 'deliveryOutcome', 'since', 'until',
+  'search', 'sort', 'dir', 'paginated',
+];
+
 app.get('/api/orders', (req, res) => {
+  const wantsQuery = ORDER_QUERY_PARAMS.some(p => req.query[p] !== undefined);
+
+  if (wantsQuery) {
+    /* Filtered + paginated in SQL. The scope is pushed INTO the query rather
+     * than applied to the result, so a page of 50 is 50 rows this caller may
+     * actually see — filtering afterwards would return short pages. */
+    const result = db.queryOrders({
+      ...req.query,
+      scopeAgent: req.user.isManager ? null : req.user.name,
+    });
+    return res.json(result);
+  }
+
+  /* Legacy shape: the whole table as a bare array.
+   *
+   * Kept because a browser holding a cached copy of the old client calls this
+   * with no parameters and expects an array — changing it would break every
+   * open tab the moment this deploys. It is the slow path (291 ms on 5,000
+   * orders even with the indexes) and both clients now pass parameters, so it
+   * exists only for that window. */
   const all = loadData().orders;
-  if (req.user.isManager) return res.json(all);
-  res.json(all.filter(o => agentOwnsOrder(o, req.user.name)));
+  const scoped = req.user.isManager ? all : all.filter(o => agentOwnsOrder(o, req.user.name));
+  if (scoped.length > 500) {
+    logInfo('orders', 'unpaginated order list served — the caller is on the legacy path', {
+      actor: req.user.name, count: scoped.length,
+    });
+  }
+  res.json(scoped);
+});
+
+/** Status counts for the whole filtered set, so dashboard tiles do not need
+ *  the rows. Previously the console computed these from the full download. */
+app.get('/api/orders/stats', (req, res) => {
+  res.json(db.countOrdersByStatus({
+    ...req.query,
+    scopeAgent: req.user.isManager ? null : req.user.name,
+  }));
 });
 
 app.post('/api/orders', (req, res) => {

@@ -2103,7 +2103,46 @@ function showPage(name,btn){
 function closeModal(id){ document.getElementById(id).classList.remove('open'); if(id==='callModal') selectedResult=null; }
 function setView(v,btn){ currentView=v; localStorage.setItem('crm_view',v); document.querySelectorAll('.view-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderOrders(); }
 
-async function fetchOrders(){ try{ setSyncStatus('⟳','var(--text3)'); orders=await api('GET','/api/orders'); setSyncStatus('✓ '+fmt(Date.now()),'var(--green)'); } catch(e){ setSyncStatus('✗ '+t('t_err'),'var(--red)'); } }
+/* fetchOrders is called from 27 places, including once per SSE event — so a
+ * burst of activity used to fire a dozen full downloads of the order table in
+ * a couple of seconds, each one re-rendering the list.
+ *
+ * Two guards, no change to any caller:
+ *   - in-flight de-duplication: concurrent callers share one request;
+ *   - a trailing coalesce window: calls arriving while a fetch is running
+ *     collapse into ONE follow-up fetch after it finishes, so a burst costs at
+ *     most two round trips rather than one per event.
+ *
+ * The list itself is still fetched whole, because every filter, sort and stat
+ * in this console is computed client-side over `orders`. The server now
+ * supports filtered pagination (GET /api/orders?limit=&status=…, 0.7 ms versus
+ * 291 ms for the full table on 5,000 orders) and moving the console onto it is
+ * a frontend rework that belongs with splitting this file up. */
+let _ordersInFlight = null;
+let _ordersDirty = false;
+
+async function fetchOrders(){
+  if(_ordersInFlight){ _ordersDirty = true; return _ordersInFlight; }
+  _ordersInFlight = (async () => {
+    try{
+      setSyncStatus('⟳','var(--text3)');
+      orders = await api('GET','/api/orders');
+      setSyncStatus('✓ '+fmt(Date.now()),'var(--green)');
+    }catch(e){
+      setSyncStatus('✗ '+t('t_err'),'var(--red)');
+    }finally{
+      _ordersInFlight = null;
+    }
+  })();
+  await _ordersInFlight;
+  if(_ordersDirty){
+    _ordersDirty = false;
+    // A short pause so a continuing burst lands in this one follow-up rather
+    // than starting another round immediately.
+    await new Promise(r=>setTimeout(r,300));
+    return fetchOrders();
+  }
+}
 async function fetchAgents(){ try{agents=await api('GET','/api/agents');}catch(e){agents=[];} }
 async function fetchProducts(){ try{products=await api('GET','/api/products');}catch(e){products=[];} }
 async function fetchStores(){ try{storesCache=await api('GET','/api/stores');}catch(e){storesCache=[];} }
@@ -4811,9 +4850,17 @@ async function startApp(){
   loadServerSettings();
   if(refreshTimer) clearInterval(refreshTimer);
   refreshTimer=setInterval(async()=>{
+    // Skip while the tab is hidden — SSE still delivers anything that happens,
+    // and a backgrounded console polling the whole order table every 30s is
+    // pure server load with nobody looking at the result.
+    if(document.hidden) return;
     try{ await fetchOrders(); await fetchAgents(); await fetchStores(); refresh(); updateStockNavBadge(); }
     catch(e){ /* a 401 already routed to the login gate */ }
   },30000);
+  // Catch up immediately when the tab comes back to the foreground.
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden && currentUser) fetchOrders().then(()=>refresh());
+  });
   bootedOnce=true;
 }
 
