@@ -1511,6 +1511,53 @@ app.post('/api/orders', (req, res) => {
   res.json(saved);
 });
 
+/* =============================================================================
+ * WRITABLE ORDER FIELDS (audit §4 — mass assignment).
+ *
+ * This route used to spread req.body straight into patchOrder(), so a client
+ * could write ANY column. Verified against a running server: one PUT setting
+ * {"deliveryOutcome":"delivered","price":999999} fabricated 999,999 of client
+ * lifetime revenue, because upsertClientFromOrder() correctly treats the
+ * transition into 'delivered' as a real sale. The same field drives
+ * delivered-pay payroll and the profit calculator.
+ *
+ * Three tiers, deny-by-default:
+ *   AGENT_WRITABLE    — the order details an agent legitimately corrects
+ *                       before confirming (the customer gave a wrong commune,
+ *                       wants two instead of one).
+ *   MANAGER_WRITABLE  — assignment, internal notes and commercial fields.
+ *   nothing else      — identity (id, createdAt, shopifyId), machine-derived
+ *                       state (deliveryOutcome, phoneNormalized, shipmentId),
+ *                       and sweep bookkeeping (overdueFlaggedAt,
+ *                       pendingCallStart) are not client-writable at all.
+ *                       They are set by the code paths that own them.
+ * ========================================================================== */
+const AGENT_WRITABLE_ORDER_FIELDS = new Set([
+  'client', 'phone', 'city', 'wilaya', 'commune',
+  'product', 'productVariant', 'quantity', 'unitPrice', 'price',
+  'subtotal', 'discount', 'shippingCost', 'lineItems',
+  'note', 'shippingNote', 'status',
+  'delivery', 'deliveryMethod', 'expressDelivery', 'trackingNumber',
+]);
+const MANAGER_WRITABLE_ORDER_FIELDS = new Set([
+  ...AGENT_WRITABLE_ORDER_FIELDS,
+  'agent', 'followupAgent', 'managerNote', 'marketer',
+  'storeId', 'storeName', 'brand', 'providerId', 'deliveryStatus',
+]);
+
+/** Keep only what this caller may write; report anything else that was sent. */
+function pickWritableOrderFields(body, user) {
+  const allowed = user.isManager ? MANAGER_WRITABLE_ORDER_FIELDS : AGENT_WRITABLE_ORDER_FIELDS;
+  const patch = {};
+  const rejected = [];
+  for (const [k, v] of Object.entries(body || {})) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+    if (allowed.has(k)) patch[k] = v;
+    else rejected.push(k);
+  }
+  return { patch, rejected };
+}
+
 app.put('/api/orders/:id', async (req, res) => {
   const order = db.getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Not found' });
@@ -1518,9 +1565,17 @@ app.put('/api/orders/:id', async (req, res) => {
   if (req.body.status !== undefined && !ORDER_STATUSES.includes(req.body.status)) {
     return res.status(400).json({ error: 'invalid status', valid: ORDER_STATUSES });
   }
+  const { patch, rejected } = pickWritableOrderFields(req.body, req.user);
+  if (rejected.length) {
+    // Logged rather than 400'd: existing clients send whole order objects back,
+    // and failing those would break the edit screen. The fields are dropped.
+    logInfo('orders', 'ignored non-writable fields on update', {
+      orderId: order.id, actor: req.user.name, rejected,
+    });
+  }
   const oldStatus = order.status;
-  const newStatus = req.body.status;
-  const updated = db.patchOrder(req.params.id, req.body);
+  const newStatus = patch.status;
+  const updated = db.patchOrder(req.params.id, patch);
 
   // A status change through this generic endpoint (e.g. the quick status
   // dropdown in the order list, as opposed to logging a call result via
@@ -1544,11 +1599,13 @@ app.put('/api/orders/:id', async (req, res) => {
   }
 
   const finalOrder = db.getOrder(req.params.id);
-  if (req.body.agent) {
-    broadcast({ type: 'order_assigned', order: finalOrder }, req.body.agent);
-    sendPushToAgent(req.body.agent, { title: '📦 طلب جديد', body: finalOrder.id + ' — ' + (finalOrder.client || '') });
+  // Read from the FILTERED patch, not req.body — otherwise a rejected field
+  // could still trigger a reassignment broadcast and a push notification.
+  if (patch.agent) {
+    broadcast({ type: 'order_assigned', order: finalOrder }, patch.agent);
+    sendPushToAgent(patch.agent, { title: '📦 طلب جديد', body: finalOrder.id + ' — ' + (finalOrder.client || '') });
   }
-  if (req.body.deliveryStatus) broadcast({ type: 'delivery_update', order: finalOrder }, finalOrder.agent);
+  if (patch.deliveryStatus) broadcast({ type: 'delivery_update', order: finalOrder }, finalOrder.agent);
   res.json(finalOrder);
 });
 
@@ -2056,9 +2113,90 @@ app.get('/api/products/:id/history', (req, res) => {
 });
 
 // ---- SETTINGS ----
+/* =============================================================================
+ * SETTINGS SCHEMA (audit §4 — validation).
+ *
+ * PUT /api/settings accepted arbitrary keys with arbitrary values, so
+ * {"totallyMadeUpKey":"yes","autoSuspend":"not-a-boolean","suspendThreshold":-5}
+ * was stored verbatim. A string where a boolean is expected is worse than it
+ * looks: `if (s.autoSuspend)` is TRUE for the string "false", so a
+ * misconfiguration silently enables account suspension.
+ *
+ * Each key declares its type and, where a nonsensical value would cause real
+ * harm, its range. Unknown keys are rejected outright rather than stored — the
+ * settings table is a fixed vocabulary, not a scratchpad.
+ * ========================================================================== */
+const SETTINGS_SCHEMA = {
+  autoAssign:              { type: 'boolean' },
+  autoCreateShipment:      { type: 'boolean' },
+  autoReassign:            { type: 'boolean' },
+  autoSuspend:             { type: 'boolean' },
+  followupAutoAssign:      { type: 'boolean' },
+  minCallSeconds:          { type: 'number', min: 0, max: 3600 },
+  alertMinutes:            { type: 'number', min: 1, max: 10080 },
+  trackingPollMinutes:     { type: 'number', min: 1, max: 1440 },
+  followupReminderMinutes: { type: 'number', min: 1, max: 10080 },
+  reassignMinutes:         { type: 'number', min: 0, max: 10080 },
+  nightGraceMinutes:       { type: 'number', min: 0, max: 10080 },
+  suspendThreshold:        { type: 'number', min: 1, max: 1000 },
+  workHoursStart:          { type: 'number', min: 0, max: 23 },
+  workHoursEnd:            { type: 'number', min: 1, max: 24 },
+  reservationMode:         { type: 'enum', values: ['immediate', 'on_confirm', 'none'] },
+  defaultCarrierByStore:   { type: 'object' },
+  fixedCosts:              { type: 'array' },
+  // Written by the delivery-outcome migration, not by a human.
+  deliveryOutcomeBackfillAt: { type: 'number', internal: true },
+};
+
+function validateSettings(body) {
+  const clean = {};
+  const errors = [];
+  for (const [key, value] of Object.entries(body || {})) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    const spec = SETTINGS_SCHEMA[key];
+    if (!spec) { errors.push(`unknown setting "${key}"`); continue; }
+    if (spec.internal) { errors.push(`"${key}" is maintained by the system and cannot be set`); continue; }
+
+    if (spec.type === 'boolean') {
+      if (typeof value !== 'boolean') { errors.push(`"${key}" must be true or false`); continue; }
+    } else if (spec.type === 'number') {
+      const n = Number(value);
+      if (typeof value === 'boolean' || !Number.isFinite(n)) { errors.push(`"${key}" must be a number`); continue; }
+      if (spec.min !== undefined && n < spec.min) { errors.push(`"${key}" must be at least ${spec.min}`); continue; }
+      if (spec.max !== undefined && n > spec.max) { errors.push(`"${key}" must be at most ${spec.max}`); continue; }
+      clean[key] = n; continue;
+    } else if (spec.type === 'enum') {
+      if (!spec.values.includes(value)) { errors.push(`"${key}" must be one of: ${spec.values.join(', ')}`); continue; }
+    } else if (spec.type === 'array') {
+      if (!Array.isArray(value)) { errors.push(`"${key}" must be an array`); continue; }
+    } else if (spec.type === 'object') {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) { errors.push(`"${key}" must be an object`); continue; }
+    }
+    clean[key] = value;
+  }
+  return { clean, errors };
+}
+
 app.get('/api/settings', (req, res) => res.json(loadSettings()));
+
 app.put('/api/settings', (req, res) => {
-  const updated = saveSettings(req.body);
+  const { clean, errors } = validateSettings(req.body);
+  if (errors.length) {
+    return res.status(400).json({ error: 'Invalid settings', code: 'INVALID_SETTINGS', details: errors });
+  }
+  // A window that matches no hour at all would silently disable the overdue
+  // sweep — isWithinWorkingHours() already fails open and logs, but refusing
+  // the value at the point it is entered is far better than discovering it
+  // from a log line weeks later.
+  const merged = { ...loadSettings(), ...clean };
+  if (Number(merged.workHoursEnd) <= Number(merged.workHoursStart)) {
+    return res.status(400).json({
+      error: 'workHoursEnd must be greater than workHoursStart', code: 'INVALID_SETTINGS',
+      details: [`got start=${merged.workHoursStart}, end=${merged.workHoursEnd}`],
+    });
+  }
+  const updated = saveSettings(clean);
+  db.audit('settings', 'settings', 'update', req.user.name, { keys: Object.keys(clean) });
   res.json(updated);
 });
 

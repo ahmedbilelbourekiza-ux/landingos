@@ -489,3 +489,37 @@ running any handler — so this could not be exercised on the development machin
 The behavioural test is **skipped on win32 with that reason recorded**, and a
 source-level test asserts the handler is wired to `jobs.stop()`, `server.close()`
 and the WAL checkpoint. It will run for real on the Linux host.
+
+#### Mass assignment on `PUT /api/orders/:id` and `PUT /api/settings`
+**What.** Order updates now go through a three-tier field whitelist
+(agent-writable / manager-writable / not client-writable at all), and settings
+are validated against a typed schema with ranges, rejecting unknown keys.
+**Why.** Both routes spread `req.body` straight into storage.
+
+*Orders.* Verified against a running server: a single
+`PUT {"deliveryOutcome":"delivered","price":999999}` **fabricated 999,999 of
+client lifetime revenue**, because `upsertClientFromOrder()` correctly treats the
+transition into `delivered` as a real sale. The same field drives delivered-pay
+payroll and the profit calculator, so this was financial data corruption from one
+API call. `phoneNormalized`, `shipmentId`, `overdueFlaggedAt`, `pendingCallStart`,
+`shopifyId` and `source` were equally writable — all machine-derived state owned
+by specific code paths.
+Rejected fields are dropped and logged rather than 400'd, because the existing
+edit screen sends whole order objects back and failing those would break it.
+The post-update broadcast now reads the *filtered* patch, so a rejected `agent`
+can no longer trigger a reassignment notification for a reassignment that did not
+happen.
+
+*Settings.* `{"totallyMadeUpKey":"yes","autoSuspend":"not-a-boolean",
+"suspendThreshold":-5}` was stored verbatim. The type confusion is the dangerous
+part: `if (s.autoSuspend)` is **true for the string `"false"`**, so a typo would
+silently switch on automatic account suspension. An impossible working-hours
+window is refused at entry too — it previously made the overdue sweep match no
+hour at all, which `isWithinWorkingHours()` handles by failing open and logging,
+discoverable only weeks later. Settings changes are now audited.
+**Files.** `index.js`, `test/validation.test.js` (new).
+**Migration.** None. **Risk.** Low, but note the whitelist is deliberately
+conservative: if a legitimate client field turns out to be missing, it will be
+silently dropped and logged as `ignored non-writable fields on update` — grep for
+that line after deploying.
+**Tests.** 23.
