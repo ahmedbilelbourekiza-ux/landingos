@@ -181,3 +181,55 @@ now asserts every registered adapter key answers the full contract.
 dhl, ups, fedex, aramex) still fall back to simulated tracking. Fabricating
 delivery events for a real carrier is wrong; this is queued for Phase 2 under
 "frontend features without backend support".
+
+#### SEC-01 / SEC-02 — authentication, authorization and login screens
+**What.** A complete authentication layer: `lib/auth.js` (scrypt hashing, opaque
+server-side sessions), the `sessions` table, `agents.accountRole`, login/logout/
+me/change-password endpoints, a deny-by-default gate on `/api`, a declarative
+manager-authorization table, login screens in both clients, and record-level
+scoping of the order book.
+**Why.** There was no authentication of any kind: 117 open routes, no login
+endpoint anywhere, `GET /api/agents` returning every password in cleartext, and
+the agent PWA comparing that password in the browser. The manager console had no
+login at all — opening the URL made you the manager.
+**Files.** `lib/auth.js` (new), `lib/db.js`, `index.js`, `agent.html`,
+`index.html`, `test/auth.test.js` (new), `test/helpers.js`.
+**Migration.** Two, both idempotent and run on boot:
+1. Legacy plaintext passwords are rewritten as scrypt hashes. Accounts whose
+   password was **empty keep working exactly as before** — the empty string is
+   hashed, so a blank field still authenticates — and are surfaced as
+   `hasPassword: false` so a manager can find and fix them. Locking staff out
+   mid-shift is a worse failure than carrying a weak password one more release.
+2. A manager account is created from `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+**Risk.** **Deployment will fail closed if `ADMIN_USERNAME` and `ADMIN_PASSWORD`
+are not set — nobody will be able to sign in.** Set both before deploying. Set
+`ALLOWED_ORIGINS` only if you keep hosting the frontend separately; the clients
+are now served from `/app` and `/agent` on the API itself, which is what makes
+the session cookie work without cross-site cookies.
+Also note both clients now default to the origin they were served from rather
+than the hardcoded `erp-serveur.onrender.com`. Anyone with a server URL saved in
+Settings keeps that value.
+**Tests.** 49 new: the closed-by-default gate across 20 routes, login/logout/
+session lifecycle, uniform failure for unknown accounts, HttpOnly cookie
+attributes, no password field anywhere in a response, hash-at-rest, manager vs
+agent authorization, last-manager protections, suspension revoking live
+sessions, password change evicting other sessions, static client serving, and
+order-book scoping.
+
+#### SEC-03 / SEC-04 — AI clamping and fail-closed webhooks
+See the commit message for detail. Summary: the AI permission fallback is
+clamped to the caller's ceiling (`read_analytics` withheld from agents because
+it aggregates across all orders and ignores scoping), `actor`/`scopedAgent` now
+come from the session rather than query parameters, and one shared
+`webhookSignatureOk()` makes a configured secret mandatory to verify — omitting
+the signature header no longer bypasses the check.
+**Risk.** Webhook verification is *not* mandatory by default, because many
+deployments run with no secret configured and demanding one would drop every
+live order. The boot log now names every integration still accepting unsigned
+payloads. Set a secret on each, then `REQUIRE_WEBHOOK_SIGNATURES=1`.
+
+#### ARCH-01 — SSE connections evicting each other
+`sseClients` is now `channel -> Set<writer>`. One writer per name meant a second
+browser tab evicted the first, and the close handler removed the entry
+regardless of which connection had closed — so closing either tab killed live
+updates for both. Files: `index.js`.
