@@ -1,10 +1,174 @@
 # Changelog
 
 Work driven by the engineering audit of 1 August 2026. Findings are referenced
-by their audit IDs (`SEC-01`, `BUG-02`, `PERF-01`, …).
+by their audit IDs (`SEC-01`, `BUG-02`, `PERF-01`, …). From Phase 3 onward,
+work follows the LandingOS platform architecture and references its migration
+and risk IDs (`M-01`, `R-08`, …).
 
 Format: newest first. Each entry records **what** changed, **why**, the **files**
 touched, any **migration**, and any **risk**.
+
+---
+
+## Phase 3 — Platform foundations
+
+### 3.1 Monorepo foundation
+
+Goal: one workspace holding both products, with no business logic changed and
+no regressions. Multi-tenancy is explicitly **not** started here.
+
+#### The repository became an npm workspace
+**What.** The root is now a private workspace over `apps/*` and `packages/*`.
+The ERP moved from the repository root to `apps/erp`; the website-builder was
+imported into `apps/website-builder`.
+**Why.** No shared package can exist until there is somewhere for it to live.
+Everything from Phase 3.2 onward (`@landingos/db`, `@landingos/auth`,
+`@landingos/ui`) depends on this.
+**Files.** `package.json` (new root), `apps/erp/**` (moved), `apps/website-builder/**`
+(imported), `.gitignore`, `apps/erp/.gitignore` (new).
+**Migration.** None — no schema, no data, no business logic touched.
+**Risk.** Low, and verified: the ERP needed **zero source changes**. `lib/db.js`
+derives its data directory from `__dirname` and `test/helpers.js` resolves the
+server it spawns the same way, so both followed the move unaided.
+
+#### Both histories preserved
+**What.** The website-builder came in via `git subtree add`, carrying all 65 of
+its commits rather than landing as one opaque snapshot. The ERP's 57 files were
+moved with `git mv` and are recorded as renames.
+**Why.** Losing history on either side would make every future `git blame` on
+this codebase useless — during the phase where the most code gets rewritten.
+**Note.** `git log --follow` does not cross the subtree boundary. Pre-merge
+builder history is reached from the merge's second parent:
+`git log 8008b92^2 -- <path/inside/the/old/repo>`.
+
+#### Ignore rules split by product
+**What.** The root `.gitignore` now carries only universal patterns; product
+-specific rules live in `apps/<product>/.gitignore`.
+**Why.** Not tidiness. Ignore patterns match relative to the file declaring
+them, so a root pattern reaches into every product that will ever exist. The
+builder's `.gitignore` carries a bare `test` pattern — at the root it would
+have untracked the ERP's entire 293-test suite silently, with no error and no
+diff.
+**Files.** `.gitignore`, `apps/erp/.gitignore` (new), `.dockerignore` (new, root).
+**Risk.** This class of mistake is invisible until something is missing.
+
+#### A tracked secrets file was carried in, and untracked
+**What.** `apps/website-builder/.env` was **tracked** in the source repository —
+committed before the `.env*` rule was added, and git keeps tracking what it
+already tracks — so the import brought a live `DATABASE_URL` and `AUTH_SECRET`
+into this repository as a tracked file. It is now untracked and ignored; the
+file remains on disk so the app still runs.
+**Why.** A credential in version control is a credential that has to be assumed
+compromised.
+**Migration.** None in code. **Action required:** the values appear in 8 commits
+of imported history and must be **rotated** — untracking stops further exposure
+but does not remove what is already recorded. Whether to scrub the imported
+history is a separate decision; it is only worthwhile if those commits never
+reached another remote.
+**Risk.** High until rotated.
+
+#### Install-script policy became platform-wide
+**What.** `allowScripts` moved to the root manifest and now names every package
+that does real install-time work.
+**Why.** npm honours `allowScripts` only at the workspace root and merely warns
+when it appears inside a workspace. The ERP's existing `better-sqlite3` entry
+therefore silently subjected **every other product** to script approval. Prisma's
+client generation was blocked by exactly this, and the first build in the
+workspace failed at "Collecting page data" with `@prisma/client did not
+initialize yet`.
+**Files.** `package.json`, `apps/erp/package.json`.
+**Risk.** `@parcel/watcher` and `es5-ext` are deliberately left unapproved.
+
+#### The Prisma client is no longer an install side-effect
+**What.** `prebuild` and `predev` run `prisma generate` explicitly.
+**Why.** The client used to appear as a side-effect of `@prisma/client`'s
+postinstall. In a workspace that postinstall is subject to root script policy
+and to hoisting, so the client could silently not exist. Generating it from the
+build makes it depend on the build.
+**Files.** `apps/website-builder/package.json`.
+
+#### Docker rebuilt for a workspace build context
+**What.** The build context is now the repository root. `npm ci` is filtered to
+the one workspace; the standalone output paths moved; the entrypoint `cd`s into
+the product; `railway.json` and `.dockerignore` moved to the root; the pinned
+npm version was corrected from 10.9.4 to 11.16.0.
+**Why.** The lockfile now lives at the root, so a build with the product
+directory as context has nothing to install from. The standalone bundle also
+changed shape — verified against a real build, the server is now at
+`.next/standalone/apps/website-builder/server.js`, one level deeper than the
+old `COPY` and the old `exec node server.js` expected. The npm pin had inverted:
+the lockfile is regenerated by npm 11, and 10.9.4 is precisely the version that
+cannot read it — the same failure the original comment documented, with the
+sides swapped.
+**Files.** `apps/website-builder/Dockerfile`, `apps/website-builder/docker-entrypoint.sh`,
+`apps/website-builder/next.config.ts`, `railway.json` (moved to root),
+`.dockerignore` (moved to root), `apps/website-builder/package-lock.json` (deleted,
+superseded by the root lockfile).
+**Risk.** **Unverified — Docker is not installed on the development machine.**
+Every `COPY` source was checked to resolve from the new context, the standalone
+layout was confirmed against a real build, and `npm ci --workspace
+@landingos/website-builder --include-workspace-root` was run locally (lockfile
+validates; `better-sqlite3` correctly excluded; `next` present). The image
+itself has not been built. Confirm before the next deploy with:
+`docker build -f apps/website-builder/Dockerfile -t landingos-builder .`
+
+#### `outputFileTracingRoot` pinned
+**What.** `next.config.ts` names the workspace root explicitly.
+**Why.** Next infers it from lockfile position, and that inference decides the
+*shape* of `.next/standalone`. Since the Dockerfile and entrypoint hard-code
+that shape, a silent change in inference relocates the server and the container
+starts failing with `MODULE_NOT_FOUND`.
+
+#### `packages/product-registry` — the product-module contract
+**What.** A new package defining what a product *is*: id, i18n name keys, icon,
+base path, billing entitlement, declared permissions, navigation, and status.
+The registry validates manifests at construction and answers the questions the
+shell, the router and billing each need — without any of them knowing which
+products exist. Ships with 35 tests.
+**Why.** The approved architecture put `builder/` and `erp/` in the shell as
+first-class directories, which hardcodes exactly the two-product assumption the
+platform must not make. A product is now a manifest the shell discovers, not a
+folder it knows about. The decisive test registers a product that does not
+exist (`email-marketing`) and asserts routing, entitlement and navigation all
+work with **no platform code changed**; another asserts all 8 combinations of
+three products resolve correctly, including none and all.
+**Files.** `packages/product-registry/**` (new).
+**Migration.** None. Consumed by nobody in 3.1 — this is the foundation Phase
+4's shell reads.
+**Risk.** None; it is additive and isolated. Authored in TypeScript with no
+build step: Node 24 strips types natively so `node --test` runs the suite
+directly, and Next transpiles workspace packages, so both consumers read source.
+
+#### The ERP test script was broken by Node 24
+**What.** `node --test test/` → `node --test "test/*.test.js"`.
+**Why.** Node 24 no longer resolves a bare directory there and exits
+`MODULE_NOT_FOUND`, so `npm test` failed while every test in it passed. Every
+milestone gate in this phase depends on that command.
+**Files.** `apps/erp/package.json`.
+
+#### Verification
+- ERP — **293 tests, 292 pass, 1 skipped, 0 failures**, unchanged from baseline.
+- product-registry — **35 tests, 35 pass**.
+- website-builder — `next build` compiles and generates all 34 pages.
+- ERP boots from `apps/erp`, serves `/app` and `/agent`, and still returns 401
+  on unauthenticated API calls.
+- website-builder boots and serves `/login` (200). `/api/health` reports
+  `Database unreachable` — its own graceful DB-down path, not a crash. The
+  configured Neon instance is not reachable from this machine and `.env` was
+  never modified, so this is environmental; it is the one item not fully
+  verified end to end.
+
+#### Known issue carried forward
+**What.** `apps/erp/test/indexes.test.js` is load-sensitive: it boots a WAL-mode
+SQLite server, stops it, and immediately reopens the file, while
+`test/helpers.js:142` SIGKILLs the child after 3s. Under the CPU contention of
+parallel test files that timeout becomes reachable, leaving an unrecovered
+`-wal` and a `SQLITE_ERROR` on reopen.
+**Measured.** 4/4 passes in isolation; failed once in roughly four full-suite
+runs. **Pre-existing — not caused by the move.**
+**Why it matters.** The suite is the gate for every milestone in this phase, and
+a gate that fails intermittently cannot distinguish a real regression from
+noise. Should be fixed before 3.2 leans on it further.
 
 ---
 

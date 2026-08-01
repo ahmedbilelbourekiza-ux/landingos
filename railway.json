@@ -1,0 +1,15 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "//": "At the workspace root because the Docker build context must be the workspace root — the lockfile lives here now. The service's root directory must be the repository root, NOT apps/website-builder; pointing it at the product directory leaves npm ci with no lockfile to install from.",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "apps/website-builder/Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "/app/docker-entrypoint.sh",
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 60,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3
+  }
+}

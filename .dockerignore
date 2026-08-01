@@ -1,0 +1,43 @@
+# Workspace-root .dockerignore.
+#
+# It lives here rather than in the product directory because the build context
+# is now the workspace root:
+#   docker build -f apps/website-builder/Dockerfile -t landingos-builder .
+# Docker only ever reads the .dockerignore at the context root, so a file left
+# inside apps/website-builder/ would be silently ignored and every excluded
+# path would ship in the image.
+
+# Build artifacts — regenerated inside the image
+**/.next
+.git
+**/.gitignore
+
+# Local deps + data — never bake these into the image
+**/node_modules
+**/db/*.db
+**/db/*.db-journal
+**/data
+
+# ERP runtime database, in every form it takes
+**/crm.db
+**/crm.db-wal
+**/crm.db-shm
+
+# Local dev files
+**/.env
+**/.env.local
+**/*.log
+**/dev-out.log
+**/dev-err.log
+
+# OS / editor noise
+**/.DS_Store
+**/Thumbs.db
+**/.vscode
+**/.idea
+
+# Local-only tooling that shouldn't ship
+**/.local-preview
+**/.zscripts
+**/bun.lock
+**/.claude

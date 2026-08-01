@@ -1,7 +1,17 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Pin the tracing root to the workspace root rather than letting Next infer
+  // it. Inference works today, but it is a heuristic over lockfile location —
+  // and it decides the SHAPE of .next/standalone: with a workspace root the
+  // server lands at standalone/apps/website-builder/server.js with node_modules
+  // hoisted beside it, without one it lands at standalone/server.js. The
+  // Dockerfile and the entrypoint both hard-code that path, so an inference
+  // that changes silently relocates the server and the container starts
+  // failing with MODULE_NOT_FOUND.
+  outputFileTracingRoot: path.join(import.meta.dirname, "../../"),
   /* config options here */
   typescript: {
     ignoreBuildErrors: true,

@@ -84,6 +84,13 @@ else
   echo "    without a persistent disk, uploaded images WILL be lost on restart."
 fi
 
+# The image now holds a workspace, so /app is the workspace root and this
+# product lives one level down. Everything from here on — the schema push, both
+# seeds, and the server itself — resolves relative to the product, so we move
+# there once rather than prefixing four commands. node_modules stays resolvable
+# because Node walks up from the working directory and finds /app/node_modules.
+cd /app/apps/website-builder
+
 # 2. Push schema (idempotent — only creates/alters tables, never drops data).
 echo "=== Applying database schema ==="
 npx prisma db push --skip-generate --accept-data-loss=false

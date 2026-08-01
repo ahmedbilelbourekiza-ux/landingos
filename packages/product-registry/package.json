@@ -1,0 +1,18 @@
+{
+  "name": "@landingos/product-registry",
+  "version": "1.0.0",
+  "description": "The product-module contract. Lets the platform mount any number of products without knowing which exist.",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "//no-build-step": "Authored in TypeScript and published as TypeScript. Node 24 strips types natively so `node --test` runs the suite directly, and Next transpiles workspace packages, so both consumers read the source. A build step here would buy nothing and add a stale-dist failure mode.",
+  "scripts": {
+    "test": "node --test \"test/*.test.ts\""
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}
