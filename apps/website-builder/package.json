@@ -1,10 +1,13 @@
 {
-  "name": "nextjs_tailwind_shadcn_ts",
+  "name": "@landingos/website-builder",
   "version": "0.2.0",
   "private": true,
+  "//prisma-generate": "prebuild/predev are deliberate. The Prisma client used to appear as a side-effect of @prisma/client's postinstall; in the workspace that postinstall is subject to the root allowScripts policy (which exists because the ERP needs better-sqlite3's install script), so an unapproved or reordered install leaves no client and the build dies at 'Collecting page data' with '@prisma/client did not initialize yet'. Generating from an explicit script makes the client depend on the build, not on install-script policy or on where npm hoists the package.",
   "scripts": {
     "dev": "next dev --webpack -p 3000",
+    "predev": "prisma generate",
     "build": "next build",
+    "prebuild": "prisma generate",
     "start": "next start -p 3000",
     "lint": "eslint .",
     "db:push": "prisma db push",

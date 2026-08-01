@@ -20,8 +20,15 @@
   "engines": {
     "node": ">=20"
   },
-  "//allowScripts": "npm ignores allowScripts declared inside a workspace and warns about it — it is only honoured at the workspace root. better-sqlite3 needs its install script to fetch (or build) the native binding, so leaving this in apps/erp/package.json would break a clean install with no error until the first require().",
+  "//allowScripts": "npm ignores allowScripts declared inside a workspace and warns about it — it is only honoured at the workspace root, so install-script policy is now platform-wide rather than per-product. Every entry below is a package that does real work at install time: a native binding, a downloaded engine, or a generated client. A package that merely wants a postinstall is deliberately NOT listed.",
   "allowScripts": {
-    "better-sqlite3@12.11.1": true
+    "better-sqlite3@12.11.1": true,
+    "prisma@6.19.3": true,
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "sharp@0.34.5": true,
+    "esbuild@0.28.1": true,
+    "@swc/core@1.15.47": true,
+    "unrs-resolver@1.12.2": true
   }
 }
