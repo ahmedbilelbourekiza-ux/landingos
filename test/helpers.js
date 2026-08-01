@@ -15,12 +15,19 @@ const crypto = require('node:crypto');
 
 const ROOT = path.join(__dirname, '..');
 
+/* Every test server bootstraps this manager, and startServer() signs in as it
+ * before returning — so a test that is not ABOUT authentication does not have
+ * to think about it, while tests that are can use { noCookies: true } to make
+ * an anonymous call. */
+const ADMIN = { name: 'boss', password: 'supersecret123' };
+
 /**
  * Start a server instance on its own port and database.
- * @param {Object} env  extra environment variables for this instance
+ * @param {Object} env   extra environment variables for this instance
+ * @param {Object} opts  { autoLogin }  set autoLogin:false to stay anonymous
  * @returns {Promise<{base:string, stop:Function, logs:Function, api:Function}>}
  */
-async function startServer(env = {}) {
+async function startServer(env = {}, opts = {}) {
   const port = 3000 + Math.floor(Math.random() * 20000);
   const dbPath = path.join(
     fs.mkdtempSync(path.join(os.tmpdir(), 'crm-test-')),
@@ -34,6 +41,8 @@ async function startServer(env = {}) {
       PORT: String(port),
       CRM_DB_PATH: dbPath,
       NODE_ENV: 'test',
+      ADMIN_USERNAME: ADMIN.name,
+      ADMIN_PASSWORD: ADMIN.password,
       ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -84,9 +93,35 @@ async function startServer(env = {}) {
     return { status: r.status, body: parsed, headers: r.headers };
   }
 
+  /** Sign in and keep the session cookie in this instance's jar. */
+  async function login(name = ADMIN.name, password = ADMIN.password) {
+    const r = await api('POST', '/api/auth/login', { name, password });
+    if (r.status !== 200) throw new Error(`login failed for ${name}: ${r.status} ${JSON.stringify(r.body)}`);
+    return r.body;
+  }
+
+  /** A caller bound to a different account, with its own bearer token. */
+  async function as(name, password) {
+    const r = await api('POST', '/api/auth/login', { name, password }, { noCookies: true });
+    if (r.status !== 200) throw new Error(`login failed for ${name}: ${r.status} ${JSON.stringify(r.body)}`);
+    const token = r.body.token;
+    return {
+      user: r.body.user,
+      token,
+      api: (method, urlPath, body, o = {}) => api(method, urlPath, body, {
+        ...o, noCookies: true, headers: { ...(o.headers || {}), Authorization: `Bearer ${token}` },
+      }),
+    };
+  }
+
+  if (opts.autoLogin !== false) await login();
+
   return {
     base,
     api,
+    login,
+    as,
+    admin: ADMIN,
     jar,
     logs: () => output,
     dbPath,

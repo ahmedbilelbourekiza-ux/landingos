@@ -62,16 +62,134 @@ const conversations = require('./lib/ai/conversations');
 const jobs = require('./lib/jobs');
 const inventory = require('./lib/inventory');
 const followup = require('./lib/followup');
+const auth = require('./lib/auth');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SHOPIFY_SECRET = process.env.SHOPIFY_SECRET || '';
 
-app.use(cors());
+/* =============================================================================
+ * CORS (audit SEC-01).
+ *
+ * This was `app.use(cors())` — every origin allowed, on an API that had no
+ * authentication, which made the whole dataset readable from any web page the
+ * user happened to visit.
+ *
+ * The clients are now served by this same app (see express.static below), so
+ * the normal case is same-origin and needs no CORS at all. ALLOWED_ORIGINS
+ * exists for the separately-hosted copy during the switchover: a comma-
+ * separated allowlist, e.g.
+ *     ALLOWED_ORIGINS=https://mycrm.netlify.app,https://admin.example.com
+ * Credentials are enabled so the session cookie travels, which is precisely why
+ * the allowlist can never be `*` — browsers reject that combination anyway.
+ * ========================================================================== */
+const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
+const CROSS_SITE = ALLOWED_ORIGINS.length > 0;
+
+app.use(cors({
+  credentials: true,
+  origin(origin, cb) {
+    // Same-origin and non-browser callers (curl, carrier webhooks, the mobile
+    // PWA's service worker) send no Origin header at all — those are not CORS
+    // requests and must not be rejected here.
+    if (!origin) return cb(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    return cb(null, false);   // no CORS headers => the browser blocks it
+  },
+}));
+
 app.use('/webhook/shopify', express.raw({ type: 'application/json' }));
 // Default 100KB limit is far too small for variant images, which are stored
 // as base64 data URLs and can be several MB each.
 app.use(express.json({ limit: '25mb' }));
+
+// Resolve the caller's session (if any) before any route runs. Never rejects.
+app.use(auth.attachUser);
+
+/* =============================================================================
+ * API GATE (audit SEC-01) — everything under /api requires a session unless it
+ * is explicitly listed as public.
+ *
+ * Registered here, ahead of every route, so protection does not depend on the
+ * order routes happen to be declared in: a route added later is covered the
+ * moment it exists rather than only if somebody remembers to guard it.
+ * Deny-by-default is the whole point — the previous state was 117 open routes.
+ *
+ * Webhooks live under /webhook, not /api, and authenticate by HMAC signature
+ * instead (see SEC-04).
+ * ========================================================================== */
+const PUBLIC_API_PATHS = new Set([
+  '/auth/login',              // the way in
+  '/auth/logout',             // must work even with an already-invalid session
+  '/auth/me',                 // answers 401 itself so clients can probe cheaply
+  '/push/vapid-public-key',   // a public key by definition; the PWA needs it pre-login
+  '/statuses',                // static vocabulary, no business data
+  '/delivery/statuses',       // ditto
+]);
+
+app.use('/api', (req, res, next) => {
+  if (PUBLIC_API_PATHS.has(req.path)) return next();
+  return auth.requireAuth(req, res, next);
+});
+
+/* =============================================================================
+ * AUTHORIZATION (audit SEC-01) — which signed-in accounts may do what.
+ *
+ * Expressed as one table rather than a `requireManager` argument scattered over
+ * forty route declarations: the whole privilege model is reviewable in one
+ * screen, and a route cannot quietly disagree with the policy because the
+ * policy IS the enforcement.
+ *
+ * Paths are matched RELATIVE to /api. Anything not listed is available to any
+ * authenticated account — that is correct here because the gate above has
+ * already established there IS an account; this table only separates
+ * manager work (configuration, staff, money, destructive bulk actions) from
+ * agent work (their own orders, calls, follow-ups).
+ * ========================================================================== */
+const MANAGER_ONLY = [
+  // Staff administration and anything payroll-shaped.
+  [/^\/agents(\/|$)/, ['GET', 'POST', 'PUT', 'DELETE']],
+
+  // Platform configuration. Reading the carrier/store list stays open because
+  // an agent picks a carrier when creating a shipment.
+  [/^\/settings$/, ['PUT']],
+  [/^\/providers(\/|$)/, ['POST', 'PUT', 'DELETE']],
+  [/^\/stores(\/|$)/, ['POST', 'PUT', 'DELETE']],
+
+  // AI configuration (provider keys, agent prompts and permissions).
+  // /ai/agents/enabled is deliberately excluded below — the agent PWA needs it.
+  [/^\/ai\/providers(\/|$)/, ['GET', 'POST', 'PUT', 'DELETE']],
+  [/^\/ai\/agents(\/|$)/, ['POST', 'PUT', 'DELETE']],
+
+  // Money.
+  [/^\/financial-records(\/|$)/, ['GET', 'POST', 'PUT', 'DELETE']],
+  [/^\/unexpected-charges(\/|$)/, ['GET', 'POST', 'PUT', 'DELETE']],
+
+  // Catalogue and stock are managed, not edited by confirmation agents.
+  [/^\/products(\/|$)/, ['POST', 'PUT', 'DELETE']],
+
+  // Destructive or fleet-wide actions.
+  [/^\/orders\/bulk$/, ['POST']],
+  [/^\/orders\/[^/]+$/, ['DELETE']],
+  [/^\/clients\/import/, ['POST']],
+];
+
+/** Exceptions that outrank the table above. */
+const MANAGER_EXEMPT = [
+  [/^\/ai\/agents\/enabled$/, ['GET']],   // the agent PWA lists assistants it may use
+];
+
+function isManagerOnly(method, path) {
+  if (MANAGER_EXEMPT.some(([re, methods]) => re.test(path) && methods.includes(method))) return false;
+  return MANAGER_ONLY.some(([re, methods]) => re.test(path) && methods.includes(method));
+}
+
+app.use('/api', (req, res, next) => {
+  if (!isManagerOnly(req.method, req.path)) return next();
+  return auth.requireManager(req, res, next);
+});
 
 /* ---------------------------------------------------------------------------
  * Canonical status / call-result sets.
@@ -96,15 +214,52 @@ function log(level, scope, msg, extra) {
 const logInfo  = (scope, msg, extra) => log('info',  scope, msg, extra);
 const logError = (scope, msg, extra) => log('error', scope, msg, extra);
 
-// ---- SSE ----
-const sseClients = new Map();
+/* ---- SSE (audit ARCH-01) ----
+ * A Map of channel -> SET of writers, not channel -> single writer.
+ *
+ * Previously one connection per name was kept, so a second browser tab evicted
+ * the first, and `req.on('close')` deleted the entry regardless of WHICH
+ * connection had closed — meaning closing either tab killed live updates for
+ * both. Two managers on the dashboard, or one agent on phone and laptop, was a
+ * broken state. Each connection now owns its own entry and removes only itself.
+ */
+const sseClients = new Map();   // channel -> Set<send>
+
+function addSseClient(channel, send) {
+  if (!sseClients.has(channel)) sseClients.set(channel, new Set());
+  const set = sseClients.get(channel);
+  set.add(send);
+  return function unsubscribe() {
+    set.delete(send);
+    if (set.size === 0) sseClients.delete(channel);
+  };
+}
+
+function sendToChannel(channel, msg) {
+  const set = sseClients.get(channel);
+  if (set) for (const send of set) send(msg);
+}
+
+/**
+ * Publish an event.
+ * @param {Object} payload  MUST be an object carrying a `type` — clients switch
+ *                          on payload.type. Passing the event name as a first
+ *                          string argument was audit BUG-04.
+ * @param {string|null} target  agent channel, or null to reach everyone.
+ */
 function broadcast(payload, target = null) {
+  if (typeof payload !== 'object' || payload === null) {
+    // Loud rather than silent: the previous signature bug produced a bare
+    // string frame that clients parsed and then quietly ignored.
+    logError('sse', 'broadcast() called with a non-object payload — event dropped', { payload: String(payload) });
+    return;
+  }
   const msg = `data: ${JSON.stringify(payload)}\n\n`;
   if (target) {
-    if (sseClients.has(target)) sseClients.get(target)(msg);
-    if (sseClients.has('manager')) sseClients.get('manager')(msg);
+    sendToChannel(target, msg);
+    if (target !== 'manager') sendToChannel('manager', msg);   // managers see everything
   } else {
-    sseClients.forEach(fn => fn(msg));
+    for (const set of sseClients.values()) for (const send of set) send(msg);
   }
 }
 // Notifications module shares this broadcast fn so stored notifs also push live.
@@ -127,6 +282,25 @@ try {
 } catch (e) {
   logError('db', 'delivery-outcome backfill failed (continuing)', { err: e.message });
 }
+
+/* ---- Authentication bootstrap (audit SEC-02) ----
+ * Rewrites every legacy plaintext password as a scrypt hash, then makes sure a
+ * manager account exists so the console is reachable. Both are idempotent. */
+try {
+  auth.migratePlaintextPasswords(log);
+  auth.ensureManagerAccount(log);
+} catch (e) {
+  logError('auth', 'authentication bootstrap failed', { err: e.message, stack: e.stack });
+}
+
+// Expired sessions are pruned hourly; the row is only a revocation record, so
+// letting them accumulate serves no purpose.
+setInterval(() => {
+  try {
+    const n = db.deleteExpiredSessions();
+    if (n) logInfo('auth', 'pruned expired sessions', { count: n });
+  } catch (e) { logError('auth', 'session prune failed', { err: e.message }); }
+}, 60 * 60 * 1000);
 jobs.start(broadcast, log);
 
 // Overdue-order reassignment/accountability sweep (spec §4-§7). Runs every
@@ -476,22 +650,153 @@ function runOverdueSweep() {
   }
 }
 
+/* =============================================================================
+ * AUTHENTICATION (audit SEC-01, SEC-02).
+ *
+ * There was previously no login endpoint anywhere in this codebase. The agent
+ * PWA fetched GET /api/agents — which returned every password in cleartext —
+ * and compared the password in the browser; the manager console had no login at
+ * all. Both are now real server-side sessions.
+ * ========================================================================== */
+const cookieOpts = () => ({ crossSite: CROSS_SITE, secure: process.env.NODE_ENV === 'production' });
+
+/** Deliberately uniform failure: never reveal whether the account exists. */
+const BAD_CREDENTIALS = { error: 'Incorrect name or password', code: 'BAD_CREDENTIALS' };
+
+app.post('/api/auth/login', (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const password = String(req.body?.password ?? req.body?.pass ?? '');
+  if (!name) return res.status(400).json({ error: 'name required' });
+
+  const account = db.getAgentRaw(name);
+  if (!account) {
+    // Spend comparable time on a miss so response timing does not enumerate
+    // valid account names.
+    auth.verifyPassword(password, auth.hashPassword('decoy'));
+    logError('auth', 'login failed — unknown account', { name });
+    return res.status(401).json(BAD_CREDENTIALS);
+  }
+  if (!auth.verifyPassword(password, account.pass)) {
+    logError('auth', 'login failed — wrong password', { name });
+    return res.status(401).json(BAD_CREDENTIALS);
+  }
+  if (account.suspended) {
+    logInfo('auth', 'login refused — account suspended', { name });
+    return res.status(403).json({ error: 'This account is suspended. Please contact your manager.', code: 'SUSPENDED' });
+  }
+
+  const token = auth.createSession(name, {
+    userAgent: req.headers['user-agent'], ip: req.ip,
+  });
+  db.audit('agent', name, 'login', name, {});
+  res.setHeader('Set-Cookie', auth.buildSessionCookie(token, cookieOpts()));
+  logInfo('auth', 'login', { name, accountRole: account.accountRole || 'agent' });
+  res.json({
+    ok: true,
+    // Returned as well as set as a cookie so a non-browser client, or a client
+    // on an origin where third-party cookies are blocked, can use the Bearer
+    // header instead.
+    token,
+    user: {
+      name: account.name,
+      role: account.role || 'confirmation',
+      accountRole: account.accountRole || 'agent',
+      isManager: (account.accountRole || 'agent') === 'manager',
+    },
+  });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  auth.destroySession(auth.tokenFromRequest(req));
+  res.setHeader('Set-Cookie', auth.buildClearCookie(cookieOpts()));
+  res.json({ ok: true });
+});
+
+/** Who am I? Used by both clients on boot to decide login screen vs app. */
+app.get('/api/auth/me', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Not signed in', code: 'UNAUTHENTICATED' });
+  res.json({ ok: true, user: req.user });
+});
+
+/** Change your own password. Requires the current one — a stolen session alone
+ *  must not be enough to take over the account permanently. */
+app.post('/api/auth/change-password', auth.requireAuth, (req, res) => {
+  const current = String(req.body?.currentPassword ?? '');
+  const next = String(req.body?.newPassword ?? '');
+  if (next.length < 6) return res.status(400).json({ error: 'The new password must be at least 6 characters', code: 'WEAK_PASSWORD' });
+
+  const account = db.getAgentRaw(req.user.name);
+  if (!account || !auth.verifyPassword(current, account.pass)) {
+    return res.status(401).json({ error: 'Current password is incorrect', code: 'BAD_CREDENTIALS' });
+  }
+  db.setAgentPasswordHash(req.user.name, auth.hashPassword(next), true);
+  db.audit('agent', req.user.name, 'change_password', req.user.name, {});
+
+  // Every other session for this account is dropped, then a fresh one issued —
+  // changing your password is how you evict someone who already has access.
+  auth.destroySessionsFor(req.user.name);
+  const token = auth.createSession(req.user.name, { userAgent: req.headers['user-agent'], ip: req.ip });
+  res.setHeader('Set-Cookie', auth.buildSessionCookie(token, cookieOpts()));
+  res.json({ ok: true, token });
+});
+
+/** Manager-only: set another account's password (a forgotten-password reset). */
+app.post('/api/agents/:name/password', auth.requireManager, (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  const next = String(req.body?.newPassword ?? '');
+  if (!db.getAgentRaw(name)) return res.status(404).json({ error: 'Not found' });
+  if (next.length < 6) return res.status(400).json({ error: 'The new password must be at least 6 characters', code: 'WEAK_PASSWORD' });
+  db.setAgentPasswordHash(name, auth.hashPassword(next), true);
+  auth.destroySessionsFor(name);   // force them to sign in again
+  db.audit('agent', name, 'password_reset_by_manager', req.user.name, {});
+  res.json({ ok: true });
+});
+
+/** Manager-only: grant or revoke manager privilege. */
+app.put('/api/agents/:name/account-role', auth.requireManager, (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  const accountRole = req.body?.accountRole;
+  if (!['agent', 'manager'].includes(accountRole)) {
+    return res.status(400).json({ error: 'invalid accountRole', valid: ['agent', 'manager'] });
+  }
+  if (!db.getAgentRaw(name)) return res.status(404).json({ error: 'Not found' });
+  // Refuse to remove the last manager — that would lock everyone out of the
+  // console with no way back in short of editing the database by hand.
+  if (accountRole === 'agent' && db.countManagers() <= 1) {
+    return res.status(400).json({ error: 'This is the only manager account — promote someone else first', code: 'LAST_MANAGER' });
+  }
+  db.setAccountRole(name, accountRole);
+  db.audit('agent', name, 'set_account_role', req.user.name, { accountRole });
+  res.json({ ok: true, name, accountRole });
+});
+
 // ---- HEALTH ----
 app.get('/', (req, res) => res.json({ status: 'ok', message: 'CRM Server running', time: new Date().toISOString() }));
 app.get('/api/statuses', (req, res) => res.json({ order: ORDER_STATUSES, results: VALID_RESULTS }));
 
-// ---- SSE SUBSCRIBE ----
+/* ---- SSE SUBSCRIBE ----
+ * The subscriber identity now comes from the SESSION, not from `?agent=`
+ * (audit SEC-01/ARCH-01). Previously anyone could subscribe as "manager" and
+ * receive the live order feed — and because the client map held one writer per
+ * name, doing so also silently evicted the real manager's stream.
+ *
+ * A manager still sees everything; an agent sees only their own channel.
+ * EventSource cannot set an Authorization header, so lib/auth.js also accepts
+ * ?token= for exactly this route's benefit. */
 app.get('/api/notifications/subscribe', (req, res) => {
-  const agent = req.query.agent || 'manager';
+  const channel = req.user.isManager ? 'manager' : req.user.name;
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('X-Accel-Buffering', 'no');   // stop reverse proxies buffering the stream
   res.flushHeaders();
-  const send = (msg) => { try { res.write(msg); } catch (e) { logError('sse', 'write failed', { agent, err: e.message }); } };
-  send(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
-  sseClients.set(agent, send);
-  req.on('close', () => sseClients.delete(agent));
+  const send = (msg) => { try { res.write(msg); } catch (e) { logError('sse', 'write failed', { channel, err: e.message }); } };
+  send(`data: ${JSON.stringify({ type: 'connected', channel })}\n\n`);
+
+  const unsubscribe = addSseClient(channel, send);
+  // Keep-alive comment frame: proxies and mobile networks drop idle connections.
+  const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* gone */ } }, 25000);
+  req.on('close', () => { clearInterval(ping); unsubscribe(); });
 });
 
 // ---- SHOPIFY WEBHOOK ----
@@ -1284,7 +1589,11 @@ app.post('/api/agents', (req, res) => {
   if (!name) return res.status(400).json({ error: 'name required' });
   if (db.getAgents().find(a => a.name === name)) return res.status(400).json({ error: 'Exists' });
   const validRoles = ['confirmation', 'followup', 'both'];
-  db.addAgent(name, pass || '', validRoles.includes(role) ? role : 'confirmation');
+  // Hashed here, never stored as given (audit SEC-02). An empty password is
+  // still accepted so a manager can create the account first and set the
+  // password after — hasPassword:false makes that state visible in the UI.
+  db.addAgent(name, auth.hashPassword(pass || ''), validRoles.includes(role) ? role : 'confirmation',
+    { hasPassword: !!pass });
   if (baseSalaryMonthly !== undefined || payPerConfirmedOrder !== undefined || payPerDeliveredOrder !== undefined) {
     db.patchAgent(name, { baseSalaryMonthly, payPerConfirmedOrder, payPerDeliveredOrder });
   }
@@ -1338,9 +1647,23 @@ app.post('/api/agents/:name/reset-missed', (req, res) => {
 // no separate mechanism needed.
 app.post('/api/agents/:name/suspend', (req, res) => {
   const name = decodeURIComponent(req.params.name);
-  if (!db.getAgents().find(a => a.name === name)) return res.status(404).json({ error: 'Not found' });
+  const target = db.getAgents().find(a => a.name === name);
+  if (!target) return res.status(404).json({ error: 'Not found' });
+  // Two lock-yourself-out guards. Suspension now genuinely blocks access
+  // (before authentication existed it only affected auto-assign), so
+  // suspending yourself — or the last account that can lift a suspension —
+  // would leave nobody able to undo it without editing the database by hand.
+  if (name === req.user.name) {
+    return res.status(400).json({ error: 'You cannot suspend your own account', code: 'SELF_SUSPEND' });
+  }
+  if (target.accountRole === 'manager' && db.countManagers() <= 1) {
+    return res.status(400).json({ error: 'This is the only manager account — promote someone else first', code: 'LAST_MANAGER' });
+  }
   db.suspendAgent(name);
-  db.audit('agent', name, 'manual_suspend', req.body?.actor || 'admin', {});
+  // Revoke live sessions too, or a suspended agent keeps working until their
+  // cookie happens to expire.
+  auth.destroySessionsFor(name);
+  db.audit('agent', name, 'manual_suspend', req.user.name, {});
   broadcast({ type: 'agent_suspended', agent: name }, 'manager');
   res.json({ message: 'suspended', agent: db.getAgents().find(a => a.name === name) });
 });
@@ -2802,4 +3125,56 @@ app.put('/api/stores/:id/default-carrier', (req, res) => {
   res.json({ ok: true, storeId: req.params.id, carrier: map[req.params.id] });
 });
 
-app.listen(PORT, () => logInfo('server', `CRM Server listening on port ${PORT}`));
+/* =============================================================================
+ * STATIC CLIENTS.
+ *
+ * The API previously served no HTML at all — the manager console and agent PWA
+ * were hosted elsewhere and pointed at this origin, which forced open CORS and
+ * made cookie-based sessions awkward. Serving them here makes the normal case
+ * same-origin: the session cookie just works, CORS stops applying, and there is
+ * one artefact to deploy.
+ *
+ * Registered LAST so it can never shadow an API or webhook route. The
+ * separately-hosted copy keeps working via ALLOWED_ORIGINS during the
+ * switchover.
+ * ========================================================================== */
+app.use(express.static(path.join(__dirname), {
+  index: false,          // '/' stays the JSON health check
+  extensions: ['html'],
+  setHeaders(res, filePath) {
+    // The service worker must never be cached, or an old one pins the app.
+    if (filePath.endsWith('service-worker.js')) res.setHeader('Cache-Control', 'no-cache');
+  },
+}));
+
+// Convenience entry points.
+app.get('/app', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/agent', (req, res) => res.sendFile(path.join(__dirname, 'agent.html')));
+
+/* JSON 404 for unmatched API/webhook paths — previously these fell through to
+ * Express's default HTML error page. */
+app.use('/api', (req, res) => res.status(404).json({ error: 'Not found', path: req.originalUrl }));
+app.use('/webhook', (req, res) => res.status(404).json({ error: 'Not found', path: req.originalUrl }));
+
+/* =============================================================================
+ * GLOBAL ERROR HANDLER.
+ * There was none, so an unhandled throw in any synchronous handler returned
+ * Express's default HTML page — including a full stack trace to the client.
+ * ========================================================================== */
+app.use((err, req, res, next) => {
+  logError('http', 'unhandled error', { method: req.method, url: req.originalUrl, err: err.message, stack: err.stack });
+  if (res.headersSent) return next(err);
+  // Body-parser rejects oversized or malformed payloads with a status already set.
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({
+    error: status === 500 ? 'Internal server error' : (err.message || 'Request failed'),
+    code: err.code || undefined,
+  });
+});
+
+app.listen(PORT, () => {
+  logInfo('server', `CRM Server listening on port ${PORT}`);
+  logInfo('server', 'clients served at /app (manager) and /agent (confirmation agent)');
+  if (CROSS_SITE) logInfo('server', 'CORS allowlist active', { origins: ALLOWED_ORIGINS });
+  else logInfo('server', 'CORS: same-origin only (set ALLOWED_ORIGINS to permit a separately-hosted frontend)');
+});

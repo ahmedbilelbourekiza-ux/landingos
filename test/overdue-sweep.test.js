@@ -41,6 +41,20 @@ async function seedOverdueOrder(agentName, opts = {}) {
   return order;
 }
 
+
+/* Suspend every agent EXCEPT the signed-in manager, so reassignment has a
+ * deterministic candidate pool. Suspending the manager would revoke this
+ * test's own session — which the server now refuses outright. */
+async function parkOtherAgents() {
+  const { body } = await srv.api('GET', '/api/agents');
+  const others = body.filter((a) => a.name !== srv.admin.name && !a.suspended);
+  for (const a of others) await srv.api('POST', `/api/agents/${encodeURIComponent(a.name)}/suspend`);
+  return others;
+}
+async function unparkAgents(list) {
+  for (const a of list) await srv.api('POST', `/api/agents/${encodeURIComponent(a.name)}/reactivate`);
+}
+
 const agentByName = async (name) =>
   (await srv.api('GET', '/api/agents')).body.find((a) => a.name === name);
 
@@ -119,12 +133,19 @@ describe('overdue sweep (BUG-01)', () => {
 });
 
 describe('overdue sweep — reassignment and suspension', () => {
+  // The bootstrapped manager is created with role 'both', so it is itself an
+  // eligible confirmation agent and would compete for reassigned orders. It
+  // cannot be suspended (it is the only manager, and the server refuses), so
+  // move it out of the confirmation pool by role instead.
+  before(async () => {
+    await srv.api('PUT', `/api/agents/${encodeURIComponent(srv.admin.name)}/role`, { role: 'followup' });
+  });
+
   test('with autoReassign on, the order moves to another eligible agent', async () => {
     // Earlier tests leave eligible agents behind, and reassignment picks the
     // least-loaded of ALL candidates — so park them first to make the target
     // deterministic.
-    const { body: existing } = await srv.api('GET', '/api/agents');
-    for (const a of existing) await srv.api('POST', `/api/agents/${encodeURIComponent(a.name)}/suspend`);
+    const existing = await parkOtherAgents();
 
     await srv.api('PUT', '/api/settings', { autoReassign: true });
     const from = 'From ' + uid();
@@ -143,12 +164,11 @@ describe('overdue sweep — reassignment and suspension', () => {
     assert.equal(moved.overdueFlaggedAt, null, 'the flag is cleared so the new agent gets a fresh clock');
 
     await srv.api('PUT', '/api/settings', { autoReassign: false });
-    for (const a of existing) await srv.api('POST', `/api/agents/${encodeURIComponent(a.name)}/reactivate`);
+    await unparkAgents(existing);
   });
 
   test('an agent on their weekly day off is never given a reassigned order', async () => {
-    const { body: existing } = await srv.api('GET', '/api/agents');
-    for (const a of existing) await srv.api('POST', `/api/agents/${encodeURIComponent(a.name)}/suspend`);
+    const existing = await parkOtherAgents();
 
     await srv.api('PUT', '/api/settings', { autoReassign: true });
     const from = 'DayOffFrom ' + uid();
@@ -168,15 +188,14 @@ describe('overdue sweep — reassignment and suspension', () => {
     assert.equal(result.agent, '', 'it goes to the unassigned queue, not to the agent who is off');
 
     await srv.api('PUT', '/api/settings', { autoReassign: false });
-    for (const a of existing) await srv.api('POST', `/api/agents/${encodeURIComponent(a.name)}/reactivate`);
+    await unparkAgents(existing);
   });
 
   test('with no eligible agent, the order lands in the unassigned queue', async () => {
     await srv.api('PUT', '/api/settings', { autoReassign: true });
     const lonely = 'Lonely ' + uid();
     // Suspend everyone else so no candidate remains.
-    const { body: all } = await srv.api('GET', '/api/agents');
-    for (const a of all) await srv.api('POST', `/api/agents/${encodeURIComponent(a.name)}/suspend`);
+    const all = await parkOtherAgents();
     const order = await seedOverdueOrder(lonely);
 
     const orphaned = await waitFor(async () => {
@@ -187,7 +206,7 @@ describe('overdue sweep — reassignment and suspension', () => {
 
     assert.ok(orphaned.overdueFlaggedAt, 'flagged, which is what distinguishes it from never-assigned');
     // Restore for later tests.
-    for (const a of all) await srv.api('POST', `/api/agents/${encodeURIComponent(a.name)}/reactivate`);
+    await unparkAgents(all);
     await srv.api('PUT', '/api/settings', { autoReassign: false });
   });
 

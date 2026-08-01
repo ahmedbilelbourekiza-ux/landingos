@@ -190,9 +190,15 @@ describe('SSE delivery events are well formed (BUG-04)', () => {
 
     // Subscribe as the manager before generating traffic.
     const streamDone = (async () => {
-      const res = await fetch(`${srv.base}/api/notifications/subscribe?agent=manager`, {
-        signal: controller.signal,
+      // EventSource cannot set headers, so the SSE route also accepts ?token=
+      // — the identity comes from the session either way, never from ?agent=.
+      const { body: session } = await srv.api('POST', '/api/auth/login', {
+        name: srv.admin.name, password: srv.admin.password,
       });
+      const res = await fetch(
+        `${srv.base}/api/notifications/subscribe?token=${encodeURIComponent(session.token)}`,
+        { signal: controller.signal }
+      );
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = '';
