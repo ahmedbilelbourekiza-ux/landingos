@@ -1,0 +1,6 @@
+# Keep line endings stable in the repository so diffs stay reviewable
+# regardless of which machine edits the files.
+* text=auto eol=lf
+
+*.png binary
+*.mp3 binary

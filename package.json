@@ -1,1 +1,25 @@
-{"name":"crm","version":"2.0.0","main":"index.js","dependencies":{"express":"^4.19.2","cors":"^2.8.5","better-sqlite3":"^11.3.0","web-push":"^3.6.7"}}
+{
+  "name": "crm",
+  "version": "2.0.0",
+  "description": "Cash-on-delivery ERP/CRM — order confirmation, delivery tracking, inventory and reporting.",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "node --test test/",
+    "smoke": "node test_smoke.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "web-push": "^3.6.7"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true
+  }
+}
