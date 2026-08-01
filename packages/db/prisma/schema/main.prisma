@@ -51,5 +51,17 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // Runtime, as landingos_app: NOBYPASSRLS and owner of nothing, so row-level
+  // security genuinely constrains it. Everything the application does goes
+  // through this connection.
   url      = env("DATABASE_URL")
+  // DDL, as neondb_owner, on Neon's direct (non-pooled) endpoint. Prisma
+  // Migrate and `db push` use directUrl when it is set.
+  //
+  // The split is the whole point of the two-role model: the app role
+  // deliberately cannot create, alter or drop a table, so migrations must
+  // arrive on a different connection. Without this, `db push` runs as the app
+  // role and fails with "must be owner of table" — which is the design
+  // working, not a misconfiguration.
+  directUrl = env("MIGRATE_DATABASE_URL")
 }
