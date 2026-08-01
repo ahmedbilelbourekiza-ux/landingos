@@ -82,10 +82,15 @@ async function startServer(env = {}, opts = {}) {
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(opts.timeout || 15000),
     });
-    for (const raw of (r.headers.getSetCookie?.() || [])) {
-      const [pair] = raw.split(';');
-      const idx = pair.indexOf('=');
-      if (idx > 0) jar.set(pair.slice(0, idx).trim(), pair.slice(idx + 1).trim());
+    // Only a cookie-carrying call may WRITE to the jar. Without this, signing
+    // in as a second account via as()/noCookies overwrote the shared session
+    // and silently downgraded every later call in the file.
+    if (!opts.noCookies) {
+      for (const raw of (r.headers.getSetCookie?.() || [])) {
+        const [pair] = raw.split(';');
+        const idx = pair.indexOf('=');
+        if (idx > 0) jar.set(pair.slice(0, idx).trim(), pair.slice(idx + 1).trim());
+      }
     }
     const text = await r.text();
     let parsed = null;

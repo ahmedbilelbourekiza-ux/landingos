@@ -293,6 +293,26 @@ try {
   logError('auth', 'authentication bootstrap failed', { err: e.message, stack: e.stack });
 }
 
+/* ---- Webhook signature posture (audit SEC-04) ----
+ * Signature checks now fail closed, but only where a secret actually exists.
+ * Anything still accepting unsigned payloads is named at boot so the gap is
+ * visible rather than implicit. */
+try {
+  const unsigned = [];
+  // rowToStore/rowToProvider mask the secret to '••••' — a non-empty value
+  // therefore means "a secret is set", which is all this check needs.
+  for (const s of db.getStores()) {
+    if (s.webhookEnabled !== false && !s.webhookSecret) unsigned.push(`store:${s.name}`);
+  }
+  for (const p of db.getProviders()) {
+    if (p.webhookEnabled !== false && !p.webhookSecret) unsigned.push(`carrier:${p.name}`);
+  }
+  if (!SHOPIFY_SECRET) unsigned.push('shopify:/webhook/shopify (SHOPIFY_SECRET unset)');
+  if (unsigned.length) {
+    logError('security', 'these integrations accept UNSIGNED webhooks — anyone who knows the URL can inject orders or delivery events. Set a webhook secret for each, then set REQUIRE_WEBHOOK_SIGNATURES=1', { unsigned });
+  }
+} catch (e) { logError('security', 'webhook posture check failed', { err: e.message }); }
+
 // Expired sessions are pruned hourly; the row is only a revocation record, so
 // letting them accumulate serves no purpose.
 setInterval(() => {
@@ -377,9 +397,29 @@ function genProdId(products) {
   return id;
 }
 
+/* Shopify webhook signature (audit SEC-04).
+ *
+ * `if (!SHOPIFY_SECRET) return true` is retained deliberately: this endpoint
+ * predates the multi-store registry and many deployments run it with no secret
+ * configured, so demanding one unconditionally would drop every live order on
+ * the next deploy. What IS fixed is the bypass — with a secret configured, a
+ * missing header is now a rejection rather than a pass. Set
+ * REQUIRE_WEBHOOK_SIGNATURES=1 (and SHOPIFY_SECRET) to refuse unsigned
+ * payloads entirely; that is the recommended production setting. */
 function verifyHmac(body, header) {
-  if (!SHOPIFY_SECRET) return true;
-  return crypto.createHmac('sha256', SHOPIFY_SECRET).update(body).digest('base64') === header;
+  const strict = /^(1|true|yes)$/i.test(String(process.env.REQUIRE_WEBHOOK_SIGNATURES || ''));
+  if (!SHOPIFY_SECRET) {
+    if (strict) {
+      logError('shopify', 'refused an unsigned webhook — SHOPIFY_SECRET is not set and REQUIRE_WEBHOOK_SIGNATURES is on');
+      return false;
+    }
+    return true;
+  }
+  if (!header) return false;   // the bypass: previously an absent header passed
+  const expected = crypto.createHmac('sha256', SHOPIFY_SECRET).update(body).digest('base64');
+  const a = Buffer.from(String(header), 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 /**
@@ -2476,10 +2516,23 @@ app.delete('/api/ai/agents/:id', (req, res) => {
  * Resolves the agent + permissions, builds a grounded prompt from live CRM
  * data, records the turn, and returns the full answer. Used when the provider
  * doesn't stream or the client wants a single payload. */
+/* actor and scopedAgent come from the SESSION, never from the request body or
+ * query string (audit SEC-03). Both used to be caller-supplied, so the one
+ * mechanism that limited an agent to their own orders could be disabled just by
+ * omitting it, and any user could read anyone else's conversation history by
+ * passing a different ?actor=. */
+function aiActorFor(req) {
+  return {
+    name: req.user.name,
+    // Managers see everything; everyone else is pinned to their own orders.
+    scopedAgent: req.user.isManager ? undefined : req.user.name,
+  };
+}
+
 app.post('/api/ai/chat', async (req, res) => {
   const b = req.body || {};
-  const agent = aiAgents.resolveAgent(b.agentId);
-  const actor = { name: b.actor?.name || 'anonymous', scopedAgent: b.actor?.scopedAgent };
+  const agent = aiAgents.resolveAgent(b.agentId, { isManager: req.user.isManager });
+  const actor = aiActorFor(req);
   const history = conversations.load(actor.name, agent.id, { maxTokens: 3000, limit: 16 });
   let messages;
   try {
@@ -2504,9 +2557,8 @@ app.post('/api/ai/chat', async (req, res) => {
  * stream. Query: ?agentId=&message=&actor=&scopedAgent=. Streams tokens when the
  * provider supports it; otherwise performs a full call and emits one chunk. */
 app.get('/api/ai/chat/stream', async (req, res) => {
-  const agent = aiAgents.resolveAgent(req.query.agentId);
-  const actorName = req.query.actor || 'anonymous';
-  const scopedAgent = req.query.scopedAgent || undefined;
+  const agent = aiAgents.resolveAgent(req.query.agentId, { isManager: req.user.isManager });
+  const { name: actorName, scopedAgent } = aiActorFor(req);   // never from the query string
   const message = req.query.message || '';
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -2560,13 +2612,13 @@ app.get('/api/ai/chat/stream', async (req, res) => {
 });
 
 // ---- Conversation history management ----
+// Your own history only — `actor` was previously a query parameter, so anyone
+// could read anyone else's AI conversation by naming them (audit SEC-03).
 app.get('/api/ai/conversations/:agentId', (req, res) => {
-  const actor = req.query.actor || 'anonymous';
-  res.json({ items: conversations.load(actor, req.params.agentId, { maxTokens: 6000, limit: 40 }) });
+  res.json({ items: conversations.load(req.user.name, req.params.agentId, { maxTokens: 6000, limit: 40 }) });
 });
 app.delete('/api/ai/conversations/:agentId', (req, res) => {
-  const actor = req.query.actor || 'anonymous';
-  conversations.clear(actor, req.params.agentId);
+  conversations.clear(req.user.name, req.params.agentId);
   res.json({ message: 'cleared' });
 });
 
@@ -2574,13 +2626,13 @@ app.delete('/api/ai/conversations/:agentId', (req, res) => {
  * Instant deterministic rules (no model): orders needing attention, low-confirm
  * agents, high-cancellation products, delivery delays, duplicates, summaries. */
 app.get('/api/ai/insights', (req, res) => {
-  const agent = aiAgents.resolveAgent(req.query.agentId);
+  const agent = aiAgents.resolveAgent(req.query.agentId, { isManager: req.user.isManager });
   res.json(aiInsights.computeInsights(agent.permissions || []));
 });
 
 // Deep AI analysis — model explains the deterministic insights + suggests actions.
 app.post('/api/ai/insights/deep', async (req, res) => {
-  const agent = aiAgents.resolveAgent(req.body?.agentId);
+  const agent = aiAgents.resolveAgent(req.body?.agentId, { isManager: req.user.isManager });
   try {
     const text = await aiInsights.summarizeInsights({ providerId: agent.providerId, agent, permissions: agent.permissions || [] });
     res.json({ ok: true, text });
