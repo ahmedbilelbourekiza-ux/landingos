@@ -1,24 +1,26 @@
 {
-  "name": "crm",
-  "version": "2.0.0",
-  "description": "Cash-on-delivery ERP/CRM — order confirmation, delivery tracking, inventory and reporting.",
-  "main": "index.js",
+  "name": "landingos",
+  "version": "3.0.0",
+  "description": "LandingOS — a modular SaaS platform. Shared platform services plus independently subscribable products.",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js",
-    "test": "node --test test/",
-    "smoke": "node test_smoke.js"
+    "erp": "npm run --workspace @landingos/erp",
+    "erp:start": "npm run start --workspace @landingos/erp",
+    "erp:dev": "npm run dev --workspace @landingos/erp",
+    "builder:build": "npm run build --workspace @landingos/website-builder",
+    "builder:dev": "npm run dev --workspace @landingos/website-builder",
+    "builder:start": "npm run start --workspace @landingos/website-builder",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
   },
   "engines": {
     "node": ">=20"
   },
-  "dependencies": {
-    "better-sqlite3": "^12.11.1",
-    "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "web-push": "^3.6.7"
-  },
+  "//allowScripts": "npm ignores allowScripts declared inside a workspace and warns about it — it is only honoured at the workspace root. better-sqlite3 needs its install script to fetch (or build) the native binding, so leaving this in apps/erp/package.json would break a clean install with no error until the first require().",
   "allowScripts": {
     "better-sqlite3@12.11.1": true
   }

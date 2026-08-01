@@ -1,0 +1,25 @@
+# =============================================================================
+# ERP-specific ignores. Scoped to apps/erp/ so they can never affect another
+# product — see the note in the workspace-root .gitignore.
+# =============================================================================
+
+# SQLite database — runtime data, never committed. Location is overridable
+# via CRM_DB_PATH / CRM_DATA_DIR; the default resolves to this directory
+# (lib/db.js derives it from __dirname, which is why the move into apps/erp/
+# needed no source change).
+crm.db
+crm.db-wal
+crm.db-shm
+*.db
+*.db-wal
+*.db-shm
+
+# Legacy JSON stores, renamed by migrateFromLegacy() on first boot
+*.legacy
+orders.json
+settings.json
+products.json
+
+# Stray artefacts
+{try{return
+_probe.py

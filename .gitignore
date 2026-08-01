@@ -1,19 +1,22 @@
-# Dependencies
+# =============================================================================
+# LandingOS workspace root — UNIVERSAL ignores only.
+#
+# Anything that applies to one product belongs in that product's own
+# .gitignore (apps/<product>/.gitignore), never here. This is not tidiness:
+# ignore patterns are matched relative to the file that declares them, so a
+# root-level pattern silently reaches into every current and future product.
+#
+# The concrete case that forced this split: the website-builder's .gitignore
+# carries a bare `test` pattern. Hoisted to the root it would untrack the
+# ERP's entire test/ directory — 293 tests — with no error and no diff.
+#
+# Rule: if a pattern would be wrong for a product that does not exist yet,
+# it does not go in this file.
+# =============================================================================
+
+# Dependencies — hoisted to the root by npm workspaces, plus any that
+# resolve locally to a workspace.
 node_modules/
-
-# Database — runtime data, never committed
-crm.db
-crm.db-wal
-crm.db-shm
-*.db
-*.db-wal
-*.db-shm
-
-# Legacy JSON stores, renamed by migrateFromLegacy() on first boot
-*.legacy
-orders.json
-settings.json
-products.json
 
 # Environment / secrets
 .env
@@ -29,7 +32,3 @@ npm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
-
-# Stray artefacts
-{try{return
-_probe.py

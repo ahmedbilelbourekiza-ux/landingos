@@ -1,0 +1,22 @@
+{
+  "name": "@landingos/erp",
+  "version": "2.0.0",
+  "description": "LandingOS ERP/CRM — order confirmation, delivery tracking, inventory and reporting.",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "node --test \"test/*.test.js\"",
+    "smoke": "node test_smoke.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "web-push": "^3.6.7"
+  }
+}
