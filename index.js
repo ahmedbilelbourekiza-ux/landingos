@@ -480,7 +480,6 @@ function loadData() { return db.loadOrdersData(); }
 function loadSettings() { return db.getSettings(); }
 function saveSettings(s) { return db.setSettings(s); }
 function loadProducts() { return db.getProducts(); }
-function saveProducts() { /* no-op: products saved per-mutation via db */ }
 
 function normalizePhone(p) {
   if (!p) return '';
@@ -1135,9 +1134,19 @@ app.post('/webhook/shopify', (req, res) => {
   const resolvedWilaya  = wilayaCodeToName(noteProvinceCode) || stripArabic(noteProvince) || wilayaCodeToName(addr.province_code) || addr.province || '';
   const resolvedCommune = noteCommune || addr.city || '';
 
-  logInfo('shopify', 'DEBUG address payload', { province: addr.province || null, province_code: addr.province_code || null, country: addr.country || null, addr_keys: Object.keys(addr || {}) });
-  logInfo('shopify', 'DEBUG note_attributes', { note_attributes: order.note_attributes || null, attributes: order.attributes || null });
-  logInfo('shopify', 'DEBUG resolved address', { resolvedWilaya, resolvedCommune });
+  // Was three DEBUG lines dumping the raw address block and every
+  // note_attribute — i.e. customer PII — to stdout on every inbound order,
+  // marked "temporary" and shipped anyway. What made them useful for
+  // diagnosing the WebiLeadForm wilaya problem was knowing WHICH fields
+  // arrived and whether resolution succeeded, not their contents.
+  if (!resolvedWilaya) {
+    logInfo('shopify', 'address resolution incomplete', {
+      shopifyId: String(order.id),
+      sawProvinceCode: !!addr.province_code, sawProvince: !!addr.province,
+      noteAttributeNames: noteAttrs.map(a => a.name),
+      resolvedCommune: !!resolvedCommune,
+    });
+  }
 
   const newOrder = {
     id: genId(data.orders),
@@ -2264,10 +2273,6 @@ app.post('/webhook/store/:id', express.raw({ type: '*/*' }), async (req, res) =>
   let body = req.body;
   try { body = JSON.parse(req.body.toString()); } catch { /* keep raw */ }
   db.logIntegration('store', req.params.id, 'webhook_received', 'success', store.platform, { headers: pickHeaders(req.headers) }, body);
-  // TEMPORARY DIAGNOSTIC — remove once the LightFunnels payload shape across
-  // an order's lifecycle (checkout -> created -> confirmed) is confirmed.
-  // Prints straight to Render's log viewer, no DB digging needed.
-  logInfo('store', 'RAW WEBHOOK PAYLOAD (diagnostic)', { storeId: req.params.id, body });
   // Platform adapters can be registered to transform webhooks into orders;
   // without one, we simply acknowledge (and the log records the event).
   const adapter = platforms.getAdapter(cfg.platform);
@@ -2404,9 +2409,6 @@ app.post('/webhook/store/:id/checkout', express.raw({ type: '*/*' }), async (req
   let body = req.body;
   try { body = JSON.parse(req.body.toString()); } catch { /* keep raw */ }
   db.logIntegration('store', req.params.id, 'webhook_checkout_received', 'success', store.platform, { headers: pickHeaders(req.headers) }, body);
-  // TEMPORARY DIAGNOSTIC — same as the order route's, so we can actually
-  // see in Render's logs whether LightFunnels ever hits this URL at all.
-  logInfo('store', 'RAW CHECKOUT WEBHOOK PAYLOAD (diagnostic)', { storeId: req.params.id, body });
 
   const adapter = platforms.getAdapter(cfg.platform);
   if (!adapter || typeof adapter.parseCheckoutWebhook !== 'function') {
@@ -2472,9 +2474,6 @@ app.post('/webhook/store/:id/contact', express.raw({ type: '*/*' }), async (req,
   let body = req.body;
   try { body = JSON.parse(req.body.toString()); } catch { /* keep raw */ }
   db.logIntegration('store', req.params.id, 'webhook_contact_received', 'success', store.platform, { headers: pickHeaders(req.headers) }, body);
-  // TEMPORARY DIAGNOSTIC — remove once confirmed this event actually
-  // carries phone/name (expected, based on LightFunnels' own doc example).
-  logInfo('store', 'RAW CONTACT WEBHOOK PAYLOAD (diagnostic)', { storeId: req.params.id, body });
 
   const adapter = platforms.getAdapter(cfg.platform);
   if (!adapter || typeof adapter.parseContactWebhook !== 'function') {
@@ -3485,7 +3484,7 @@ app.use((err, req, res, next) => {
  * container mid-migration. It is idempotent, so finishing a moment after the
  * server starts answering is harmless. */
 bootstrapAuth().then(() => {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     logInfo('server', `CRM Server listening on port ${PORT}`);
     logInfo('server', 'clients served at /app (manager) and /agent (confirmation agent)');
     if (CROSS_SITE) logInfo('server', 'CORS allowlist active', { origins: ALLOWED_ORIGINS });
@@ -3500,4 +3499,47 @@ bootstrapAuth().then(() => {
       }
     });
   });
+
+  /* Graceful shutdown.
+   *
+   * A container host sends SIGTERM on every redeploy and SIGKILLs after a grace
+   * period. Without this the process died mid-request, left SSE streams hanging
+   * on a socket the client could not tell was dead, and could be killed between
+   * a write and its WAL checkpoint.
+   *
+   * jobs.stop() has existed since the background loops were written and was
+   * never called by anything — the audit listed it as dead code. It is not
+   * dead, it was unwired: this is what it was for. */
+  let shuttingDown = false;
+  const shutdown = (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logInfo('server', 'shutting down', { signal });
+
+    try { jobs.stop(); } catch (e) { logError('server', 'jobs.stop failed', { err: e.message }); }
+
+    // Tell live SSE clients to reconnect now, rather than leaving them holding
+    // a socket that will never produce another event.
+    try {
+      for (const set of sseClients.values()) {
+        for (const send of set) send('data: ' + JSON.stringify({ type: 'server_shutdown' }) + '\n\n');
+      }
+    } catch (e) { /* best effort */ }
+
+    server.close(() => {
+      try {
+        // Fold the WAL back into the main database file so a cold copy of
+        // crm.db is complete and consistent — this matters for backups.
+        db.raw.pragma('wal_checkpoint(TRUNCATE)');
+        db.raw.close();
+      } catch (e) { logError('server', 'database close failed', { err: e.message }); }
+      logInfo('server', 'shutdown complete');
+      process.exit(0);
+    });
+
+    // Never hang forever on a stuck connection — the host will SIGKILL anyway,
+    // and exiting cleanly first is what preserves the checkpoint above.
+    setTimeout(() => { logError('server', 'shutdown timed out, exiting anyway'); process.exit(0); }, 8000).unref();
+  };
+  for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => shutdown(signal));
 });

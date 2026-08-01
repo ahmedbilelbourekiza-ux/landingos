@@ -448,3 +448,44 @@ database and confirms boot restores them with the rows intact.
 
 *Note: `GET /api/orders` is still 290 ms at 5,000 orders because it returns the
 entire table and attaches call history row by row. Pagination is PERF-02, next.*
+
+#### DEAD-01 and diagnostic PII logging
+**What.** Deleted `lib/index.js` (2,333 lines), the stray zero-byte `{try{return`
+file, `_probe.py`, and the `saveProducts()` no-op stub. Replaced six diagnostic
+log lines that dumped customer data with one redacted line that fires only when
+address resolution actually fails.
+**Why.** `lib/index.js` was a stale copy of the entire server — 102 routes against
+the live 117 — that nothing required and that could not have worked if anything
+did (its `require('./lib/db')` resolves to `lib/lib/db`). It was 17% of the repo
+by line count and actively dangerous: the next person to grep for a route would
+find two copies and might edit the wrong one.
+The three `RAW … WEBHOOK PAYLOAD (diagnostic)` lines wrote entire inbound webhook
+bodies to stdout, and the three Shopify `DEBUG` lines wrote the raw address block
+and every note attribute — names, phone numbers, addresses — on every order. All
+six were commented "remove once confirmed" and shipped. What made them useful was
+knowing *which* fields arrived and whether resolution succeeded, not their
+contents, so the replacement logs field presence and the attribute *names* only,
+and only when `resolvedWilaya` came back empty.
+**Files.** `lib/index.js`, `_probe.py`, `{try{return` (deleted); `index.js`.
+**Migration.** None. **Risk.** None — nothing referenced any of it.
+
+#### Graceful shutdown (turns `jobs.stop()` from dead code into working code)
+**What.** `SIGTERM`/`SIGINT` now stop the background timers, tell live SSE clients
+to reconnect, let in-flight requests finish, checkpoint the WAL back into the
+database file, and exit — with an 8-second cap so a stuck connection cannot hang
+the process.
+**Why.** The audit listed `jobs.stop()` as dead code. It was not dead, it was
+unwired — nothing ever called it. A container host sends `SIGTERM` on every
+redeploy and `SIGKILL`s shortly after, so the process was dying mid-request,
+leaving SSE clients holding a socket that would never produce another event, and
+could be killed between a write and its WAL checkpoint. Folding the WAL back in
+also means a cold copy of `crm.db` is complete and consistent, which matters for
+the backup story.
+**Files.** `index.js`.
+**Migration.** None.
+**Risk.** Low. **Caveat, stated plainly:** Node on Windows does not deliver
+`SIGTERM` — `child.kill()` maps to `TerminateProcess`, which kills without
+running any handler — so this could not be exercised on the development machine.
+The behavioural test is **skipped on win32 with that reason recorded**, and a
+source-level test asserts the handler is wired to `jobs.stop()`, `server.close()`
+and the WAL checkpoint. It will run for real on the Linux host.

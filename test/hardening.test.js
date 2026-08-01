@@ -336,3 +336,61 @@ describe('follow-up and client data are scoped too', () => {
       'the query parameter is ignored — only your own tasks come back');
   });
 });
+
+/* ---------------------------------------------------------------------------
+ * 8. Dead code removal and graceful shutdown (Phase 2).
+ * ------------------------------------------------------------------------- */
+describe('dead code is gone and shutdown is clean', () => {
+  test('the duplicate server file no longer exists', () => {
+    const fsx = require('node:fs');
+    const p = require('node:path').join(__dirname, '..', 'lib', 'index.js');
+    assert.ok(!fsx.existsSync(p),
+      'lib/index.js was a 2,333-line stale copy of the whole server');
+  });
+
+  test('no raw webhook payloads or address debug lines are logged', () => {
+    const fsx = require('node:fs');
+    const src = fsx.readFileSync(require('node:path').join(__dirname, '..', 'index.js'), 'utf8');
+    for (const marker of ['RAW WEBHOOK PAYLOAD', 'RAW CHECKOUT WEBHOOK', 'RAW CONTACT WEBHOOK',
+                          'DEBUG address payload', 'DEBUG note_attributes']) {
+      assert.ok(!src.includes(marker), `${marker} dumps customer PII to stdout`);
+    }
+  });
+
+  test('the SIGTERM handler is wired to jobs.stop and a WAL checkpoint', () => {
+    // Source-level assertion, because the behavioural test below cannot run
+    // here — see its skip reason.
+    const fsx = require('node:fs');
+    const src = fsx.readFileSync(require('node:path').join(__dirname, '..', 'index.js'), 'utf8');
+    const handler = src.slice(src.indexOf('const shutdown = (signal)'));
+    assert.ok(handler.includes('jobs.stop()'), 'background timers are stopped');
+    assert.ok(handler.includes('wal_checkpoint(TRUNCATE)'), 'the WAL is folded back into the database');
+    assert.ok(handler.includes('server.close('), 'in-flight requests are allowed to finish');
+    assert.ok(/for \(const signal of \['SIGTERM', 'SIGINT'\]\)/.test(src), 'both signals are handled');
+  });
+
+  /* Node on Windows does not deliver SIGTERM: child.kill() maps to
+   * TerminateProcess, which kills unconditionally without running any handler.
+   * The behaviour is real and matters on the Linux host this deploys to, but it
+   * cannot be exercised from this machine, so the test states that rather than
+   * pretending to pass. */
+  test('SIGTERM shuts the server down cleanly and checkpoints the database',
+    { skip: process.platform === 'win32' ? 'SIGTERM is not deliverable on Windows' : false },
+    async () => {
+      const s = await startServer();
+      await s.api('POST', '/api/orders', { client: 'Before Shutdown', phone: '0555878787' });
+
+      await s.stop();                       // sends SIGTERM
+      await new Promise((r) => setTimeout(r, 400));
+
+      assert.ok(s.logs().includes('shutdown complete'),
+        `the shutdown handler did not run. log tail:
+${s.logs().slice(-600)}`);
+
+      // The data written before shutdown is intact in a cold copy of the file.
+      const cold = new Database(s.dbPath, { readonly: true });
+      const row = cold.prepare("SELECT client FROM orders WHERE phone = '0555878787'").get();
+      cold.close();
+      assert.equal(row.client, 'Before Shutdown', 'nothing was lost on shutdown');
+    });
+});
