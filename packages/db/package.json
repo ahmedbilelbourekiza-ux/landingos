@@ -1,0 +1,20 @@
+{
+  "name": "@landingos/db",
+  "version": "1.0.0",
+  "description": "The unified LandingOS schema: platform tenancy plus every product's domain, in one database.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "validate": "prisma validate --schema ./prisma/schema",
+    "generate": "prisma generate --schema ./prisma/schema",
+    "ddl": "prisma migrate diff --from-empty --to-schema-datamodel ./prisma/schema --script",
+    "test": "npm run validate && node --test \"test/*.test.ts\""
+  },
+  "//verification": "There is no Postgres on the development machine, so the schema is verified two ways that need no database: `prisma validate` checks syntax and relations, and `prisma migrate diff --from-empty` renders the whole schema to real DDL. A schema that produces valid CREATE TABLE output is a schema that can be deployed.",
+  "devDependencies": {
+    "prisma": "^6.19.3"
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}

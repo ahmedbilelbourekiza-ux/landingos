@@ -1,0 +1,47 @@
+// LandingOS — unified schema.
+//
+// One database for the whole platform. Split across files by domain because a
+// single file holding platform, builder and ERP models would be several
+// thousand lines nobody reads twice:
+//
+//   main.prisma      generator + datasource
+//   platform.prisma  tenancy, identity, access, billing, audit  (M-01)
+//   builder.prisma   the website-builder's domain
+//   erp.prisma       the ERP's domain, ported from SQLite       (M-06)
+//
+// CONVENTIONS, applied without exception in the domain files:
+//
+//   tenantId       Every business row carries it, and every compound index
+//                  leads with it (M-03). The only models without one are the
+//                  platform-owned reference tables, which are shared by design
+//                  and say so where they are defined.
+//
+//   Money          Decimal, never Float. The ERP stored every monetary column
+//                  as SQLite REAL — binary floating point — through FIFO cost
+//                  lots, prorated expenses and margin calculations that feed
+//                  permanent financial records. Float money drifts, and in that
+//                  chain it drifts and compounds.
+//
+//   Time           DateTime, never epoch-millisecond integers. The ERP used
+//                  INTEGER throughout; the conversion happens once, here,
+//                  rather than living forever in every query.
+//
+//   Booleans       Boolean, never 0/1 integers.
+//
+//   Structured     Json (jsonb), never JSON-encoded TEXT.
+//
+//   Uniqueness     Every unique constraint has a recorded decision in
+//                  ../../CONSTRAINTS.md, and test/constraints.test.ts asserts
+//                  the schema matches it (M-04).
+//
+// Nothing here is wired to either application yet. Phase 3.2 is the schema and
+// its guarantees; adopting it is 3.3 and later.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

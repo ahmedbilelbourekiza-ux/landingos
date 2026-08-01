@@ -1,0 +1,294 @@
+// =============================================================================
+// PLATFORM (M-01) — tenancy, identity, access, billing, audit.
+//
+// These models are what makes LandingOS a platform rather than two
+// applications. Nothing here knows which products exist: products are declared
+// by @landingos/product-registry and reach the database only as entitlement
+// strings on a Subscription. Adding a tenth product adds rows, not columns.
+// =============================================================================
+
+// A customer company. The root of everything — every business row in every
+// product traces back to exactly one of these.
+model Tenant {
+  id     String       @id @default(cuid())
+  // Appears in every public URL (`/acme/product`) under decision D2, which puts
+  // it in the SAME namespace as the platform's own routes. Globally unique, and
+  // additionally checked against a reserved-word list at creation — see risk
+  // R-08. A tenant that claimed `login` would break the platform for everyone.
+  slug   String       @unique
+  name   String
+  status TenantStatus @default(ACTIVE)
+
+  // Display defaults. A tenant is Algerian COD by default because that is the
+  // market both products were built for, but none of this is hardcoded.
+  locale   String @default("ar")
+  currency String @default("DZD")
+  timezone String @default("Africa/Algiers")
+
+  domains       TenantDomain[]
+  memberships   Membership[]
+  invitations   Invitation[]
+  subscription  Subscription?
+  auditEvents   AuditEvent[]
+  sessions      Session[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  // Soft delete. A hard DELETE would cascade through every product's data at
+  // once; retention and export have to happen first.
+  deletedAt DateTime?
+
+  @@index([status])
+  @@index([deletedAt])
+}
+
+enum TenantStatus {
+  ACTIVE
+  // Past due or manually paused. Sessions survive, access does not — the same
+  // distinction the ERP already draws for a suspended agent.
+  SUSPENDED
+  // Scheduled for deletion; readable during the retention window.
+  PENDING_DELETION
+}
+
+// A custom domain a tenant has linked (decision D2). Resolves to the same pages
+// the path prefix serves.
+model TenantDomain {
+  id       String @id @default(cuid())
+  tenantId String
+  // One hostname cannot belong to two tenants — that is unresolvable by
+  // definition, not merely undesirable.
+  domain   String @unique
+
+  // Ownership is proven by publishing this token in DNS before the domain is
+  // allowed to serve. Without it, anyone could claim any hostname and receive
+  // another company's traffic.
+  verificationToken String
+  verifiedAt        DateTime?
+  isPrimary         Boolean   @default(false)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([verifiedAt])
+}
+
+// A person. GLOBAL, not per-tenant: one human, one login, however many
+// companies they belong to.
+//
+// This is the model that replaces both `Admin` (the builder's single-row table)
+// and `agents.name` (the ERP's TEXT primary key referenced by value in about a
+// hundred places). Display name stops being identity — two tenants will both
+// employ a "Sara", and the old design could not express that.
+model User {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  passwordHash String
+  name         String
+  avatarUrl    String?
+
+  // Per-user override of the tenant default. Arabic, French and English under
+  // decision D4.
+  locale String?
+
+  // Carried over from the builder's Admin: forces a password change before any
+  // screen other than the profile can be opened.
+  mustChangePassword   Boolean   @default(false)
+  lastLoginAt          DateTime?
+  lastPasswordChangeAt DateTime?
+
+  memberships Membership[]
+  sessions    Session[]
+  auditEvents AuditEvent[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([deletedAt])
+}
+
+// The grant that connects a User to a Tenant. Access to a tenant means having
+// one of these; there is no other way in.
+model Membership {
+  id       String @id @default(cuid())
+  tenantId String
+  userId   String
+
+  role TenantRole @default(MEMBER)
+
+  // Permissions beyond what the role implies, as declared by each product's
+  // manifest (e.g. "erp:agents:manage"). Json rather than a join table because
+  // the set is defined by product code, not by database rows — the registry is
+  // the source of truth for what a permission means, and a foreign key to a
+  // table the registry does not own would go stale every time a product ships.
+  permissions Json @default("[]")
+
+  // The ERP's `agents.role` — the JOB (confirmation | followup | both), which
+  // is not the same thing as the PRIVILEGE above. The ERP kept these separate
+  // deliberately so a follow-up agent could also be a manager; collapsing them
+  // here would undo that.
+  jobRole String?
+
+  suspended Boolean @default(false)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, userId])
+  @@index([tenantId, role])
+  @@index([userId])
+}
+
+enum TenantRole {
+  // Exactly one per tenant. Owns billing and cannot be removed by anyone else.
+  OWNER
+  ADMIN
+  MANAGER
+  MEMBER
+  VIEWER
+}
+
+// A login. OPAQUE and server-side, not a stateless JWT — the architecture's
+// decision, and the ERP's design was right about why: suspending a team member
+// has to revoke access immediately, and in a product whose headline feature is
+// team management that is a daily operation, not an edge case.
+model Session {
+  // The SHA-256 of the token handed to the client, never the token itself, so
+  // a database leak cannot be replayed as a live login. Carried over verbatim
+  // from the ERP's existing session design.
+  id     String @id
+  userId String
+
+  // Which tenant this session is currently acting as. A user who belongs to
+  // several switches without signing in again — the whole point of a global
+  // User. Nullable because a session exists before a tenant is chosen.
+  activeTenantId String?
+
+  userAgent String?
+  ip        String?
+
+  expiresAt  DateTime
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeTenant Tenant? @relation(fields: [activeTenantId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// A pending invitation to join a tenant.
+model Invitation {
+  id       String     @id @default(cuid())
+  tenantId String
+  email    String
+  role     TenantRole @default(MEMBER)
+
+  // Followed from an email link before any session exists, so it must resolve
+  // without knowing the tenant. Random and therefore globally unique.
+  token String @unique
+
+  invitedByUserId String?
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One outstanding invitation per address per tenant. The same address may be
+  // invited by several different tenants at once.
+  @@unique([tenantId, email])
+  @@index([tenantId, acceptedAt])
+}
+
+// What a tenant is paying for. The ONLY thing that decides which products they
+// can reach.
+model Subscription {
+  id       String @id @default(cuid())
+  tenantId String @unique
+
+  plan   String             @default("free")
+  status SubscriptionStatus @default(TRIALING)
+
+  // Entitlement keys the tenant holds, e.g.
+  //   ["product.website-builder", "product.erp", "seats.max:10"]
+  //
+  // A string set rather than a boolean column per product, because a column per
+  // product is precisely the hardcoding the platform must not do: a tenth
+  // product would mean a migration, and "any combination of products" would
+  // become 2^n schema states instead of a set. @landingos/product-registry
+  // resolves these against product manifests.
+  entitlements Json @default("[]")
+
+  seats Int @default(1)
+
+  // Billing-provider identifiers. Nullable so a tenant can exist before it pays
+  // — internal, trial and comped accounts never reach the provider at all.
+  externalCustomerId     String?
+  externalSubscriptionId String?
+
+  trialEndsAt        DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean   @default(false)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([externalCustomerId])
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+// Append-only audit trail spanning every product. Generalises the ERP's
+// `audit_log` and `integration_logs`, which were per-entity and had no notion
+// of a tenant or of which application acted.
+//
+// No UPDATE or DELETE path exists for this table, matching the ERP's existing
+// discipline for its append-only tables.
+model AuditEvent {
+  id       String  @id @default(cuid())
+  tenantId String
+  // Nullable: system actions — scheduled jobs, webhook intake, billing
+  // callbacks — have no user behind them, and recording a fake one would be
+  // worse than recording none.
+  userId   String?
+
+  // Which product acted, as a product-registry id ("erp", "website-builder")
+  // or "platform". A plain string rather than an enum so a new product needs
+  // no migration.
+  product String
+
+  entity   String
+  entityId String
+  action   String
+  payload  Json?
+
+  ip        String?
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entity, entityId])
+  @@index([tenantId, product, createdAt])
+}

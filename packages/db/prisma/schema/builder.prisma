@@ -1,0 +1,537 @@
+// =============================================================================
+// WEBSITE BUILDER domain.
+//
+// Ported from apps/website-builder/prisma/schema.prisma. The models are
+// unchanged in meaning; what changed is that every one of them now belongs to
+// a tenant (M-03) and every unique constraint has a recorded decision (M-04).
+//
+// The exception is the Algerian reference data — Wilaya and Baladia — which is
+// platform-owned and shared by every tenant. It is the only data in this file
+// without a tenantId, and it says so where it is defined.
+// =============================================================================
+
+enum LandingPageStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum LandingMediaType {
+  IMAGE
+  VIDEO
+}
+
+// GALLERY is the product slider at the top; media[0] is the hero. DESCRIPTION
+// is long-form imagery below the description. One table rather than two,
+// because both are ordered image lists owned by a page.
+//
+// Every query that wants the slider MUST filter on placement. Reading media
+// unfiltered now yields description images too, and since media[0] is the hero
+// that silently swaps it.
+enum LandingMediaPlacement {
+  GALLERY
+  DESCRIPTION
+}
+
+// Algeria's COD market runs on two: delivery to the customer's address, or
+// pickup at the carrier's desk, which is cheaper.
+enum ShippingMethod {
+  HOME
+  DESK
+}
+
+enum SalesOrderStatus {
+  NEW
+  CONFIRMED
+  PREPARING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+// One landing page = one COD product = one purchase form.
+model LandingPage {
+  id       String @id @default(cuid())
+  tenantId String
+
+  title  String
+  // Per decision D2 the public URL is `/<tenant>/<slug>`, so the slug only has
+  // to be unique inside a tenant. Left global it would mean the first customer
+  // claimed every good slug for everyone who came after.
+  slug   String
+  status LandingPageStatus @default(DRAFT)
+
+  description    String?
+  price          Decimal
+  oldPrice       Decimal?
+  currency       String  @default("DZD")
+  buttonText     String  @default("اطلب الآن")
+  ctaButtonText  String?
+  announcement   String?
+  seoTitle       String?
+  seoDescription String?
+  facebookPixel  String?
+  webhookUrl     String?
+  published      Boolean @default(false)
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  themeId    String?
+  theme      LandingTheme? @relation(fields: [themeId], references: [id], onDelete: SetNull)
+
+  media       LandingMedia[]
+  variants    LandingVariant[]
+  features    LandingFeature[]
+  reviews     LandingReview[]
+  faqs        LandingFAQ[]
+  setting     LandingSetting?
+  salesOrders SalesOrder[]
+  draftOrders DraftOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, status])
+  @@index([tenantId, published])
+  @@index([tenantId, createdAt])
+}
+
+model LandingMedia {
+  id            String @id @default(cuid())
+  tenantId      String
+  landingPageId String
+
+  type         LandingMediaType
+  url          String
+  altText      String?
+  // Scoped to the placement, so each list numbers from 0 independently.
+  displayOrder Int                   @default(0)
+  placement    LandingMediaPlacement @default(GALLERY)
+
+  landingPage LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // placement precedes displayOrder because every read filters by it first.
+  @@index([tenantId, landingPageId, placement, displayOrder])
+}
+
+// A selectable option, e.g. name "Size" / value "Large". Flat by design: each
+// row is one choosable option with an optional extra price.
+model LandingVariant {
+  id            String @id @default(cuid())
+  tenantId      String
+  landingPageId String
+
+  name         String
+  value        String
+  extraPrice   Decimal @default(0)
+  displayOrder Int     @default(0)
+
+  landingPage LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, landingPageId, displayOrder])
+}
+
+// `icon` stores an icon key the UI maps to a component, not a file path.
+model LandingFeature {
+  id            String @id @default(cuid())
+  tenantId      String
+  landingPageId String
+
+  icon         String
+  title        String
+  description  String?
+  displayOrder Int     @default(0)
+
+  landingPage LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, landingPageId, displayOrder])
+}
+
+// `rating` is 1–5, enforced at the validation layer since Prisma has no
+// portable CHECK constraint.
+model LandingReview {
+  id            String @id @default(cuid())
+  tenantId      String
+  landingPageId String
+
+  customerName   String
+  customerAvatar String?
+  rating         Int
+  reviewText     String
+  displayOrder   Int     @default(0)
+
+  landingPage LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, landingPageId, displayOrder])
+}
+
+model LandingFAQ {
+  id            String @id @default(cuid())
+  tenantId      String
+  landingPageId String
+
+  question     String
+  answer       String
+  displayOrder Int    @default(0)
+
+  landingPage LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, landingPageId, displayOrder])
+}
+
+// 1:1 with LandingPage. Feature flags controlling which sections render.
+model LandingSetting {
+  id       String @id @default(cuid())
+  tenantId String
+  // @unique rather than @@unique([tenantId, landingPageId]): Prisma requires
+  // the referencing field itself to be unique for a one-to-one. It is also
+  // correct on its own terms — this references a globally unique cuid, so
+  // uniqueness here already means exactly "one setting per page".
+  landingPageId String @unique
+
+  countdownEnabled Boolean @default(false)
+  stickyBuyButton  Boolean @default(true)
+  floatingWhatsapp Boolean @default(false)
+  showReviews      Boolean @default(true)
+  showFAQ          Boolean @default(true)
+  showFeatures     Boolean @default(true)
+  shipping         Decimal @default(0)
+  freeShipping     Boolean @default(false)
+  orderFormConfig  Json?
+
+  // Two booleans rather than a three-value enum: "both" is not a third kind of
+  // shipping, it is both of the two, and a carrier added later becomes one more
+  // flag instead of an enum with five combinations. The API rejects turning
+  // both off — a product with no shipping method cannot be ordered.
+  homeDeliveryEnabled Boolean @default(true)
+  stopDeskEnabled     Boolean @default(false)
+
+  landingPage LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// -----------------------------------------------------------------------------
+// PLATFORM REFERENCE DATA — deliberately NOT tenant-scoped.
+//
+// The 58 Algerian wilayas and their communes are facts about the country, not
+// content owned by a customer. Every tenant reads the same rows. This is the
+// only data in this file without a tenantId, and the constraints test
+// allow-lists these two models by name so the omission has to be deliberate.
+// -----------------------------------------------------------------------------
+
+model Wilaya {
+  id     Int     @id
+  code   String  @unique
+  name   String
+  nameAr String?
+
+  baladias       Baladia[]
+  deliveryPrices TenantDeliveryPrice[]
+
+  createdAt DateTime @default(now())
+}
+
+model Baladia {
+  id       Int     @id
+  name     String
+  nameAr   String?
+  wilayaId Int
+
+  wilaya Wilaya @relation(fields: [wilayaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([wilayaId])
+}
+
+// Renamed from GlobalDeliveryPrice. "Global" meant global to the single store
+// that used to exist; under multi-tenancy these are one tenant's prices, and
+// the old name would actively mislead. One row per wilaya per tenant.
+model TenantDeliveryPrice {
+  id       String @id @default(cuid())
+  tenantId String
+  wilayaId Int
+
+  homePrice Decimal
+  deskPrice Decimal?
+
+  wilaya Wilaya @relation(fields: [wilayaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, wilayaId])
+  @@index([tenantId])
+}
+
+// -----------------------------------------------------------------------------
+
+// The builder's Order, renamed. It is the IMMUTABLE commercial event: what the
+// customer bought, at what price, to which address, frozen at submission.
+// Every field is a snapshot and prices are never recalculated.
+//
+// The ERP's operational record is a separate model (FulfillmentOrder). Merging
+// the two would put one table under two lifecycles. Naming them apart is all
+// that happens here — the relationship between them, and replacing the webhook
+// with an in-process domain event, is Phase 5.4 (M-05).
+model SalesOrder {
+  id            String @id @default(cuid())
+  tenantId      String
+  landingPageId String
+
+  customerName String
+  phone        String
+  wilaya       String // snapshot of the wilaya name
+  baladia      String // snapshot of the baladia name
+  address      String
+  notes        String?
+  quantity     Int
+
+  // Snapshot of the selected options: [{"name":"Color","value":"Black"}].
+  // Json rather than an encoded string now that the database supports it.
+  variants Json @default("[]")
+
+  productPrice   Decimal // unit price including variant extras
+  shippingPrice  Decimal // for the selected wilaya
+  totalPrice     Decimal // (productPrice * quantity) + shippingPrice
+  shippingMethod ShippingMethod   @default(HOME)
+  status         SalesOrderStatus @default(NEW)
+
+  landingPage   LandingPage              @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+  statusHistory SalesOrderStatusHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@index([tenantId, landingPageId])
+  @@index([tenantId, phone])
+}
+
+// Timestamped record of every status transition, including the initial NEW
+// (recorded with fromStatus = null).
+model SalesOrderStatusHistory {
+  id       String @id @default(cuid())
+  tenantId String
+  orderId  String
+
+  fromStatus SalesOrderStatus?
+  toStatus   SalesOrderStatus
+
+  order SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, orderId])
+}
+
+// A visitor who started the order form but never submitted it. Captured
+// progressively as they type, so a phone number is recovered even if they
+// leave. Created by the CUSTOMER, not by staff.
+model DraftOrder {
+  id       String @id @default(cuid())
+  tenantId String
+  // Random id the storefront generates per visit and keeps in sessionStorage,
+  // so repeated updates from one visitor update one row instead of creating
+  // hundreds. Sent from an UNAUTHENTICATED endpoint and used as the upsert key
+  // before any session exists, so it must resolve without knowing the tenant —
+  // which is why it stays globally unique. Random 128-bit values do not collide.
+  token    String @unique
+
+  landingPageId String
+
+  customerName String?
+  phone        String?
+  wilaya       String?
+  baladia      String?
+  quantity     Int      @default(1)
+  variants     Json     @default("[]")
+
+  productPrice  Decimal?
+  shippingPrice Decimal?
+  totalPrice    Decimal?
+  // Nullable, unlike SalesOrder: a draft is captured mid-typing and the
+  // customer may not have chosen yet. Null means "not picked so far".
+  shippingMethod ShippingMethod?
+
+  // Set when the draft_order.created event was sent, so it fires exactly once
+  // however many times the visitor edits the form.
+  notifiedAt       DateTime?
+  convertedOrderId String?
+  convertedAt      DateTime?
+
+  landingPage LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, landingPageId])
+  @@index([tenantId, convertedOrderId])
+}
+
+model Category {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name        String
+  slug        String
+  description String?
+  icon        String?
+  coverImage  String?
+  sortOrder   Int     @default(0)
+  isVisible   Boolean @default(true)
+
+  landingPages LandingPage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, isVisible])
+  @@index([tenantId, sortOrder])
+}
+
+// A storefront theme. Under decision D3 this is the customer-facing design
+// system, which is deliberately NOT the console's: a tenant restyling their
+// storefront must be incapable of affecting the admin UI.
+//
+// `isBuiltIn` rows are platform-provided starting points, copied into a tenant
+// rather than shared, so editing one can never alter another tenant's pages.
+// Turning this into a registry of real template LAYOUTS — not just colour sets
+// — is M-19, in Phase 4.5.
+model LandingTheme {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name              String
+  primary           String
+  primaryForeground String
+  accent            String
+  background        String
+  card              String
+  text              String
+  muted             String
+  border            String
+  isBuiltIn         Boolean @default(false)
+  sortOrder         Int     @default(0)
+
+  landingPages LandingPage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, sortOrder])
+}
+
+// Meta Pixel + Conversions API connection. Several can be active at once and
+// each active row receives a copy of every server-side event. `accessToken` is
+// stored encrypted and never returned in full once saved.
+model MetaPixelConfig {
+  id       String @id @default(cuid())
+  tenantId String
+
+  label       String
+  pixelId     String
+  accessToken String // encrypted at rest
+  isActive    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, isActive])
+}
+
+// Was StoreSettings with a literal id of "singleton" — one row for the one
+// store that used to exist. Now one row per tenant.
+model StoreSettings {
+  tenantId String @id
+
+  storeName        String  @default("LandingOS")
+  storeDescription String?
+  logo             String?
+  favicon          String?
+  phone            String?
+  email            String?
+  address          String?
+
+  facebook  String?
+  instagram String?
+  tiktok    String?
+  whatsapp  String?
+  telegram  String?
+
+  // Browser-side pixel, deliberately independent of MetaPixelConfig (which is
+  // server-side CAPI only): the storefront pixel keeps firing even if every
+  // CAPI config is disabled. The two systems must never depend on each other.
+  metaBrowserPixelId String?
+
+  updatedAt DateTime @updatedAt
+}
+
+// An outgoing webhook receiver. Under the platform this stops being internal
+// plumbing between the two products and becomes a tenant-facing integration
+// feature — the thing customers use to push their own events to their own
+// tools. `secret` is encrypted and signs every payload with HMAC-SHA256.
+model WebhookEndpoint {
+  id       String @id @default(cuid())
+  tenantId String
+
+  label    String
+  url      String
+  secret   String  // encrypted at rest
+  // Subscribed event names, e.g. ["order.created","order.updated"].
+  events   Json    @default("[]")
+  isActive Boolean @default(false)
+
+  deliveries WebhookDelivery[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, isActive])
+}
+
+// Delivery attempt log. Gives the tenant visibility into whether their receiver
+// actually got each event, without storing the payload — which contains
+// customer PII and would bloat the database.
+model WebhookDelivery {
+  id         String @id @default(cuid())
+  tenantId   String
+  endpointId String
+
+  event      String
+  resourceId String
+  success    Boolean
+  statusCode Int?
+  attempts   Int     @default(1)
+  error      String?
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, endpointId, createdAt])
+  @@index([tenantId, createdAt])
+}
