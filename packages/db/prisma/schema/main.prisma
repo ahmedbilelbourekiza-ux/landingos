@@ -39,6 +39,14 @@
 
 generator client {
   provider = "prisma-client-js"
+  // Generated into this package rather than the hoisted node_modules/@prisma/client.
+  //
+  // The workspace now contains TWO Prisma schemas — this one and the
+  // website-builder's — and both default to the same hoisted output. Whichever
+  // ran last would silently overwrite the other's client, so the builder would
+  // start failing with "model does not exist" for models that are right there
+  // in its own schema. An explicit output makes the two coexist.
+  output   = "../client"
 }
 
 datasource db {

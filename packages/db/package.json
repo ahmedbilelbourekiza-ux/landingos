@@ -10,7 +10,8 @@
     "ddl": "prisma migrate diff --from-empty --to-schema-datamodel ./prisma/schema --script",
     "push": "prisma db push --schema ./prisma/schema",
     "preflight": "node --experimental-strip-types scripts/preflight.ts",
-    "test": "npm run validate && node --test \"test/*.test.ts\""
+    "test": "npm run validate && node --test \"test/*.test.ts\"",
+    "setup:roles": "node --experimental-strip-types scripts/setup-roles.ts"
   },
   "//verification": "There is no Postgres on the development machine, so the schema is verified two ways that need no database: `prisma validate` checks syntax and relations, and `prisma migrate diff --from-empty` renders the whole schema to real DDL. A schema that produces valid CREATE TABLE output is a schema that can be deployed.",
   "devDependencies": {
