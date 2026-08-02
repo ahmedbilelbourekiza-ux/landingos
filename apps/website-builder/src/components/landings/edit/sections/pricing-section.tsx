@@ -21,6 +21,7 @@ import {
   useSectionState,
 } from "@/components/landings/edit/section";
 import { Field } from "./field";
+import { useBuilderApi } from "@/lib/builder/api-base";
 
 export interface PricingPreviewValues {
   price: number;
@@ -65,6 +66,9 @@ export function PricingSection({
   initialValues: PricingPreviewValues;
   onPreviewChange: (values: PricingPreviewValues) => void;
 }) {
+  // Where this editor sends its requests. The legacy dashboard and the
+  // console mount the same components against different bases.
+  const api = useBuilderApi();
   const form = useForm<PricingFormValues>({
     resolver: zodResolver(pricingSchema),
     defaultValues: initialValues,
@@ -74,7 +78,7 @@ export function PricingSection({
   const section = useSectionState({
     save: async () => {
       const values = form.getValues();
-      const res = await fetch(`/api/landings/${landingId}/pricing`, {
+      const res = await fetch(api(`/landings/${landingId}/pricing`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

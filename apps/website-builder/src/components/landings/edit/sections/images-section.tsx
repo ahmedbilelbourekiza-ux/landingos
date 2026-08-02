@@ -26,6 +26,7 @@ import {
   useSectionState,
 } from "@/components/landings/edit/section";
 import { SortableImageCard, HeroImageCard } from "./image-card";
+import { useBuilderApi } from "@/lib/builder/api-base";
 
 // The preview values the Images section lifts to the parent: the hero image
 // URL and the gallery image URLs. The preview panel renders the hero in
@@ -46,6 +47,9 @@ export function ImagesSection({
   initialValues: ImagesPreviewValues;
   onPreviewChange: (values: ImagesPreviewValues) => void;
 }) {
+  // Where this editor sends its requests. The legacy dashboard and the
+  // console mount the same components against different bases.
+  const api = useBuilderApi();
   // Build initial MediaItem arrays from the preview values (which only carry
   // URLs). When loading from Prisma, the hero is the first media row and
   // the gallery is the rest.
@@ -69,7 +73,7 @@ export function ImagesSection({
           displayOrder: i + 1,
         })),
       ];
-      const res = await fetch(`/api/landings/${landingId}/media`, {
+      const res = await fetch(api(`/landings/${landingId}/media`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ media: allMedia }),

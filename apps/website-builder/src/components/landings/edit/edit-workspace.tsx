@@ -10,6 +10,7 @@ import { PreviewPanel } from "./preview-panel";
 import { PreviewDrawer } from "./preview-drawer";
 import { PublishDialog } from "./publish-dialog";
 import { LeaveWarningDialog } from "./leave-warning-dialog";
+import { useBuilderApi } from "@/lib/builder/api-base";
 
 export function EditWorkspace({
   landingId,
@@ -24,6 +25,9 @@ export function EditWorkspace({
   initialPreview: PreviewState;
   initialStatus: PublishStatus;
 }) {
+  // Where this editor sends its requests. The legacy dashboard and the
+  // console mount the same components against different bases.
+  const api = useBuilderApi();
   const router = useRouter();
 
   const [preview, setPreview] = React.useState<PreviewState>(initialPreview);
@@ -50,7 +54,7 @@ export function EditWorkspace({
     setPublishStatus("PUBLISHING");
     setPublishDialogOpen(false);
     try {
-      const res = await fetch(`/api/landings/${landingId}/publish`, { method: "POST" });
+      const res = await fetch(api(`/landings/${landingId}/publish`), { method: "POST" });
       const json = await res.json();
       if (json.success) {
         setPublishStatus("PUBLISHED");

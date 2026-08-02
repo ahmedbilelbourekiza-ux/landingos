@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useBuilderApi } from "@/lib/builder/api-base";
 
 // The lifecycle every edit section moves through. `dirty` collapses the
 // "editing" and "unsaved" states from the spec into one — they're the same
@@ -29,7 +30,7 @@ export interface SectionState {
 //   const section = useSectionState({
 //     save: async () => {
 //       const values = form.getValues();
-//       await fetch(`/api/landings/${landingId}/general`, { ... });
+//       await fetch(api(`/landings/${landingId}/general`), { ... });
 //     },
 //   });
 //   <SectionShell state={section.state} onSave={section.save} onCancel={section.reset} ...>
@@ -41,6 +42,9 @@ export function useSectionState(options: {
   // Default 1.5s — long enough to read, short enough not to annoy.
   savedDurationMs?: number;
 }) {
+  // Where this editor sends its requests. The legacy dashboard and the
+  // console mount the same components against different bases.
+  const api = useBuilderApi();
   const [status, setStatus] = React.useState<SectionStatus>("idle");
   const [error, setError] = React.useState<string | null>(null);
   const savedTimer = React.useRef<ReturnType<typeof setTimeout>>(undefined);

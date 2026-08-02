@@ -26,6 +26,7 @@ import {
 } from "@/components/landings/edit/section";
 import { ReviewCardEditor } from "./review-card-editor";
 import { AvatarPickerDialog } from "./avatar-picker-dialog";
+import { useBuilderApi } from "@/lib/builder/api-base";
 
 export interface ReviewsPreviewValues {
   reviews: ReviewItem[];
@@ -42,6 +43,9 @@ export function ReviewsSection({
   initialValues: ReviewsPreviewValues;
   onPreviewChange: (values: ReviewsPreviewValues) => void;
 }) {
+  // Where this editor sends its requests. The legacy dashboard and the
+  // console mount the same components against different bases.
+  const api = useBuilderApi();
   const [reviews, setReviews] = React.useState<ReviewItem[]>(initialValues.reviews);
 
   const section = useSectionState({
@@ -53,7 +57,7 @@ export function ReviewsSection({
         reviewText: r.reviewText,
         displayOrder: i,
       }));
-      const res = await fetch(`/api/landings/${landingId}/reviews`, {
+      const res = await fetch(api(`/landings/${landingId}/reviews`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reviews: payload }),

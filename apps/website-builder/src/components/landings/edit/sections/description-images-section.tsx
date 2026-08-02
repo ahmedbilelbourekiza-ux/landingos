@@ -27,6 +27,7 @@ import {
 } from "@/components/landings/edit/section";
 import { SortableImageCard } from "./image-card";
 import type { DescriptionImagesPreviewValues } from "@/types/preview";
+import { useBuilderApi } from "@/lib/builder/api-base";
 
 // Long-form images rendered below the product description on the public page,
 // the equivalent of images inside a Shopify product description.
@@ -50,6 +51,9 @@ export function DescriptionImagesSection({
   initialValues: DescriptionImagesPreviewValues;
   onPreviewChange: (values: DescriptionImagesPreviewValues) => void;
 }) {
+  // Where this editor sends its requests. The legacy dashboard and the
+  // console mount the same components against different bases.
+  const api = useBuilderApi();
   // Preview state carries URLs only, so ids are synthesised for dnd-kit. They
   // are positional and never persisted — the server assigns displayOrder from
   // array position on save.
@@ -70,7 +74,7 @@ export function DescriptionImagesSection({
 
   const section = useSectionState({
     save: async () => {
-      const res = await fetch(`/api/landings/${landingId}/media`, {
+      const res = await fetch(api(`/landings/${landingId}/media`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

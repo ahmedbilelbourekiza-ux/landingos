@@ -9,6 +9,7 @@ import {
   useSectionState,
 } from "@/components/landings/edit/section";
 import type { ShippingPreviewValues } from "@/types/preview";
+import { useBuilderApi } from "@/lib/builder/api-base";
 
 // Which shipping methods this product offers.
 //
@@ -46,12 +47,15 @@ export function ShippingSection({
   initialValues: ShippingPreviewValues;
   onPreviewChange: (values: ShippingPreviewValues) => void;
 }) {
+  // Where this editor sends its requests. The legacy dashboard and the
+  // console mount the same components against different bases.
+  const api = useBuilderApi();
   const [values, setValues] = React.useState<ShippingPreviewValues>(initialValues);
   const [validationError, setValidationError] = React.useState<string | null>(null);
 
   const section = useSectionState({
     save: async () => {
-      const res = await fetch(`/api/landings/${landingId}/shipping`, {
+      const res = await fetch(api(`/landings/${landingId}/shipping`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),

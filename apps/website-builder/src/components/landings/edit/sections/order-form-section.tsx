@@ -32,6 +32,7 @@ import {
   useSectionState,
 } from "@/components/landings/edit/section";
 import { OrderFormFieldEditor } from "./order-form-field-editor";
+import { useBuilderApi } from "@/lib/builder/api-base";
 
 export interface OrderFormPreviewValues {
   config: OrderFormConfig;
@@ -46,11 +47,14 @@ export function OrderFormSection({
   initialValues: OrderFormPreviewValues;
   onPreviewChange: (values: OrderFormPreviewValues) => void;
 }) {
+  // Where this editor sends its requests. The legacy dashboard and the
+  // console mount the same components against different bases.
+  const api = useBuilderApi();
   const [config, setConfig] = React.useState<OrderFormConfig>(initialValues.config);
 
   const section = useSectionState({
     save: async () => {
-      const res = await fetch(`/api/landings/${landingId}/order-form`, {
+      const res = await fetch(api(`/landings/${landingId}/order-form`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),

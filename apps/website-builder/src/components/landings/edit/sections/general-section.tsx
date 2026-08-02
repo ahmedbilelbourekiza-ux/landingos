@@ -15,6 +15,7 @@ import {
   useSectionState,
 } from "@/components/landings/edit/section";
 import { Field } from "./field";
+import { useBuilderApi } from "@/lib/builder/api-base";
 
 export interface GeneralPreviewValues {
   title: string;
@@ -46,10 +47,13 @@ export function GeneralSection({
   initialValues: GeneralPreviewValues;
   onPreviewChange: (values: GeneralPreviewValues) => void;
 }) {
+  // Where this editor sends its requests. The legacy dashboard and the
+  // console mount the same components against different bases.
+  const api = useBuilderApi();
   const section = useSectionState({
     save: async () => {
       const values = form.getValues();
-      const res = await fetch(`/api/landings/${landingId}/general`, {
+      const res = await fetch(api(`/landings/${landingId}/general`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

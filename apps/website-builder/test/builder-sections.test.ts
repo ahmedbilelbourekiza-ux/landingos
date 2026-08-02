@@ -564,3 +564,61 @@ describe('platform settings screens', { skip }, () => {
     assert.match(html, new RegExp(`sec-a-${stamp}`), "the tenant's own name");
   });
 });
+
+describe('the landing editor moved, not rewritten', { skip }, () => {
+  test('it opens in the console for a permitted user', async () => {
+    const r = await fetch(`${BASE}/builder/pages/${pageId}/edit`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    // The same components as the legacy mount, pointed at the platform API.
+    assert.match(html, /Editable|Renamed/, 'the page being edited is loaded');
+  });
+
+  test('it sends its requests to the platform API, not the legacy one', async () => {
+    const r = await fetch(`${BASE}/builder/pages/${pageId}/edit`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    const html = await r.text();
+    // The provider's base reaches the client bundle as a prop. If this ever
+    // reverts to "/api" the editor silently writes through the legacy JWT
+    // routes, which no platform session can satisfy.
+    assert.match(html, /\/api\/builder/, 'the editor is bound to the platform API base');
+  });
+
+  test("another tenant's page cannot be opened for editing", async () => {
+    const r = await fetch(`${BASE}/builder/pages/${otherPageId}/edit`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+      redirect: 'manual',
+    });
+    assert.equal(r.status, 404);
+  });
+
+  test('a viewer cannot open the editor at all', async () => {
+    // Reading is not enough: every control in the editor writes.
+    const viewerEmail = `sec-viewer-${stamp}@landingos.test`;
+    const u = await asPlatform().user.create({
+      data: { email: viewerEmail, name: viewerEmail, passwordHash: await hashPassword('x') },
+    });
+    userIds.push(u.id);
+    await withTenant(tenant, (tx) =>
+      (tx as any).membership.create({ data: { tenantId: tenant, userId: u.id, role: 'VIEWER' } }),
+    );
+    const { token } = await createSession(u.id, tenant);
+
+    const r = await fetch(`${BASE}/builder/pages/${pageId}/edit`, {
+      headers: { cookie: `${SESSION_COOKIE}=${token}` },
+      redirect: 'manual',
+    });
+    assert.equal(r.status, 404);
+  });
+
+  test('an unentitled tenant cannot open it either', async () => {
+    const r = await fetch(`${BASE}/builder/pages/${pageId}/edit`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.unentitled}` },
+      redirect: 'manual',
+    });
+    assert.equal(r.status, 404);
+  });
+});

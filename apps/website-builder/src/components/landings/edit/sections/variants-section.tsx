@@ -10,6 +10,7 @@ import {
   useSectionState,
 } from "@/components/landings/edit/section";
 import { VariantGroupEditor } from "./variant-group-editor";
+import { useBuilderApi } from "@/lib/builder/api-base";
 
 export interface VariantsPreviewValues {
   groups: VariantGroup[];
@@ -27,6 +28,9 @@ export function VariantsSection({
   initialValues: VariantsPreviewValues;
   onPreviewChange: (values: VariantsPreviewValues) => void;
 }) {
+  // Where this editor sends its requests. The legacy dashboard and the
+  // console mount the same components against different bases.
+  const api = useBuilderApi();
   const [groups, setGroups] = React.useState<VariantGroup[]>(initialValues.groups);
 
   const section = useSectionState({
@@ -39,7 +43,7 @@ export function VariantsSection({
           displayOrder: gi * 100 + oi,
         })),
       );
-      const res = await fetch(`/api/landings/${landingId}/variants`, {
+      const res = await fetch(api(`/landings/${landingId}/variants`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ variants: flatVariants }),
