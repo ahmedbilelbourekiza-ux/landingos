@@ -52,10 +52,22 @@ export const erp: ProductManifest = {
     'erp:orders:read',
     'erp:orders:write',
     'erp:products:write',
+    'erp:products:read',
     'erp:inventory:write',
+    // Sensitive (D-05.1): this is every customer's name, phone number, address
+    // and lifetime spend. No role grants it implicitly.
     'erp:clients:read',
     'erp:shipments:write',
+    // Sensitive (D-05.1): the company's profit and loss.
     'erp:finance:read',
+    'erp:finance:write',
+    // Declared in Phase 5.2, when the routes that check them were written.
+    // A permission a route uses but the manifest does not declare still works —
+    // `productOf` resolves it by prefix — but it is invisible to the shell's
+    // navigation filter and to the roles screen, which is how a permission
+    // comes to exist that nobody can see or grant.
+    'erp:settings:write',
+    'erp:audit:read',
     'erp:agents:manage',
     'erp:ai:use',
   ],

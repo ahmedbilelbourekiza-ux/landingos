@@ -40,9 +40,25 @@ export interface RouteContext<P> {
 
 type Handler<P> = (ctx: RouteContext<P>) => Promise<Response> | Response;
 
-/** The error envelope every console route returns, so clients parse one shape. */
-export function apiError(status: number, code: string, message: string) {
-  return NextResponse.json({ success: false, error: { code, message } }, { status });
+/**
+ * The error envelope every console route returns, so clients parse one shape.
+ *
+ * `extra` carries machine-readable detail alongside the message — the set of
+ * valid call results, the field that was refused. It exists so a console does
+ * not have to hardcode a vocabulary the server owns and then drift from it the
+ * next time that vocabulary grows. Keep it to data the caller can act on; it is
+ * not a place for a stack trace or a SQL fragment.
+ */
+export function apiError(
+  status: number,
+  code: string,
+  message: string,
+  extra?: Record<string, unknown>,
+) {
+  return NextResponse.json(
+    { success: false, error: { code, message, ...(extra ?? {}) } },
+    { status },
+  );
 }
 
 export function apiOk<T>(data: T, init?: ResponseInit) {

@@ -155,6 +155,55 @@ describe('authorization', () => {
     assert.equal(can(manager, 'erp:agents:manage'), true);
   });
 
+  test('D-05.1 — the customer registry and the books are not ordinary reads', () => {
+    // Found by porting the ERP's suite (Phase 5.1). Both were manager-only
+    // there, and the `*:*:read` glob would have handed them to every member —
+    // every customer's phone number and lifetime spend, and the company's P&L,
+    // readable by a confirmation agent whose own order book is scoped to a
+    // handful of rows.
+    const member = ctx({ role: 'MEMBER' });
+    assert.equal(can(member, 'erp:orders:read'), true, 'an ordinary read still works');
+    assert.equal(can(member, 'erp:clients:read'), false);
+    assert.equal(can(member, 'erp:finance:read'), false);
+
+    const viewer = ctx({ role: 'VIEWER' });
+    assert.equal(can(viewer, 'erp:clients:read'), false);
+    assert.equal(can(viewer, 'erp:finance:read'), false);
+  });
+
+  test('D-05.1 — a MANAGER needs them by name, an OWNER does not', () => {
+    // The accepted cost of the rule above. Running a call-centre day to day is
+    // not by itself a reason to hold every customer's PII.
+    const manager = ctx({ role: 'MANAGER' });
+    assert.equal(can(manager, 'erp:clients:read'), false);
+
+    const granted = ctx({ role: 'MANAGER', permissions: ['erp:clients:read'] });
+    assert.equal(can(granted, 'erp:clients:read'), true);
+    assert.equal(can(granted, 'erp:finance:read'), false, 'one grant lifts one permission');
+
+    for (const role of ['OWNER', 'ADMIN'] as const) {
+      assert.equal(can(ctx({ role }), 'erp:clients:read'), true, role);
+      assert.equal(can(ctx({ role }), 'erp:finance:read'), true, role);
+    }
+  });
+
+  test('D-05.1 — the rule names no product, so a tenth product inherits it', () => {
+    // Stated as a glob for the same reason every other rule here is: the
+    // registry is the only thing that knows which products exist.
+    const member = ctx({ role: 'MEMBER' });
+    assert.equal(can(member, 'website-builder:clients:read'), false);
+  });
+
+  test('D-05.1 — entitlement is still checked first', () => {
+    // A grant by name must not become a way around the billing gate.
+    const granted = ctx({
+      role: 'MANAGER',
+      permissions: ['erp:clients:read'],
+      entitlements: ['product.website-builder'],
+    });
+    assert.equal(can(granted, 'erp:clients:read'), false);
+  });
+
   test('an explicit grant lifts one permission without lifting the rest', () => {
     const member = ctx({ role: 'MEMBER', permissions: ['erp:orders:write'] });
     assert.equal(can(member, 'erp:orders:write'), true);

@@ -50,9 +50,39 @@ const ROLE_PATTERNS: Record<TenantRole, readonly string[]> = {
  * the membership, or held by OWNER/ADMIN via `*`.
  *
  * These are the ones where "probably fine" is the wrong default: managing who
- * else has access, and spending money.
+ * else has access, spending money, the customer list, and the books.
+ *
+ * D-05.1 — why reading is on a list that is otherwise about writing.
+ *
+ * Every other read on the platform is granted by the `*:*:read` glob that
+ * MANAGER, MEMBER and VIEWER all carry. Two are not, and Phase 5.1 found out
+ * why by porting the ERP's tests: the ERP treated its customer registry and its
+ * finance screens as manager-only and asserted it directly, because that
+ * registry is every customer's phone number, address and lifetime spend, and
+ * those screens are the company's profit and loss. Under the glob alone, every
+ * member of the tenant — including a confirmation agent whose own order book is
+ * deliberately scoped to a handful of rows — could read both in full. That is
+ * the exposure the ERP's SEC-02 work closed, and re-opening it silently as a
+ * side effect of a platform migration is exactly the outcome the port existed
+ * to prevent.
+ *
+ * Stated as product-agnostic globs, like everything else here: no product is
+ * named, a tenth product that declares `*:clients:read` inherits the rule, and
+ * the registry stays the only place that knows which products exist.
+ *
+ * The cost is real and accepted: a MANAGER now needs `erp:clients:read` granted
+ * by name. That reads correctly — running a call-centre day to day is not by
+ * itself a reason to hold every customer's PII — and it is the same shape as
+ * `*:agents:manage`, which MANAGER has always needed by name for the same kind
+ * of reason.
  */
-const SENSITIVE = ['*:agents:manage', 'platform:billing:*', 'platform:team:*'];
+const SENSITIVE = [
+  '*:agents:manage',
+  '*:clients:read',
+  '*:finance:read',
+  'platform:billing:*',
+  'platform:team:*',
+];
 
 export interface AuthContext {
   readonly userId: string;

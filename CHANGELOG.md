@@ -12,6 +12,110 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 5 — The ERP onto the platform
 
+### 5.2 The data layer, and three things the tests found first
+
+`apps/erp/lib/db.js` is 3,568 lines and ~130 exported functions over 14 domains.
+This milestone ports the foundation and the first vertical slice — orders,
+customers, settings, audit — end to end: repository **and** routes, so every
+claim below is checked against a running server rather than a compiled one.
+
+**Sequencing changed, deliberately.** NEXT_STEPS had 5.2 build every repository
+and 5.3 add every route. Done that way nothing is verifiable until both finish,
+which is the exact position PROJECT_STATE warns about twice. Vertical slices
+mean each commit has passing tests behind it.
+
+#### D-05.1 resolved — the customer registry and the books are not ordinary reads
+
+`*:clients:read` and `*:finance:read` joined `SENSITIVE` in
+`packages/auth/src/rbac.ts`. The ERP treated both as manager-only; the
+platform's `*:*:read` glob would have handed every customer's phone number and
+lifetime spend, and the company's P&L, to every member of the tenant. Stated as
+product-agnostic globs like every other rule there, so a tenth product inherits
+it. A `MANAGER` now needs them by name — the accepted cost, and it reads
+correctly.
+
+#### D-05.2 — the id scheme raced
+
+The ERP numbered orders by counting rows and probing upward for a free slot.
+Two concurrent creates read the same count and race for the same primary key —
+invisible under SQLite's single writer, a question of load on Postgres. Now one
+atomic increment on a per-tenant `TenantSequence` row. Postgres sequences were
+rejected: they are global objects, so per-tenant numbering would mean creating
+DDL at signup that the application role deliberately cannot perform.
+
+#### D-05.3 — and then the ids collided, which is why the tests moved first
+
+`ORD-0042` was the ERP's **primary key**. That cannot survive multi-tenancy:
+`id` is a global unique index, so the second tenant to create their first order
+collides with the first tenant's `ORD-0001` and the insert fails outright.
+
+It was found by a contract test creating an order in a second tenant, before
+any of it shipped — which is the entire argument for Phase 5.1 landing before
+Phase 5.2, demonstrated rather than asserted.
+
+Resolved by splitting the two roles the column was doing: `id` is a cuid,
+`reference` is `ORD-0042` and unique **per tenant**. A global counter was
+rejected because the gaps would be a live readout of how much business a
+neighbouring tenant is doing; a compound primary key was rejected because it
+drags compound foreign keys through every relation pointing at an order.
+
+#### Ported
+
+`src/lib/erp/` — ids, phone normalisation, Decimal/BigInt serialisation, the
+record-level order scope, the per-order ownership guard, ERP settings on
+`ProductSetting`, the order repository and the customer registry.
+
+Three behaviours came across unchanged because they are the design:
+
+- **Lifetime counters are EVENT counts, not snapshots.** `confirmedOrders` does
+  not go back down when an order is later cancelled. Making them agree with a
+  live `COUNT(*)` looks like a bug fix and destroys the history.
+- **Deleting an order never touches the customer record.**
+- **`suspicious` is a nullable Boolean.** null means "not evaluated", which is
+  what a standalone note is; folding it to false reclassifies unassessed history
+  as clean.
+
+And one changed on purpose: the counters use `increment` — `SET x = x + 1` in
+SQL — where the ERP read the row, added one and wrote the total back. Safe under
+a single writer, a lost update the moment two webhook deliveries for one
+customer land together, which is the ordinary case.
+
+#### Two defects avoided by writing them down
+
+**BigInt throws.** `JSON.stringify(1n)` is a TypeError, not a fallback, and six
+ERP models use BigInt ids. Any route returning one would 500 on its first real
+request. `toJson` handles it centrally.
+
+**`(db as any)` was never necessary.** Probed it: `db.fulfillmentOrder` typechecks
+on `TenantDb` today. Those casts are what hid the nested-`$transaction` bug in
+Phase 4.4. The entire ERP layer is written without one.
+
+#### Files
+`packages/auth/src/rbac.ts` + tests (32 → 36).
+`packages/db/prisma/schema/platform.prisma` — `TenantSequence`.
+`packages/db/prisma/schema/erp.prisma` — cuid defaults on 10 models,
+`reference` on `FulfillmentOrder` and `CatalogProduct`.
+`packages/product-registry/src/manifests.ts` — `erp:settings:write`,
+`erp:audit:read`, `erp:products:read`, `erp:finance:write` declared.
+`apps/website-builder/src/lib/erp/` (8 modules), `src/app/api/erp/` (13 routes),
+`src/lib/api/route.ts` — `apiError` gained a machine-readable `extra`.
+
+#### Migration
+Additive only: two `ADD COLUMN`, two `CREATE UNIQUE INDEX`, one new table. DDL
+rendered and read before applying. RLS re-applied — **47 tables**, up from 46,
+and preflight's 9 checks pass.
+
+#### Risk
+Only orders, clients, settings and audit exist. `access.test.ts` is 34/62
+because 28 of its assertions name routes Phase 5.3 has not built —
+products, inventory, carriers, shipments, finance, agents, follow-up, AI. That
+count is the remaining scope, stated rather than hidden.
+
+**Verified against a running server:** orders 38/38, validation 29/29,
+listing 25/25 — 92/92 on the built surface. auth 36, product-registry 36, db 29.
+
+---
+
 ### 5.1 The ERP's tests move first (M-18)
 
 The ERP's 298 tests are the only meaningful coverage the more complex of the two

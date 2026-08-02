@@ -360,3 +360,42 @@ model ProductSetting {
   @@unique([tenantId, product, key])
   @@index([tenantId, product])
 }
+
+// A monotonic counter, per tenant, per name (D-05.2).
+//
+// The ERP numbered its records for humans — ORD-0042, PRD-007 — and that is
+// worth keeping: this is a call-centre tool where agents read order numbers to
+// customers over the phone and managers search by them. A cuid is correct and
+// unreadable, and "can you read me your order number" is a real sentence
+// somebody says forty times a day.
+//
+// What is NOT kept is how the ERP produced them:
+//
+//   let n = orders.length + 1, id;
+//   do { id = 'ORD-' + String(n++).padStart(4, '0'); } while (db.getOrder(id));
+//
+// Count the rows, then probe upward until the id is free. Two concurrent
+// creates read the same count, probe the same gap and race for the same
+// primary key. Under SQLite's single writer that was unlikely enough to never
+// be seen; on Postgres under real concurrency it is a question of load. It is
+// also O(n) reads per insert once ids start being recycled by deletes.
+//
+// Incrementing this row is a single atomic statement, and the row lock means
+// the second writer waits rather than duplicating. Per tenant because the
+// numbering must not skip when a NEIGHBOUR is busy — beyond being confusing,
+// a shared sequence leaks how much business another company is doing.
+//
+// Postgres sequences are the obvious alternative and were rejected: they are
+// global objects, so per-tenant numbering would mean creating a sequence per
+// tenant per counter as DDL at signup — DDL the application role deliberately
+// cannot perform.
+model TenantSequence {
+  tenantId String
+  // "order", "product", "client", … — the ERP's prefixes, one counter each.
+  name     String
+  value    Int    @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@id([tenantId, name])
+}

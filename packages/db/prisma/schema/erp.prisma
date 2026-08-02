@@ -42,8 +42,33 @@
 // on SalesOrder: only the names are settled here, the relationship between the
 // two is Phase 5.4 (M-05).
 model FulfillmentOrder {
-  id       String @id
+  // The key is technical and globally unique. See `reference` for the number
+  // humans actually use, and D-05.3 for why they cannot be the same column.
+  id       String @id @default(cuid())
   tenantId String
+
+  // The order number a human reads: ORD-0042.
+  //
+  // D-05.3. The ERP numbered orders sequentially and used that number AS the
+  // primary key, which worked because there was exactly one company. It cannot
+  // survive multi-tenancy: `id` is a global unique index, so the second tenant
+  // to create their first order collides with the first tenant's ORD-0001 and
+  // the insert fails outright. Phase 5.2 discovered this the way it should be
+  // discovered — a contract test creating an order in a second tenant, before
+  // any of it shipped.
+  //
+  // Three fixes were considered. A GLOBAL counter keeps one column but numbers
+  // every tenant from one shared sequence, so a company sees ORD-0001 then
+  // ORD-0047 and the gaps are a live readout of how much business their
+  // neighbours are doing. A COMPOUND primary key ([tenantId, id]) is correct in
+  // theory and drags compound foreign keys through every relation that points
+  // at an order. Splitting the two roles costs one column and leaves both
+  // properties intact, which is why it won.
+  //
+  // Nullable because rows created before this column existed have no number,
+  // and backfilling one would invent order numbers that were never quoted to a
+  // customer.
+  reference String?
 
   // --- external origin -------------------------------------------------
   externalId       String? // was shopifyId
@@ -124,6 +149,9 @@ model FulfillmentOrder {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  // Per tenant, like every other uniqueness rule in this schema (M-04). Two
+  // companies both having an ORD-0001 is the ordinary case, not a conflict.
+  @@unique([tenantId, reference])
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
   @@index([tenantId, agentUserId, status])
@@ -162,8 +190,13 @@ model OrderCall {
 // Product because on this platform "product" also means an application module
 // (see @landingos/product-registry), and one word cannot mean both.
 model CatalogProduct {
-  id       String @id
+  id       String @id @default(cuid())
   tenantId String
+
+  // PRD-007. Same split as FulfillmentOrder.reference and for the same reason
+  // (D-05.3) — a catalogue number is quoted to suppliers and printed on
+  // pick-lists, so it is worth keeping, but it cannot be the global key.
+  reference String?
 
   name        String?
   sku         String?
@@ -204,6 +237,7 @@ model CatalogProduct {
 
   createdAt DateTime @default(now())
 
+  @@unique([tenantId, reference])
   @@index([tenantId, archived])
   @@index([tenantId, sku])
   @@index([tenantId, name])
@@ -214,7 +248,7 @@ model CatalogProduct {
 // a connected Shopify/LightFunnels/WooCommerce account, not the tenant's own
 // store profile.
 model SalesChannel {
-  id       String @id
+  id       String @id @default(cuid())
   tenantId String
 
   name     String
@@ -309,7 +343,7 @@ model PushSubscription {
 // A delivery company. Was `providers`, renamed because the AI provider registry
 // sits beside it and the two are unrelated.
 model Carrier {
-  id       String @id
+  id       String @id @default(cuid())
   tenantId String
 
   name String
@@ -394,7 +428,7 @@ model IntegrationLog {
 }
 
 model Shipment {
-  id       String @id
+  id       String @id @default(cuid())
   tenantId String
 
   orderId   String
@@ -449,7 +483,7 @@ model ShipmentEvent {
 // -----------------------------------------------------------------------------
 
 model AiProvider {
-  id       String @id
+  id       String @id @default(cuid())
   tenantId String
 
   name String?
@@ -479,7 +513,7 @@ model AiProvider {
 // A role-configured assistant bound to a provider and model, carrying its own
 // prompt and permission set. The CRM core is agnostic to roles — they are data.
 model AiAgent {
-  id       String @id
+  id       String @id @default(cuid())
   tenantId String
 
   name        String?
@@ -633,7 +667,7 @@ model CatalogProductEvent {
 // ones stay forever as a record of what the business looked like AT THE TIME
 // each calculation was made.
 model FinancialRecord {
-  id       String @id
+  id       String @id @default(cuid())
   tenantId String
 
   // day | week | month | quarter | year | custom
@@ -668,7 +702,7 @@ model FinancialRecord {
 // contacting the customer, carrying a due time so the jobs loop can escalate
 // overdue reminders to a manager.
 model FollowupTask {
-  id       String @id
+  id       String @id @default(cuid())
   tenantId String
 
   orderId String
@@ -696,7 +730,7 @@ model FollowupTask {
 //
 // The count columns are LIFETIME EVENT counts, not live snapshots.
 model Client {
-  id       String @id
+  id       String @id @default(cuid())
   tenantId String
 
   // Normalized 0xxxxxxxxx form — the dedup key. Per-tenant, and this is the

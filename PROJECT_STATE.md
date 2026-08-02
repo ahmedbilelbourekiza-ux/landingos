@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 2 August 2026
-**Branch:** `master` · **Last commit:** *Phase 5.1: the ERP's tests move first*
+**Branch:** `master` · **Last commit:** *Phase 5.2: the ERP data layer, and three decisions the tests forced*
 **Working tree:** clean, all work committed.
 
 ---
@@ -51,7 +51,7 @@ one product with a bolt-on: it hosts any number of independently subscribable
 | Product | id | Status |
 |---|---|---|
 | Website Builder | `website-builder` | Fully migrated onto the platform |
-| ERP / CRM | `erp` | Manifest only — standalone Express app, not yet ported |
+| ERP / CRM | `erp` | Porting in progress (Phase 5) — orders, customers, settings live on the platform; the rest still standalone |
 
 A customer subscribes to either, or both. Neither is privileged. The platform
 supplies authentication, tenancy, roles, entitlements, billing hooks, domains,
@@ -66,37 +66,56 @@ enumerates products — it reads a registry.
 
 ## Where we are
 
-**Phase 5.1 is complete.** The ERP's test suite was ported to the platform API
-surface *before* any ERP logic moves, so Phase 5.2 and 5.3 are written against a
-contract that already exists.
+**Phase 5.2 is complete, and Phase 5.3 is partially done.** The ERP data-layer
+foundation is ported and the first vertical slice — orders, customers, settings,
+audit — runs end to end on the platform with its contract tests passing against
+a live server.
 
-**Exact stopping point:** all Phase 5.1 work is committed. No work is in
-progress. The next task is **Phase 5.2 — `apps/erp/lib/db.js` → tenant-scoped
-repositories**, and it has one blocking decision in front of it (D-05.1, below).
+**Exact stopping point:** committed and verified. The next task is **the rest of
+Phase 5.3 — the remaining ERP route surfaces**, listed under *What is built* below.
 
-### What Phase 5.1 left on the table, deliberately
+### Sequencing note
 
-1. **D-05.1 must be decided before the first ERP route ships.** The ERP treated
-   the customer registry and the finance screens as manager-only. On the
-   platform, `MEMBER` and `VIEWER` carry the glob `*:*:read`, which grants
-   `erp:clients:read` and `erp:finance:read` to every member of the tenant — every
-   customer's phone number and lifetime spend, and the company's P&L, handed to a
-   confirmation agent. The affected tests assert the **ERP's** boundary and are
-   marked `D-05.1` in place, so they fail until this is settled rather than
-   quietly adopting the wider behaviour. Recommendation and reasoning are in
-   `apps/website-builder/test/erp/PORTING.md`.
+NEXT_STEPS originally had 5.2 build every repository and 5.3 add every route.
+That was changed on purpose: done in that order nothing is verifiable until both
+finish, which is the position this project has been bitten by three times.
+Work proceeds in **vertical slices** — repository plus routes plus green tests,
+one domain at a time.
 
-2. **The ported suite is skipped until the routes exist.** It probes
-   `/api/erp/orders`; an unmatched Next route is a 404 and a mounted
-   `tenantRoute` without a session is a 401, and that difference is the whole
-   probe. `ERP_CONTRACT=strict` turns the skip into a failure — turn it on in CI
-   the moment 5.3 starts.
+### What is built, and what is not
 
-3. **Two ERP guarantees have no platform home yet:** the cross-origin
-   state-change refusal (`CSRF_ORIGIN`) and rate limiting (login throttling per
-   IP *and* per account, plus an API backstop exempting the event stream and
-   inbound carrier webhooks). Both were real and tested in the ERP. Neither
-   belongs in a product suite; both need a platform owner.
+| Surface | State |
+|---|---|
+| `/api/erp/orders` (+ stats, bulk, and 6 per-order routes) | **done**, 38/38 |
+| `/api/erp/clients` (+ filter-options) | **done** |
+| `/api/erp/settings`, `/api/erp/audit` | **done** |
+| products, inventory | not built |
+| carriers, shipments, sales channels, webhooks | not built |
+| financial records, unexpected charges | not built |
+| agents, payroll, follow-up | not built |
+| AI providers, agents, conversations | not built |
+
+`access.test.ts` is **34/62** for exactly this reason: 28 of its assertions name
+routes that do not exist yet. That number is the remaining scope.
+
+### Decisions taken in 5.2
+
+- **D-05.1 (resolved).** `*:clients:read` and `*:finance:read` are now
+  `SENSITIVE` in `packages/auth/src/rbac.ts` — no role grants them implicitly.
+  The customer registry is every customer's PII and the finance screens are the
+  company's P&L; the `*:*:read` glob would have handed both to every member.
+- **D-05.2.** Human-readable numbering comes from an atomic per-tenant
+  `TenantSequence`, not from counting rows and probing for a free slot.
+- **D-05.3.** `ORD-0042` is a `reference` column, unique per tenant; the primary
+  key is a cuid. The ERP used the number AS the key, which collides across
+  tenants on the second tenant's first order.
+
+### Still with no platform home
+
+Two ERP guarantees left the product suite in 5.1 and remain unowned: the
+cross-origin state-change refusal (`CSRF_ORIGIN`) and rate limiting (login
+throttling per IP *and* per account, plus an API backstop exempting the event
+stream and inbound carrier webhooks).
 
 ### Phases completed
 
@@ -114,22 +133,23 @@ repositories**, and it has one blocking decision in front of it (D-05.1, below).
 | 4.4 | The builder's data layer and every screen, ported and proven |
 | 4.5 | Storefront migrated; legacy dashboard, JWT and middleware deleted |
 | 5.1 | The ERP's tests ported to `/api/erp/*` — 227 tests, executable ahead of the routes |
+| 5.2 | ERP data-layer foundation + the orders/clients/settings slice, verified live |
 
 ### Remaining roadmap
 
 | Phase | Scope |
 |---|---|
-| **5** | **ERP backend onto the platform** — 5.1 done; next `lib/db.js` → Prisma repositories (5.2), 126 routes → `/api/erp/*` (5.3), and the M-05 order split (5.4) |
+| **5** | **ERP backend onto the platform** — 5.1 and 5.2 done; next the remaining route surfaces (5.3) and the M-05 order split (5.4) |
 | 6 | ERP interface — rebuild ~6,200 lines of vanilla SPA + agent PWA in React |
 | 7 | SaaS layer — company/team management, billing, self-serve signup, notifications |
 | 8 | Hardening — adversarial isolation review, load testing, backup/restore, runbooks |
 
 ### Next recommended task
 
-See `NEXT_STEPS.md`. In short: **decide D-05.1, then Phase 5.2 —
-`apps/erp/lib/db.js` → tenant-scoped repositories.** ~185 KB of hand-written
-SQL, ported model by model onto `withTenant`. The contract it has to satisfy is
-already written and executable in `apps/website-builder/test/erp/`.
+See `NEXT_STEPS.md`. In short: **continue Phase 5.3, one vertical slice at a
+time** — products and inventory next, then carriers and shipments. The
+foundation in `apps/website-builder/src/lib/erp/` is in place and the contract
+each slice must satisfy is already written in `apps/website-builder/test/erp/`.
 
 ---
 
@@ -138,7 +158,7 @@ already written and executable in `apps/website-builder/test/erp/`.
 ```
 landingos/                        (repo root = npm workspace)
 ├── apps/
-│   ├── erp/                      Express + SQLite. UNTOUCHED. Phase 5–6 target.
+│   ├── erp/                      Express + SQLite. Still runnable; being ported.
 │   └── website-builder/          The Next.js app — hosts the whole platform
 ├── packages/
 │   ├── db/                       Prisma schema, tenant client, RLS, seeds
@@ -186,8 +206,8 @@ happens in server components and in the `tenantRoute` wrapper.
 
 **PostgreSQL 18.4 on Neon.** One database, one Prisma schema, three domains.
 
-- **51 tables**, 157 indexes, 8 enums
-- **46 tables carry `tenantId`** and have RLS
+- **52 tables**, 161 indexes, 8 enums
+- **47 tables carry `tenantId`** and have RLS
 - **5 do not, by design:** `Tenant`, `User`, `Session` (identity — resolved
   before a tenant is known) and `Wilaya`, `Baladia` (platform reference data)
 - **37 `numeric` money columns, 0 `double precision`**
@@ -330,11 +350,11 @@ Adding a product = adding a manifest + its own screens. No platform file changes
 | M-09 | JWT → opaque sessions (middleware left the Edge runtime) |
 | M-10 | scrypt/bcrypt → argon2id with legacy verification |
 | M-13 | Console design tokens |
+| M-18 | ERP test port — 227 tests to `/api/erp/*`, executable ahead of the routes |
+| M-21 | `TenantSequence`, cuid keys and per-tenant `reference` (D-05.2, D-05.3) |
 | M-17 | Public routing → `/[tenant]/[slug]` + `TenantDomain` |
 | M-20 | Trilingual i18n |
 | — | Builder API + all screens ported; legacy stack deleted |
-
-| M-18 | ERP test port — 227 tests to `/api/erp/*`, executable ahead of the routes |
 
 **Not yet done:** M-05 (order relationship + domain event), M-11 (ERP's 126
 routes), M-12 (ERP UI), M-14 (ERP base64 images → R2), M-15 (jobs → worker),
