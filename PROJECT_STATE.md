@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 2 August 2026
-**Branch:** `master` · **Last commit:** *Phase 5.2: the ERP data layer, and three decisions the tests forced*
+**Branch:** `master` · **Last commit:** *Phase 5.3 (part 1): products, inventory, agents and the books*
 **Working tree:** clean, all work committed.
 
 ---
@@ -66,10 +66,10 @@ enumerates products — it reads a registry.
 
 ## Where we are
 
-**Phase 5.2 is complete, and Phase 5.3 is partially done.** The ERP data-layer
-foundation is ported and the first vertical slice — orders, customers, settings,
-audit — runs end to end on the platform with its contract tests passing against
-a live server.
+**Phase 5.2 is complete and Phase 5.3 is about two thirds done.** The ERP
+data-layer foundation plus five vertical slices — orders, customers, settings,
+audit, products, inventory, agents/payroll and finance — run end to end on the
+platform with their contract tests passing against a live server.
 
 **Exact stopping point:** committed and verified. The next task is **the rest of
 Phase 5.3 — the remaining ERP route surfaces**, listed under *What is built* below.
@@ -86,17 +86,22 @@ one domain at a time.
 
 | Surface | State |
 |---|---|
-| `/api/erp/orders` (+ stats, bulk, and 6 per-order routes) | **done**, 38/38 |
+| `/api/erp/orders` (+ stats, bulk, 6 per-order routes) | **done** |
 | `/api/erp/clients` (+ filter-options) | **done** |
 | `/api/erp/settings`, `/api/erp/audit` | **done** |
-| products, inventory | not built |
-| carriers, shipments, sales channels, webhooks | not built |
-| financial records, unexpected charges | not built |
-| agents, payroll, follow-up | not built |
+| `/api/erp/products` (+ inventory, stock-lots, history), `inventory/low-stock` | **done** |
+| `/api/erp/agents` (+ payroll, days-off, suspend/reactivate) | **done** |
+| `/api/erp/financial-records`, `/api/erp/unexpected-charges` | **done** |
+| carriers, shipments | not built |
+| sales channels, inbound webhooks | not built |
+| follow-up tasks and dashboard | not built |
 | AI providers, agents, conversations | not built |
 
-`access.test.ts` is **34/62** for exactly this reason: 28 of its assertions name
-routes that do not exist yet. That number is the remaining scope.
+**Contract suite:** orders 38/38 · validation 29/29 · listing 25/25 ·
+catalog 31/31 · access **45/62**. The 17 remaining access failures name exactly
+the unbuilt surfaces above, and `delivery.test.ts` and `integrations.test.ts`
+are red for the same reason. That is the remaining scope, stated rather than
+hidden.
 
 ### Decisions taken in 5.2
 
@@ -134,6 +139,7 @@ stream and inbound carrier webhooks).
 | 4.5 | Storefront migrated; legacy dashboard, JWT and middleware deleted |
 | 5.1 | The ERP's tests ported to `/api/erp/*` — 227 tests, executable ahead of the routes |
 | 5.2 | ERP data-layer foundation + the orders/clients/settings slice, verified live |
+| 5.3a | Products, inventory, agents/payroll and finance — catalog 31/31 |
 
 ### Remaining roadmap
 
@@ -146,8 +152,9 @@ stream and inbound carrier webhooks).
 
 ### Next recommended task
 
-See `NEXT_STEPS.md`. In short: **continue Phase 5.3, one vertical slice at a
-time** — products and inventory next, then carriers and shipments. The
+See `NEXT_STEPS.md`. In short: **continue Phase 5.3** — carriers and shipments
+next (they unblock `delivery.test.ts`), then sales channels and webhooks, then
+the AI surface. The
 foundation in `apps/website-builder/src/lib/erp/` is in place and the contract
 each slice must satisfy is already written in `apps/website-builder/test/erp/`.
 

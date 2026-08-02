@@ -12,6 +12,83 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 5 — The ERP onto the platform
 
+### 5.3 (part 1) Products, inventory, agents and the books
+
+Four more surfaces on the platform, each verified against a running server
+rather than a compiled one. `catalog.test.ts` goes 0 → **31/31** and
+`access.test.ts` 34 → **45/62**.
+
+#### FIFO, and the lock the ERP did not have
+
+Purchase prices move. A variant restocked twice at 1,000 and 2,000 does not have
+"a" cost — it has two, and which one a sale consumed decides whether that sale
+made money. That is why `StockLot` exists and why every consuming movement
+records exactly which lots it drew from.
+
+The part that is easy to get wrong, and is asserted by a test that cancels an
+order: a cancellation returns stock to the **same** lots the original
+reservation consumed, read back from `MovementLotConsumption` — not to the
+newest lot, and not to the cheapest. Anything else silently rewrites the cost
+basis on every cancellation and the profit calculator stops being true without
+a single error.
+
+**`SELECT … FOR UPDATE` on the lot rows before planning against them.** The ERP
+planned and adjusted in two steps with no lock: correct under SQLite's single
+writer, a lost update on Postgres. Two orders confirming the same variant at
+once both read `qtyRemaining = 5`, both take 5, and ten units are sold from a
+batch of five. NEXT_STEPS flagged this class explicitly; this is the fix.
+
+#### D-05.4 — where per-member ERP data lives
+
+The ERP's `agents` table became User + Membership in M-02, but a few of its
+columns were never about identity: pay rates, weekly days off, the missed-order
+counter. Columns on `Membership` were rejected outright — that is a PLATFORM
+model and it must never learn what an ERP payroll rate is, or the table grows a
+section per product. A dedicated ERP table was rejected as a migration, an RLS
+policy and a foreign key into platform identity for a small bag of settings.
+
+They live in `ProductSetting`, keyed `agent:<userId>` — the table that exists
+precisely so a product can store configuration without a new one, already
+tenant-scoped and RLS-covered. A tenth product needing per-member configuration
+uses it unchanged.
+
+#### Rules that came across because they are the design
+
+- **Archive, not delete.** A product is referenced by every order that contained
+  it and by its own ledger; deleting it either cascades that history away or
+  leaves it pointing at nothing.
+- **Financial records are INSERT-ONLY.** Saving a period twice inserts; the older
+  row stays as a record of what the business looked like AT THE TIME. A manager
+  who recalculates March in June wants both answers, because the difference is
+  usually a returned parcel and worth explaining.
+- **`netProfit` is derived, never taken from the request.** A test posts
+  `netProfit: 999999` and expects 37000 back.
+- **Unexpected charges ARE deletable**, unlike the records beside them. A saved
+  P&L is a statement somebody made; a van repair typed in wrong is data entry.
+- **Low stock is evaluated per VARIANT.** A shoe with 200 units is not fine if
+  199 of them are size 45.
+- **Suspension takes effect on the next request** — the reason M-09 chose
+  server-side sessions. Suspending yourself, and suspending the owner, are both
+  refused: the first ends the session doing the suspending.
+
+#### Files
+`src/lib/erp/inventory.ts`, `src/lib/erp/agents.ts`;
+`src/app/api/erp/products/*` (7 routes), `inventory/low-stock`,
+`agents/*` (6 routes), `financial-records/*`, `unexpected-charges/*`.
+
+#### Migration
+None. Schema unchanged since 5.2.
+
+#### Risk
+Carriers, shipments, sales channels, webhooks and the AI surface are still
+unbuilt — the 17 remaining `access.test.ts` failures name exactly those, and
+`delivery.test.ts` and `integrations.test.ts` are still red for the same reason.
+
+**Verified live:** catalog 31/31, orders 38/38, validation 29/29, listing 25/25,
+access 45/62.
+
+---
+
 ### 5.2 The data layer, and three things the tests found first
 
 `apps/erp/lib/db.js` is 3,568 lines and ~130 exported functions over 14 domains.

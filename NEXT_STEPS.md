@@ -1,6 +1,6 @@
 # Next Steps
 
-Immediate tasks to continue from the Phase 5.2 commit. Full context is in
+Immediate tasks to continue from the Phase 5.3 (part 1) commit. Full context is in
 `PROJECT_STATE.md` — read its "Read this first" section before starting.
 
 ---
@@ -51,12 +51,19 @@ npm run preflight   --workspace @landingos/db      # 9 checks; all must pass
 
 | Slice | Routes | Contract file |
 |---|---|---|
-| products + inventory | `products`, `products/[id]/inventory`, `stock-lots`, `inventory/adjust`, `inventory/history`, `inventory/low-stock`, `products/[id]/history` | `catalog.test.ts` |
-| carriers + shipments | `carriers`, `carriers/[id]/status-mappings`, `orders/[id]/shipment`, `shipment/refresh` | `delivery.test.ts` |
-| finance | `financial-records`, `unexpected-charges`, `prorate-fixed` | `catalog.test.ts` |
-| agents + payroll + follow-up | `agents`, `agents/payroll`, `agents/[id]/*`, `followup/tasks`, `followup/dashboard` | `access.test.ts`, `catalog.test.ts` |
+| carriers + shipments | `carriers`, `carriers/[id]/status-mappings`, `carriers/[id]/default`, `orders/[id]/shipment`, `orders/[id]/shipment/refresh` | `delivery.test.ts` |
 | sales channels + webhooks | `sales-channels`, `webhooks/channel/[id]`, `webhooks/delivery` | `integrations.test.ts` |
-| AI | `ai/providers`, `ai/agents`, `ai/conversations`, `ai/permissions` | `integrations.test.ts` |
+| follow-up | `followup/tasks`, `followup/dashboard` | `access.test.ts` |
+| AI | `ai/providers`, `ai/agents`, `ai/agents/enabled`, `ai/conversations/[id]`, `ai/permissions`, `ai/chat*`, `ai/insights` | `integrations.test.ts` |
+
+Done already: orders, clients, settings, audit, products, inventory, agents,
+payroll, financial records, unexpected charges.
+
+**Carriers and shipments need a carrier adapter.** `apps/erp/lib/providers/`
+holds the real ones plus the `mock` adapter the tests drive — a parcel that
+advances one step per poll along created → dispatched → in_transit → at_office
+→ out_for_delivery → delivered. Port the mock first; `delivery.test.ts` depends
+on it, and the real adapters are network code that can follow.
 
 **The loop that works on this machine** (`next start` serves a prebuilt app, so
 a new route needs a rebuild, and the build needs node stopped):
@@ -73,15 +80,18 @@ ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/c
 
 **Measure before each slice.** `apps/erp/lib/db.js` is the source; find the
 functions for the domain in its `module.exports` block near line 3450 and read
-them before writing the Prisma version. Several carry rules that are invisible
-from the schema — FIFO lot consumption restoring the exact lots a cancellation
-came from, and the delivered-only revenue rule, are the two that matter most.
+them before writing the Prisma version. The rules that matter are invisible from
+the schema — for the next slice they are: the ORIGINAL carrier status is always
+preserved alongside the mapped one, event intake is idempotent because carriers
+replay backlogs, and `deliveryOutcome` is settled ONCE and never overwritten.
 
 Two things to watch, unchanged from before:
 
 - **Audit every `db.transaction`.** The ERP's transactions assume SQLite's
-  single writer. Read-modify-write on inventory needs `increment` or explicit
-  row locking, the way the client counters now do.
+  single writer. Read-modify-write needs `increment` or an explicit row lock —
+  see `lib/erp/inventory.ts`, which takes `SELECT … FOR UPDATE` on lot rows
+  before planning FIFO consumption against them, and `lib/erp/clients.ts`,
+  which uses `increment` for the lifetime counters.
 - **Do not call `$transaction` inside `withTenant`** — it is already one, and
   the client it hands back does not have it.
 
