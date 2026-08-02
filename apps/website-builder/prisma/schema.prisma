@@ -20,6 +20,15 @@
 
 generator client {
   provider = "prisma-client-js"
+  // Generated into this app rather than the hoisted node_modules/@prisma/client.
+  //
+  // The workspace holds two Prisma schemas — this legacy one and the
+  // platform's — and both defaulted to the same hoisted output. Beyond the
+  // obvious hazard of one overwriting the other, regenerating there rewrites a
+  // native .dll that any RUNNING node process holds open, so on Windows every
+  // build during a dev server failed with EPERM on the query engine. A
+  // dedicated output removes both problems.
+  output   = "../src/generated/prisma"
 }
 
 datasource db {

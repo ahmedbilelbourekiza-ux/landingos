@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma";
 
 // Single shared Prisma client. In development, Next.js reloads modules on
 // every request, which would otherwise spawn a new PrismaClient each time

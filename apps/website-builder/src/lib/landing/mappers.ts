@@ -1,11 +1,11 @@
-import type { LandingPage, LandingMedia, LandingVariant, LandingReview, LandingSetting } from "@prisma/client";
+import type { LandingPage, LandingMedia, LandingVariant, LandingReview, LandingSetting } from "@/generated/prisma";
 import type { PreviewState } from "@/types/preview";
 import type { LandingListItem } from "@/lib/landing/mock-landings";
 import type { VariantGroup } from "@/lib/landing/mock-landings";
 import type { LandingPageData } from "@/types/landing";
 import type { OrderFormConfig } from "@/lib/landing/mock-order-form";
 import { defaultOrderFormConfig, normalizeOrder } from "@/lib/landing/mock-order-form";
-import type { LandingTheme } from "@prisma/client";
+import type { LandingTheme } from "@/generated/prisma";
 import type { LandingThemeData } from "@/types/theme";
 import { DEFAULT_THEME } from "@/types/theme";
 

@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
  * see.
  */
 export function ConsoleNav({
+  basePath,
   items,
 }: {
   basePath: string;
@@ -23,10 +24,15 @@ export function ConsoleNav({
   return (
     <ul className="flex flex-col gap-1">
       {items.map((item) => {
-        // Longest-match, so a child route does not also light up its parent.
-        const active =
-          pathname === item.href ||
-          (item.href !== "/" && pathname.startsWith(item.href + "/"));
+        // The product index matches EXACTLY; everything else also matches its
+        // children. Without the distinction, /builder/pages lights up both
+        // "Pages" and "Overview", because every child route starts with the
+        // product's base path — so the index would be highlighted on every
+        // screen and stop meaning anything.
+        const isIndex = item.href === basePath;
+        const active = isIndex
+          ? pathname === item.href
+          : pathname === item.href || pathname.startsWith(item.href + "/");
 
         return (
           <li key={item.id}>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { productRegistry } from "@landingos/product-registry";
 import {
   verifySession,
   getSessionCookieName,
@@ -116,9 +117,41 @@ function isAllowedDuringForceChange(pathname: string, method: string): boolean {
   return false;
 }
 
+/**
+ * Surfaces owned by the PLATFORM session, not this middleware.
+ *
+ * This file guards the legacy dashboard, which authenticates with a stateless
+ * JWT it can verify on the Edge runtime. The console authenticates with an
+ * opaque, revocable session that needs a database read — impossible here (M-09)
+ * — so those routes do their own check: `/console/*` and every product page via
+ * requireConsoleSession, and `/api/<product>/*` via the tenantRoute wrapper.
+ *
+ * Letting them through is therefore not a hole. Reaching one of these paths
+ * without a platform session gets a redirect to sign in, or a 401 with the
+ * console's error shape, from the handler itself.
+ *
+ * This split is temporary. It exists only while the legacy dashboard and the
+ * console run side by side; when the last page has moved, this middleware and
+ * the JWT it verifies are deleted together.
+ */
+const PLATFORM_OWNED_PREFIXES = ["/console", "/api/builder/", "/api/erp/", "/api/platform/"];
+
+/** Product consoles, resolved from the registry so a new product needs no edit. */
+const PRODUCT_BASE_PATHS = productRegistry.list().map((p) => p.basePath);
+
+function isPlatformOwned(pathname: string): boolean {
+  if (PLATFORM_OWNED_PREFIXES.some((p) => pathname === p || pathname.startsWith(p))) return true;
+  return PRODUCT_BASE_PATHS.some((b) => pathname === b || pathname.startsWith(b + "/"));
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const method = req.method;
+
+  // 0) The console and the product APIs authenticate themselves.
+  if (isPlatformOwned(pathname)) {
+    return NextResponse.next();
+  }
 
   // 1) Public API routes — short-circuit (method-aware).
   if (isPublicApi(method, pathname)) {
