@@ -12,13 +12,20 @@
     "preflight": "node --experimental-strip-types scripts/preflight.ts",
     "test": "npm run validate && node --test \"test/*.test.ts\"",
     "setup:roles": "node --experimental-strip-types scripts/setup-roles.ts",
-    "rls": "node --experimental-strip-types scripts/apply-rls.ts"
+    "rls": "node --experimental-strip-types scripts/apply-rls.ts",
+    "seed:dev": "node --experimental-strip-types scripts/seed-dev.ts"
   },
   "//verification": "There is no Postgres on the development machine, so the schema is verified two ways that need no database: `prisma validate` checks syntax and relations, and `prisma migrate diff --from-empty` renders the whole schema to real DDL. A schema that produces valid CREATE TABLE output is a schema that can be deployed.",
   "devDependencies": {
+    "@landingos/auth": "*",
     "prisma": "^6.19.3"
   },
   "engines": {
     "node": ">=22.6"
-  }
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./prisma/client/index.js"
+  },
+  "main": "./src/index.ts"
 }

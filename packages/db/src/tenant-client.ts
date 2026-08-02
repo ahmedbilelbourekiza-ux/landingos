@@ -33,6 +33,8 @@ import { PrismaClient } from '../prisma/client/index.js';
 
 /** The setting the RLS policies compare against. */
 const TENANT_SETTING = 'app.tenant_id';
+/** Bound by withUser, read by Membership's self-visibility policy. */
+const USER_SETTING = 'app.user_id';
 
 let base: PrismaClient | null = null;
 
@@ -108,6 +110,36 @@ export function forTenant(tenantId: string): TenantDb {
         },
       });
     },
+  });
+}
+
+/**
+ * Run work bound to one USER rather than one tenant.
+ *
+ * Exists for exactly one problem: resolving a session. Working out which
+ * tenants a person belongs to means reading Membership, but Membership is
+ * tenant-scoped — and a tenant cannot be bound before the memberships that
+ * would name it have been read. That is circular.
+ *
+ * Exempting Membership from row-level security would solve it by giving up,
+ * and would let any query enumerate who works for whom. Instead Membership
+ * carries a SECOND policy: a row is visible within its own tenant, OR to the
+ * user it belongs to. Postgres ORs permissive policies together, so binding a
+ * user id opens exactly that person's memberships and nothing else.
+ *
+ * Do not reach for this to sidestep a tenant binding. It grants a strictly
+ * narrower view than withTenant, not a wider one.
+ */
+export async function withUser<T>(
+  userId: string,
+  work: (db: TenantDb) => Promise<T>,
+): Promise<T> {
+  if (!userId || typeof userId !== 'string') {
+    throw new TenantContextError('withUser requires a user id');
+  }
+  return client().$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`SELECT set_config($1, $2, true)`, USER_SETTING, userId);
+    return work(tx as unknown as TenantDb);
   });
 }
 

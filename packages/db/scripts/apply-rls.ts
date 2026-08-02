@@ -107,6 +107,25 @@ async function main() {
     applied++;
   }
 
+  /* Membership needs a second, narrower policy.
+   *
+   * Resolving a session means reading which tenants a user belongs to — but
+   * that read cannot bind a tenant, because the memberships are what NAME the
+   * tenants. Exempting the table from RLS would solve the circularity by
+   * giving up, and would let any query enumerate who works for whom.
+   *
+   * Postgres ORs permissive policies, so this adds "or the user it belongs to"
+   * alongside the tenant policy. withUser() in @landingos/db binds app.user_id
+   * and is the only thing that opens it. Read-only: a user may SEE their own
+   * memberships, never grant themselves one. */
+  await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS ${POLICY}_self ON "Membership"`);
+  await prisma.$executeRawUnsafe(`
+    CREATE POLICY ${POLICY}_self ON "Membership"
+      FOR SELECT
+      USING ("userId" = current_setting('app.user_id', true))
+  `);
+  console.log('Membership: added self-visibility policy for session resolution');
+
   console.log(`policies applied to ${applied} tables (USING + WITH CHECK, FORCE enabled)`);
   console.log('not scoped, by design: ' + unscoped.join(', '));
 

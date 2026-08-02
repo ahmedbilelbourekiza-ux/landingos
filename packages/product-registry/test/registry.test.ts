@@ -155,13 +155,29 @@ describe('navigation is filtered by permission', () => {
     }
   });
 
-  test('permissions are namespaced by product so two products cannot collide', () => {
+  test('every permission is namespaced with its product id EXACTLY', () => {
+    // Exact, with no allowance for near-misses. This assertion previously
+    // tolerated `builder:*` on a product whose id is `website-builder`, and
+    // that gap was not cosmetic: authorization resolves a permission to its
+    // product by splitting on the first colon, so a permission whose prefix is
+    // not a registered product id resolves to nothing and skips the
+    // entitlement gate entirely. Builder permissions were reachable by a
+    // tenant that had never bought the builder.
     for (const p of builtInProducts) {
       for (const perm of p.permissions) {
         assert.ok(
-          perm.startsWith(p.id.replace('website-', '') + ':') || perm.startsWith(p.id + ':'),
-          `"${perm}" is not namespaced to ${p.id}`,
+          perm.startsWith(p.id + ':'),
+          `"${perm}" must start with "${p.id}:" or it cannot be entitlement-gated`,
         );
+      }
+    }
+  });
+
+  test('a permission prefix always names a registered product', () => {
+    const ids = new Set(builtInProducts.map((p) => p.id));
+    for (const p of builtInProducts) {
+      for (const perm of p.permissions) {
+        assert.ok(ids.has(perm.split(':')[0]), `"${perm}" names no registered product`);
       }
     }
   });
@@ -294,7 +310,7 @@ describe('the platform does not assume how many products exist', () => {
     const r = createProductRegistry([...builtInProducts, emailMarketing]);
     const all = r.allPermissions();
     assert.ok(all.includes('erp:orders:read'));
-    assert.ok(all.includes('builder:pages:write'));
+    assert.ok(all.includes('website-builder:pages:write'));
     assert.ok(all.includes('email:campaigns:send'));
     assert.equal(new Set(all).size, all.length, 'no duplicates');
   });
