@@ -10,6 +10,103 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## Phase 5 — The ERP onto the platform
+
+### 5.1 The ERP's tests move first (M-18)
+
+The ERP's 298 tests are the only meaningful coverage the more complex of the two
+products has. They move **before** any ERP logic, so the routes written in 5.3
+are written against a contract that already exists rather than the contract
+being written afterwards to describe whatever got built.
+
+#### What ported, and what deliberately did not
+
+227 tests across seven files, plus `test/erp/PORTING.md` recording every
+decision — including the ones where the answer was no. A test dropped without a
+recorded reason is indistinguishable from a test that was forgotten, and three
+of the thirteen source files genuinely do not port:
+
+`indexes.test.js` is `EXPLAIN QUERY PLAN` against SQLite's `sqlite_master` and
+`packages/db` already asserts the Postgres equivalent. `backfill.test.js` is a
+one-time migration that M-06 has already performed and that cannot run again.
+`harness.test.js` tests the child-process SQLite harness itself — the platform
+harness spawns nothing and has no write-ahead log.
+
+Two more are **deferred with the migration that unblocks them**, not abandoned:
+`notifications.test.js` (~20 tests) and `overdue-sweep.test.js` (~12) wait on
+M-16 and M-15. Porting them against a transport and a worker that do not exist
+would encode a contract nobody has designed yet, and getting that wrong is worse
+than the stated gap.
+
+#### The port found a collision the code could not
+
+**D-05.1 — the ERP's manager/agent split does not survive the role globs.** The
+ERP treated the customer registry and the finance screens as manager-only and
+asserted it directly. On the platform, `MEMBER` and `VIEWER` both carry `*:*:read`,
+which grants `erp:clients:read` and `erp:finance:read` to every member of the
+tenant — every customer's phone number and lifetime spend, and the company's
+profit and loss, handed to a confirmation agent. That is precisely the exposure
+SEC-02 closed.
+
+Neither system is wrong. It is two authorization models meeting: the ERP's was
+binary and hand-listed, the platform's is a glob over a vocabulary products
+declare. **Nothing detects the collision except a test that knew the old
+boundary** — which is the entire argument for moving the tests first, and it
+paid for itself before a single route was written.
+
+The affected tests assert the ERP's boundary and are marked `D-05.1` in place.
+They fail until 5.3 decides. Recommendation, recorded in PORTING.md: add
+`*:clients:read` and `*:finance:read` to `SENSITIVE` in `packages/auth/src/rbac.ts`,
+which is product-agnostic and already exists for exactly this class.
+
+#### Two guarantees left the ERP and have no platform home yet
+
+Both were real and tested in the ERP: the **cross-origin state-change refusal**
+(`CSRF_ORIGIN` — CORS stops an attacker reading a response, not the request
+happening) and **rate limiting** (per-IP and per-account login throttling,
+case-insensitive so casing cannot reset the counter, plus an API backstop that
+exempts the event stream and inbound carrier webhooks). Neither belongs in a
+product suite; both are now recorded gaps rather than lost ones.
+
+#### The suite states its own absence
+
+The harness probes `/api/erp/orders` on start-up. An unmatched Next route is a
+404 and a mounted `tenantRoute` without a session is a 401, so that one
+difference is the whole probe — no health endpoint to remember to add. Until
+5.3 the suite skips with the reason printed; `ERP_CONTRACT=strict` turns the
+skip into a failure, which is what CI should do from the moment 5.3 starts.
+
+Each test is skipped individually rather than by skipping its `describe`,
+because node reports a skipped suite as `tests 0` — the ported tests would
+vanish from the run rather than appear as skipped, and nobody could tell from
+the output whether the directory held 227 tests or none. It reports
+`tests 227, skipped 227`.
+
+#### Files
+`apps/website-builder/test/erp/` — `PORTING.md`, `helpers.ts`, and
+`access`, `orders`, `validation`, `catalog`, `listing`, `delivery`,
+`integrations` `.test.ts`.
+`apps/website-builder/package.json` — the test glob became `test/**/*.test.ts`.
+Passing two separate glob arguments to `node --test` did **not** union them and
+silently ran only the first, which would have left the entire directory
+unexecuted while the run looked healthy.
+`apps/website-builder/tsconfig.json` — `allowImportingTsExtensions`, because
+Node's native type stripping requires the extension on a relative import and the
+workspace packages already re-export that way. Safe under `noEmit`. Incidentally
+cleared 10 pre-existing errors (99 → 82).
+
+#### Migration
+M-18. No schema change, no runtime change.
+
+#### Risk
+The suite is skipped, so it proves nothing until 5.3 mounts the routes — which
+is the point, but it means the contract is currently a claim rather than a
+verified fact. The counting fix and `ERP_CONTRACT=strict` exist so that stays
+visible. Suite totals unchanged where they run: website-builder 101 pass, db 29,
+and the 227 ported tests reported as skipped.
+
+---
+
 ## Phase 4 — One front door
 
 ### 4.4 The builder moves onto the platform

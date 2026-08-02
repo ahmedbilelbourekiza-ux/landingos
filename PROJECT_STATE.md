@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 2 August 2026
-**Branch:** `master` · **Last commit:** `82dacc9` — *Phase 4.5: retire the legacy dashboard, JWT and middleware carve-out*
+**Branch:** `master` · **Last commit:** *Phase 5.1: the ERP's tests move first*
 **Working tree:** clean, all work committed.
 
 ---
@@ -66,11 +66,37 @@ enumerates products — it reads a registry.
 
 ## Where we are
 
-**Phase 4.5 is complete.** The public storefront was migrated to the platform,
-and the entire legacy stack was then deleted.
+**Phase 5.1 is complete.** The ERP's test suite was ported to the platform API
+surface *before* any ERP logic moves, so Phase 5.2 and 5.3 are written against a
+contract that already exists.
 
-**Exact stopping point:** all Phase 4.5 work is committed at `82dacc9`. No work
-is in progress. Stopped at the user's request to produce this handoff.
+**Exact stopping point:** all Phase 5.1 work is committed. No work is in
+progress. The next task is **Phase 5.2 — `apps/erp/lib/db.js` → tenant-scoped
+repositories**, and it has one blocking decision in front of it (D-05.1, below).
+
+### What Phase 5.1 left on the table, deliberately
+
+1. **D-05.1 must be decided before the first ERP route ships.** The ERP treated
+   the customer registry and the finance screens as manager-only. On the
+   platform, `MEMBER` and `VIEWER` carry the glob `*:*:read`, which grants
+   `erp:clients:read` and `erp:finance:read` to every member of the tenant — every
+   customer's phone number and lifetime spend, and the company's P&L, handed to a
+   confirmation agent. The affected tests assert the **ERP's** boundary and are
+   marked `D-05.1` in place, so they fail until this is settled rather than
+   quietly adopting the wider behaviour. Recommendation and reasoning are in
+   `apps/website-builder/test/erp/PORTING.md`.
+
+2. **The ported suite is skipped until the routes exist.** It probes
+   `/api/erp/orders`; an unmatched Next route is a 404 and a mounted
+   `tenantRoute` without a session is a 401, and that difference is the whole
+   probe. `ERP_CONTRACT=strict` turns the skip into a failure — turn it on in CI
+   the moment 5.3 starts.
+
+3. **Two ERP guarantees have no platform home yet:** the cross-origin
+   state-change refusal (`CSRF_ORIGIN`) and rate limiting (login throttling per
+   IP *and* per account, plus an API backstop exempting the event stream and
+   inbound carrier webhooks). Both were real and tested in the ERP. Neither
+   belongs in a product suite; both need a platform owner.
 
 ### Phases completed
 
@@ -87,21 +113,23 @@ is in progress. Stopped at the user's request to produce this handoff.
 | 4.3 | The console shell — registry-driven, names no product |
 | 4.4 | The builder's data layer and every screen, ported and proven |
 | 4.5 | Storefront migrated; legacy dashboard, JWT and middleware deleted |
+| 5.1 | The ERP's tests ported to `/api/erp/*` — 227 tests, executable ahead of the routes |
 
 ### Remaining roadmap
 
 | Phase | Scope |
 |---|---|
-| **5** | **ERP backend onto the platform** — port its test suite first, then `lib/db.js` → Prisma repositories, 126 routes → `/api/erp/*`, and the M-05 order split |
+| **5** | **ERP backend onto the platform** — 5.1 done; next `lib/db.js` → Prisma repositories (5.2), 126 routes → `/api/erp/*` (5.3), and the M-05 order split (5.4) |
 | 6 | ERP interface — rebuild ~6,200 lines of vanilla SPA + agent PWA in React |
 | 7 | SaaS layer — company/team management, billing, self-serve signup, notifications |
 | 8 | Hardening — adversarial isolation review, load testing, backup/restore, runbooks |
 
 ### Next recommended task
 
-See `NEXT_STEPS.md`. In short: **Phase 5.1 — port the ERP's 13 test files to the
-new API surface before moving any logic.** They are the only meaningful test
-coverage the ERP has, and they are contract tests over HTTP, so they port.
+See `NEXT_STEPS.md`. In short: **decide D-05.1, then Phase 5.2 —
+`apps/erp/lib/db.js` → tenant-scoped repositories.** ~185 KB of hand-written
+SQL, ported model by model onto `withTenant`. The contract it has to satisfy is
+already written and executable in `apps/website-builder/test/erp/`.
 
 ---
 
@@ -306,9 +334,16 @@ Adding a product = adding a manifest + its own screens. No platform file changes
 | M-20 | Trilingual i18n |
 | — | Builder API + all screens ported; legacy stack deleted |
 
+| M-18 | ERP test port — 227 tests to `/api/erp/*`, executable ahead of the routes |
+
 **Not yet done:** M-05 (order relationship + domain event), M-11 (ERP's 126
 routes), M-12 (ERP UI), M-14 (ERP base64 images → R2), M-15 (jobs → worker),
-M-16 (notification unification), M-19 (template registry), M-18 (ERP test port).
+M-16 (notification unification), M-19 (template registry).
+
+M-15 and M-16 each still owe M-18 a file: `overdue-sweep.test.js` (~12 tests)
+and `notifications.test.js` (~20) were deferred rather than dropped, because
+porting them against a worker and a notification transport that do not exist
+would encode a contract nobody has designed.
 
 ---
 
@@ -441,12 +476,18 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped |
 | `apps/website-builder` | 101 | all pass |
+| `apps/website-builder` — ERP contract | 227 | **skipped** until 5.3 mounts `/api/erp/*` |
 | `packages/auth` | 32 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **540** | green per suite |
+| **Total** | **767** | 540 green per suite, 227 pending routes |
+
+The ERP contract suite reports as `tests 227, skipped 227` rather than
+disappearing from the run — each test is skipped individually, because a skipped
+`describe` reports `tests 0` and a suite whose absence is invisible is a suite
+that gets quietly deleted. `ERP_CONTRACT=strict` turns the skip into a failure.
 
 The tests are written to **attack boundaries, not confirm happy paths**: another
 tenant's id, a role without the permission, a tenant without the subscription, a

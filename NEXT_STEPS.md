@@ -1,6 +1,6 @@
 # Next Steps
 
-Immediate tasks to continue from commit `82dacc9`. Full context is in
+Immediate tasks to continue from the Phase 5.1 commit. Full context is in
 `PROJECT_STATE.md` — read its "Read this first" section before starting.
 
 ---
@@ -19,9 +19,13 @@ reasons — see PROJECT_STATE):
 ```bash
 npm test --workspace @landingos/db                 # 29
 npm test --workspace @landingos/auth               # 32
-npm test --workspace @landingos/website-builder    # 101
+npm test --workspace @landingos/website-builder    # 101 pass + 227 skipped
 npm test --workspace @landingos/erp                # 298 (297 pass, 1 skipped)
 ```
+
+The 227 skipped are the ported ERP contract suite. They report their own reason;
+if they say anything other than *"the ERP API is not mounted yet"*, fix that
+before starting — a suite skipping for the wrong reason is a suite not running.
 
 If `packages/db` fails on connection errors, the database may have been rotated
 or suspended. Re-run:
@@ -33,44 +37,63 @@ npm run preflight   --workspace @landingos/db      # 9 checks; all must pass
 
 ---
 
-## 1. Start Phase 5.1 — port the ERP's test suite first
+## 1. Decide D-05.1 first — it blocks the whole phase
 
-**Do this before moving any ERP logic.** Those 13 files are the only meaningful
-coverage the ERP has, and they are contract tests over HTTP rather than unit
-tests bound to Express — so they port. A rewrite that abandons them starts from
-zero coverage on the more complex of the two products.
+**The ERP's manager/agent split does not survive the platform's role globs.**
 
-- Source: `apps/erp/test/` (13 files, 298 tests)
-- Target: the new API surface at `/api/erp/*`
-- They boot the real server as a child process via `apps/erp/test/helpers.js`;
-  the ported versions should drive the platform routes with a platform session
-  instead, the way `apps/website-builder/test/builder-api.test.ts` does.
+The ERP treated the customer registry and the finance screens as manager-only.
+On the platform, `MEMBER` and `VIEWER` both carry `*:*:read`, which grants
+`erp:clients:read` and `erp:finance:read` to every member of the tenant — every
+customer's phone number and lifetime spend, and the company's profit and loss,
+handed to a confirmation agent. That is the exposure SEC-02 closed.
 
-Expect this to be the slowest-feeling part of Phase 5 and the reason the rest
-goes quickly.
+Full reasoning and the recommendation are in
+`apps/website-builder/test/erp/PORTING.md`. The short version: add
+`*:clients:read` and `*:finance:read` to `SENSITIVE` in
+`packages/auth/src/rbac.ts`. It is product-agnostic, it is what that list exists
+for, and it means a `MANAGER` needs the grant by name — which reads correctly.
+
+Decide it before writing a route, because every ERP route's permission argument
+depends on the answer, and the tests marked `D-05.1` fail until it is settled.
 
 ---
 
-## 2. Then Phase 5.2 — `lib/db.js` → tenant-scoped repositories
+## 2. Phase 5.2 — `lib/db.js` → tenant-scoped repositories
 
-`apps/erp/lib/db.js` is ~185 KB of hand-written SQL. Port it model by model
-onto `withTenant`.
+`apps/erp/lib/db.js` is ~185 KB of hand-written SQL. Port it model by model onto
+`withTenant`. The schema is already there — `packages/db/prisma/schema/erp.prisma`,
+22 models, with the five that did not survive the port and why recorded at the
+top of the file.
 
-Two things to watch:
+Three things to watch:
 
 - **Audit every `db.transaction`.** The ERP's transactions assume SQLite's
-  single writer. Under real concurrency, read-modify-write sequences in
+  single writer. Under real concurrency, the read-modify-write sequences in
   inventory and FIFO lot consumption need explicit row locking.
 - **Do not call `$transaction` inside `withTenant`** — it is already one, and
-  the client it hands back does not have it.
+  the client it hands back does not have it. This threw at runtime once already,
+  hidden by the `(db as any)` casts.
+- **Money is `Decimal`.** 37 columns, zero `double precision`. The contract
+  tests compare the **string** form throughout; a repository that hands back a
+  JS number has already lost what the column type was for.
 
 ---
 
-## 3. Then Phase 5.3 — routes
+## 3. Phase 5.3 — routes
 
 126 Express routes → Next handlers under `/api/erp/*`, using the existing
 `tenantRoute(permission, handler)` wrapper. The ERP's permissions are already
 declared in its manifest (`packages/product-registry/src/manifests.ts`).
+
+**Turn the contract suite on the moment you start:**
+
+```bash
+ERP_CONTRACT=strict npm test --workspace @landingos/website-builder
+```
+
+That makes an unmounted API a failure rather than a skip. Work route by route
+against `apps/website-builder/test/erp/` — the paths, verbs, status codes and
+response envelope the tests expect are the specification.
 
 The moment the first real ERP screen exists, remove the placeholder body from
 `console/[product]/page.tsx` for that route only — the generic route must keep
@@ -91,6 +114,38 @@ the internal Builder→ERP hop should stop being a network call.
 
 ---
 
+## Owed to M-18, when their migrations land
+
+Two ERP test files were **deferred, not dropped**. Whoever does these
+migrations owes the port:
+
+- **M-15** (jobs → `services/worker`) → port `apps/erp/test/overdue-sweep.test.js`
+  (~12 tests). The sweep is an in-process `setInterval` today and would
+  double-count every miss on a scaled deployment, which is why M-15 exists.
+- **M-16** (notification unification) → port `apps/erp/test/notifications.test.js`
+  (~20 tests) and the SSE half of `delivery-outcome.test.js`. What they protect
+  is specific and worth keeping: per-account read state, manager-only targeting,
+  replay on reconnect, and a watermark that can be neither poisoned nor moved
+  backwards.
+
+---
+
+## Two guarantees that need a platform owner
+
+Both were real and tested in the ERP and have no equivalent on the platform.
+Neither belongs in a product suite:
+
+1. **Cross-origin state changes.** The ERP refused a POST carrying an
+   unrecognised `Origin` with `CSRF_ORIGIN`. CORS stops an attacker *reading* a
+   cross-site response; it does not stop the request happening. `/api/builder/*`
+   has no such check either.
+2. **Rate limiting.** Login throttling per IP *and* per account, keyed
+   case-insensitively so casing cannot reset the counter, plus a general API
+   backstop that exempts the event stream and inbound carrier webhooks (carriers
+   replay backlogs and must never be throttled off).
+
+---
+
 ## Not blocking, but do them when convenient
 
 - **Rotate the two credentials** listed under *Security actions* in
@@ -108,3 +163,6 @@ the internal Builder→ERP hop should stop being a network call.
 - Do not add `where: { tenantId }` — the binding already does it.
 - Do not assume only two products exist.
 - Do not trust a green build; verify against the running server.
+- Do not "fix" a `D-05.1` test by relaxing its assertion. It is asserting the
+  boundary the ERP shipped with; if that boundary is being given up, that is a
+  decision to record, not an assertion to edit.

@@ -14,6 +14,8 @@
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
+    "//allowImportingTsExtensions": "Node's native type stripping requires the extension on a relative import, and the workspace packages already re-export that way (packages/auth/src/index.ts and friends). Safe here because noEmit is on — TypeScript only rejects .ts specifiers when it would have to rewrite them into an emitted file.",
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
