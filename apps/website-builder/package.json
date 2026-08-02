@@ -14,7 +14,8 @@
     "db:generate": "prisma generate",
     "db:seed": "prisma db seed",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset"
+    "db:reset": "prisma migrate reset",
+    "test": "node --env-file=.env --test \"test/*.test.ts\""
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -25,7 +26,10 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.1.1",
+    "@landingos/auth": "*",
+    "@landingos/db": "*",
     "@landingos/i18n": "*",
+    "@landingos/product-registry": "*",
     "@landingos/ui": "*",
     "@mdxeditor/editor": "^3.39.1",
     "@prisma/client": "^6.11.1",

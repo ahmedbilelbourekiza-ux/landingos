@@ -44,7 +44,17 @@ let base: PrismaClient | null = null;
  * a named entry point below.
  */
 function client(): PrismaClient {
-  if (!base) base = new PrismaClient();
+  if (!base) {
+    /* PLATFORM_DATABASE_URL, not DATABASE_URL.
+     *
+     * During the migration a host process can hold TWO Prisma clients: the
+     * website-builder's own, still pointed at its pre-tenant database, and this
+     * one. Both would read DATABASE_URL and the second to load would silently
+     * win, so the platform client names its connection explicitly. The fallback
+     * keeps standalone use — tests, scripts, the seed — working unchanged. */
+    const url = process.env.PLATFORM_DATABASE_URL || process.env.DATABASE_URL;
+    base = new PrismaClient(url ? { datasources: { db: { url } } } : undefined);
+  }
   return base;
 }
 

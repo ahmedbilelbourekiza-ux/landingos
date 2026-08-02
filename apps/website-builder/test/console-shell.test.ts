@@ -1,0 +1,212 @@
+import { test, describe, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { asPlatform, withTenant, withUser, disconnect } from '@landingos/db';
+import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } from '@landingos/auth';
+
+/* =============================================================================
+ * The console shell, end to end over HTTP.
+ *
+ * Asserts the claim Phase 4 exists to make: one shell, and what it shows is
+ * decided entirely by what the tenant is entitled to. Nothing here names a
+ * route per product — the same request path serves both, and a tenth product
+ * would need no new test, only a new manifest.
+ *
+ * Runs against a server already listening on CONSOLE_URL (default :3000).
+ * Skips rather than fails when there is none, so the suite stays runnable
+ * without a running app.
+ * ========================================================================== */
+
+const BASE = process.env.CONSOLE_URL ?? 'http://127.0.0.1:3000';
+const HAS_DB = Boolean(process.env.PLATFORM_DATABASE_URL || process.env.DATABASE_URL);
+
+/* Probed at module load, not in before().
+ *
+ * Node evaluates a describe's options when the describe is DEFINED, which
+ * happens before any before() hook runs — so a `skip` computed from a hook
+ * always reads its initial value, and every test silently skips while
+ * reporting success. Top-level await is what makes the flag true in time. */
+const serverUp = await fetch(BASE + '/console/login', { redirect: 'manual' })
+  .then((r) => r.status < 500)
+  .catch(() => false);
+
+const stamp = Date.now();
+const emails = {
+  bundle: `shell-bundle-${stamp}@landingos.test`,
+  erpOnly: `shell-erp-${stamp}@landingos.test`,
+  none: `shell-none-${stamp}@landingos.test`,
+};
+const ids: Record<string, string> = {};
+const tokens: Record<string, string> = {};
+let tenantBundle = '';
+let tenantErp = '';
+let tenantBare = '';
+
+/** GET a path carrying a session cookie, following no redirects. */
+async function get(path: string, token?: string) {
+  const res = await fetch(BASE + path, {
+    redirect: 'manual',
+    headers: token ? { cookie: `${SESSION_COOKIE}=${token}` } : {},
+  });
+  return { status: res.status, location: res.headers.get('location'), body: await res.text() };
+}
+
+async function makeTenant(slug: string, name: string, entitlements: string[]) {
+  const t = await asPlatform().tenant.create({ data: { slug, name } });
+  await withTenant(t.id, async (tx) => {
+    await (tx as any).subscription.create({
+      data: { tenantId: t.id, status: 'ACTIVE', entitlements },
+    });
+  });
+  return t.id;
+}
+
+async function makeUser(email: string, tenantId: string, role: string) {
+  const u = await asPlatform().user.create({
+    data: { email, name: email, passwordHash: await hashPassword('x') },
+  });
+  ids[email] = u.id;
+  await withTenant(tenantId, (tx) =>
+    (tx as any).membership.create({ data: { tenantId, userId: u.id, role } }),
+  );
+  const { token } = await createSession(u.id, tenantId);
+  tokens[email] = token;
+}
+
+before(async () => {
+  if (!HAS_DB || !serverUp) return;
+
+  tenantBundle = await makeTenant(`shell-bundle-${stamp}`, 'Bundle Co', [
+    'product.website-builder',
+    'product.erp',
+  ]);
+  tenantErp = await makeTenant(`shell-erp-${stamp}`, 'ERP Only Co', ['product.erp']);
+  tenantBare = await makeTenant(`shell-bare-${stamp}`, 'Unsubscribed Co', []);
+
+  await makeUser(emails.bundle, tenantBundle, 'OWNER');
+  await makeUser(emails.erpOnly, tenantErp, 'ADMIN');
+  await makeUser(emails.none, tenantBare, 'OWNER');
+});
+
+after(async () => {
+  if (!HAS_DB || !serverUp) return;
+  for (const id of Object.values(ids)) {
+    await destroySessionsForUser(id);
+    for (const t of [tenantBundle, tenantErp, tenantBare]) {
+      await withTenant(t, (tx) => (tx as any).membership.deleteMany({ where: { userId: id } }));
+    }
+    await asPlatform().user.delete({ where: { id } }).catch(() => {});
+  }
+  await asPlatform().tenant.deleteMany({
+    where: { id: { in: [tenantBundle, tenantErp, tenantBare].filter(Boolean) } },
+  });
+  await disconnect();
+});
+
+const skip = () => !HAS_DB || !serverUp;
+
+describe('the console requires a session', () => {
+  test('an anonymous request to a product is sent to sign in', { skip: skip() }, async () => {
+    const r = await get('/builder');
+    assert.equal(r.status, 307);
+    assert.match(r.location ?? '', /\/console\/login/);
+    // And it remembers where they were going.
+    assert.match(r.location ?? '', /next=/);
+  });
+
+  test('an anonymous request to the console root is sent to sign in', { skip: skip() }, async () => {
+    const r = await get('/console');
+    assert.equal(r.status, 307);
+    assert.match(r.location ?? '', /\/console\/login/);
+  });
+
+  test('a forged session token is not a session', { skip: skip() }, async () => {
+    const r = await get('/console', 'clearly-not-a-real-token');
+    assert.equal(r.status, 307);
+    assert.match(r.location ?? '', /\/console\/login/);
+  });
+});
+
+describe('the shell shows exactly what the tenant bought', () => {
+  test('a bundle tenant sees both products', { skip: skip() }, async () => {
+    const r = await get('/console', tokens[emails.bundle]);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-product="website-builder"/);
+    assert.match(r.body, /data-product="erp"/);
+  });
+
+  test('an ERP-only tenant sees only the ERP', { skip: skip() }, async () => {
+    const r = await get('/erp', tokens[emails.erpOnly]);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-product="erp"/);
+    assert.ok(
+      !/data-product="website-builder"/.test(r.body),
+      'a product the tenant never bought must not appear in the switcher',
+    );
+  });
+
+  test('typing the URL of an unbought product gets nothing', { skip: skip() }, async () => {
+    // Not seeing the link and not being able to reach it have to be the same
+    // decision, or the switcher is decoration.
+    const r = await get('/builder', tokens[emails.erpOnly]);
+    assert.equal(r.status, 404);
+  });
+
+  test('a tenant with no subscription reaches no product at all', { skip: skip() }, async () => {
+    const console_ = await get('/console', tokens[emails.none]);
+    assert.equal(console_.status, 200);
+    assert.ok(!/data-product=/.test(console_.body), 'no products should be offered');
+
+    for (const path of ['/builder', '/erp']) {
+      assert.equal((await get(path, tokens[emails.none])).status, 404, `${path} must 404`);
+    }
+  });
+
+  test('an unregistered product segment is not a page', { skip: skip() }, async () => {
+    assert.equal((await get('/not-a-product', tokens[emails.bundle])).status, 404);
+  });
+});
+
+describe('navigation comes from the manifest', () => {
+  test("the ERP's nav items render for a permitted user", { skip: skip() }, async () => {
+    const r = await get('/erp', tokens[emails.bundle]);
+    assert.equal(r.status, 200);
+    for (const id of ['orders', 'clients', 'products']) {
+      assert.match(r.body, new RegExp(`data-nav="${id}"`), `${id} should be in the ERP nav`);
+    }
+  });
+
+  test('a permission-gated item is absent without the grant', { skip: skip() }, async () => {
+    // The ERP-only tenant's user is ADMIN, so they DO get agents; the bundle
+    // OWNER does too. Use a VIEWER to prove the filter bites.
+    const viewer = `shell-viewer-${stamp}@landingos.test`;
+    const u = await asPlatform().user.create({
+      data: { email: viewer, name: viewer, passwordHash: await hashPassword('x') },
+    });
+    ids[viewer] = u.id;
+    await withTenant(tenantErp, (tx) =>
+      (tx as any).membership.create({ data: { tenantId: tenantErp, userId: u.id, role: 'VIEWER' } }),
+    );
+    const { token } = await createSession(u.id, tenantErp);
+
+    const r = await get('/erp', token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-nav="orders"/, 'a viewer still reads orders');
+    assert.ok(!/data-nav="agents"/.test(r.body), 'a viewer must not see team administration');
+  });
+});
+
+describe('the same request path serves every product', () => {
+  test('both products render from one route, with their own identity', { skip: skip() }, async () => {
+    // There is no /builder/page.tsx and no /erp/page.tsx. If a product ever
+    // needed its own route file, the platform would have stopped being modular.
+    const builder = await get('/builder', tokens[emails.bundle]);
+    const erp = await get('/erp', tokens[emails.bundle]);
+
+    assert.equal(builder.status, 200);
+    assert.equal(erp.status, 200);
+    assert.match(builder.body, /data-nav="pages"/, "the builder's own nav");
+    assert.match(erp.body, /data-nav="shipments"/, "the ERP's own nav");
+    assert.ok(!/data-nav="shipments"/.test(builder.body), 'and they do not bleed into each other');
+  });
+});

@@ -50,7 +50,7 @@ local-*
 *.log
 dev.log
 dev.out.log
-test
+# (was a bare `test` pattern — it untracked this app's own test directory)
 prompt
 
 server.log
