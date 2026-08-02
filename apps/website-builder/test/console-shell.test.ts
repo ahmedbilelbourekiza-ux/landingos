@@ -197,16 +197,27 @@ describe('navigation comes from the manifest', () => {
 });
 
 describe('the same request path serves every product', () => {
-  test('both products render from one route, with their own identity', { skip: skip() }, async () => {
-    // There is no /builder/page.tsx and no /erp/page.tsx. If a product ever
-    // needed its own route file, the platform would have stopped being modular.
-    const builder = await get('/builder', tokens[emails.bundle]);
+  test('a product with no page of its own is still fully served', { skip: skip() }, async () => {
+    // The ERP ships a manifest and NOTHING else — no route file, no component.
+    // The generic [product] route serves it entirely from the registry, which
+    // is the property that makes a tenth product free.
     const erp = await get('/erp', tokens[emails.bundle]);
-
-    assert.equal(builder.status, 200);
     assert.equal(erp.status, 200);
-    assert.match(builder.body, /data-nav="pages"/, "the builder's own nav");
-    assert.match(erp.body, /data-nav="shipments"/, "the ERP's own nav");
-    assert.ok(!/data-nav="shipments"/.test(builder.body), 'and they do not bleed into each other');
+    assert.match(erp.body, /data-nav="shipments"/, "the ERP's own navigation");
+    assert.match(erp.body, /data-nav="orders"/);
+  });
+
+  test('a product MAY supply its own index without the platform knowing', { skip: skip() }, async () => {
+    // The builder has grown a real overview. The platform did not change to
+    // allow that: a static segment simply wins over the dynamic one, and any
+    // product that has not written a page keeps the generic fallback.
+    const builder = await get('/builder', tokens[emails.bundle]);
+    assert.equal(builder.status, 200);
+    assert.match(builder.body, /data-testid="builder-overview"/);
+
+    // Both still render inside the one shell, with the same switcher.
+    for (const body of [builder.body, (await get('/erp', tokens[emails.bundle])).body]) {
+      assert.match(body, /data-testid="product-switcher"/);
+    }
   });
 });

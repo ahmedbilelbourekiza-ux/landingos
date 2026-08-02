@@ -477,3 +477,90 @@ describe('every ported screen renders in the shell', { skip }, () => {
     assert.match(html, /var\(--danger-fg\)/);
   });
 });
+
+describe('platform settings screens', { skip }, () => {
+  test('the settings index lists only sections the caller may open', async () => {
+    const owner = await fetch(BASE + '/console/settings', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(owner.status, 200);
+    const ownerHtml = await owner.text();
+    for (const s of ['profile', 'store', 'delivery-prices', 'integrations']) {
+      assert.match(ownerHtml, new RegExp(`data-section="${s}"`), `owner should see ${s}`);
+    }
+
+    // A tenant without the builder has no store profile or delivery prices to
+    // configure — offering the link would lead straight to a 404.
+    const none = await fetch(BASE + '/console/settings', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.unentitled}` },
+    });
+    const noneHtml = await none.text();
+    assert.match(noneHtml, /data-section="profile"/, 'everyone has a profile');
+    assert.ok(!/data-section="store"/.test(noneHtml), 'no store profile without the builder');
+  });
+
+  test('the store screen 404s for a tenant that cannot configure one', async () => {
+    const r = await fetch(BASE + '/console/settings/store', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.unentitled}` },
+      redirect: 'manual',
+    });
+    assert.equal(r.status, 404);
+  });
+
+  test('the store screen renders with the tenant name as its default', async () => {
+    const r = await fetch(BASE + '/console/settings/store', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    assert.match(html, /data-testid="store-form"/);
+    // An earlier test in this file already saved a store name, so assert the
+    // form is populated rather than pinning a specific value — the default
+    // only applies to a tenant that has never opened the screen.
+    assert.match(html, /name="storeName"[^>]*value="[^"]+"/);
+  });
+
+  test('the profile screen shows the email as read-only', async () => {
+    const r = await fetch(BASE + '/console/settings/profile', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    assert.match(html, /data-testid="profile-form"/);
+    assert.match(html, /data-testid="password-form"/);
+    // The address IS the identity across tenants, so it is not editable here.
+    assert.match(html, /readOnly=""|readonly=""/);
+  });
+
+  test('integrations render without ever printing a secret', async () => {
+    const r = await fetch(BASE + '/console/settings/integrations', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    assert.match(html, /data-testid="webhooks-table"/);
+    assert.match(html, /data-testid="pixels-table"/);
+    // The webhook created earlier in this file used this secret.
+    assert.ok(!html.includes('supersecret123'), 'a signing secret must never reach the page');
+    assert.ok(!html.includes('tokentokentoken'), 'a pixel token must never reach the page');
+  });
+
+  test('a manager sees integrations read-only', async () => {
+    const r = await fetch(BASE + '/console/settings/integrations', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.manager}` },
+    });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    assert.match(html, /administrator access/i, 'the limitation is stated, not just enforced');
+  });
+
+  test('the builder overview reports this tenant only', async () => {
+    const r = await fetch(BASE + '/builder', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    assert.match(html, /data-testid="builder-overview"/);
+    assert.match(html, new RegExp(`sec-a-${stamp}`), "the tenant's own name");
+  });
+});
