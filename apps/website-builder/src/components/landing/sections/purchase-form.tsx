@@ -19,6 +19,7 @@ import { readMetaCookies, trackInitiateCheckout } from "@/components/landing/met
 import { useDraftCapture } from "@/lib/landing/use-draft-capture";
 import { normalizeOrder, type OrderFormConfig } from "@/lib/landing/mock-order-form";
 import type { ShippingMethod } from "@/types/landing";
+import { useStorefrontApi } from "@/lib/storefront/api-base";
 
 // The customer-facing checkout.
 //
@@ -106,6 +107,8 @@ export function PurchaseForm({
   homeDeliveryEnabled: boolean;
   stopDeskEnabled: boolean;
 }) {
+  // Bound to this storefront tenant by StorefrontApiProvider.
+  const api = useStorefrontApi();
   const router = useRouter();
   const { subtotal } = useOrderTotals(store);
   const unitPrice = useUnitPrice(store);
@@ -191,8 +194,8 @@ export function PurchaseForm({
   // not just home, because stop desk quotes from deskPrice.
   React.useEffect(() => {
     Promise.all([
-      fetch("/api/wilayas").then((r) => r.json()),
-      fetch("/api/settings/delivery-prices").then((r) => r.json()),
+      fetch(api("/wilayas")).then((r) => r.json()),
+      fetch(api("/wilayas")).then((r) => r.json()),
     ]).then(([wJson, pJson]) => {
       if (wJson.success) setWilayas(wJson.data);
       if (pJson.success) {
@@ -262,7 +265,7 @@ export function PurchaseForm({
       }));
 
       const { fbc, fbp } = readMetaCookies();
-      const res = await fetch("/api/orders", {
+      const res = await fetch(api("/orders"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

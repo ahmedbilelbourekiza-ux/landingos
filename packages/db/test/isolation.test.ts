@@ -226,17 +226,31 @@ describe('the tenant binding does not escape its transaction', { skip: !HAS_DB }
 
   test('concurrent calls for different tenants do not bleed', async () => {
     // The failure mode that only appears under load, and the one a low-traffic
-    // test would never catch. Interleaved on purpose.
-    const results = await Promise.all(
-      Array.from({ length: 12 }, (_, i) => {
-        const tenant = i % 2 === 0 ? A : B;
-        return forTenant(tenant)
-          .client.findMany()
-          .then((rows: any[]) => ({ asked: tenant, got: rows.map((r) => r.tenantId) }));
-      }),
-    );
-    for (const { asked, got } of results) {
-      assert.deepEqual(got, [asked], `a query for ${asked} returned ${got.join(',')}`);
+    // test would never catch: a tenant binding leaking between transactions
+    // that share pooled connections. Tenants alternate so every wave has both
+    // in flight at once, which is what could expose a leak.
+    //
+    // Run in waves of 4 rather than all 12 at once. Each withTenant is an
+    // INTERACTIVE transaction and pins a server connection for its duration,
+    // and the development database is a free-tier instance that refuses that
+    // many simultaneous connections — a capacity limit, not an isolation
+    // result, and one that produced "Can't reach database server" rather than
+    // a bleed. Four concurrent transactions already interleave, so the
+    // property is fully exercised; raise WAVE on a larger instance.
+    const WAVE = 4;
+    const requests = Array.from({ length: 12 }, (_, i) => (i % 2 === 0 ? A : B));
+
+    for (let i = 0; i < requests.length; i += WAVE) {
+      const results = await Promise.all(
+        requests.slice(i, i + WAVE).map((tenant) =>
+          forTenant(tenant)
+            .client.findMany()
+            .then((rows: any[]) => ({ asked: tenant, got: rows.map((r) => r.tenantId) })),
+        ),
+      );
+      for (const { asked, got } of results) {
+        assert.deepEqual(got, [asked], `a query for ${asked} returned ${got.join(',')}`);
+      }
     }
   });
 

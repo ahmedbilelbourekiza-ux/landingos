@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 
-import { db } from "@/lib/db";
+import { withTenant } from "@landingos/db";
 
 // Builds Shopify-shaped webhook payloads from landingos data.
 //
@@ -101,10 +101,12 @@ export async function buildOrderPayload(order: OrderWithLanding) {
   // than failing the webhook if the name no longer resolves.
   let wilayaCode: string | null = null;
   try {
-    const wilaya = await db.wilaya.findFirst({
-      where: { OR: [{ nameAr: order.wilaya }, { name: order.wilaya }] },
-      select: { code: true },
-    });
+    const wilaya = await withTenant(order.tenantId, (db: any) =>
+      db.wilaya.findFirst({
+        where: { OR: [{ nameAr: order.wilaya }, { name: order.wilaya }] },
+        select: { code: true },
+      }),
+    );
     wilayaCode = wilaya?.code ?? null;
   } catch {
     wilayaCode = null;
@@ -115,10 +117,12 @@ export async function buildOrderPayload(order: OrderWithLanding) {
   // it out automatically instead of chasing a customer who already bought.
   let draftOrderId: string | null = null;
   try {
-    const draft = await db.draftOrder.findFirst({
-      where: { convertedOrderId: order.id },
-      select: { id: true },
-    });
+    const draft = await withTenant(order.tenantId, (db: any) =>
+      db.draftOrder.findFirst({
+        where: { convertedOrderId: order.id },
+        select: { id: true },
+      }),
+    );
     draftOrderId = draft?.id ?? null;
   } catch {
     draftOrderId = null;
@@ -285,10 +289,13 @@ export async function buildDraftOrderPayload(draft: DraftWithLanding) {
   let wilayaCode: string | null = null;
   if (draft.wilaya) {
     try {
-      const wilaya = await db.wilaya.findFirst({
-        where: { OR: [{ nameAr: draft.wilaya }, { name: draft.wilaya }] },
-        select: { code: true },
-      });
+      // draft.tenantId, not order — this builder receives a DraftOrder.
+      const wilaya = await withTenant(draft.tenantId, (db: any) =>
+        db.wilaya.findFirst({
+          where: { OR: [{ nameAr: draft.wilaya }, { name: draft.wilaya }] },
+          select: { code: true },
+        }),
+      );
       wilayaCode = wilaya?.code ?? null;
     } catch {
       wilayaCode = null;

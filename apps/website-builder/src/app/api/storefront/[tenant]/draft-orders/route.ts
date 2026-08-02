@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { withTenant } from "@landingos/db";
 
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
+import { triggerDraftOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 
 export const dynamic = "force-dynamic";
 
@@ -54,11 +55,23 @@ export async function POST(
       });
       if (!page) return;
 
-      await (db as any).draftOrder.upsert({
+      const draft = await (db as any).draftOrder.upsert({
         where: { token },
         update: fields,
         create: { ...fields, token, landingPageId: page.id, tenantId: tenant.id },
+        select: { id: true, notifiedAt: true },
       });
+
+      // Exactly once per visitor, however many times they edit the form.
+      // notifiedAt is what makes that true — without it a customer typing
+      // their phone number slowly would fire a dozen leads at the CRM.
+      if (!draft.notifiedAt) {
+        await (db as any).draftOrder.update({
+          where: { id: draft.id },
+          data: { notifiedAt: new Date() },
+        });
+        triggerDraftOrderWebhook("draft_order.created", tenant.id, draft.id);
+      }
     });
   } catch (error) {
     console.error("[storefront] draft capture failed", error);

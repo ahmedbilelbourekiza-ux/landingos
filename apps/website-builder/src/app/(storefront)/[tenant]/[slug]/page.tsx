@@ -6,6 +6,7 @@ import { withTenant } from "@landingos/db";
 import { resolveStorefrontTenant } from "@/lib/storefront/resolve-tenant";
 import { toLandingPageData, toThemeData } from "@/lib/landing/mappers";
 import { LandingTemplate } from "@/components/landing/landing-template";
+import { StorefrontApiProvider } from "@/lib/storefront/api-base";
 
 export const dynamic = "force-dynamic";
 
@@ -74,10 +75,16 @@ export default async function StorefrontLandingPage({
 
   return (
     <div data-tenant={found.tenant.slug} data-page-slug={found.page.slug}>
-      {/* toLandingPageData, not toPreviewState: the latter is the EDITOR's
-          shape and the template takes the public one. Passing the wrong
-          mapper compiles fine and throws at render. */}
-      <LandingTemplate page={toLandingPageData(found.page)} theme={toThemeData(found.page.theme)} />
+      {/* Every request the template makes — the wilaya list, draft capture,
+          checkout — goes to THIS tenant's storefront API. Without the provider
+          the purchase form would post to whatever base it defaulted to, which
+          is how a checkout ends up filed under the wrong company. */}
+      <StorefrontApiProvider base={`/api/storefront/${found.tenant.slug}`}>
+        {/* toLandingPageData, not toPreviewState: the latter is the EDITOR's
+            shape and the template takes the public one. Passing the wrong
+            mapper compiles fine and throws at render. */}
+        <LandingTemplate page={toLandingPageData(found.page)} theme={toThemeData(found.page.theme)} />
+      </StorefrontApiProvider>
     </div>
   );
 }

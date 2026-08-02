@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useStorefrontApi } from "@/lib/storefront/api-base";
 
 // Abandoned-checkout capture for the storefront purchase form.
 //
@@ -52,6 +53,8 @@ function isWorthSaving(snapshot: DraftSnapshot): boolean {
 }
 
 export function useDraftCapture(landingId: string) {
+  // Bound to this storefront tenant.
+  const api = useStorefrontApi();
   // useState (not a ref) because the token is part of this hook's public
   // return value, so it is read during render by the consuming form. The
   // lazy initializer runs once per mount; the window guard keeps it from
@@ -93,13 +96,13 @@ export function useDraftCapture(landingId: string) {
 
       if (useBeacon && typeof navigator !== "undefined" && navigator.sendBeacon) {
         navigator.sendBeacon(
-          "/api/draft-orders",
+          api("/draft-orders"),
           new Blob([body], { type: "application/json" }),
         );
         return;
       }
 
-      void fetch("/api/draft-orders", {
+      void fetch(api("/draft-orders"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,

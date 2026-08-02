@@ -1,38 +1,67 @@
-import { db } from "@/lib/db";
-import { ok, serverError } from "@/lib/api-response";
+import { NextResponse } from "next/server";
+
+import { asPlatform } from "@landingos/db";
+
 import { siteConfig } from "@/config/site";
 import { getR2Config } from "@/lib/r2";
 
-// Lightweight health check. Proves the API layer, the env/config wiring, and
-// the database connection are all alive. Useful as a deployment probe and as
-// the first thing to hit when debugging.
-//
-// `storage` reports which upload backend the running container resolved.
-// Uploads silently fall back to local disk when the R2 variables are missing,
-// and on a host with an ephemeral filesystem that failure is invisible until
-// images vanish hours later — so the backend is surfaced here to make a
-// misconfigured deploy obvious immediately. Only the resolved mode is
-// reported, never credentials, bucket name, or account id.
-export async function GET() {
-  try {
-    await db.$queryRaw`SELECT 1`;
+export const dynamic = "force-dynamic";
 
-    const r2 = getR2Config();
-    return ok({
-      status: "ok",
-      service: siteConfig.name,
-      version: siteConfig.version,
-      storage: {
-        backend: r2 ? "r2" : "local",
-        // true → images are served straight from Cloudflare's CDN.
-        // false with backend "r2" → proxied through this server (bucket stays
-        // private). Both are valid; this just says which one is active.
-        cdn: r2 ? r2.publicBaseUrl !== null : false,
-      },
-      time: new Date().toISOString(),
-    });
+/* =============================================================================
+ * Deployment health check.
+ *
+ * Named as the healthcheckPath in railway.json, so what this reports decides
+ * whether a deploy is accepted. It therefore checks the things whose absence
+ * would leave the platform looking alive and being useless.
+ *
+ * The database probe now uses the PLATFORM connection. It previously used the
+ * legacy client, which meant the check could pass against a database no page
+ * reads from — a green light on a broken deploy.
+ *
+ * Reference data is checked too. With no wilayas, every storefront renders
+ * perfectly and can take no orders: checkout resolves a delivery price by
+ * wilaya and finds nothing. That is precisely the failure a health check
+ * exists to catch and a page-level smoke test would miss.
+ *
+ * Only resolved modes are reported — never credentials, bucket names or hosts.
+ * ========================================================================== */
+
+export async function GET() {
+  const checks: Record<string, string> = {};
+  let healthy = true;
+
+  try {
+    await asPlatform().$queryRaw`SELECT 1`;
+    checks.database = "ok";
   } catch (error) {
-    console.error("[health] database unreachable:", error);
-    return serverError("Database unreachable");
+    healthy = false;
+    checks.database = "unreachable";
+    console.error("[health] database unreachable", error);
   }
+
+  if (checks.database === "ok") {
+    try {
+      const wilayas = await asPlatform().wilaya.count();
+      // The count, not a boolean: the number is what tells an operator whether
+      // the seed ran partially.
+      checks.referenceData =
+        wilayas > 0 ? `${wilayas} wilayas` : "MISSING — run seed:reference";
+      if (wilayas === 0) healthy = false;
+    } catch {
+      healthy = false;
+      checks.referenceData = "unreadable";
+    }
+  }
+
+  // Uploads on local disk survive nothing on an ephemeral host, so this is
+  // reported rather than merely configured.
+  checks.uploads = getR2Config() ? "r2" : "local disk (not durable)";
+
+  return NextResponse.json(
+    {
+      success: healthy,
+      data: { service: siteConfig.name, version: siteConfig.version, checks },
+    },
+    { status: healthy ? 200 : 503 },
+  );
 }

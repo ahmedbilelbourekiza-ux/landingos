@@ -1,6 +1,6 @@
 import { createHmac } from "crypto";
 
-import { db } from "@/lib/db";
+import { withTenant } from "@landingos/db";
 import { decryptToken } from "@/lib/meta/crypto";
 import type { WebhookEvent } from "./events";
 
@@ -55,6 +55,7 @@ function subscribesTo(endpoint: EndpointRow, event: WebhookEvent): boolean {
 }
 
 async function deliverToEndpoint(
+  tenantId: string,
   endpoint: EndpointRow,
   event: WebhookEvent,
   resourceId: string,
@@ -65,7 +66,7 @@ async function deliverToEndpoint(
     secret = decryptToken(endpoint.secret);
   } catch (error) {
     console.error(`[webhooks] endpoint "${endpoint.label}": cannot decrypt secret`, error);
-    await logDelivery(endpoint.id, event, resourceId, false, null, 1, "Secret could not be decrypted");
+    await logDelivery(tenantId, endpoint.id, event, resourceId, false, null, 1, "Secret could not be decrypted");
     return;
   }
 
@@ -92,7 +93,7 @@ async function deliverToEndpoint(
       lastStatus = res.status;
 
       if (res.ok) {
-        await logDelivery(endpoint.id, event, resourceId, true, res.status, attempt, null);
+        await logDelivery(tenantId, endpoint.id, event, resourceId, true, res.status, attempt, null);
         return;
       }
 
@@ -111,10 +112,11 @@ async function deliverToEndpoint(
   console.error(
     `[webhooks] endpoint "${endpoint.label}" failed ${event} for ${resourceId}: ${lastError}`,
   );
-  await logDelivery(endpoint.id, event, resourceId, false, lastStatus, MAX_ATTEMPTS, lastError);
+  await logDelivery(tenantId, endpoint.id, event, resourceId, false, lastStatus, MAX_ATTEMPTS, lastError);
 }
 
 async function logDelivery(
+  tenantId: string,
   endpointId: string,
   event: string,
   resourceId: string,
@@ -124,8 +126,10 @@ async function logDelivery(
   error: string | null,
 ) {
   try {
-    await db.webhookDelivery.create({
+    await withTenant(tenantId, (db) =>
+      (db as any).webhookDelivery.create({
       data: {
+        tenantId,
         endpointId,
         event,
         resourceId,
@@ -136,7 +140,8 @@ async function logDelivery(
         // the database.
         error: error ? error.slice(0, 500) : null,
       },
-    });
+      }),
+    );
   } catch (err) {
     console.error("[webhooks] failed to record delivery log:", err);
   }
@@ -148,12 +153,19 @@ export async function dispatchWebhook(
   event: WebhookEvent,
   resourceId: string,
   payload: unknown,
+  tenantId: string,
 ): Promise<void> {
   try {
-    const endpoints = await db.webhookEndpoint.findMany({
-      where: { isActive: true },
-      select: { id: true, label: true, url: true, secret: true, events: true },
-    });
+    // Bound to the tenant. Under the old single-store model "every active
+    // endpoint" and "this store's endpoints" were the same set; with several
+    // tenants they are emphatically not, and an unbound read here would post
+    // one company's orders to another company's CRM.
+    const endpoints = await withTenant(tenantId, (db) =>
+      (db as any).webhookEndpoint.findMany({
+        where: { isActive: true },
+        select: { id: true, label: true, url: true, secret: true, events: true },
+      }),
+    );
 
     const subscribed = endpoints.filter((e) => subscribesTo(e, event));
     if (subscribed.length === 0) {
@@ -170,7 +182,7 @@ export async function dispatchWebhook(
     });
 
     await Promise.all(
-      subscribed.map((endpoint) => deliverToEndpoint(endpoint, event, resourceId, body)),
+      subscribed.map((endpoint: EndpointRow) => deliverToEndpoint(tenantId, endpoint, event, resourceId, body)),
     );
   } catch (error) {
     console.error(`[webhooks] dispatch failed for ${event} ${resourceId}:`, error);

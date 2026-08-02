@@ -5,6 +5,7 @@ import { can } from "@landingos/auth";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { BuilderApiProvider } from "@/lib/builder/api-base";
+import { StorefrontApiProvider } from "@/lib/storefront/api-base";
 import { toPreviewState } from "@/lib/landing/mappers";
 import { EditWorkspace } from "@/components/landings/edit/edit-workspace";
 import type { PublishStatus } from "@/components/landings/edit/edit-workspace-header";
@@ -54,7 +55,12 @@ export default async function ConsoleEditLandingPage({
   if (!page) notFound();
 
   return (
+    // Two providers, because the editor renders both worlds at once: its own
+    // controls talk to the console API, and the live preview inside it renders
+    // the customer-facing template. Pointing the preview at the tenant's own
+    // storefront API is what makes it a preview rather than a rehearsal.
     <BuilderApiProvider base="/api/builder">
+      <StorefrontApiProvider base={`/api/storefront/${session.tenant!.slug}`}>
       <EditWorkspace
         landingId={page.id}
         landingTitle={page.title}
@@ -62,6 +68,7 @@ export default async function ConsoleEditLandingPage({
         initialPreview={toPreviewState(page)}
         initialStatus={(page.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT") as PublishStatus}
       />
+      </StorefrontApiProvider>
     </BuilderApiProvider>
   );
 }

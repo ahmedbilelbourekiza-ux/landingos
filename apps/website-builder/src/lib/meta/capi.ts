@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 
-import { db } from "@/lib/db";
+import { withTenant } from "@landingos/db";
 import { decryptToken } from "./crypto";
 
 // Server-side Meta Conversions API sender. Sends a "Purchase" event to every
@@ -105,10 +105,15 @@ async function sendToConfig(
 // response to the customer immediately.
 export async function sendPurchaseEvent(input: PurchaseEventInput): Promise<void> {
   try {
-    const activeConfigs = await db.metaPixelConfig.findMany({
+    // Tenant-bound: a server-side conversion event must be sent with the
+    // pixel belonging to the shop that made the sale, never every active
+    // pixel on the platform.
+    const activeConfigs = await withTenant(tenantId, (db: any) =>
+      db.metaPixelConfig.findMany({
       where: { isActive: true },
       select: { id: true, label: true, pixelId: true, accessToken: true },
-    });
+      }),
+    );
 
     if (activeConfigs.length === 0) {
       console.log(`[meta-capi] order ${input.orderId}: no active pixel configs, skipping`);

@@ -4,12 +4,15 @@ import * as React from "react";
 import { formatPrice } from "@/lib/landing/format";
 import type { PreviewState } from "@/types/preview";
 import { normalizeOrder } from "@/lib/landing/mock-order-form";
+import { useBuilderApi } from "@/lib/builder/api-base";
 
 // Order form preview. Renders the configured form fields plus a wilaya
 // selector (loaded from the API) and a baladia selector that filters by the
 // selected wilaya. When a wilaya is selected, the shipping price is looked
 // up from the delivery slice and the total updates instantly.
 export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
+  // Bound to the console API by BuilderApiProvider.
+  const api = useBuilderApi();
   const { config } = preview.orderForm;
   const [wilayas, setWilayas] = React.useState<{
     id: number;
@@ -23,8 +26,8 @@ export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
   // Load wilayas + global delivery prices on mount
   React.useEffect(() => {
     Promise.all([
-      fetch("/api/wilayas").then((r) => r.json()),
-      fetch("/api/settings/delivery-prices").then((r) => r.json()),
+      fetch(api("/settings/delivery-prices")).then((r) => r.json()),
+      fetch(api("/settings/delivery-prices")).then((r) => r.json()),
     ]).then(([wJson, pJson]) => {
       if (wJson.success) setWilayas(wJson.data);
       if (pJson.success) {

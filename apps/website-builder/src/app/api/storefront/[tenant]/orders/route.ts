@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { withTenant } from "@landingos/db";
 
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
+import { triggerOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 
 export const dynamic = "force-dynamic";
 
@@ -136,6 +137,12 @@ export async function POST(
     });
 
     if ("error" in result) return result.error;
+
+    // Fire and forget, deliberately NOT awaited. This is what feeds the ERP,
+    // and it must never be able to fail or slow down a customer's order — a
+    // receiving CRM being down is the CRM's problem, and the delivery log
+    // records it either way.
+    triggerOrderWebhook("order.created", tenant.id, result.order.id);
 
     return NextResponse.json(
       { success: true, data: { id: result.order.id, total: String(result.total) } },

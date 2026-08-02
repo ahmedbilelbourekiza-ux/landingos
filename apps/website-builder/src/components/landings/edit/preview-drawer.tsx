@@ -12,6 +12,7 @@ import { LandingTemplate } from "@/components/landing/landing-template";
 import { previewToLandingPage } from "@/lib/landing/preview-to-landing";
 import { DEFAULT_THEME, type LandingThemeData } from "@/types/theme";
 import type { PreviewState } from "@/types/preview";
+import { useBuilderApi } from "@/lib/builder/api-base";
 
 // Full-width drawer that renders the actual LandingTemplate with the current
 // preview state. Loads the selected theme from the API so the preview matches
@@ -25,12 +26,14 @@ export function PreviewDrawer({
   onOpenChange: (open: boolean) => void;
   preview: PreviewState;
 }) {
+  // Bound to the console API by BuilderApiProvider.
+  const api = useBuilderApi();
   const [theme, setTheme] = React.useState<LandingThemeData>(DEFAULT_THEME);
 
   React.useEffect(() => {
     const themeId = preview.general.themeId;
     if (!themeId) { setTheme(DEFAULT_THEME); return; }
-    fetch("/api/themes")
+    fetch(api("/themes"))
       .then((r) => r.json())
       .then((json) => {
         if (json.success) {

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
+import { useStorefrontApi } from "@/lib/storefront/api-base";
 
 // Storefront browser-side Meta Pixel.
 //
@@ -102,6 +103,8 @@ export function trackViewContent(params: {
   value: number;
   currency: string;
 }) {
+  // Bound to this storefront tenant by StorefrontApiProvider.
+  const api = useStorefrontApi();
   track("ViewContent", { content_type: "product", ...params });
 }
 
@@ -125,7 +128,7 @@ export function MetaPixelLoader() {
 
     let cancelled = false;
 
-    fetch("/api/public/meta-pixels")
+    fetch(api("/meta-pixels"))
       .then((r) => r.json())
       .then((json) => {
         if (cancelled) return;
