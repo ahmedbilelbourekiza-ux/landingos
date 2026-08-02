@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 2 August 2026
-**Branch:** `master` · **Last commit:** *Phase 5.3 (part 2): carriers, shipments, and the BUG-02 write*
+**Branch:** `master` · **Last commit:** *Phase 5.3 (part 3): the ERP API surface is complete*
 **Working tree:** clean, all work committed.
 
 ---
@@ -55,7 +55,7 @@ one product with a bolt-on: it hosts any number of independently subscribable
 | Product | id | Status |
 |---|---|---|
 | Website Builder | `website-builder` | Fully migrated onto the platform |
-| ERP / CRM | `erp` | Porting in progress (Phase 5) — orders, customers, settings live on the platform; the rest still standalone |
+| ERP / CRM | `erp` | Backend fully ported (Phase 5). Its API runs on the platform; the vanilla SPA is Phase 6. |
 
 A customer subscribes to either, or both. Neither is privileged. The platform
 supplies authentication, tenancy, roles, entitlements, billing hooks, domains,
@@ -70,57 +70,54 @@ enumerates products — it reads a registry.
 
 ## Where we are
 
-**Phase 5.2 is complete and Phase 5.3 is about two thirds done.** The ERP
-data-layer foundation plus five vertical slices — orders, customers, settings,
-audit, products, inventory, agents/payroll and finance — run end to end on the
-platform with their contract tests passing against a live server.
+**Phase 5.3 is complete.** Every ERP route surface now runs on the platform and
+**all 227 ported contract tests pass** against a live server. Only Phase 5.4 —
+the M-05 order split — remains before Phase 5 is done.
 
-**Exact stopping point:** committed and verified. The next task is **the rest of
-Phase 5.3 — the remaining ERP route surfaces**, listed under *What is built* below.
+**Exact stopping point:** committed and verified. The next task is **Phase 5.4**.
 
 ### Sequencing note
 
 NEXT_STEPS originally had 5.2 build every repository and 5.3 add every route.
 That was changed on purpose: done in that order nothing is verifiable until both
-finish, which is the position this project has been bitten by three times.
-Work proceeds in **vertical slices** — repository plus routes plus green tests,
-one domain at a time.
+finish, which is the position this project has been bitten by three times. Work
+proceeded in **vertical slices** — repository plus routes plus green tests, one
+domain at a time.
 
-### What is built, and what is not
+### The ERP surface, all of it
 
-| Surface | State |
+| Surface | Contract |
 |---|---|
-| `/api/erp/orders` (+ stats, bulk, 6 per-order routes) | **done** |
-| `/api/erp/clients` (+ filter-options) | **done** |
-| `/api/erp/settings`, `/api/erp/audit` | **done** |
-| `/api/erp/products` (+ inventory, stock-lots, history), `inventory/low-stock` | **done** |
-| `/api/erp/agents` (+ payroll, days-off, suspend/reactivate) | **done** |
-| `/api/erp/financial-records`, `/api/erp/unexpected-charges` | **done** |
-| `/api/erp/carriers` (+ status-mappings, default), shipments, settlement | **done** |
-| sales channels, inbound webhooks | not built |
-| follow-up tasks and dashboard | not built |
-| AI providers, agents, conversations | not built |
+| orders (+ stats, bulk, 6 per-order routes), clients, settings, audit | orders 38/38 · validation 29/29 · listing 25/25 |
+| products, inventory, stock lots, agents, payroll, finance | catalog 31/31 |
+| carriers, shipments, delivery settlement | delivery 20/20 |
+| sales channels, inbound webhooks, AI, follow-up | integrations 22/22 |
+| every surface, gated | access 62/62 |
 
-**Contract suite, each file verified on its own:** orders 38/38 ·
-validation 29/29 · listing 25/25 · catalog 31/31 · delivery 20/20 ·
-access **48/62**. The 14 remaining access failures name exactly the unbuilt
-surfaces above, and `integrations.test.ts` is red for the same reason. That is
-the remaining scope, stated rather than hidden.
+**227/227**, each file verified on its own. Running several back to back still
+trips the documented Neon connection limit — judge them per file.
 
-Running several contract files back to back still trips the documented Neon
-connection limit - judge them per file, as *Known limitations* says.
+Three routes answer **501 by design**, and are not gaps: `POST /api/erp/agents`
+(inviting a person is a platform action, M-02), and `ai/chat`, `ai/chat/stream`,
+`ai/insights/deep` (calling a model is deployment configuration). All are gated
+first, so the authorization contract is complete either way.
 
-### Decisions taken in 5.2
+### Decisions taken in Phase 5
 
-- **D-05.1 (resolved).** `*:clients:read` and `*:finance:read` are now
-  `SENSITIVE` in `packages/auth/src/rbac.ts` — no role grants them implicitly.
-  The customer registry is every customer's PII and the finance screens are the
-  company's P&L; the `*:*:read` glob would have handed both to every member.
+- **D-05.1.** `*:clients:read` and `*:finance:read` are `SENSITIVE` — no role
+  grants them implicitly. The customer registry is every customer's PII and the
+  finance screens are the company's P&L.
 - **D-05.2.** Human-readable numbering comes from an atomic per-tenant
   `TenantSequence`, not from counting rows and probing for a free slot.
 - **D-05.3.** `ORD-0042` is a `reference` column, unique per tenant; the primary
   key is a cuid. The ERP used the number AS the key, which collides across
-  tenants on the second tenant's first order.
+  tenants on the second tenant's first record.
+- **D-05.4.** Per-member ERP data (pay rates, days off, missed-order counter)
+  lives in `ProductSetting` keyed `agent:<userId>`, not as columns on
+  `Membership` — the platform must never learn what a payroll rate is.
+- **D-05.5.** Inbound webhook paths carry the tenant
+  (`/api/erp/webhooks/[tenant]/...`), because `SalesChannel` is RLS-scoped and a
+  channel id alone cannot be resolved before a tenant is bound.
 
 ### Still with no platform home
 
@@ -148,6 +145,7 @@ stream and inbound carrier webhooks).
 | 5.2 | ERP data-layer foundation + the orders/clients/settings slice, verified live |
 | 5.3a | Products, inventory, agents/payroll and finance — catalog 31/31 |
 | 5.3b | Carriers, shipments and delivery settlement — delivery 20/20 |
+| 5.3c | Sales channels, webhooks, AI, follow-up — the surface is complete, 227/227 |
 
 ### Remaining roadmap
 
@@ -160,9 +158,8 @@ stream and inbound carrier webhooks).
 
 ### Next recommended task
 
-See `NEXT_STEPS.md`. In short: **continue Phase 5.3** — sales channels and
-inbound webhooks next (they unblock `integrations.test.ts`), then follow-up,
-then the AI surface. The
+See `NEXT_STEPS.md`. In short: **Phase 5.4 — the order split (M-05)**, the last
+piece of Phase 5. The
 foundation in `apps/website-builder/src/lib/erp/` is in place and the contract
 each slice must satisfy is already written in `apps/website-builder/test/erp/`.
 

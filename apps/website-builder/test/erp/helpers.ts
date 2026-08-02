@@ -32,8 +32,18 @@ export const BASE = process.env.CONSOLE_URL ?? 'http://127.0.0.1:3000';
  * `MEMBER` grants reads by role glob but no writes at all, and an agent must log
  * calls and correct the details of their own orders. Granting exactly this — by
  * name, on the membership — is narrower than promoting them to `MANAGER`, which
- * would hand over every `*:*:write` in every product the tenant owns. */
-export const AGENT_GRANTS = ['erp:orders:write'] as const;
+ * would hand over every `*:*:write` in every product the tenant owns.
+ *
+ * `erp:ai:use` is here for the same reason and was added in Phase 5.3: the ERP's
+ * agent PWA could list and use the assistants it was allowed, and no role glob
+ * reaches a `:use` action — `*:*:read` and `*:*:write` do not match it. Without
+ * the grant an agent gets 403 on the whole AI surface, which is a different
+ * product from the one being ported.
+ *
+ * Note what is still absent: `erp:clients:read` and `erp:finance:read`. Those
+ * are D-05.1, and an agent must not hold them — which is exactly what makes
+ * the AI permission clamp observable, since `read_analytics` needs the second. */
+export const AGENT_GRANTS = ['erp:orders:write', 'erp:ai:use'] as const;
 
 export interface Caller {
   readonly userId: string;
@@ -262,6 +272,21 @@ export async function cleanup() {
   createdTenants.length = 0;
   createdUsers.length = 0;
   await disconnect();
+}
+
+/**
+ * A tenant's slug.
+ *
+ * Needed because the inbound-webhook paths carry it (D-05.5): those requests
+ * have no session, and `SalesChannel` is RLS-scoped, so the tenant has to come
+ * from the URL before anything can be read.
+ */
+export async function slugOf(tenantId: string): Promise<string> {
+  const t = await asPlatform().tenant.findUnique({
+    where: { id: tenantId },
+    select: { slug: true },
+  });
+  return t?.slug ?? '';
 }
 
 /** Poll until `fn` returns something truthy. The ERP's `waitFor`, unchanged. */

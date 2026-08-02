@@ -12,6 +12,105 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 5 — The ERP onto the platform
 
+### 5.3 (part 3) Sales channels, webhooks, AI and follow-up — the surface is complete
+
+`integrations.test.ts` goes 0 -> **22/22** and `access.test.ts` 48 -> **62/62**.
+Every one of the 227 ported contract tests now passes.
+
+#### D-05.5 — the webhook URL had to gain a tenant
+
+The ERP's endpoint was `/webhook/store/:storeId`, and Phase 5.1 wrote the
+contract test in that shape. It cannot work here: `SalesChannel` is
+tenant-scoped and carries RLS, so an unbound client reads **nothing** from it —
+a channel id alone cannot be resolved before a tenant is bound, and the lookup
+and the binding are circular.
+
+Reading the channel with the migration role would bypass RLS, and making that
+exception on the one endpoint a stranger can reach is the worst possible place
+for it. An unscoped token table — the way `Session` is looked up by token hash
+before a tenant is known — is genuinely good and costs a migration plus a second
+mechanism doing what the URL already can. The path carries the tenant instead,
+exactly like `/api/storefront/[tenant]/...`, which is what this platform already
+does for every anonymous tenant-scoped endpoint.
+
+The slug identifies; it does not authorise. Knowing it gets a caller as far as
+the signature check and no further. The test file records the change and why.
+
+#### SEC-04, fail closed
+
+`verifySignature` returns a verdict for every combination rather than falling
+through any of them — the original bug was `if (secret && sig)`, so omitting the
+header skipped verification entirely, and an empty string did too. The HMAC is
+computed over the RAW bytes: re-serialising parsed JSON changes key order and
+whitespace, fails genuine webhooks, and the usual fix for that is to stop
+verifying.
+
+Everything answers **200**. A rejected payload is acknowledged, not refused:
+platforms retry non-2xx with backoff and eventually disable the endpoint, so a
+401 punishes the tenant whose integration then stops working while telling the
+forger which guess was wrong. Nothing is written and no signal is given.
+
+#### SEC-03, and the clamp is a route now
+
+The AI surface is behind `tenantRoute`, including the streaming endpoint that
+was unauthenticated and — with `agentId` omitted — fell back to an assistant
+holding every permission including `read_customers`.
+
+An assistant's stored permission list is a **request, not a grant**. What it
+gets is the intersection with what the CALLER already holds, so an assistant
+cannot become a way to exceed your own access by asking a model to fetch what
+you could not fetch yourself — a particularly bad route, because the answer
+arrives as prose with no audit trail. `read_analytics` maps to `erp:finance:read`
+and is therefore unreachable for an agent (D-05.1); `read_customers` does not,
+because an agent needs the phone number and their orders are already scoped.
+
+The ERP could only assert the clamp at unit level, because its HTTP surface
+never exposed the resolved set — the one security boundary in the feature was
+untestable from outside. `GET /api/erp/ai/permissions` returns it.
+
+#### Two boundaries recorded rather than implemented
+
+`POST /api/erp/agents` exists and is gated, but answers 501: adding a person to
+the company is a PLATFORM action. The ERP's version created an account because
+the ERP owned identity; it does not any more (M-02), and routing it through a
+product would give every product a way to create accounts in every other one.
+The route exists rather than 404ing because the authorization contract has to be
+complete — a refusal is a stronger, testable statement than an absent path.
+
+`ai/chat`, `ai/chat/stream` and `ai/insights/deep` answer 501 for the same
+reason: calling a model is deployment configuration, not a port, but leaving
+those paths unrouted would put a hole in the "every AI route requires a session"
+contract exactly where the original vulnerability was.
+
+#### One harness change
+
+`erp:ai:use` joined the ERP agent's explicit grants. No role glob reaches a
+`:use` action — `*:*:read` and `*:*:write` do not match it — so without it an
+agent gets 403 on the whole AI surface, which is a different product from the
+one being ported. `erp:clients:read` and `erp:finance:read` are still absent,
+which is what makes the permission clamp observable.
+
+#### Files
+
+`src/lib/erp/webhooks.ts`, `webhook-route.ts`, `ai.ts`;
+`src/app/api/erp/sales-channels/*`, `webhooks/[tenant]/*` (4 routes),
+`ai/*` (8 routes), `followup/*` (2 routes), and a gated `POST` on `agents`.
+
+#### Migration
+
+None.
+
+#### Risk
+
+Phase 5.4 (M-05, the SalesOrder/FulfillmentOrder relationship) is the only part
+of Phase 5 still outstanding. The 501 routes are deliberate and named above.
+
+**Verified live, each file on its own:** access 62/62 · orders 38/38 ·
+validation 29/29 · listing 25/25 · catalog 31/31 · delivery 20/20 ·
+integrations 22/22 — **227/227**.
+
+---
+
 ### 5.3 (part 2) Carriers, shipments, and BUG-02's write
 
 `delivery.test.ts` goes 0 -> **20/20** and `access.test.ts` 45 -> **48/62**.

@@ -1,6 +1,6 @@
 # Next Steps
 
-Immediate tasks to continue from the Phase 5.3 (part 2) commit. Full context is in
+Immediate tasks to continue from the Phase 5.3 (part 3) commit. Full context is in
 `PROJECT_STATE.md` — read its "Read this first" section before starting.
 
 ---
@@ -38,82 +38,34 @@ npm run preflight   --workspace @landingos/db      # 9 checks; all must pass
 
 ---
 
-## 1. Continue Phase 5.3 — one vertical slice at a time
+## 1. Phase 5.4 — the order split (M-05), the last piece of Phase 5
 
-5.2 built the foundation and the first slice. Everything it needs is in place:
+`SalesOrder` and `FulfillmentOrder` exist as **names only**. 3.2 settled that
+both products needed an "Order" and one schema cannot hold two: the builder's is
+an immutable commercial snapshot of what a customer bought, the ERP's is a
+mutable operational record of getting it to them. Only the names landed.
 
-- `apps/website-builder/src/lib/erp/` — ids, phone, serialisation, scope, the
-  per-order ownership guard, settings.
-- `src/app/api/erp/orders|clients|settings|audit` — the pattern to copy.
-- The contract, already written, in `apps/website-builder/test/erp/`.
+This is where they gain their relationship, and where the Builder→ERP handoff
+stops being a network call.
 
-**Slices remaining, in the order they unblock the most tests:**
+Today a storefront checkout writes a `SalesOrder` and fires an `order.created`
+webhook from `api/storefront/[tenant]/orders/route.ts` via
+`lib/webhooks/tenant-triggers.ts`. That mechanism **stays** — it is the
+tenant-facing integration feature, and a tenant subscribing their own endpoint
+is the point of it. What should stop being a network call is the INTERNAL hop:
+one platform writing to another product in the same database over HTTP, which
+can fail after the sale is recorded and leaves the two out of step with nothing
+to reconcile them.
 
-| Slice | Routes | Contract file |
-|---|---|---|
-| sales channels + webhooks | `sales-channels`, `webhooks/channel/[id]`, `webhooks/delivery` | `integrations.test.ts` |
-| follow-up | `followup/tasks`, `followup/dashboard` | `access.test.ts` |
-| AI | `ai/providers`, `ai/agents`, `ai/agents/enabled`, `ai/conversations/[id]`, `ai/permissions`, `ai/chat*`, `ai/insights` | `integrations.test.ts` |
+Both writes belong in one transaction. `withTenant` has already opened one.
 
-Done already: orders, clients, settings, audit, products, inventory, agents,
-payroll, financial records, unexpected charges, carriers, shipments and delivery
-settlement.
-
-**Inbound webhooks are the delicate one.** They arrive with NO session, so the
-tenant can only be resolved from the URL or the payload — the one place on this
-platform where a tenant id comes from something a stranger sent. Read
-`integrations.test.ts` before writing a line of it: signature verification must
-FAIL CLOSED (the original bug was `if (secret && sig)`, so omitting the header
-skipped it entirely), the signature must be checked against THAT channel's
-secret, and the payload must not be able to name its own tenant.
-
-**The loop that works on this machine.** `next start` serves a PREBUILT app, so
-a new route needs a rebuild — and if the old server still holds :3000 the new
-one loses the port race SILENTLY while `/api/health` keeps answering 200 from
-the stale process. Stop node FIRST, every time; this cost a full debugging cycle
-in 5.3, twice.
-
-```bash
-npm run builder:build && npm run builder:start
-```
-
-Then, from `apps/website-builder`:
-
-```bash
-ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/catalog.test.ts"
-```
-
-**Measure before each slice.** `apps/erp/lib/db.js` is the source; find the
-functions for the domain in its `module.exports` block near line 3450 and read
-them before writing the Prisma version. The rules that matter are invisible from
-the schema — for the next slice they are: the ORIGINAL carrier status is always
-preserved alongside the mapped one, event intake is idempotent because carriers
-replay backlogs, and `deliveryOutcome` is settled ONCE and never overwritten.
-
-Two things to watch, unchanged from before:
-
-- **Audit every `db.transaction`.** The ERP's transactions assume SQLite's
-  single writer. Read-modify-write needs `increment` or an explicit row lock —
-  see `lib/erp/inventory.ts`, which takes `SELECT … FOR UPDATE` on lot rows
-  before planning FIFO consumption against them, and `lib/erp/clients.ts`,
-  which uses `increment` for the lifetime counters.
-- **Do not call `$transaction` inside `withTenant`** — it is already one, and
-  the client it hands back does not have it.
+Watch for: a tenant with the builder but NOT the ERP must still be able to
+check out — the fulfilment record simply is not created. Check the entitlement,
+do not assume both products.
 
 ---
 
-## 2. Then Phase 5.4 — the order split (M-05)
-
-`SalesOrder` and `FulfillmentOrder` currently exist as **names only**. This is
-where they gain their relationship and where the Builder→ERP webhook becomes an
-in-process domain event inside one transaction.
-
-Note: `order.created` webhooks currently fire from
-`api/storefront/[tenant]/orders/route.ts` via `lib/webhooks/tenant-triggers.ts`.
-That mechanism stays — it becomes the *tenant-facing* integration feature — but
-the internal Builder→ERP hop should stop being a network call.
-
----
+## 2. Then, when Phase 5 is done
 
 ## Owed to M-18, when their migrations land
 

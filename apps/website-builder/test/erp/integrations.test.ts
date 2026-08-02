@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 
 import {
-  skip, uid, BASE, makeErpTenant, cleanup,
+  skip, uid, BASE, makeErpTenant, cleanup, slugOf,
   contractTest as test,
 } from './helpers.ts';
 
@@ -32,10 +32,30 @@ import {
  * route has to resolve a tenant from an untrusted request and then bind to it.
  * That is the one place on the platform where a tenant id is derived from
  * something a stranger sent, so it gets the most attention here.
+ *
+ * D-05.5 — THE URL GAINED A TENANT SEGMENT SINCE THIS FILE WAS WRITTEN.
+ *
+ * Phase 5.1 wrote these paths WITHOUT a tenant segment, copying the ERP's
+ * single-tenant shape. That cannot work: `SalesChannel` is tenant-scoped
+ * and carries RLS, so an unbound client reads NOTHING from it and a channel id
+ * alone cannot be resolved before a tenant is bound — the lookup and the
+ * binding are circular. The path now carries the tenant, exactly like
+ * `/api/storefront/[tenant]/...`, which is what this platform already does for
+ * every anonymous tenant-scoped endpoint.
+ *
+ * The slug identifies; it does not authorise. Every assertion below still
+ * holds, and the ones that matter most — fail closed, the RIGHT tenant's
+ * secret, and a body that cannot name its own tenant — matter MORE now that
+ * the URL names a company. See lib/erp/webhooks.ts for the alternatives that
+ * were rejected.
  * ========================================================================== */
 
 let acme: Awaited<ReturnType<typeof makeErpTenant>>;
 let beta: Awaited<ReturnType<typeof makeErpTenant>>;
+
+/** Tenant slugs, which the webhook paths carry (D-05.5). */
+let acmeSlug = '';
+let betaSlug = '';
 
 /** A sales channel with a shared secret, in `acme`. */
 let securedChannel = '';
@@ -72,6 +92,8 @@ before(async () => {
   if (skip) return;
   acme = await makeErpTenant('integrations');
   beta = await makeErpTenant('integrations-beta');
+  acmeSlug = await slugOf(acme.tenantId);
+  betaSlug = await slugOf(beta.tenantId);
 
   securedChannel = (await acme.manager.api('POST', '/api/erp/sales-channels', {
     name: `Secured Store ${uid()}`, platform: 'lightfunnels', webhookSecret: SECRET,
@@ -99,14 +121,14 @@ describe('webhook signature verification fails closed (SEC-04)', () => {
   test('a payload with NO signature header creates nothing', async () => {
     // THE bug. Not a wrong signature — a missing one.
     const before = await orderCount(acme);
-    const r = await post(`/api/erp/webhooks/channel/${securedChannel}`, payload());
+    const r = await post(`/api/erp/webhooks/${acmeSlug}/channel/${securedChannel}`, payload());
     assert.equal(r.status, 200, 'the platform is acknowledged, not made to retry forever');
     assert.equal(await orderCount(acme), before, 'but NO order was created');
   });
 
   test('a payload with a WRONG signature creates nothing', async () => {
     const before = await orderCount(acme);
-    await post(`/api/erp/webhooks/channel/${securedChannel}`, payload(), {
+    await post(`/api/erp/webhooks/${acmeSlug}/channel/${securedChannel}`, payload(), {
       'lightfunnels-hmac': 'not-the-right-signature',
     });
     assert.equal(await orderCount(acme), before);
@@ -116,14 +138,14 @@ describe('webhook signature verification fails closed (SEC-04)', () => {
     // `if (secret && sig)` is also false for the empty string, so this is the
     // same bypass wearing a different hat.
     const before = await orderCount(acme);
-    await post(`/api/erp/webhooks/channel/${securedChannel}`, payload(), { 'lightfunnels-hmac': '' });
+    await post(`/api/erp/webhooks/${acmeSlug}/channel/${securedChannel}`, payload(), { 'lightfunnels-hmac': '' });
     assert.equal(await orderCount(acme), before);
   });
 
   test('a signature computed with ANOTHER tenant’s secret creates nothing', async () => {
     const before = await orderCount(acme);
     const raw = payload();
-    await post(`/api/erp/webhooks/channel/${securedChannel}`, raw, {
+    await post(`/api/erp/webhooks/${acmeSlug}/channel/${securedChannel}`, raw, {
       'lightfunnels-hmac': sign(raw, 'some-other-tenants-secret'),
     });
     assert.equal(await orderCount(acme), before);
@@ -133,7 +155,7 @@ describe('webhook signature verification fails closed (SEC-04)', () => {
     // Half a fail-closed test is a route that refuses everything.
     const before = await orderCount(acme);
     const raw = payload();
-    const r = await post(`/api/erp/webhooks/channel/${securedChannel}`, raw, {
+    const r = await post(`/api/erp/webhooks/${acmeSlug}/channel/${securedChannel}`, raw, {
       'lightfunnels-hmac': sign(raw),
     });
     assert.equal(r.status, 200);
@@ -143,14 +165,14 @@ describe('webhook signature verification fails closed (SEC-04)', () => {
   test('the checkout and contact webhooks enforce the same rule', async () => {
     for (const suffix of ['/checkout', '/contact']) {
       const before = await orderCount(acme);
-      await post(`/api/erp/webhooks/channel/${securedChannel}${suffix}`, payload());
+      await post(`/api/erp/webhooks/${acmeSlug}/channel/${securedChannel}${suffix}`, payload());
       assert.equal(await orderCount(acme), before, `${suffix} accepted an unsigned payload`);
     }
   });
 
   test('a channel with no secret still works, because existing integrations exist', async () => {
     const before = await orderCount(acme);
-    await post(`/api/erp/webhooks/channel/${openChannel}`, payload());
+    await post(`/api/erp/webhooks/${acmeSlug}/channel/${openChannel}`, payload());
     assert.equal(await orderCount(acme), before + 1);
   });
 
@@ -161,14 +183,14 @@ describe('webhook signature verification fails closed (SEC-04)', () => {
     // wrong company.
     const before = await orderCount(acme);
     const raw = payload();
-    await post(`/api/erp/webhooks/channel/${betaChannel}`, raw, { 'lightfunnels-hmac': sign(raw) });
+    await post(`/api/erp/webhooks/${betaSlug}/channel/${betaChannel}`, raw, { 'lightfunnels-hmac': sign(raw) });
     assert.equal(await orderCount(acme), before, 'the order did not land in the wrong tenant');
     assert.ok(await orderCount(beta) > 0, 'it landed in the right one');
   });
 
   test('an unknown channel id is refused without saying whether it exists', async () => {
     const raw = payload();
-    const r = await post('/api/erp/webhooks/channel/STR-does-not-exist', raw, {
+    const r = await post(`/api/erp/webhooks/${acmeSlug}/channel/STR-does-not-exist`, raw, {
       'lightfunnels-hmac': sign(raw),
     });
     assert.ok(r.status === 200 || r.status === 404, `got ${r.status}`);
@@ -182,7 +204,7 @@ describe('webhook signature verification fails closed (SEC-04)', () => {
     // choose which company their order lands in.
     const before = await orderCount(beta);
     const raw = JSON.stringify({ ...JSON.parse(payload()), tenantId: beta.tenantId });
-    await post(`/api/erp/webhooks/channel/${securedChannel}`, raw, {
+    await post(`/api/erp/webhooks/${acmeSlug}/channel/${securedChannel}`, raw, {
       'lightfunnels-hmac': sign(raw),
     });
     assert.equal(await orderCount(beta), before, 'the body did not redirect the order');
@@ -193,8 +215,8 @@ describe('webhook signature verification fails closed (SEC-04)', () => {
     // tenant; without the check a retried backlog doubles a day of orders.
     const raw = payload();
     const before = await orderCount(acme);
-    await post(`/api/erp/webhooks/channel/${securedChannel}`, raw, { 'lightfunnels-hmac': sign(raw) });
-    await post(`/api/erp/webhooks/channel/${securedChannel}`, raw, { 'lightfunnels-hmac': sign(raw) });
+    await post(`/api/erp/webhooks/${acmeSlug}/channel/${securedChannel}`, raw, { 'lightfunnels-hmac': sign(raw) });
+    await post(`/api/erp/webhooks/${acmeSlug}/channel/${securedChannel}`, raw, { 'lightfunnels-hmac': sign(raw) });
     assert.equal(await orderCount(acme), before + 1, 'a replayed delivery is idempotent');
   });
 
@@ -202,16 +224,16 @@ describe('webhook signature verification fails closed (SEC-04)', () => {
     // The dedup key is per tenant. A global unique would mean the second
     // company to receive Shopify order #1001 silently loses it.
     const raw = payload();
-    await post(`/api/erp/webhooks/channel/${openChannel}`, raw);
+    await post(`/api/erp/webhooks/${acmeSlug}/channel/${openChannel}`, raw);
     const before = await orderCount(beta);
-    await post(`/api/erp/webhooks/channel/${betaChannel}`, raw, { 'lightfunnels-hmac': sign(raw) });
+    await post(`/api/erp/webhooks/${betaSlug}/channel/${betaChannel}`, raw, { 'lightfunnels-hmac': sign(raw) });
     assert.equal(await orderCount(beta), before + 1, 'the other tenant still received it');
   });
 });
 
 describe('inbound carrier webhooks', () => {
   test('an unsigned delivery update does not move a parcel', async () => {
-    const r = await post('/api/erp/webhooks/delivery', JSON.stringify({
+    const r = await post(`/api/erp/webhooks/${acmeSlug}/delivery`, JSON.stringify({
       trackingNumber: 'NOPE', status: 'Livré',
     }));
     assert.ok(r.status < 500, 'a carrier is never given a 500 to retry against');
@@ -227,7 +249,7 @@ describe('inbound carrier webhooks', () => {
     });
     const id = created.body.data.id;
 
-    await post('/api/erp/webhooks/delivery', JSON.stringify({
+    await post(`/api/erp/webhooks/${acmeSlug}/delivery`, JSON.stringify({
       orderId: id, tenantId: beta.tenantId, status: 'Livré', crmStatus: 'delivered',
     }));
 
