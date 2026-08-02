@@ -1,6 +1,6 @@
 # Next Steps
 
-Immediate tasks to continue from the Phase 5.3 (part 1) commit. Full context is in
+Immediate tasks to continue from the Phase 5.3 (part 2) commit. Full context is in
 `PROJECT_STATE.md` — read its "Read this first" section before starting.
 
 ---
@@ -51,22 +51,27 @@ npm run preflight   --workspace @landingos/db      # 9 checks; all must pass
 
 | Slice | Routes | Contract file |
 |---|---|---|
-| carriers + shipments | `carriers`, `carriers/[id]/status-mappings`, `carriers/[id]/default`, `orders/[id]/shipment`, `orders/[id]/shipment/refresh` | `delivery.test.ts` |
 | sales channels + webhooks | `sales-channels`, `webhooks/channel/[id]`, `webhooks/delivery` | `integrations.test.ts` |
 | follow-up | `followup/tasks`, `followup/dashboard` | `access.test.ts` |
 | AI | `ai/providers`, `ai/agents`, `ai/agents/enabled`, `ai/conversations/[id]`, `ai/permissions`, `ai/chat*`, `ai/insights` | `integrations.test.ts` |
 
 Done already: orders, clients, settings, audit, products, inventory, agents,
-payroll, financial records, unexpected charges.
+payroll, financial records, unexpected charges, carriers, shipments and delivery
+settlement.
 
-**Carriers and shipments need a carrier adapter.** `apps/erp/lib/providers/`
-holds the real ones plus the `mock` adapter the tests drive — a parcel that
-advances one step per poll along created → dispatched → in_transit → at_office
-→ out_for_delivery → delivered. Port the mock first; `delivery.test.ts` depends
-on it, and the real adapters are network code that can follow.
+**Inbound webhooks are the delicate one.** They arrive with NO session, so the
+tenant can only be resolved from the URL or the payload — the one place on this
+platform where a tenant id comes from something a stranger sent. Read
+`integrations.test.ts` before writing a line of it: signature verification must
+FAIL CLOSED (the original bug was `if (secret && sig)`, so omitting the header
+skipped it entirely), the signature must be checked against THAT channel's
+secret, and the payload must not be able to name its own tenant.
 
-**The loop that works on this machine** (`next start` serves a prebuilt app, so
-a new route needs a rebuild, and the build needs node stopped):
+**The loop that works on this machine.** `next start` serves a PREBUILT app, so
+a new route needs a rebuild — and if the old server still holds :3000 the new
+one loses the port race SILENTLY while `/api/health` keeps answering 200 from
+the stale process. Stop node FIRST, every time; this cost a full debugging cycle
+in 5.3, twice.
 
 ```bash
 npm run builder:build && npm run builder:start

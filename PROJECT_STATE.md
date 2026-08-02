@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 2 August 2026
-**Branch:** `master` · **Last commit:** *Phase 5.3 (part 1): products, inventory, agents and the books*
+**Branch:** `master` · **Last commit:** *Phase 5.3 (part 2): carriers, shipments, and the BUG-02 write*
 **Working tree:** clean, all work committed.
 
 ---
@@ -29,9 +29,13 @@ If you are a new session picking this up, read this section fully before running
    separate times by a build that compiled while every request failed at
    runtime. Always verify against the running server.
 
-5. **Windows: stop the dev server before building.** `prisma generate` rewrites
-   a native `.dll` that a running node process holds open, and the build fails
-   with `EPERM`. Kill node, then build.
+5. **Windows: stop node, build, THEN start — in that order, every time.**
+   `prisma generate` rewrites a native `.dll` a running node process holds open,
+   so building with the server up can fail with `EPERM`. Worse, `next start`
+   serves a PREBUILT app: if the old server still holds :3000 the new one loses
+   the port race SILENTLY, `/api/health` answers 200 from the stale process, and
+   you verify a change against the previous build. That cost a full debugging
+   cycle in 5.3 — twice.
 
 6. **The full-workspace `npm test` is intermittently red for infrastructure
    reasons** — see *Known limitations*. Every suite passes reliably on its own.
@@ -92,16 +96,19 @@ one domain at a time.
 | `/api/erp/products` (+ inventory, stock-lots, history), `inventory/low-stock` | **done** |
 | `/api/erp/agents` (+ payroll, days-off, suspend/reactivate) | **done** |
 | `/api/erp/financial-records`, `/api/erp/unexpected-charges` | **done** |
-| carriers, shipments | not built |
+| `/api/erp/carriers` (+ status-mappings, default), shipments, settlement | **done** |
 | sales channels, inbound webhooks | not built |
 | follow-up tasks and dashboard | not built |
 | AI providers, agents, conversations | not built |
 
-**Contract suite:** orders 38/38 · validation 29/29 · listing 25/25 ·
-catalog 31/31 · access **45/62**. The 17 remaining access failures name exactly
-the unbuilt surfaces above, and `delivery.test.ts` and `integrations.test.ts`
-are red for the same reason. That is the remaining scope, stated rather than
-hidden.
+**Contract suite, each file verified on its own:** orders 38/38 ·
+validation 29/29 · listing 25/25 · catalog 31/31 · delivery 20/20 ·
+access **48/62**. The 14 remaining access failures name exactly the unbuilt
+surfaces above, and `integrations.test.ts` is red for the same reason. That is
+the remaining scope, stated rather than hidden.
+
+Running several contract files back to back still trips the documented Neon
+connection limit - judge them per file, as *Known limitations* says.
 
 ### Decisions taken in 5.2
 
@@ -140,6 +147,7 @@ stream and inbound carrier webhooks).
 | 5.1 | The ERP's tests ported to `/api/erp/*` — 227 tests, executable ahead of the routes |
 | 5.2 | ERP data-layer foundation + the orders/clients/settings slice, verified live |
 | 5.3a | Products, inventory, agents/payroll and finance — catalog 31/31 |
+| 5.3b | Carriers, shipments and delivery settlement — delivery 20/20 |
 
 ### Remaining roadmap
 
@@ -152,9 +160,9 @@ stream and inbound carrier webhooks).
 
 ### Next recommended task
 
-See `NEXT_STEPS.md`. In short: **continue Phase 5.3** — carriers and shipments
-next (they unblock `delivery.test.ts`), then sales channels and webhooks, then
-the AI surface. The
+See `NEXT_STEPS.md`. In short: **continue Phase 5.3** — sales channels and
+inbound webhooks next (they unblock `integrations.test.ts`), then follow-up,
+then the AI surface. The
 foundation in `apps/website-builder/src/lib/erp/` is in place and the contract
 each slice must satisfy is already written in `apps/website-builder/test/erp/`.
 

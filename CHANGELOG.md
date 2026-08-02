@@ -12,6 +12,90 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 5 — The ERP onto the platform
 
+### 5.3 (part 2) Carriers, shipments, and BUG-02's write
+
+`delivery.test.ts` goes 0 -> **20/20** and `access.test.ts` 45 -> **48/62**.
+
+#### The write that was missing
+
+`deliveryOutcome` and `deliveryOutcomeAt` were READ in eight places in the ERP
+and WRITTEN in none. Nothing errored. The profit calculator, delivered-pay
+payroll, customer lifetime spend and product revenue were all permanently zero,
+and every screen rendered perfectly while showing a company that had apparently
+never sold anything. `lib/erp/shipments.ts` is the write; everything downstream
+already read the column, which is exactly why the defect stayed invisible.
+
+Settled **once**, from the carrier's own event time. Later polls cannot move it,
+so a corrected feed cannot silently rewrite last quarter's revenue; and the
+moment is the carrier's, not the clock's, so a backlog replayed a week late does
+not book every delivery into the wrong period.
+
+#### The mock carrier's state had to move
+
+The ERP held each parcel's progress in a module-level `Map` keyed by tracking
+number - fine for one process, wrong twice over here: lost on every deploy, and
+two instances would disagree about the same parcel. Progress is derived from the
+stored event history instead. The parcel is at step N because N events exist,
+which is true in any process and survives a restart.
+
+#### Three defects the tests caught, in order
+
+**Event times from `Date.now()` defeated the idempotency key.** Each poll
+produced fresh timestamps, so `(shipment, eventTime, originalStatus)` never
+matched and the timeline doubled on every refresh. Anchored to the booking time
+instead.
+
+**Catching P2002 inside a transaction does not work.** A unique violation
+ABORTS the surrounding Postgres transaction, so every statement after the first
+duplicate fails with 25P02 - and `withTenant` has already opened that
+transaction, so there is no smaller scope to lose. Replaced with
+`createMany({ skipDuplicates: true })`, which is `ON CONFLICT DO NOTHING` and
+does not abort.
+
+**A minute between steps put "delivered" five minutes in the future.** Every
+report downstream filters by a date range ending now, so the parcel settled
+while payroll and product revenue still showed zero - BUG-02's exact symptom,
+reproduced by the simulator built to prove BUG-02 was fixed. One second between
+steps.
+
+#### And one process defect worth recording
+
+Twice, a rebuild was verified against the **previous** build: the old server
+still held :3000, the new `next start` lost the port race silently, and
+`/api/health` answered 200 from the stale process. It cost a full debugging
+cycle chasing a bug that was already fixed. `next start` serves a prebuilt app -
+stop node, build, start, in that order, every time. NEXT_STEPS now says so.
+
+#### Ported
+
+Carrier CRUD with secrets masked on read and preserved when the mask is sent
+back; per-tenant status mappings; the mock adapter; shipment booking, idempotent
+event intake and settlement; auto-booking on confirm; and the product sales
+summary, which costs delivered units from what the FIFO movements actually
+recorded rather than from today's purchase price.
+
+#### Files
+
+`src/lib/erp/carriers.ts`, `src/lib/erp/shipments.ts`;
+`src/app/api/erp/carriers/*` (4 routes), `orders/[id]/shipment` and
+`shipment/refresh`, `products/[id]/sales-summary`.
+
+#### Migration
+
+None.
+
+#### Risk
+
+Sales channels, inbound webhooks, follow-up and the AI surface remain unbuilt -
+the 14 remaining `access.test.ts` failures name exactly those, and
+`integrations.test.ts` is still red.
+
+**Verified live, each file on its own:** delivery 20/20, catalog 31/31,
+orders 38/38, validation 29/29, listing 25/25, access 48/62. Running several
+files back to back still trips the documented Neon connection limit.
+
+---
+
 ### 5.3 (part 1) Products, inventory, agents and the books
 
 Four more surfaces on the platform, each verified against a running server

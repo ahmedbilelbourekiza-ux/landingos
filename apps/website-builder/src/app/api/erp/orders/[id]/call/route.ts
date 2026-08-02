@@ -4,6 +4,7 @@ import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
 import { loadOwnedOrder } from "@/lib/erp/guard";
 import { addCall, updateOrder, CALL_RESULTS } from "@/lib/erp/orders";
 import { readSettings } from "@/lib/erp/settings";
+import { createShipment } from "@/lib/erp/shipments";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,27 @@ export const POST = tenantRoute<Params>("erp:orders:write", async ({ db, req, se
   // The result IS the new status. They share a vocabulary on purpose — a call
   // that ends "cancelled" leaves an order that is cancelled, and keeping two
   // words for one fact is how they come to disagree.
-  await updateOrder(db, session.auth!.tenantId, params.id, { status: result });
+  const tenantId = session.auth!.tenantId;
+  await updateOrder(db, tenantId, params.id, { status: result });
 
-  return apiOk({ message: "logged", callId: call.id, suspicious: call.suspicious });
+  // Confirming is what books the parcel, when the tenant has asked for that.
+  // Doing it here rather than on a timer means the tracking number exists by
+  // the time the agent finishes the sentence, which is when the customer asks
+  // for it.
+  let shipmentBooked = false;
+  if (result === "confirmed" && settings.autoCreateShipment) {
+    const order = await db.fulfillmentOrder.findUnique({
+      where: { id: params.id },
+      select: { id: true, carrierCode: true },
+    });
+    if (order) {
+      // A missing or unconfigured carrier must not fail the CALL. The
+      // confirmation is real work an agent just did and has to be recorded;
+      // the parcel can be booked by hand afterwards.
+      const booked = await createShipment(db, tenantId, order).catch(() => null);
+      shipmentBooked = Boolean(booked?.created);
+    }
+  }
+
+  return apiOk({ message: "logged", callId: call.id, suspicious: call.suspicious, shipmentBooked });
 });
