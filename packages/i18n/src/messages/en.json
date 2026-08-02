@@ -1,0 +1,81 @@
+{
+  "product": {
+    "websiteBuilder": { "name": "Website Builder", "description": "Cash-on-delivery landing pages" },
+    "erp": { "name": "Order Management", "description": "Confirmation, delivery and inventory" }
+  },
+  "builder": {
+    "nav": {
+      "overview": "Overview",
+      "pages": "Landing pages",
+      "categories": "Categories",
+      "templates": "Templates",
+      "orders": "Orders",
+      "abandoned": "Abandoned carts",
+      "deliveryPrices": "Delivery prices"
+    }
+  },
+  "erp": {
+    "nav": {
+      "overview": "Overview",
+      "orders": "Orders",
+      "clients": "Customers",
+      "products": "Products",
+      "inventory": "Inventory",
+      "shipments": "Shipments",
+      "carriers": "Carriers",
+      "followUp": "Follow-up",
+      "finance": "Finance",
+      "agents": "Agents",
+      "ai": "AI assistant"
+    }
+  },
+  "status": {
+    "unknown": "Unknown",
+    "confirmation": {
+      "pending": "Pending",
+      "confirmed": "Confirmed",
+      "cancelled": "Cancelled",
+      "callback": "Call back",
+      "noAnswer": "No answer",
+      "unreachable": "Unreachable",
+      "abandoned": "Abandoned cart"
+    },
+    "delivery": {
+      "created": "Shipment created",
+      "pending": "Pending",
+      "dispatched": "Dispatched",
+      "inTransit": "In transit",
+      "outForDelivery": "Out for delivery",
+      "atOffice": "At the office",
+      "delivered": "Delivered",
+      "refused": "Refused",
+      "returned": "Returned",
+      "cancelled": "Cancelled"
+    },
+    "salesOrder": {
+      "new": "New",
+      "confirmed": "Confirmed",
+      "preparing": "Preparing",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "cancelled": "Cancelled"
+    },
+    "landingPage": { "draft": "Draft", "published": "Published", "archived": "Archived" }
+  },
+  "common": {
+    "search": "Search...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "loading": "Loading...",
+    "empty": "No data",
+    "signOut": "Sign out",
+    "settings": "Settings",
+    "notifications": "Notifications",
+    "switchProduct": "Switch app",
+    "switchTenant": "Switch company",
+    "language": "Language"
+  }
+}

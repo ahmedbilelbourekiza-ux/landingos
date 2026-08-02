@@ -1,0 +1,81 @@
+{
+  "product": {
+    "websiteBuilder": { "name": "Créateur de pages", "description": "Pages de vente en paiement à la livraison" },
+    "erp": { "name": "Gestion des commandes", "description": "Confirmation, livraison et stock" }
+  },
+  "builder": {
+    "nav": {
+      "overview": "Aperçu",
+      "pages": "Pages de vente",
+      "categories": "Catégories",
+      "templates": "Modèles",
+      "orders": "Commandes",
+      "abandoned": "Paniers abandonnés",
+      "deliveryPrices": "Tarifs de livraison"
+    }
+  },
+  "erp": {
+    "nav": {
+      "overview": "Aperçu",
+      "orders": "Commandes",
+      "clients": "Clients",
+      "products": "Produits",
+      "inventory": "Stock",
+      "shipments": "Expéditions",
+      "carriers": "Transporteurs",
+      "followUp": "Suivi",
+      "finance": "Finances",
+      "agents": "Agents",
+      "ai": "Assistant IA"
+    }
+  },
+  "status": {
+    "unknown": "Inconnu",
+    "confirmation": {
+      "pending": "En attente",
+      "confirmed": "Confirmé",
+      "cancelled": "Annulé",
+      "callback": "Rappeler",
+      "noAnswer": "Pas de réponse",
+      "unreachable": "Injoignable",
+      "abandoned": "Panier abandonné"
+    },
+    "delivery": {
+      "created": "Colis créé",
+      "pending": "En attente",
+      "dispatched": "Expédié",
+      "inTransit": "En transit",
+      "outForDelivery": "En cours de livraison",
+      "atOffice": "Au bureau",
+      "delivered": "Livré",
+      "refused": "Refusé",
+      "returned": "Retourné",
+      "cancelled": "Annulé"
+    },
+    "salesOrder": {
+      "new": "Nouveau",
+      "confirmed": "Confirmé",
+      "preparing": "En préparation",
+      "shipped": "Expédié",
+      "delivered": "Livré",
+      "cancelled": "Annulé"
+    },
+    "landingPage": { "draft": "Brouillon", "published": "Publié", "archived": "Archivé" }
+  },
+  "common": {
+    "search": "Rechercher...",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "create": "Créer",
+    "loading": "Chargement...",
+    "empty": "Aucune donnée",
+    "signOut": "Déconnexion",
+    "settings": "Paramètres",
+    "notifications": "Notifications",
+    "switchProduct": "Changer d'application",
+    "switchTenant": "Changer d'entreprise",
+    "language": "Langue"
+  }
+}

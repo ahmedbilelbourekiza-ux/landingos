@@ -1,0 +1,81 @@
+{
+  "product": {
+    "websiteBuilder": { "name": "منشئ المواقع", "description": "صفحات هبوط للدفع عند الاستلام" },
+    "erp": { "name": "إدارة الطلبات", "description": "تأكيد الطلبات والتوصيل والمخزون" }
+  },
+  "builder": {
+    "nav": {
+      "overview": "نظرة عامة",
+      "pages": "صفحات الهبوط",
+      "categories": "الفئات",
+      "templates": "القوالب",
+      "orders": "الطلبات",
+      "abandoned": "السلات المهجورة",
+      "deliveryPrices": "أسعار التوصيل"
+    }
+  },
+  "erp": {
+    "nav": {
+      "overview": "نظرة عامة",
+      "orders": "الطلبات",
+      "clients": "العملاء",
+      "products": "المنتجات",
+      "inventory": "المخزون",
+      "shipments": "الشحنات",
+      "carriers": "شركات التوصيل",
+      "followUp": "المتابعة",
+      "finance": "المالية",
+      "agents": "الوكلاء",
+      "ai": "المساعد الذكي"
+    }
+  },
+  "status": {
+    "unknown": "غير معروف",
+    "confirmation": {
+      "pending": "في الانتظار",
+      "confirmed": "مؤكد",
+      "cancelled": "ملغي",
+      "callback": "إعادة الاتصال",
+      "noAnswer": "لم يرد",
+      "unreachable": "العميل غير متاح",
+      "abandoned": "سلة مهجورة"
+    },
+    "delivery": {
+      "created": "تم إنشاء الشحنة",
+      "pending": "في الانتظار",
+      "dispatched": "تم الإرسال",
+      "inTransit": "في الطريق",
+      "outForDelivery": "خرج للتوصيل",
+      "atOffice": "في المكتب",
+      "delivered": "مُسلَّم",
+      "refused": "مرفوض",
+      "returned": "مرتجع",
+      "cancelled": "ملغي"
+    },
+    "salesOrder": {
+      "new": "جديد",
+      "confirmed": "مؤكد",
+      "preparing": "قيد التحضير",
+      "shipped": "تم الشحن",
+      "delivered": "مُسلَّم",
+      "cancelled": "ملغي"
+    },
+    "landingPage": { "draft": "مسودة", "published": "منشور", "archived": "مؤرشف" }
+  },
+  "common": {
+    "search": "بحث...",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "delete": "حذف",
+    "edit": "تعديل",
+    "create": "إنشاء",
+    "loading": "جارٍ التحميل...",
+    "empty": "لا توجد بيانات",
+    "signOut": "تسجيل الخروج",
+    "settings": "الإعدادات",
+    "notifications": "الإشعارات",
+    "switchProduct": "تبديل التطبيق",
+    "switchTenant": "تبديل الشركة",
+    "language": "اللغة"
+  }
+}

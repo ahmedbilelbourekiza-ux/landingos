@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale } from "next-intl/server";
+import { directionOf, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Toaster } from "@/components/ui/toaster";
@@ -29,17 +32,29 @@ export const metadata: Metadata = {
   icons: { icon: "/logo.svg" },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  // Resolved by src/i18n/request.ts, so the rule lives in exactly one place.
+  const resolved = await getLocale();
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE;
+  // `dir` was previously absent and `lang` hardcoded to "en", so the whole
+  // application declared itself English left-to-right — which meant Arabic
+  // rendered LTR no matter what the copy said. Setting it once here is what
+  // lets every component below use CSS logical properties instead of
+  // branching on direction (R-10).
+  const dir = directionOf(locale);
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} dir={dir} suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground`}
       >
-        <Providers>{children}</Providers>
-        <Toaster />
-        <SonnerToaster />
+        <NextIntlClientProvider>
+          <Providers>{children}</Providers>
+          <Toaster />
+          <SonnerToaster />
+        </NextIntlClientProvider>
       </body>
     </html>
   );
