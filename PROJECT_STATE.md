@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 2 August 2026
-**Branch:** `master` · **Last commit:** *Phase 5.3 (part 3): the ERP API surface is complete*
+**Branch:** `master` · **Last commit:** *Phase 5.4: the order split — Phase 5 complete*
 **Working tree:** clean, all work committed.
 
 ---
@@ -70,11 +70,15 @@ enumerates products — it reads a registry.
 
 ## Where we are
 
-**Phase 5.3 is complete.** Every ERP route surface now runs on the platform and
-**all 227 ported contract tests pass** against a live server. Only Phase 5.4 —
-the M-05 order split — remains before Phase 5 is done.
+**PHASE 5 IS COMPLETE.** The ERP's backend runs entirely on the platform, and
+**all 235 contract tests pass** against a live server. The two products' orders
+are related, and the Builder→ERP handoff happens inside one transaction rather
+than over a webhook.
 
-**Exact stopping point:** committed and verified. The next task is **Phase 5.4**.
+**Exact stopping point:** committed and verified. The next task is **Phase 6 —
+the ERP interface**: ~6,200 lines of vanilla SPA plus the agent PWA, rebuilt in
+React on the console shell. `apps/erp` is now a UI in front of an API that has
+been superseded; retiring it is Phase 6's first act.
 
 ### Sequencing note
 
@@ -92,9 +96,10 @@ domain at a time.
 | products, inventory, stock lots, agents, payroll, finance | catalog 31/31 |
 | carriers, shipments, delivery settlement | delivery 20/20 |
 | sales channels, inbound webhooks, AI, follow-up | integrations 22/22 |
+| the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
 | every surface, gated | access 62/62 |
 
-**227/227**, each file verified on its own. Running several back to back still
+**235/235**, each file verified on its own. Running several back to back still
 trips the documented Neon connection limit — judge them per file.
 
 Three routes answer **501 by design**, and are not gaps: `POST /api/erp/agents`
@@ -145,21 +150,20 @@ stream and inbound carrier webhooks).
 | 5.2 | ERP data-layer foundation + the orders/clients/settings slice, verified live |
 | 5.3a | Products, inventory, agents/payroll and finance — catalog 31/31 |
 | 5.3b | Carriers, shipments and delivery settlement — delivery 20/20 |
-| 5.3c | Sales channels, webhooks, AI, follow-up — the surface is complete, 227/227 |
+| 5.3c | Sales channels, webhooks, AI, follow-up — the surface is complete |
+| 5.4 | The order split (M-05) — Builder→ERP in one transaction, 235/235 |
 
 ### Remaining roadmap
 
 | Phase | Scope |
 |---|---|
-| **5** | **ERP backend onto the platform** — 5.1 and 5.2 done; next the remaining route surfaces (5.3) and the M-05 order split (5.4) |
 | 6 | ERP interface — rebuild ~6,200 lines of vanilla SPA + agent PWA in React |
 | 7 | SaaS layer — company/team management, billing, self-serve signup, notifications |
 | 8 | Hardening — adversarial isolation review, load testing, backup/restore, runbooks |
 
 ### Next recommended task
 
-See `NEXT_STEPS.md`. In short: **Phase 5.4 — the order split (M-05)**, the last
-piece of Phase 5. The
+See `NEXT_STEPS.md`. In short: **Phase 6 — the ERP interface.** The
 foundation in `apps/website-builder/src/lib/erp/` is in place and the contract
 each slice must satisfy is already written in `apps/website-builder/test/erp/`.
 
@@ -364,13 +368,14 @@ Adding a product = adding a manifest + its own screens. No platform file changes
 | M-13 | Console design tokens |
 | M-18 | ERP test port — 227 tests to `/api/erp/*`, executable ahead of the routes |
 | M-21 | `TenantSequence`, cuid keys and per-tenant `reference` (D-05.2, D-05.3) |
+| M-11 | The ERP's routes → `/api/erp/*`, in vertical slices |
+| M-05 | `SalesOrder` ↔ `FulfillmentOrder`, and the Builder→ERP domain event |
 | M-17 | Public routing → `/[tenant]/[slug]` + `TenantDomain` |
 | M-20 | Trilingual i18n |
 | — | Builder API + all screens ported; legacy stack deleted |
 
-**Not yet done:** M-05 (order relationship + domain event), M-11 (ERP's 126
-routes), M-12 (ERP UI), M-14 (ERP base64 images → R2), M-15 (jobs → worker),
-M-16 (notification unification), M-19 (template registry).
+**Not yet done:** M-12 (ERP UI), M-14 (ERP base64 images → R2), M-15 (jobs →
+worker), M-16 (notification unification), M-19 (template registry).
 
 M-15 and M-16 each still owe M-18 a file: `overdue-sweep.test.js` (~12 tests)
 and `notifications.test.js` (~20) were deferred rather than dropped, because
@@ -506,20 +511,20 @@ fail without it, so check the counts, not just the exit code.
 
 | Suite | Tests | State |
 |---|---|---|
-| `apps/erp` | 298 | 297 pass, 1 skipped |
+| `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 101 | all pass |
-| `apps/website-builder` — ERP contract | 227 | **skipped** until 5.3 mounts `/api/erp/*` |
+| `apps/website-builder` — ERP contract | 235 | all pass against a running server |
 | `packages/auth` | 32 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **767** | 540 green per suite, 227 pending routes |
+| **Total** | **775** | green per suite |
 
-The ERP contract suite reports as `tests 227, skipped 227` rather than
-disappearing from the run — each test is skipped individually, because a skipped
-`describe` reports `tests 0` and a suite whose absence is invisible is a suite
-that gets quietly deleted. `ERP_CONTRACT=strict` turns the skip into a failure.
+The ERP contract suite needs the server on `:3000`. It skips with a stated
+reason when the server is down or `/api/erp/*` is unmounted, and
+`ERP_CONTRACT=strict` turns that skip into a failure — which is what CI should
+use, now that every surface exists.
 
 The tests are written to **attack boundaries, not confirm happy paths**: another
 tenant's id, a role without the permission, a tenant without the subscription, a

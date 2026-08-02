@@ -70,6 +70,27 @@ model FulfillmentOrder {
   // customer.
   reference String?
 
+  // The commercial record this operational one exists to fulfil (M-05).
+  //
+  // 3.2 settled that both products needed an "Order" and one schema cannot
+  // hold two: the builder's SalesOrder is an IMMUTABLE snapshot of what a
+  // customer bought and agreed to pay, and this is the MUTABLE record of
+  // getting it to them. Only the names landed then; this column is the
+  // relationship.
+  //
+  // Nullable, because most fulfilment orders have no sales order behind them:
+  // they arrive from an external channel webhook, or a manager types one in.
+  // A required link would mean the ERP could not be used without the builder,
+  // and neither product is privileged.
+  //
+  // Unique, and globally rather than per tenant — the exception to M-04. That
+  // rule exists because human-meaningful values (a slug, a phone number, an
+  // order number) legitimately repeat across companies. A cuid does not, and
+  // per-tenant scoping here would buy nothing while implying that two tenants
+  // might share a sales order id.
+  salesOrderId String?     @unique
+  salesOrder   SalesOrder? @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
+
   // --- external origin -------------------------------------------------
   externalId       String? // was shopifyId
   externalName     String? // was shopifyName

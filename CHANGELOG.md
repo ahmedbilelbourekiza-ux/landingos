@@ -12,6 +12,75 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 5 — The ERP onto the platform
 
+### 5.4 The order split (M-05) — Phase 5 is complete
+
+`SalesOrder` and `FulfillmentOrder` have existed as names since 3.2. This is the
+relationship, and the end of Phase 5: **235/235 contract tests pass** against a
+live server.
+
+#### The webhook between two products in one database
+
+A storefront checkout wrote the sale and then fired an unawaited `order.created`
+webhook, which the ERP received over HTTP and turned into its own order. That
+was right when the ERP was a separate Express application with a separate
+database. It is wrong now — both records live in the same Postgres, reachable
+from the same transaction — and going over the network to get from one to the
+other means the sale can be recorded while the fulfilment record is not, with
+nothing to reconcile them and **no error anybody sees**, because the call was
+fire-and-forget by design.
+
+Now it is one transaction. Either the customer has an order and the call-centre
+has something to confirm, or neither happened.
+
+**The webhook stays**, and becomes purely what it was also always serving as:
+the tenant-facing integration, a company subscribing their own endpoint to their
+own events. Still unawaited, for the original reason — somebody else's server
+being down is not a reason to fail a customer's checkout.
+
+#### Neither product is privileged
+
+A tenant with the builder and not the ERP still sells; the fulfilment record is
+simply not created. Checked through the registry, so nothing in the checkout
+path enumerates products. Asserted both ways: the sale succeeds, and no
+fulfilment record is invented for them.
+
+#### The money is copied, not recomputed
+
+The sale is what the customer agreed to pay. Recalculating totals on the ERP
+side would let tomorrow's price change alter an order already placed — which is
+the whole reason `SalesOrder` is an immutable snapshot in the first place.
+
+#### One exception to M-04, stated
+
+`salesOrderId` is unique **globally**, not per tenant. M-04 rescoped every
+constraint because human-meaningful values — a slug, a phone number, an order
+number — legitimately repeat across companies. A cuid does not, and per-tenant
+scoping here would buy nothing while implying two tenants might share a sales
+order id. The foreign key still cannot cross a tenant boundary: RLS `WITH CHECK`
+sees to that, and a test proves it.
+
+#### Files
+`packages/db/prisma/schema/{erp,builder}.prisma`,
+`apps/website-builder/src/lib/erp/from-sale.ts`,
+`src/app/api/storefront/[tenant]/orders/route.ts`,
+`test/erp/order-split.test.ts` (new — the one contract file with no ERP
+ancestor, because the case could not exist before).
+
+#### Migration
+M-05. Additive: one column, one unique index, one foreign key. DDL rendered and
+read before applying. RLS re-verified — 47 tables, 9 preflight checks.
+
+#### Risk
+Phase 5 is done. The ERP's SPA is still Phase 6, and `apps/erp` still runs
+standalone — it is now a UI in front of an API that has been superseded, and
+retiring it is Phase 6's first act, not this phase's.
+
+**Verified live, each file on its own:** access 62/62 · orders 38/38 ·
+validation 29/29 · listing 25/25 · catalog 31/31 · delivery 20/20 ·
+integrations 22/22 · order-split 8/8 — **235/235**. Storefront 22/22 unaffected.
+
+---
+
 ### 5.3 (part 3) Sales channels, webhooks, AI and follow-up — the surface is complete
 
 `integrations.test.ts` goes 0 -> **22/22** and `access.test.ts` 48 -> **62/62**.

@@ -320,6 +320,11 @@ model SalesOrder {
   landingPage   LandingPage              @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
   statusHistory SalesOrderStatusHistory[]
 
+  // The ERP's operational record, when the tenant has the ERP (M-05).
+  // Optional in both directions: a sale can exist without fulfilment tracking,
+  // and a fulfilment order usually exists without a sale behind it.
+  fulfillment FulfillmentOrder?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

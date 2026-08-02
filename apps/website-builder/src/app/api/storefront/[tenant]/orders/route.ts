@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { withTenant } from "@landingos/db";
+import { Prisma, withTenant } from "@landingos/db";
 
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
 import { triggerOrderWebhook } from "@/lib/webhooks/tenant-triggers";
+import { hasErp, fulfilmentFromSale } from "@/lib/erp/from-sale";
 
 export const dynamic = "force-dynamic";
 
@@ -133,15 +134,47 @@ export async function POST(
         data: { tenantId: tenant.id, orderId: order.id, fromStatus: null, toStatus: "NEW" },
       });
 
+      // M-05. The ERP's operational record, in THIS transaction — not over a
+      // webhook. Both live in the same database now, and a network hop between
+      // them means the sale can be recorded while the thing the call-centre
+      // works from is not, with nothing to reconcile the two and no error
+      // anybody sees. Either the customer has an order and there is something
+      // to confirm, or neither happened.
+      //
+      // Skipped for a tenant that does not hold the ERP, checked through the
+      // registry so nothing here enumerates products.
+      if (await hasErp(db)) {
+        await fulfilmentFromSale(db, tenant.id, {
+          id: order.id,
+          customerName: input.customerName,
+          phone: input.phone,
+          wilaya: wilaya.name,
+          baladia: input.baladiaName,
+          address: input.address,
+          notes: input.notes ?? null,
+          quantity: input.quantity,
+          productPrice: new Prisma.Decimal(unitPrice),
+          shippingPrice: new Prisma.Decimal(shipping),
+          totalPrice: new Prisma.Decimal(total),
+          shippingMethod: input.shippingMethod,
+          productTitle: page.title,
+          variants: chosen.map((v: any) => ({ name: v.name, value: v.value })),
+        });
+      }
+
       return { order, total };
     });
 
     if ("error" in result) return result.error;
 
-    // Fire and forget, deliberately NOT awaited. This is what feeds the ERP,
-    // and it must never be able to fail or slow down a customer's order — a
-    // receiving CRM being down is the CRM's problem, and the delivery log
-    // records it either way.
+    // Fire and forget, deliberately NOT awaited.
+    //
+    // This no longer feeds the ERP — that happens inside the transaction above
+    // (M-05). What is left is purely the TENANT-FACING integration: a company
+    // subscribing their own endpoint to their own events. It stays unawaited
+    // for the original reason, which still holds for a third party: somebody
+    // else's server being down is not a reason to fail a customer's checkout,
+    // and the delivery log records the attempt either way.
     triggerOrderWebhook("order.created", tenant.id, result.order.id);
 
     return NextResponse.json(
