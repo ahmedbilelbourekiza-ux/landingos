@@ -1,7 +1,13 @@
 {
   "product": {
-    "websiteBuilder": { "name": "منشئ المواقع", "description": "صفحات هبوط للدفع عند الاستلام" },
-    "erp": { "name": "إدارة الطلبات", "description": "تأكيد الطلبات والتوصيل والمخزون" }
+    "websiteBuilder": {
+      "name": "منشئ المواقع",
+      "description": "صفحات هبوط للدفع عند الاستلام"
+    },
+    "erp": {
+      "name": "إدارة الطلبات",
+      "description": "تأكيد الطلبات والتوصيل والمخزون"
+    }
   },
   "builder": {
     "nav": {
@@ -27,6 +33,59 @@
       "finance": "المالية",
       "agents": "الوكلاء",
       "ai": "المساعد الذكي"
+    },
+    "overview": {
+      "title": "نظرة عامة",
+      "subtitle": "ملخص اليوم",
+      "pending": "في انتظار الاتصال",
+      "confirmed": "مؤكدة",
+      "inDelivery": "قيد التوصيل",
+      "delivered": "تم التسليم",
+      "customers": "الزبائن",
+      "lowStock": "مخزون منخفض",
+      "myQueue": "قائمتك",
+      "wholeBook": "كل الطلبات"
+    },
+    "orders": {
+      "title": "الطلبات",
+      "reference": "الرقم",
+      "customer": "الزبون",
+      "destination": "الوجهة",
+      "product": "المنتج",
+      "quantity": "الكمية",
+      "total": "المجموع",
+      "status": "الحالة",
+      "delivery": "التوصيل",
+      "calls": "المكالمات",
+      "placed": "تاريخ الطلب",
+      "agent": "الوكيل",
+      "unassigned": "غير مسندة",
+      "source": "المصدر",
+      "noneYet": "لا توجد طلبات"
+    },
+    "order": {
+      "title": "الطلب",
+      "customerCard": "الزبون",
+      "address": "العنوان",
+      "note": "ملاحظة",
+      "managerNote": "ملاحظة المسؤول",
+      "history": "سجل المكالمات",
+      "attempts": "المحاولات",
+      "attemptsLeft": "متبقية",
+      "noCalls": "لم تسجل أي مكالمة",
+      "suspicious": "مشبوه",
+      "noStart": "لم تبدأ المكالمة",
+      "duration": "المدة",
+      "seconds": "ث",
+      "shipment": "الشحنة",
+      "tracking": "رقم التتبع",
+      "carrier": "الناقل",
+      "noShipment": "لم تشحن بعد",
+      "timeline": "مسار التوصيل",
+      "outcome": "النتيجة",
+      "settledAt": "تمت التسوية",
+      "fake": "مصنفة كوهمية",
+      "backToList": "العودة إلى الطلبات"
     }
   },
   "status": {
@@ -60,7 +119,11 @@
       "delivered": "مُسلَّم",
       "cancelled": "ملغي"
     },
-    "landingPage": { "draft": "مسودة", "published": "منشور", "archived": "مؤرشف" }
+    "landingPage": {
+      "draft": "مسودة",
+      "published": "منشور",
+      "archived": "مؤرشف"
+    }
   },
   "common": {
     "search": "بحث...",

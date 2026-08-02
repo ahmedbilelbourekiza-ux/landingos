@@ -38,6 +38,12 @@ export function ConsoleNav({
           <li key={item.id}>
             <Link
               href={item.href}
+              // The manifest's own id, so a test can assert that a product's
+              // navigation came from the registry rather than from a list
+              // hardcoded in its screens. It used to be observable only on the
+              // generic placeholder, which meant the property stopped being
+              // checkable for any product that grew real pages.
+              data-nav={item.id}
               aria-current={active ? "page" : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",

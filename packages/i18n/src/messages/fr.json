@@ -1,7 +1,13 @@
 {
   "product": {
-    "websiteBuilder": { "name": "Créateur de pages", "description": "Pages de vente en paiement à la livraison" },
-    "erp": { "name": "Gestion des commandes", "description": "Confirmation, livraison et stock" }
+    "websiteBuilder": {
+      "name": "Créateur de pages",
+      "description": "Pages de vente en paiement à la livraison"
+    },
+    "erp": {
+      "name": "Gestion des commandes",
+      "description": "Confirmation, livraison et stock"
+    }
   },
   "builder": {
     "nav": {
@@ -27,6 +33,59 @@
       "finance": "Finances",
       "agents": "Agents",
       "ai": "Assistant IA"
+    },
+    "overview": {
+      "title": "Aperçu",
+      "subtitle": "La journée en bref",
+      "pending": "À appeler",
+      "confirmed": "Confirmées",
+      "inDelivery": "En livraison",
+      "delivered": "Livrées",
+      "customers": "Clients",
+      "lowStock": "Stock faible",
+      "myQueue": "Votre file",
+      "wholeBook": "Tout le carnet"
+    },
+    "orders": {
+      "title": "Commandes",
+      "reference": "Numéro",
+      "customer": "Client",
+      "destination": "Destination",
+      "product": "Produit",
+      "quantity": "Qté",
+      "total": "Total",
+      "status": "Statut",
+      "delivery": "Livraison",
+      "calls": "Appels",
+      "placed": "Passée le",
+      "agent": "Agent",
+      "unassigned": "Non attribuée",
+      "source": "Source",
+      "noneYet": "Aucune commande"
+    },
+    "order": {
+      "title": "Commande",
+      "customerCard": "Client",
+      "address": "Adresse",
+      "note": "Note",
+      "managerNote": "Note du responsable",
+      "history": "Historique des appels",
+      "attempts": "Tentatives",
+      "attemptsLeft": "restantes",
+      "noCalls": "Aucun appel enregistré",
+      "suspicious": "Signalé",
+      "noStart": "Appel non démarré",
+      "duration": "Durée",
+      "seconds": "s",
+      "shipment": "Expédition",
+      "tracking": "Numéro de suivi",
+      "carrier": "Transporteur",
+      "noShipment": "Pas encore expédiée",
+      "timeline": "Suivi de livraison",
+      "outcome": "Issue",
+      "settledAt": "Réglée le",
+      "fake": "Marquée fausse",
+      "backToList": "Retour aux commandes"
     }
   },
   "status": {
@@ -60,7 +119,11 @@
       "delivered": "Livré",
       "cancelled": "Annulé"
     },
-    "landingPage": { "draft": "Brouillon", "published": "Publié", "archived": "Archivé" }
+    "landingPage": {
+      "draft": "Brouillon",
+      "published": "Publié",
+      "archived": "Archivé"
+    }
   },
   "common": {
     "search": "Rechercher...",

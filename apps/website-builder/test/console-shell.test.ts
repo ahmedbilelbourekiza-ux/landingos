@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { asPlatform, withTenant, withUser, disconnect } from '@landingos/db';
 import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } from '@landingos/auth';
+import { productRegistry } from '@landingos/product-registry';
 
 /* =============================================================================
  * The console shell, end to end over HTTP.
@@ -197,14 +198,45 @@ describe('navigation comes from the manifest', () => {
 });
 
 describe('the same request path serves every product', () => {
-  test('a product with no page of its own is still fully served', { skip: skip() }, async () => {
-    // The ERP ships a manifest and NOTHING else — no route file, no component.
-    // The generic [product] route serves it entirely from the registry, which
-    // is the property that makes a tenth product free.
+  test("a product's navigation comes from its manifest, not from its screens", { skip: skip() }, async () => {
+    // This used to read "a product with no page of its own is still fully
+    // served", with the ERP as its example — it shipped a manifest and nothing
+    // else. Phase 6.1 gave it real screens, so that example is gone.
+    //
+    // The property underneath is unchanged and is the one that matters: the
+    // navigation is rendered from the registry, so a tenth product's menu costs
+    // a manifest and no platform change. It is asserted on the ERP's REAL
+    // screen now, which is a stronger check than asserting it on a placeholder
+    // that existed to be replaced.
     const erp = await get('/console/erp', tokens[emails.bundle]);
     assert.equal(erp.status, 200);
     assert.match(erp.body, /data-nav="shipments"/, "the ERP's own navigation");
     assert.match(erp.body, /data-nav="orders"/);
+
+    // And the builder's menu is its own, from the same mechanism.
+    const builder = await get('/console/builder', tokens[emails.bundle]);
+    assert.match(builder.body, /data-nav="pages"/);
+    assert.ok(!/data-nav="shipments"/.test(builder.body), "no product shows another's menu");
+  });
+
+  test('the generic route still resolves every registered product', { skip: skip() }, async () => {
+    // Both shipped products now have their own index, so NOTHING exercises the
+    // [product] fallback end to end any more. That is expected — it is what
+    // Phase 6 was for — and it is worth saying rather than quietly losing the
+    // coverage.
+    //
+    // What can still be checked is the resolution the fallback depends on: every
+    // registered product resolves by its base path, and an unregistered segment
+    // resolves to nothing. A tenth product added tomorrow is served by that
+    // logic on its first day, before anyone writes it a page.
+    for (const product of productRegistry.list()) {
+      assert.equal(
+        productRegistry.resolveByPath(product.basePath)?.id,
+        product.id,
+        `${product.basePath} must resolve to ${product.id}`,
+      );
+    }
+    assert.equal(productRegistry.resolveByPath('/not-a-product'), undefined);
   });
 
   test('a product MAY supply its own index without the platform knowing', { skip: skip() }, async () => {

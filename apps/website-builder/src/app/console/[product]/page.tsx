@@ -47,8 +47,10 @@ export default async function ProductHome({
 
       <div className="mt-6 rounded-lg border border-dashed border-border p-6">
         <p className="text-sm text-muted-foreground">
-          {/* Deliberately honest placeholder. The builder's screens move onto
-              this shell in 4.4; the ERP's first real screen arrives in 4.6. */}
+          {/* Deliberately honest placeholder, and still live: the builder
+              (4.4) and the ERP (6.1) both have their own screens now, so this
+              renders only for a product that ships none — which today means a
+              product added after this sentence was written. */}
           This product is mounted on the shared shell. Its screens are ported in
           a later milestone.
         </p>

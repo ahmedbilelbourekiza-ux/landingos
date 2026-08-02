@@ -1,8 +1,8 @@
 # Next Steps
 
-**Phase 5 is complete.** Immediate tasks to continue from the Phase 5.4 commit.
-Full context is in `PROJECT_STATE.md` — read its "Read this first" section
-before starting.
+**Phase 5 is complete; Phase 6 has started.** Immediate tasks to continue from
+the Phase 6.1 commit. Full context is in `PROJECT_STATE.md` — read its "Read
+this first" section before starting.
 
 ---
 
@@ -27,7 +27,7 @@ reasons — see *Known limitations* — so judge these one at a time:
 npm test --workspace @landingos/db                 # 29
 npm test --workspace @landingos/auth               # 36
 npm test --workspace @landingos/product-registry   # 36
-npm test --workspace @landingos/website-builder    # 101 + 235 ERP contract
+npm test --workspace @landingos/website-builder    # 102 + 248 ERP contract
 npm test --workspace @landingos/erp                # 298 (the legacy stack)
 ```
 
@@ -38,42 +38,66 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **235/235** across the eight files: access 62 · orders 38 ·
+Expect **248/248** across the nine files: access 62 · orders 38 ·
 validation 29 · listing 25 · catalog 31 · delivery 20 · integrations 22 ·
-order-split 8.
+order-split 8 · screens 13.
 
 ---
 
-## 1. Phase 6 — the ERP interface
+## 1. Phase 6.2 — the rest of the ERP's screens
 
-The backend is done. What is left of the old ERP is its front end: a
-4,949-line vanilla SPA (`apps/erp/index.html`) and a 1,261-line agent PWA
-(`apps/erp/agent.html`), both talking to the Express API that has now been
-superseded.
+6.1 landed the overview, the order book and the order detail, and with them the
+pattern to copy:
 
-**Retiring `apps/erp` is Phase 6's first act, not its last.** It is a UI in
-front of a dead API. Every screen it has now has a platform route behind it, and
-the contract tests say so.
+- **Server components.** `requireProduct("erp", path)` → `withTenant` →
+  `ConsoleShell` → `DataTable`. See `src/app/console/erp/orders/page.tsx`.
+- **Reuse the API's own functions** for filtering and scope — `orderFilters`,
+  `scopedWhere`, `mayTouchOrder` — so a screen and its endpoint cannot
+  interpret the same query differently, or disagree about who may see a row.
+- **Every string is an i18n key**, in all three catalogues. The parity test
+  enforces it; add keys to `en`, `fr` and `ar` together.
+- **Status colour comes from `@landingos/ui`**, never a literal.
 
-Rebuild it the way Phase 4.4 rebuilt the builder — screens on the console shell,
-in `apps/website-builder/src/app/console/erp/`. The ERP's manifest already
-declares its navigation (`packages/product-registry/src/manifests.ts`), and the
-generic `console/[product]` route serves it today with no screens of its own.
+Screens still to build, in the order the ERP's own nav lists them:
 
-**When the first real ERP screen exists, remove the placeholder body from
-`console/[product]/page.tsx` for that route only** — the generic route must keep
-serving any *other* product that ships no screens.
+| Screen | Route | Behind it |
+|---|---|---|
+| Customers | `console/erp/clients` | `erp:clients:read` — sensitive (D-05.1) |
+| Products | `console/erp/products` | catalogue, cost basis, variants |
+| Inventory | `console/erp/inventory` | stock lots, the movement ledger, low stock |
+| Shipments | `console/erp/shipments` | tracking, timeline |
+| Carriers | `console/erp/carriers` | credentials MASKED on read |
+| Follow-up | `console/erp/follow-up` | the Suivi queue and its five buckets |
+| Finance | `console/erp/finance` | records are INSERT-ONLY; nothing offers an edit |
+| Agents | `console/erp/agents` | roster and payroll; no password material, ever |
 
-Two things the old SPA does that the new one must not inherit:
+Two rules the screens inherit from the API and must not quietly drop:
 
-- **Images as base64 in the database** (M-14). It is why the ERP's JSON body
-  limit is 25 MB. Upload to R2, store a key.
-- **A 25 MB body limit.** With images out of the payload there is no reason for
-  one.
+- **Never render what the write path refuses.** The manager note is the worked
+  example — an agent cannot write it and must not see it. Carrier and AI
+  credentials are the same class, and worse: they are masked in the API
+  response, so a screen that renders the raw row would be the only place they
+  leak.
+- **Absent, not zero**, for a figure the caller may not see. A zero reads as a
+  fact about the business.
 
 ---
 
-## 2. The migrations Phase 5 left, with what they owe
+## 2. Then 6.3 — the agent PWA, and retiring `apps/erp`
+
+The confirmation agent's phone app (`apps/erp/agent.html`, 1,261 lines) is the
+last thing `apps/erp` serves that has no replacement. Once it does, delete
+`apps/erp` — it is a UI in front of an API that has been superseded, and every
+screen it has is covered by a contract test against the platform.
+
+Its 298 tests go with it. They tested the Express stack; `test/erp/` tests the
+platform. See `apps/website-builder/test/erp/PORTING.md` for what was
+deliberately not carried across and why — and note M-15 and M-16 below still owe
+two of those files a home.
+
+---
+
+## 3. The migrations Phase 5 left, with what they owe
 
 | id | Scope | Owes |
 |---|---|---|
@@ -84,7 +108,7 @@ Two things the old SPA does that the new one must not inherit:
 
 ---
 
-## 3. Two guarantees that still need a platform owner
+## 4. Two guarantees that still need a platform owner
 
 Both were real and tested in the ERP and have no equivalent here. Neither
 belongs in a product suite, which is why they left it in 5.1:
@@ -100,7 +124,7 @@ belongs in a product suite, which is why they left it in 5.1:
 
 ---
 
-## 4. Deliberate 501s, so nobody reads them as gaps
+## 5. Deliberate 501s, so nobody reads them as gaps
 
 - `POST /api/erp/agents` — inviting a person is a PLATFORM action (M-02).
   Gated first, so an agent is still refused; a manager is told where it lives.
@@ -112,7 +136,7 @@ belongs in a product suite, which is why they left it in 5.1:
 
 ---
 
-## 5. Not blocking, but do them when convenient
+## 6. Not blocking, but do them when convenient
 
 - **Rotate the two credentials** listed under *Security actions* in
   PROJECT_STATE. Needs a human.
@@ -121,8 +145,9 @@ belongs in a product suite, which is why they left it in 5.1:
 - **Replace the `(db as any)` casts** in the Phase 4.4 builder routes. The
   entire ERP layer is written without one — `db.fulfillmentOrder` typechecks on
   `TenantDb` — so the pattern is proven; it is only the older routes left.
-- **Rename `apps/website-builder`.** It hosts the whole platform. Phase 6 is
-  the moment, if ever.
+- **Rename `apps/website-builder`.** It hosts the whole platform. The end of
+  Phase 6, when `apps/erp` is deleted and there is exactly one app, is the
+  moment — if ever.
 
 ---
 

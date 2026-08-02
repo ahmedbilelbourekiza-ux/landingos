@@ -10,6 +10,80 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## Phase 6 — The ERP interface
+
+### 6.1 The ERP gets real screens
+
+`/console/erp` was served by the generic `[product]` route with an honest
+placeholder that said its screens were ported in a later milestone. This is that
+milestone: an overview, the order book, and the order detail an agent works in.
+
+A static segment wins over a dynamic sibling in Next, so these files simply take
+those paths and nothing about the platform changed to let them — which is the
+property the registry exists to protect.
+
+#### What a screen can get wrong that an API cannot
+
+The permission check can exist in the route and not in the render. So the
+screens use the SAME functions the API uses — `mayTouchOrder`, `orderScope`,
+`seesWholeBook` — rather than their own copies, and the tests assert the read
+path refuses what the write path refuses:
+
+- An agent opening a colleague's order gets **404**, not 403 and not a page.
+  Confirming it exists and belongs to someone else is itself information, and it
+  is the answer the platform already gives for another tenant's row.
+- The **manager note is not rendered** for an agent. `PATCH` has always refused
+  to let an agent write it; a screen that displays it would leak through the
+  read path what the write path was protecting.
+- An agent's **overview counts their own queue**, through `orderScope`. Showing
+  a company-wide total they cannot act on would be both a leak and a lie about
+  their workload.
+- The customer-count tile is **absent** for an agent, not zero (D-05.1). A zero
+  is a lie that reads as a fact about the business.
+
+#### A test whose example expired
+
+`console-shell.test.ts` asserted "a product with no page of its own is still
+fully served", using the ERP — which shipped a manifest and nothing else. Phase
+6.1 removes that example by design, and no shipped product exercises the
+fallback end to end any more.
+
+Rather than delete the coverage or pretend, it split in two. The property that
+still holds and matters more — **navigation comes from the manifest, not from a
+list hardcoded in a product's screens** — is now asserted on the ERP's REAL
+screen, which is stronger than asserting it on a placeholder built to be
+replaced. The fallback's resolution logic is asserted at the registry level,
+where it needs no spare product.
+
+That required `data-nav` on the shell's own nav links. It had only ever been
+emitted by the placeholder, which meant the property stopped being checkable for
+any product that grew real pages — exactly backwards.
+
+#### i18n
+
+44 ERP screen keys in all three catalogues. Arabic and French are the
+operational register the staff actually use, not literal translations. Every
+user-facing string is a key; the parity test enforces it.
+
+#### Files
+`src/app/console/erp/{page,orders/page,orders/[id]/page}.tsx`,
+`src/components/console/console-nav.tsx`,
+`packages/i18n/src/messages/{en,fr,ar}.json`,
+`test/erp/screens.test.ts` (new), `test/console-shell.test.ts`.
+
+#### Migration
+None.
+
+#### Risk
+`apps/erp` still runs and still serves the old SPA. Retiring it needs the
+remaining screens — clients, products, inventory, carriers, finance, agents —
+and the agent PWA. Those are 6.2 onward.
+
+**Verified live:** screens 13/13 · console-shell 13/13 (was 12; the split adds
+one) · access 62/62 · builder-api 22/22 · i18n 18/18.
+
+---
+
 ## Phase 5 — The ERP onto the platform
 
 ### 5.4 The order split (M-05) — Phase 5 is complete

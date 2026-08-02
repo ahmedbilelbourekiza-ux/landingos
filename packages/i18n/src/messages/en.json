@@ -1,7 +1,13 @@
 {
   "product": {
-    "websiteBuilder": { "name": "Website Builder", "description": "Cash-on-delivery landing pages" },
-    "erp": { "name": "Order Management", "description": "Confirmation, delivery and inventory" }
+    "websiteBuilder": {
+      "name": "Website Builder",
+      "description": "Cash-on-delivery landing pages"
+    },
+    "erp": {
+      "name": "Order Management",
+      "description": "Confirmation, delivery and inventory"
+    }
   },
   "builder": {
     "nav": {
@@ -27,6 +33,59 @@
       "finance": "Finance",
       "agents": "Agents",
       "ai": "AI assistant"
+    },
+    "overview": {
+      "title": "Overview",
+      "subtitle": "Today at a glance",
+      "pending": "Awaiting a call",
+      "confirmed": "Confirmed",
+      "inDelivery": "Out for delivery",
+      "delivered": "Delivered",
+      "customers": "Customers",
+      "lowStock": "Low stock",
+      "myQueue": "Your queue",
+      "wholeBook": "The whole order book"
+    },
+    "orders": {
+      "title": "Orders",
+      "reference": "Number",
+      "customer": "Customer",
+      "destination": "Destination",
+      "product": "Product",
+      "quantity": "Qty",
+      "total": "Total",
+      "status": "Status",
+      "delivery": "Delivery",
+      "calls": "Calls",
+      "placed": "Placed",
+      "agent": "Agent",
+      "unassigned": "Unassigned",
+      "source": "Source",
+      "noneYet": "No orders yet"
+    },
+    "order": {
+      "title": "Order",
+      "customerCard": "Customer",
+      "address": "Address",
+      "note": "Note",
+      "managerNote": "Manager note",
+      "history": "Call history",
+      "attempts": "Attempts",
+      "attemptsLeft": "remaining",
+      "noCalls": "No calls logged yet",
+      "suspicious": "Flagged",
+      "noStart": "No call was started",
+      "duration": "Duration",
+      "seconds": "s",
+      "shipment": "Shipment",
+      "tracking": "Tracking number",
+      "carrier": "Carrier",
+      "noShipment": "Not shipped yet",
+      "timeline": "Delivery timeline",
+      "outcome": "Outcome",
+      "settledAt": "Settled",
+      "fake": "Marked fake",
+      "backToList": "Back to orders"
     }
   },
   "status": {
@@ -60,7 +119,11 @@
       "delivered": "Delivered",
       "cancelled": "Cancelled"
     },
-    "landingPage": { "draft": "Draft", "published": "Published", "archived": "Archived" }
+    "landingPage": {
+      "draft": "Draft",
+      "published": "Published",
+      "archived": "Archived"
+    }
   },
   "common": {
     "search": "Search...",
