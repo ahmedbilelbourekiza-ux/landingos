@@ -15,7 +15,7 @@
     "db:seed": "prisma db seed",
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
-    "test": "node --env-file=.env --test \"test/*.test.ts\""
+    "test": "node --env-file=.env --test --test-concurrency=1 \"test/*.test.ts\""
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

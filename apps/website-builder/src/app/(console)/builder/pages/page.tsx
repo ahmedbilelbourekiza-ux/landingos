@@ -1,44 +1,32 @@
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
 
 import { forTenant } from "@landingos/db";
 import { can } from "@landingos/auth";
 import { resolveStatus, toneVars } from "@landingos/ui";
 import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
-import { getLocale } from "next-intl/server";
 
-import { requireConsoleSession } from "@/lib/console/session";
+import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { notFound } from "next/navigation";
+import { DataTable, StatusPill } from "@/components/console/data-table";
 
 export const dynamic = "force-dynamic";
 
 /* =============================================================================
- * Landing pages — the builder's core screen, on the shared shell.
+ * Landing pages — the builder's core screen.
  *
  * A SERVER component reading through the tenant-bound client, not a client
  * component fetching /api. The legacy version fetched its own API over the
- * network from the browser; here the page and the query run in the same
- * request, so there is one round trip instead of two and no loading state to
- * design. The API route still exists for anything that genuinely needs it.
+ * network from the browser; here the page and the query run in one request, so
+ * there is a single round trip and no loading state to design. The API route
+ * still exists for anything that genuinely needs it.
  *
  * Note what is absent: no `where: { tenantId }`. The binding is applied by
  * forTenant and enforced by row-level security, and a second filter here would
  * be a weaker copy of a rule that already holds.
- *
- * Every string is a translation key and every colour is a token. Status tone
- * comes from @landingos/ui, so a PUBLISHED page looks the same here as the
- * equivalent state does anywhere else in the platform.
  * ========================================================================== */
 
 export default async function BuilderPagesScreen() {
-  const session = await requireConsoleSession("/builder/pages");
-
-  // Reaching for the URL must give the same answer as not seeing the link.
-  if (!session.products.some((p) => p.id === "website-builder")) notFound();
-
-  const t = await getTranslations();
-  const raw = await getLocale();
+  const { session, locale: raw, t } = await requireProduct("website-builder", "/builder/pages");
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
   const mayEdit = can(session.auth!, "website-builder:pages:write");
 
@@ -46,8 +34,13 @@ export default async function BuilderPagesScreen() {
     orderBy: { createdAt: "desc" },
     take: 50,
     select: {
-      id: true, title: true, slug: true, status: true, price: true,
-      currency: true, createdAt: true,
+      id: true,
+      title: true,
+      slug: true,
+      status: true,
+      price: true,
+      currency: true,
+      createdAt: true,
       category: { select: { name: true } },
       _count: { select: { salesOrders: true } },
     },
@@ -67,65 +60,62 @@ export default async function BuilderPagesScreen() {
         ) : null}
       </div>
 
-      {pages.length === 0 ? (
-        <p className="mt-8 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-          {t("common.empty")}
-        </p>
-      ) : (
-        // Wide content scrolls inside its own container so the page body never
-        // scrolls sideways.
-        <div className="mt-6 overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[640px] text-sm" data-testid="landings-table">
-            <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 text-start font-medium">{t("builder.nav.pages")}</th>
-                <th className="px-4 py-3 text-start font-medium">{t("builder.nav.categories")}</th>
-                <th className="px-4 py-3 text-start font-medium">{t("builder.nav.orders")}</th>
-                <th className="px-4 py-3 text-end font-medium tabular-nums">
-                  {t("builder.nav.deliveryPrices")}
-                </th>
-                <th className="px-4 py-3 text-start font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pages.map((p) => {
-                const status = resolveStatus("landingPage", p.status);
-                return (
-                  <tr key={p.id} data-page-id={p.id} className="border-t border-border">
-                    <td className="px-4 py-3">
-                      <span className="font-medium">{p.title}</span>
-                      <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
-                        /{p.slug}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{p.category?.name ?? "—"}</td>
-                    <td className="px-4 py-3 tabular-nums text-muted-foreground">
-                      {p._count.salesOrders}
-                    </td>
-                    <td className="px-4 py-3 text-end tabular-nums">
-                      {/* Decimal is formatted from its string form so it never
-                          passes through a JS float (M-06). */}
-                      {formatMoney(String(p.price), locale, p.currency)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        data-status={p.status}
-                        className="inline-block rounded-full border px-2 py-0.5 text-xs"
-                        style={toneVars(status.tone)}
-                      >
-                        {t(status.labelKey)}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {formatDate(p.createdAt, locale)}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        testId="landings-table"
+        empty={t("common.empty")}
+        rows={pages}
+        rowKey={(p) => p.id}
+        rowAttrs={(p) => ({ "data-page-id": p.id })}
+        columns={[
+          {
+            id: "title",
+            header: t("builder.nav.pages"),
+            cell: (p) => (
+              <>
+                <span className="font-medium">{p.title}</span>
+                <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
+                  /{p.slug}
+                </span>
+              </>
+            ),
+          },
+          {
+            id: "category",
+            header: t("builder.nav.categories"),
+            cell: (p) => <span className="text-muted-foreground">{p.category?.name ?? "—"}</span>,
+          },
+          {
+            id: "orders",
+            header: t("builder.nav.orders"),
+            numeric: true,
+            cell: (p) => p._count.salesOrders,
+          },
+          {
+            id: "price",
+            header: t("builder.nav.deliveryPrices"),
+            align: "end",
+            numeric: true,
+            // Formatted from the Decimal's string form so it never passes
+            // through a JS float (M-06).
+            cell: (p) => formatMoney(String(p.price), locale, p.currency),
+          },
+          {
+            id: "status",
+            header: "Status",
+            cell: (p) => {
+              const s = resolveStatus("landingPage", p.status);
+              return (
+                <>
+                  <StatusPill status={p.status} label={t(s.labelKey)} vars={toneVars(s.tone)} />
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {formatDate(p.createdAt, locale)}
+                  </span>
+                </>
+              );
+            },
+          },
+        ]}
+      />
     </ConsoleShell>
   );
 }

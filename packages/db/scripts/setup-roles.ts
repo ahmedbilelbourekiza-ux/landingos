@@ -63,6 +63,20 @@ function writeEnvValue(key: string, value: string) {
  */
 const toDirect = (url: string) => url.replace('-pooler.', '.');
 
+/** The pooled endpoint, whichever form the input took. */
+const toPooled = (url: string) => {
+  const u = new URL(url);
+  if (!u.hostname.includes('-pooler.')) {
+    u.hostname = u.hostname.replace(/^([^.]+)\./, '$1-pooler.');
+  }
+  // A bounded pool per process. Without it each Prisma client opens as many
+  // connections as it likes, and a workspace test run holds several at once
+  // alongside the dev server.
+  if (!u.searchParams.has('connection_limit')) u.searchParams.set('connection_limit', '5');
+  if (!u.searchParams.has('pool_timeout')) u.searchParams.set('pool_timeout', '20');
+  return u.toString();
+};
+
 /** Swap the credentials in a connection string, keeping everything else. */
 function withCredentials(url: string, user: string, password: string) {
   const u = new URL(url);
@@ -161,11 +175,24 @@ async function main() {
       `${check.rolcreaterole ? ', WARNING: has CREATEROLE' : ''}`,
   );
 
-  // MIGRATE_DATABASE_URL keeps the owner, on the direct endpoint.
-  // DATABASE_URL becomes the app role — so every ordinary Prisma call, and
-  // every test, runs under the role that RLS actually applies to.
+  /* Two URLs, and the ENDPOINT matters as much as the role.
+   *
+   * Neon serves a pooled endpoint and a direct one. Application traffic must
+   * use the pooler — the direct endpoint caps connections hard, and every
+   * server instance plus every parallel test process opens its own Prisma
+   * pool against it. Migrations must use the direct endpoint, because the
+   * pooler multiplexes sessions and that breaks advisory locks and long DDL.
+   *
+   * This got it wrong once, in a way worth recording: the app URL was derived
+   * from `ownerUrl` AFTER that had already been converted to direct, so every
+   * request in the platform went through the non-pooled endpoint. It presented
+   * as intermittent "Can't reach database server" under load and looked like a
+   * flaky test rather than a misconfiguration. Both URLs are now derived from
+   * the ORIGINAL, and each states its endpoint explicitly.
+   */
+  const pooled = toPooled(ownerUrl);
   writeEnvValue('MIGRATE_DATABASE_URL', toDirect(ownerUrl));
-  writeEnvValue('DATABASE_URL', withCredentials(ownerUrl, APP_ROLE, password!));
+  writeEnvValue('DATABASE_URL', withCredentials(pooled, APP_ROLE, password!));
   writeEnvValue('APP_DB_PASSWORD', password!);
 
   console.log('\npackages/db/.env updated (values not printed):');
