@@ -277,7 +277,7 @@ describe('categories behave the same way', { skip }, () => {
 
 describe('the landings screen renders in the shell', { skip }, () => {
   test('it shows this tenant\'s pages, and only this tenant\'s', async () => {
-    const a = await fetch(BASE + '/builder/pages', {
+    const a = await fetch(BASE + '/console/builder/pages', {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.ownerA}` },
     });
     assert.equal(a.status, 200);
@@ -290,13 +290,15 @@ describe('the landings screen renders in the shell', { skip }, () => {
     // The shell is present, so the screen is inside the console rather than
     // standing on its own.
     assert.match(html, /data-testid="product-switcher"/);
-    assert.match(html, /href="\/builder\/pages"/, 'the product nav is rendered');
+    // Under the console prefix now: the root namespace belongs to tenant
+    // storefronts, so product consoles moved beneath /console.
+    assert.match(html, /href="\/console\/builder\/pages"/, 'the product nav is rendered');
   });
 
   test('only the current screen is marked as the current page', async () => {
     // The product index matches exactly; a prefix match would light up
     // "Overview" on every child route and stop meaning anything.
-    const r = await fetch(BASE + '/builder/pages', {
+    const r = await fetch(BASE + '/console/builder/pages', {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.ownerA}` },
     });
     const html = await r.text();
@@ -305,7 +307,7 @@ describe('the landings screen renders in the shell', { skip }, () => {
   });
 
   test('status renders through the shared token system', async () => {
-    const r = await fetch(BASE + '/builder/pages', {
+    const r = await fetch(BASE + '/console/builder/pages', {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.ownerA}` },
     });
     const html = await r.text();
@@ -316,7 +318,7 @@ describe('the landings screen renders in the shell', { skip }, () => {
   });
 
   test('a tenant without the builder cannot reach the screen', async () => {
-    const r = await fetch(BASE + '/builder/pages', {
+    const r = await fetch(BASE + '/console/builder/pages', {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.erpOwner}` },
       redirect: 'manual',
     });
@@ -324,7 +326,7 @@ describe('the landings screen renders in the shell', { skip }, () => {
   });
 
   test('an anonymous visitor is sent to sign in', async () => {
-    const r = await fetch(BASE + '/builder/pages', { redirect: 'manual' });
+    const r = await fetch(BASE + '/console/builder/pages', { redirect: 'manual' });
     assert.equal(r.status, 307);
     assert.match(r.headers.get('location') ?? '', /\/console\/login/);
   });

@@ -36,6 +36,22 @@ const TENANT_SETTING = 'app.tenant_id';
 /** Bound by withUser, read by Membership's self-visibility policy. */
 const USER_SETTING = 'app.user_id';
 
+/**
+ * Interactive-transaction budget.
+ *
+ * Prisma defaults to waiting 2s for a connection and allowing 5s of work, which
+ * is generous for a single query and far too tight for what happens here: EVERY
+ * tenant-bound request is an interactive transaction, so under load they queue
+ * against the pool and a request that would have succeeded instead throws
+ * P2028 and surfaces as a 500.
+ *
+ * That is not a test artifact — it is the same failure a busy afternoon would
+ * produce. These values give a request room to wait its turn while still
+ * failing fast enough that a genuinely stuck transaction does not pin a
+ * connection.
+ */
+const TX_OPTIONS = { maxWait: 10_000, timeout: 15_000 } as const;
+
 let base: PrismaClient | null = null;
 
 /**
@@ -95,7 +111,7 @@ export async function withTenant<T>(
     // model depends on.
     await tx.$executeRawUnsafe(`SELECT set_config($1, $2, true)`, TENANT_SETTING, tenantId);
     return work(tx as unknown as TenantDb);
-  });
+  }, TX_OPTIONS);
 }
 
 /**
@@ -150,7 +166,7 @@ export async function withUser<T>(
   return client().$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`SELECT set_config($1, $2, true)`, USER_SETTING, userId);
     return work(tx as unknown as TenantDb);
-  });
+  }, TX_OPTIONS);
 }
 
 /**

@@ -16,12 +16,29 @@ import type {
  * ========================================================================== */
 
 /**
- * Console paths the platform owns. A product claiming one of these would
- * shadow a platform screen, and the failure would look like "settings stopped
- * working" rather than "the new product has a bad basePath".
+ * Where every product's console lives.
  *
- * This is the console-side twin of the public tenant-slug reserved list
- * (risk R-08). The two namespaces are separate and so are their lists.
+ * Products sit UNDER this prefix rather than at the URL root, and that is a
+ * routing constraint before it is a preference: a tenant storefront is
+ * `/<tenant>/<page>` (decision D2), so the root is a dynamic segment. Two
+ * dynamic segments cannot share a level — Next rejects it outright with
+ * "Ambiguous route pattern /[*]" — and between a customer-facing URL and an
+ * internal one, the customer-facing URL keeps the root.
+ *
+ * A manifest still declares only its OWN segment (`/builder`). The platform
+ * decides where products live, so a tenth product never learns this prefix
+ * exists, and moving the console somewhere else changes this constant alone.
+ *
+ * It also shrinks the reserved-slug problem enormously (R-08): tenant slugs no
+ * longer share a namespace with product paths, so a company may call itself
+ * "builder" or "erp" without breaking anything.
+ */
+export const CONSOLE_PREFIX = '/console';
+
+/**
+ * Paths the platform owns WITHIN the console. A product claiming one of these
+ * would shadow a platform screen, and the failure would look like "settings
+ * stopped working" rather than "the new product has a bad basePath".
  */
 export const RESERVED_BASE_PATHS: readonly string[] = [
   '/api',
@@ -57,6 +74,8 @@ export interface ProductRegistry {
   isEnabled(id: string, entitlements: Entitlements): boolean;
   /** The product owning a console pathname, or undefined. */
   resolveByPath(pathname: string): ProductManifest | undefined;
+  /** The full console URL for a product, including the platform's prefix. */
+  hrefFor(id: string): string | undefined;
   /** A product's nav filtered to what these permissions can see. */
   navFor(
     id: string,
@@ -160,9 +179,18 @@ export function createProductRegistry(
     },
 
     resolveByPath(pathname) {
-      return byPathLength.find(
-        (m) => pathname === m.basePath || pathname.startsWith(m.basePath + '/'),
-      );
+      // Accepts a path with or without the console prefix, so callers that
+      // hold a raw request pathname and callers that hold a product-relative
+      // one both work without either learning about the prefix.
+      const p = pathname.startsWith(CONSOLE_PREFIX)
+        ? pathname.slice(CONSOLE_PREFIX.length) || '/'
+        : pathname;
+      return byPathLength.find((m) => p === m.basePath || p.startsWith(m.basePath + '/'));
+    },
+
+    hrefFor(id) {
+      const m = byId.get(id);
+      return m ? CONSOLE_PREFIX + m.basePath : undefined;
     },
 
     navFor(id, grantedPermissions) {

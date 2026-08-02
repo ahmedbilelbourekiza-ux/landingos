@@ -55,7 +55,9 @@ export async function ConsoleShell({
           <ProductSwitcher
             products={session.products.map((p) => ({
               id: p.id,
-              basePath: p.basePath,
+              // The console prefix comes from the registry, so moving the
+              // console is one constant rather than a search-and-replace.
+              basePath: productRegistry.hrefFor(p.id) ?? p.basePath,
               name: t(p.nameKey),
               icon: p.icon,
             }))}
@@ -65,10 +67,10 @@ export async function ConsoleShell({
 
         <nav aria-label={product ? t(product.nameKey) : "LandingOS"} className="flex-1 overflow-y-auto p-3">
           <ConsoleNav
-            basePath={product?.basePath ?? ""}
+            basePath={product ? productRegistry.hrefFor(product.id)! : ""}
             items={nav.map((i) => ({
               id: i.id,
-              href: `${product!.basePath}${i.path ? `/${i.path}` : ""}`,
+              href: `${productRegistry.hrefFor(product!.id)}${i.path ? `/${i.path}` : ""}`,
               title: t(i.titleKey),
               icon: i.icon,
             }))}

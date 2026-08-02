@@ -9,7 +9,7 @@ import { DataTable, StatusPill } from "@/components/console/data-table";
 export const dynamic = "force-dynamic";
 
 export default async function BuilderOrdersScreen() {
-  const { session, locale: raw, t } = await requireProduct("website-builder", "/builder/orders");
+  const { session, locale: raw, t } = await requireProduct("website-builder", "/console/builder/orders");
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
 
   const orders = await forTenant(session.auth!.tenantId).salesOrder.findMany({

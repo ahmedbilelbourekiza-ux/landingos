@@ -19,19 +19,19 @@ export const dynamic = "force-dynamic";
 
 async function create(formData: FormData) {
   "use server";
-  const { session } = await requireProduct("website-builder", "/builder/pages/new");
+  const { session } = await requireProduct("website-builder", "/console/builder/pages/new");
   if (!can(session.auth!, "website-builder:pages:write")) notFound();
 
   const title = String(formData.get("title") ?? "").trim();
   const price = Number(String(formData.get("price") ?? "").trim());
   const rawSlug = String(formData.get("slug") ?? "").trim();
 
-  if (!title) redirect("/builder/pages/new?error=title");
-  if (!Number.isFinite(price) || price < 0) redirect("/builder/pages/new?error=price");
+  if (!title) redirect("/console/builder/pages/new?error=title");
+  if (!Number.isFinite(price) || price < 0) redirect("/console/builder/pages/new?error=price");
 
   // Derive from the title when left blank, so nobody has to know what a slug is.
   const slug = slugify(rawSlug || title);
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) redirect("/builder/pages/new?error=slug");
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) redirect("/console/builder/pages/new?error=slug");
 
   const tenantId = session.auth!.tenantId;
   const id = await withTenant(tenantId, async (db) => {
@@ -49,9 +49,9 @@ async function create(formData: FormData) {
     return created.id as string;
   });
 
-  if (!id) redirect("/builder/pages/new?error=taken");
+  if (!id) redirect("/console/builder/pages/new?error=taken");
   // Straight into the editor — creating a page is the start of editing it.
-  redirect(`/builder/pages/${id}/edit`);
+  redirect(`/console/builder/pages/${id}/edit`);
 }
 
 export default async function NewLandingPage({
@@ -59,7 +59,7 @@ export default async function NewLandingPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const { session, t } = await requireProduct("website-builder", "/builder/pages/new");
+  const { session, t } = await requireProduct("website-builder", "/console/builder/pages/new");
   if (!can(session.auth!, "website-builder:pages:write")) notFound();
 
   const { error } = await searchParams;

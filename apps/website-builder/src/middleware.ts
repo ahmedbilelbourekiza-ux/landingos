@@ -134,7 +134,7 @@ function isAllowedDuringForceChange(pathname: string, method: string): boolean {
  * console run side by side; when the last page has moved, this middleware and
  * the JWT it verifies are deleted together.
  */
-const PLATFORM_OWNED_PREFIXES = ["/console", "/api/builder/", "/api/erp/", "/api/platform/"];
+const PLATFORM_OWNED_PREFIXES = ["/console", "/api/builder/", "/api/erp/", "/api/platform/", "/api/storefront/"];
 
 /** Product consoles, resolved from the registry so a new product needs no edit. */
 const PRODUCT_BASE_PATHS = productRegistry.list().map((p) => p.basePath);

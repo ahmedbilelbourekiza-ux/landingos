@@ -12,6 +12,7 @@ export {
   type ProductRegistry,
 } from './registry.ts';
 
+export { CONSOLE_PREFIX } from "./registry.ts";
 export { builtInProducts, erp, websiteBuilder } from './manifests.ts';
 
 import { createProductRegistry } from './registry.ts';

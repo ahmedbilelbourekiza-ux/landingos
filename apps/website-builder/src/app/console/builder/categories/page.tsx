@@ -7,7 +7,7 @@ import { DataTable } from "@/components/console/data-table";
 export const dynamic = "force-dynamic";
 
 export default async function BuilderCategoriesScreen() {
-  const { session, t } = await requireProduct("website-builder", "/builder/categories");
+  const { session, t } = await requireProduct("website-builder", "/console/builder/categories");
 
   const categories = await forTenant(session.auth!.tenantId).category.findMany({
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],

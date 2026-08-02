@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function BuilderAbandonedScreen() {
   const { session, locale: raw, t } = await requireProduct(
     "website-builder",
-    "/builder/abandoned",
+    "/console/builder/abandoned",
   );
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
 

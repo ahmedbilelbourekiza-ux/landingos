@@ -52,7 +52,7 @@ function Stat({
 }
 
 export default async function BuilderOverview() {
-  const { session, locale: raw, t } = await requireProduct("website-builder", "/builder");
+  const { session, locale: raw, t } = await requireProduct("website-builder", "/console/builder");
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
   const db = forTenant(session.auth!.tenantId);
 
@@ -79,18 +79,18 @@ export default async function BuilderOverview() {
           label={t("builder.nav.pages")}
           value={formatNumber(pages, locale)}
           hint={`${formatNumber(published, locale)} ${t("status.landingPage.published")}`}
-          href="/builder/pages"
+          href="/console/builder/pages"
         />
         <Stat
           label={t("builder.nav.orders")}
           value={formatNumber(orders, locale)}
           hint={`${formatNumber(delivered, locale)} ${t("status.salesOrder.delivered")}`}
-          href="/builder/orders"
+          href="/console/builder/orders"
         />
         <Stat
           label={t("builder.nav.abandoned")}
           value={formatNumber(abandoned, locale)}
-          href="/builder/abandoned"
+          href="/console/builder/abandoned"
         />
         <Stat
           label={t("status.salesOrder.delivered")}

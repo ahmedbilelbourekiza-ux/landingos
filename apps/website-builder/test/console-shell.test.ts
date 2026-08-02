@@ -107,7 +107,7 @@ const skip = () => !HAS_DB || !serverUp;
 
 describe('the console requires a session', () => {
   test('an anonymous request to a product is sent to sign in', { skip: skip() }, async () => {
-    const r = await get('/builder');
+    const r = await get('/console/builder');
     assert.equal(r.status, 307);
     assert.match(r.location ?? '', /\/console\/login/);
     // And it remembers where they were going.
@@ -136,7 +136,7 @@ describe('the shell shows exactly what the tenant bought', () => {
   });
 
   test('an ERP-only tenant sees only the ERP', { skip: skip() }, async () => {
-    const r = await get('/erp', tokens[emails.erpOnly]);
+    const r = await get('/console/erp', tokens[emails.erpOnly]);
     assert.equal(r.status, 200);
     assert.match(r.body, /data-product="erp"/);
     assert.ok(
@@ -148,7 +148,7 @@ describe('the shell shows exactly what the tenant bought', () => {
   test('typing the URL of an unbought product gets nothing', { skip: skip() }, async () => {
     // Not seeing the link and not being able to reach it have to be the same
     // decision, or the switcher is decoration.
-    const r = await get('/builder', tokens[emails.erpOnly]);
+    const r = await get('/console/builder', tokens[emails.erpOnly]);
     assert.equal(r.status, 404);
   });
 
@@ -157,19 +157,19 @@ describe('the shell shows exactly what the tenant bought', () => {
     assert.equal(console_.status, 200);
     assert.ok(!/data-product=/.test(console_.body), 'no products should be offered');
 
-    for (const path of ['/builder', '/erp']) {
+    for (const path of ['/console/builder', '/console/erp']) {
       assert.equal((await get(path, tokens[emails.none])).status, 404, `${path} must 404`);
     }
   });
 
   test('an unregistered product segment is not a page', { skip: skip() }, async () => {
-    assert.equal((await get('/not-a-product', tokens[emails.bundle])).status, 404);
+    assert.equal((await get('/console/not-a-product', tokens[emails.bundle])).status, 404);
   });
 });
 
 describe('navigation comes from the manifest', () => {
   test("the ERP's nav items render for a permitted user", { skip: skip() }, async () => {
-    const r = await get('/erp', tokens[emails.bundle]);
+    const r = await get('/console/erp', tokens[emails.bundle]);
     assert.equal(r.status, 200);
     for (const id of ['orders', 'clients', 'products']) {
       assert.match(r.body, new RegExp(`data-nav="${id}"`), `${id} should be in the ERP nav`);
@@ -189,7 +189,7 @@ describe('navigation comes from the manifest', () => {
     );
     const { token } = await createSession(u.id, tenantErp);
 
-    const r = await get('/erp', token);
+    const r = await get('/console/erp', token);
     assert.equal(r.status, 200);
     assert.match(r.body, /data-nav="orders"/, 'a viewer still reads orders');
     assert.ok(!/data-nav="agents"/.test(r.body), 'a viewer must not see team administration');
@@ -201,7 +201,7 @@ describe('the same request path serves every product', () => {
     // The ERP ships a manifest and NOTHING else — no route file, no component.
     // The generic [product] route serves it entirely from the registry, which
     // is the property that makes a tenth product free.
-    const erp = await get('/erp', tokens[emails.bundle]);
+    const erp = await get('/console/erp', tokens[emails.bundle]);
     assert.equal(erp.status, 200);
     assert.match(erp.body, /data-nav="shipments"/, "the ERP's own navigation");
     assert.match(erp.body, /data-nav="orders"/);
@@ -211,12 +211,12 @@ describe('the same request path serves every product', () => {
     // The builder has grown a real overview. The platform did not change to
     // allow that: a static segment simply wins over the dynamic one, and any
     // product that has not written a page keeps the generic fallback.
-    const builder = await get('/builder', tokens[emails.bundle]);
+    const builder = await get('/console/builder', tokens[emails.bundle]);
     assert.equal(builder.status, 200);
     assert.match(builder.body, /data-testid="builder-overview"/);
 
     // Both still render inside the one shell, with the same switcher.
-    for (const body of [builder.body, (await get('/erp', tokens[emails.bundle])).body]) {
+    for (const body of [builder.body, (await get('/console/erp', tokens[emails.bundle])).body]) {
       assert.match(body, /data-testid="product-switcher"/);
     }
   });

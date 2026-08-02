@@ -25,7 +25,7 @@ async function advance(formData: FormData) {
   "use server";
   const id = String(formData.get("id") ?? "");
   const toStatus = String(formData.get("toStatus") ?? "");
-  const { session } = await requireProduct("website-builder", `/builder/orders/${id}`);
+  const { session } = await requireProduct("website-builder", `/console/builder/orders/${id}`);
   const tenantId = session.auth!.tenantId;
 
   await withTenant(tenantId, async (db) => {
@@ -44,8 +44,8 @@ async function advance(formData: FormData) {
     });
   });
 
-  revalidatePath(`/builder/orders/${id}`);
-  redirect(`/builder/orders/${id}`);
+  revalidatePath(`/console/builder/orders/${id}`);
+  redirect(`/console/builder/orders/${id}`);
 }
 
 export default async function OrderDetailPage({
@@ -56,7 +56,7 @@ export default async function OrderDetailPage({
   const { id } = await params;
   const { session, locale: raw, t } = await requireProduct(
     "website-builder",
-    `/builder/orders/${id}`,
+    `/console/builder/orders/${id}`,
   );
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
 
@@ -107,7 +107,7 @@ export default async function OrderDetailPage({
             {field(
               t("builder.nav.pages"),
               order.landingPage ? (
-                <Link href={`/builder/pages/${order.landingPage.id}/edit`} className="underline">
+                <Link href={`/console/builder/pages/${order.landingPage.id}/edit`} className="underline">
                   {order.landingPage.title}
                 </Link>
               ) : "—",

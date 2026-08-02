@@ -33,7 +33,7 @@ export default async function ConsoleEditLandingPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { session } = await requireProduct("website-builder", `/builder/pages/${id}/edit`);
+  const { session } = await requireProduct("website-builder", `/console/builder/pages/${id}/edit`);
 
   // Reading is not enough to open an editor: every control in it writes.
   if (!can(session.auth!, "website-builder:pages:write")) notFound();

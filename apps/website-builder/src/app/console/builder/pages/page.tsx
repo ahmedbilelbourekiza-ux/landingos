@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
  * ========================================================================== */
 
 export default async function BuilderPagesScreen() {
-  const { session, locale: raw, t } = await requireProduct("website-builder", "/builder/pages");
+  const { session, locale: raw, t } = await requireProduct("website-builder", "/console/builder/pages");
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
   const mayEdit = can(session.auth!, "website-builder:pages:write");
 
@@ -52,7 +52,7 @@ export default async function BuilderPagesScreen() {
         <h1 className="text-xl font-semibold">{t("builder.nav.pages")}</h1>
         {mayEdit ? (
           <Link
-            href="/builder/pages/new"
+            href="/console/builder/pages/new"
             className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
           >
             {t("common.create")}

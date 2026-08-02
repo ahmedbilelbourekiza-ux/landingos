@@ -420,7 +420,7 @@ describe('platform integrations hold secrets safely', { skip }, () => {
 });
 
 describe('every ported screen renders in the shell', { skip }, () => {
-  const screens = ['/builder/pages', '/builder/orders', '/builder/categories', '/builder/abandoned'];
+  const screens = ['/console/builder/pages', '/console/builder/orders', '/console/builder/categories', '/console/builder/abandoned'];
   const tables = ['landings-table', 'orders-table', 'categories-table', 'abandoned-table'];
 
   test('each screen loads for an entitled tenant', async () => {
@@ -467,7 +467,7 @@ describe('every ported screen renders in the shell', { skip }, () => {
   });
 
   test('orders show through the shared status tones', async () => {
-    const r = await fetch(BASE + '/builder/orders', {
+    const r = await fetch(BASE + '/console/builder/orders', {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
     });
     const html = await r.text();
@@ -555,7 +555,7 @@ describe('platform settings screens', { skip }, () => {
   });
 
   test('the builder overview reports this tenant only', async () => {
-    const r = await fetch(BASE + '/builder', {
+    const r = await fetch(BASE + '/console/builder', {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
     });
     assert.equal(r.status, 200);
@@ -567,7 +567,7 @@ describe('platform settings screens', { skip }, () => {
 
 describe('the landing editor moved, not rewritten', { skip }, () => {
   test('it opens in the console for a permitted user', async () => {
-    const r = await fetch(`${BASE}/builder/pages/${pageId}/edit`, {
+    const r = await fetch(`${BASE}/console/builder/pages/${pageId}/edit`, {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
     });
     assert.equal(r.status, 200);
@@ -577,7 +577,7 @@ describe('the landing editor moved, not rewritten', { skip }, () => {
   });
 
   test('it sends its requests to the platform API, not the legacy one', async () => {
-    const r = await fetch(`${BASE}/builder/pages/${pageId}/edit`, {
+    const r = await fetch(`${BASE}/console/builder/pages/${pageId}/edit`, {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
     });
     const html = await r.text();
@@ -588,7 +588,7 @@ describe('the landing editor moved, not rewritten', { skip }, () => {
   });
 
   test("another tenant's page cannot be opened for editing", async () => {
-    const r = await fetch(`${BASE}/builder/pages/${otherPageId}/edit`, {
+    const r = await fetch(`${BASE}/console/builder/pages/${otherPageId}/edit`, {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
       redirect: 'manual',
     });
@@ -607,7 +607,7 @@ describe('the landing editor moved, not rewritten', { skip }, () => {
     );
     const { token } = await createSession(u.id, tenant);
 
-    const r = await fetch(`${BASE}/builder/pages/${pageId}/edit`, {
+    const r = await fetch(`${BASE}/console/builder/pages/${pageId}/edit`, {
       headers: { cookie: `${SESSION_COOKIE}=${token}` },
       redirect: 'manual',
     });
@@ -615,7 +615,7 @@ describe('the landing editor moved, not rewritten', { skip }, () => {
   });
 
   test('an unentitled tenant cannot open it either', async () => {
-    const r = await fetch(`${BASE}/builder/pages/${pageId}/edit`, {
+    const r = await fetch(`${BASE}/console/builder/pages/${pageId}/edit`, {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.unentitled}` },
       redirect: 'manual',
     });
@@ -639,7 +639,7 @@ describe('the last screens: delivery prices, order detail, creation', { skip }, 
   });
 
   test('order detail shows history and only legal transitions', async () => {
-    const r = await fetch(`${BASE}/builder/orders/${orderId}`, {
+    const r = await fetch(`${BASE}/console/builder/orders/${orderId}`, {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
     });
     assert.equal(r.status, 200);
@@ -665,7 +665,7 @@ describe('the last screens: delivery prices, order detail, creation', { skip }, 
       }),
     );
 
-    const r = await fetch(`${BASE}/builder/orders/${fresh.id}`, {
+    const r = await fetch(`${BASE}/console/builder/orders/${fresh.id}`, {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
     });
     const html = await r.text();
@@ -676,7 +676,7 @@ describe('the last screens: delivery prices, order detail, creation', { skip }, 
   });
 
   test("another tenant's order detail is a 404", async () => {
-    const r = await fetch(`${BASE}/builder/orders/${orderId}`, {
+    const r = await fetch(`${BASE}/console/builder/orders/${orderId}`, {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.other}` },
       redirect: 'manual',
     });
@@ -684,13 +684,13 @@ describe('the last screens: delivery prices, order detail, creation', { skip }, 
   });
 
   test('the creation form renders for a writer and 404s for a viewer', async () => {
-    const owner = await fetch(BASE + '/builder/pages/new', {
+    const owner = await fetch(BASE + '/console/builder/pages/new', {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
     });
     assert.equal(owner.status, 200);
     assert.match(await owner.text(), /data-testid="new-landing-form"/);
 
-    const unentitled = await fetch(BASE + '/builder/pages/new', {
+    const unentitled = await fetch(BASE + '/console/builder/pages/new', {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.unentitled}` },
       redirect: 'manual',
     });
