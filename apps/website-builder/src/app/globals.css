@@ -52,101 +52,15 @@
    Gold:      #D4AF37 (icons, accents only — never buttons)
    ═══════════════════════════════════════════════════════════ */
 
-:root {
-  --radius: 0.75rem;
+/* Console design tokens live in @landingos/ui and are shared by every
+ * product dashboard (M-13, decision D3). They are deliberately NOT the
+ * storefront palette: a tenant themes their landing pages per page, and that
+ * system must be incapable of reaching the console.
+ *
+ * The status scale, and the reasoning behind splitting brand from status,
+ * are documented in packages/ui/src/tokens.css. */
+@import "@landingos/ui/tokens.css";
 
-  /* Warm off-white background */
-  --background: oklch(0.98 0.003 75);
-  --foreground: oklch(0.18 0.01 250);
-
-  /* Cards: pure white for elevation contrast against warm bg */
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.01 250);
-
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.01 250);
-
-  /* Crimson primary — CTA buttons, selected variants */
-  --primary: #991B1B;
-  --primary-foreground: #FFFFFF;
-
-  /* Secondary: warm light gray */
-  --secondary: oklch(0.96 0.003 75);
-  --secondary-foreground: oklch(0.18 0.01 250);
-
-  --muted: oklch(0.96 0.003 75);
-  --muted-foreground: oklch(0.48 0.01 250);
-
-  /* Accent: gold tint for hover states */
-  --accent: oklch(0.95 0.015 85);
-  --accent-foreground: oklch(0.18 0.01 250);
-
-  --destructive: oklch(0.5 0.2 25);
-
-  /* Borders: warm, subtle */
-  --border: oklch(0.91 0.003 75);
-  --input: oklch(0.91 0.003 75);
-  --ring: #991B1B;
-
-  /* Charts */
-  --chart-1: oklch(0.38 0.12 25);
-  --chart-2: oklch(0.65 0.15 85);
-  --chart-3: oklch(0.5 0.1 250);
-  --chart-4: oklch(0.7 0.12 160);
-  --chart-5: oklch(0.6 0.1 30);
-
-  /* Dashboard sidebar */
-  --sidebar: oklch(0.97 0.002 75);
-  --sidebar-foreground: oklch(0.18 0.01 250);
-  --sidebar-primary: #991B1B;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: oklch(0.94 0.003 75);
-  --sidebar-accent-foreground: oklch(0.18 0.01 250);
-  --sidebar-border: oklch(0.91 0.003 75);
-  --sidebar-ring: #991B1B;
-
-  /* Custom theme tokens */
-  --crimson: #991B1B;
-  --crimson-dark: #7F1313;
-  --crimson-light: #B91C1C;
-  --gold: #D4AF37;
-  --gold-light: #E8CE6E;
-  --warm-bg: #FAF9F6;
-}
-
-.dark {
-  --background: oklch(0.14 0.005 250);
-  --foreground: oklch(0.95 0.003 75);
-  --card: oklch(0.18 0.005 250);
-  --card-foreground: oklch(0.95 0.003 75);
-  --popover: oklch(0.18 0.005 250);
-  --popover-foreground: oklch(0.95 0.003 75);
-  --primary: #B91C1C;
-  --primary-foreground: #FFFFFF;
-  --secondary: oklch(0.25 0.005 250);
-  --secondary-foreground: oklch(0.95 0.003 75);
-  --muted: oklch(0.25 0.005 250);
-  --muted-foreground: oklch(0.65 0.005 250);
-  --accent: oklch(0.25 0.005 250);
-  --accent-foreground: oklch(0.95 0.003 75);
-  --destructive: oklch(0.6 0.18 25);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.55 0.15 25);
-  --chart-1: oklch(0.55 0.15 25);
-  --chart-2: oklch(0.65 0.15 85);
-  --chart-3: oklch(0.5 0.1 250);
-  --chart-4: oklch(0.7 0.12 160);
-  --chart-5: oklch(0.6 0.1 30);
-  --sidebar: oklch(0.18 0.005 250);
-  --sidebar-foreground: oklch(0.95 0.003 75);
-  --sidebar-primary: oklch(0.55 0.15 25);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.25 0.005 250);
-  --sidebar-accent-foreground: oklch(0.95 0.003 75);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.55 0.15 25);
-}
 
 @layer base {
   * {

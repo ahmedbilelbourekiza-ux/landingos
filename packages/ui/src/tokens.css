@@ -1,0 +1,230 @@
+/* =============================================================================
+   LandingOS — console design tokens (M-13).
+   ---------------------------------------------------------------------------
+   ONE token set for BOTH dashboards. Decision D3: the admin consoles extend
+   the existing crimson identity and are deliberately uniform, while the
+   customer-facing storefront is fully themeable per landing page and lives in
+   a completely separate system (packages/templates). These two must never
+   share tokens — a tenant restyling their storefront has to be incapable of
+   touching the console.
+
+   ---------------------------------------------------------------------------
+   THE PROBLEM THIS FILE SOLVES (R-14)
+
+   The ERP's operational screens were designed against a near-black ground
+   where colour carries meaning at a glance: a violet accent, and status
+   stripes in green/red/blue/gold down the edge of every order row. Moving
+   them to a light crimson ground is not a token swap, because two of the
+   ERP's colours collide with the builder's brand:
+
+     crimson #991B1B  is itself a red, sitting beside the ERP's danger red
+     gold    #D4AF37  is the builder's accent AND the ERP's "pending" colour
+
+   Both are resolved by separating BRAND from STATUS and giving each one job:
+
+     Brand crimson   primary actions only — filled buttons, active navigation,
+                     focus rings. Never a status.
+     Status palette  its own scale, which contains no crimson and no gold.
+                     "Pending" is amber; gold belongs to the storefront.
+
+   Because brand and status now appear in different FORMS — crimson as a
+   filled button, danger as dark text on a pale tint — they never compete even
+   when adjacent.
+
+   ---------------------------------------------------------------------------
+   AND WHAT HAPPENS TO THE ERP'S IDENTITY
+
+   It becomes the dark theme. The dark palette below is built from the ERP's
+   actual values — its violet, amber, red, blue and their background tints —
+   so the dense operational screens people use every day keep the exact colour
+   language they already read fluently, and the light theme is the newly
+   derived one. Nothing is discarded; it is reassigned.
+
+   The ERP's violet survives in the light theme too, as "in progress" — a real
+   semantic role rather than decoration.
+
+   ---------------------------------------------------------------------------
+   CONTRAST
+
+   Every foreground/background pair below meets WCAG AA (4.5:1) for body text.
+   Asserted, not assumed: test/tokens.test.ts computes the ratios and fails the
+   build on any pair that drops below it, in either theme.
+
+   ---------------------------------------------------------------------------
+   DIRECTION
+
+   No token here encodes a side. Components use CSS logical properties
+   (margin-inline-start, border-inline-end, inset-inline) so Arabic RTL and
+   French/English LTR share one implementation — decision D4, risk R-10.
+   ============================================================================= */
+
+:root {
+  --radius: 0.75rem;
+
+  /* --- Ground -------------------------------------------------------------
+     A warm off-white rather than pure white. The consoles are read for hours;
+     a slightly warm ground with white cards above it gives elevation without
+     needing a shadow on every surface. */
+  --background: oklch(0.98 0.003 75);
+  --foreground: oklch(0.18 0.01 250);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.01 250);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.01 250);
+
+  /* --- Brand --------------------------------------------------------------
+     Primary actions ONLY. If this colour is being used to say something about
+     the state of a record, the status palette below is the right place. */
+  --primary: #991b1b;
+  --primary-foreground: #ffffff;
+  --primary-hover: #7f1313;
+
+  --secondary: oklch(0.96 0.003 75);
+  --secondary-foreground: oklch(0.18 0.01 250);
+  --muted: oklch(0.96 0.003 75);
+  --muted-foreground: oklch(0.48 0.01 250);
+  --accent: oklch(0.95 0.015 85);
+  --accent-foreground: oklch(0.18 0.01 250);
+
+  --border: oklch(0.91 0.003 75);
+  --input: oklch(0.91 0.003 75);
+  --ring: #991b1b;
+
+  /* --- Status -------------------------------------------------------------
+     Each is a triplet: text, tint, edge. A chip is `color: --*-fg` on
+     `background: --*-bg` with `border-color: --*-border`, which keeps the
+     state legible in form as well as hue — colour alone is not an encoding
+     everyone can read.
+
+     `danger` is deliberately brighter and more saturated than brand crimson.
+     They are both reds, and this is what keeps them apart when a Cancel button
+     sits next to a "cancelled" chip. */
+  --success-fg: #15803d;
+  --success-bg: #f0fdf4;
+  --success-border: #bbf7d0;
+
+  --warning-fg: #b45309;
+  --warning-bg: #fffbeb;
+  --warning-border: #fde68a;
+
+  /* Not the obvious #dc2626: on this tint it measures 4.41:1, which fails AA
+     by a margin too small to see and large enough to matter. #c81e1e clears it
+     at 5.24:1 and stays brighter than brand crimson, which is the other
+     constraint this value has to satisfy. */
+  --danger-fg: #c81e1e;
+  --danger-bg: #fef2f2;
+  --danger-border: #fecaca;
+
+  --info-fg: #1d4ed8;
+  --info-bg: #eff6ff;
+  --info-border: #bfdbfe;
+
+  /* The ERP's violet, kept — as a meaning rather than a decoration. Anything
+     moving through a pipeline: dispatched, in transit, out for delivery. */
+  --progress-fg: #6d28d9;
+  --progress-bg: #f5f3ff;
+  --progress-border: #ddd6fe;
+
+  /* Inactive, unknown, not-yet-actioned. Never an alarm. */
+  --neutral-fg: #475569;
+  --neutral-bg: #f8fafc;
+  --neutral-border: #e2e8f0;
+
+  --destructive: var(--danger-fg);
+
+  /* --- Charts -------------------------------------------------------------
+     A categorical sequence, ordered so neighbours stay distinguishable. Not
+     the status colours: a series called "Cancelled" being red is a coincidence
+     the eye should not be asked to interpret. */
+  --chart-1: #991b1b;
+  --chart-2: #6d28d9;
+  --chart-3: #1d4ed8;
+  --chart-4: #15803d;
+  --chart-5: #b45309;
+
+  /* --- Sidebar ----------------------------------------------------------- */
+  --sidebar: oklch(0.97 0.002 75);
+  --sidebar-foreground: oklch(0.18 0.01 250);
+  --sidebar-primary: #991b1b;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: oklch(0.94 0.003 75);
+  --sidebar-accent-foreground: oklch(0.18 0.01 250);
+  --sidebar-border: oklch(0.91 0.003 75);
+  --sidebar-ring: #991b1b;
+}
+
+/* =============================================================================
+   DARK — the ERP's own palette, promoted.
+   These are its real values: --purple #7c6af7 becomes the progress hue, and
+   the amber/red/blue and their background tints are carried across unchanged,
+   so the operational screens keep the colour language their users already
+   read without thinking.
+   ============================================================================= */
+.dark {
+  --background: oklch(0.14 0.005 250);
+  --foreground: oklch(0.95 0.003 75);
+
+  --card: oklch(0.18 0.005 250);
+  --card-foreground: oklch(0.95 0.003 75);
+  --popover: oklch(0.18 0.005 250);
+  --popover-foreground: oklch(0.95 0.003 75);
+
+  /* Crimson is too dark to carry a filled button on a dark ground — it reads
+     as a hole rather than an action. Lifted, not replaced. */
+  --primary: #e5837d;
+  --primary-foreground: #2b1615;
+  --primary-hover: #f0a09b;
+
+  --secondary: oklch(0.24 0.005 250);
+  --secondary-foreground: oklch(0.95 0.003 75);
+  --muted: oklch(0.24 0.005 250);
+  --muted-foreground: oklch(0.68 0.01 250);
+  --accent: oklch(0.26 0.008 250);
+  --accent-foreground: oklch(0.95 0.003 75);
+
+  --border: oklch(0.28 0.006 250);
+  --input: oklch(0.28 0.006 250);
+  --ring: #e5837d;
+
+  --success-fg: #4ade80;
+  --success-bg: #0d2920;
+  --success-border: #166534;
+
+  --warning-fg: #fbbf24;
+  --warning-bg: #2a1f08;
+  --warning-border: #92400e;
+
+  --danger-fg: #f87171;
+  --danger-bg: #2a0f0f;
+  --danger-border: #7f1d1d;
+
+  --info-fg: #60a5fa;
+  --info-bg: #0f1f35;
+  --info-border: #1e40af;
+
+  --progress-fg: #9d8fff;
+  --progress-bg: #1e1a3a;
+  --progress-border: #5b21b6;
+
+  --neutral-fg: #94a3b8;
+  --neutral-bg: #1e242d;
+  --neutral-border: #334155;
+
+  --destructive: var(--danger-fg);
+
+  --chart-1: #e5837d;
+  --chart-2: #9d8fff;
+  --chart-3: #60a5fa;
+  --chart-4: #4ade80;
+  --chart-5: #fbbf24;
+
+  --sidebar: oklch(0.16 0.005 250);
+  --sidebar-foreground: oklch(0.95 0.003 75);
+  --sidebar-primary: #e5837d;
+  --sidebar-primary-foreground: #2b1615;
+  --sidebar-accent: oklch(0.22 0.006 250);
+  --sidebar-accent-foreground: oklch(0.95 0.003 75);
+  --sidebar-border: oklch(0.28 0.006 250);
+  --sidebar-ring: #e5837d;
+}
