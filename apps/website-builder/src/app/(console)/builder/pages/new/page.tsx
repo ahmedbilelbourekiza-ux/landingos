@@ -1,0 +1,133 @@
+import { notFound, redirect } from "next/navigation";
+
+import { withTenant } from "@landingos/db";
+import { can } from "@landingos/auth";
+
+import { requireProduct } from "@/lib/console/product-page";
+import { ConsoleShell } from "@/components/console/console-shell";
+import { slugify } from "@/lib/landing/create";
+
+export const dynamic = "force-dynamic";
+
+/* =============================================================================
+ * Create a landing page.
+ *
+ * Deliberately minimal: a title, an address and a price. Everything else is
+ * edited afterwards in the editor, where there is room to do it properly — a
+ * long creation form is a wall between someone and the thing they came to make.
+ * ========================================================================== */
+
+async function create(formData: FormData) {
+  "use server";
+  const { session } = await requireProduct("website-builder", "/builder/pages/new");
+  if (!can(session.auth!, "website-builder:pages:write")) notFound();
+
+  const title = String(formData.get("title") ?? "").trim();
+  const price = Number(String(formData.get("price") ?? "").trim());
+  const rawSlug = String(formData.get("slug") ?? "").trim();
+
+  if (!title) redirect("/builder/pages/new?error=title");
+  if (!Number.isFinite(price) || price < 0) redirect("/builder/pages/new?error=price");
+
+  // Derive from the title when left blank, so nobody has to know what a slug is.
+  const slug = slugify(rawSlug || title);
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) redirect("/builder/pages/new?error=slug");
+
+  const tenantId = session.auth!.tenantId;
+  const id = await withTenant(tenantId, async (db) => {
+    // Per-tenant uniqueness (M-04): another company owning this slug is fine.
+    const clash = await (db as any).landingPage.findFirst({
+      where: { slug },
+      select: { id: true },
+    });
+    if (clash) return null;
+
+    const created = await (db as any).landingPage.create({
+      data: { tenantId, title: title.slice(0, 200), slug, price },
+      select: { id: true },
+    });
+    return created.id as string;
+  });
+
+  if (!id) redirect("/builder/pages/new?error=taken");
+  // Straight into the editor — creating a page is the start of editing it.
+  redirect(`/builder/pages/${id}/edit`);
+}
+
+export default async function NewLandingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { session, t } = await requireProduct("website-builder", "/builder/pages/new");
+  if (!can(session.auth!, "website-builder:pages:write")) notFound();
+
+  const { error } = await searchParams;
+  const messages: Record<string, string> = {
+    title: "A title is required.",
+    price: "Enter a price of zero or more.",
+    slug: "That address cannot be used. Try letters, numbers and hyphens.",
+    taken: "You already have a page at that address.",
+  };
+
+  return (
+    <ConsoleShell session={session} productId="website-builder">
+      <h1 className="text-xl font-semibold">{t("common.create")}</h1>
+
+      {error ? (
+        <p
+          role="alert"
+          data-testid="error"
+          className="mt-4 max-w-lg rounded-md border px-3 py-2 text-sm"
+          style={{
+            color: "var(--danger-fg)",
+            backgroundColor: "var(--danger-bg)",
+            borderColor: "var(--danger-border)",
+          }}
+        >
+          {messages[error] ?? "That did not work."}
+        </p>
+      ) : null}
+
+      <form
+        action={create}
+        data-testid="new-landing-form"
+        className="mt-6 max-w-lg space-y-4 rounded-lg border border-border bg-card p-4"
+      >
+        <div className="space-y-1">
+          <label htmlFor="title" className="text-sm font-medium">Title</label>
+          <input
+            id="title" name="title" required maxLength={200}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label htmlFor="slug" className="text-sm font-medium">Address</label>
+          <input
+            id="slug" name="slug" maxLength={120} placeholder="derived from the title"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+          <p className="text-xs text-muted-foreground">
+            Leave blank to generate one. Another company using the same address does not affect you.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <label htmlFor="price" className="text-sm font-medium">Price</label>
+          <input
+            id="price" name="price" type="number" min="0" step="1" required defaultValue="0"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm tabular-nums"
+          />
+        </div>
+
+        <button
+          type="submit"
+          className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+        >
+          {t("common.create")}
+        </button>
+      </form>
+    </ConsoleShell>
+  );
+}

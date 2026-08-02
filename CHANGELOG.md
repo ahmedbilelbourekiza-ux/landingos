@@ -10,6 +10,93 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## Phase 4 — One front door
+
+### 4.4 The builder moves onto the platform
+
+Every builder screen and API route now runs on the shared shell, the unified
+schema and the platform session. The legacy dashboard is untouched and still
+responding, as required.
+
+#### What measuring first changed
+Eleven of the thirteen dashboard pages turned out to be **client components
+that fetch `/api`**. The port was therefore overwhelmingly an API-layer job,
+and the pages followed their data — a very different plan from the
+page-by-page rewrite the phase description implied.
+
+#### One abstraction, deliberately
+`tenantRoute(permission, handler)` resolves the session, refuses without an
+active tenant, checks the permission, and runs the work bound to that tenant.
+Thirty routes writing that by hand is thirty chances to forget the binding —
+and forgetting it does not fail loudly, it returns an **empty list**, because
+row-level security denies by returning no rows. The permission is a parameter
+and nothing in it knows which products exist.
+
+#### Ported
+**21 API routes** — landings and all eight editor sections, categories, sales
+orders with the state machine, abandoned checkouts, store settings, delivery
+prices, themes, and webhooks + Meta pixels as **platform** surfaces.
+**9 screens** — builder overview, pages, orders, order detail, categories,
+abandoned, page creation, and the landing editor; plus platform settings:
+index, profile, store profile, delivery prices, integrations.
+
+**79 end-to-end tests**, every one attacking a boundary rather than trusting
+it. Not one ported route contains `where: { tenantId }` — the binding does it
+and the database enforces it, which is only worth claiming because the tests
+try to break it from every direction.
+
+#### The rules came across with the data
+A port that keeps the shape and drops the rules is not a port. Each is asserted
+by violating it: an old price at or below the current one, a duplicate variant,
+a rating outside 1–5, hiding a field the courier needs, leaving a product with
+no delivery method, publishing something with no title or price, and every
+illegal order transition including re-opening a cancelled one.
+
+#### The editor was moved, not rewritten
+54 components and ~5,000 lines. `BuilderApiProvider` injects the API base, so
+the same files serve both mounts — legacy on `/api/landings` under its JWT,
+console on `/api/builder/landings` under the platform session. The default is
+the legacy path, so mounting in the console was an addition rather than an edit
+to something working. When the legacy dashboard retires, this collapses to a
+constant.
+
+#### Defects found
+**Nested `$transaction` threw at runtime.** `withTenant` has already opened one
+and Prisma does not nest, so the client it returns has no `$transaction` at
+all. The `TenantDb` type says exactly this — the `as any` casts used to reach
+dynamic models defeated the check that would have caught it at compile time.
+
+**The platform connection was not using Neon's pooler.** `setup-roles` derived
+the app URL from the owner URL *after* converting it to the direct endpoint, so
+every request — dev server and every parallel test process — went through the
+endpoint with the hard connection cap. It presented as an intermittent "Can't
+reach database server" that looked exactly like a flaky isolation test, which
+is the worst way for a misconfiguration to appear. Both URLs now derive from
+the original and each states its endpoint.
+
+**Reference data was never restored after the 3.3 reset.** 58 wilayas and 537
+baladias. Checkout resolves a delivery price by wilaya, so an empty table means
+an order form that renders perfectly and offers nowhere to deliver to. A test
+asking for the wilaya list surfaced it; `seed:reference` now owns it.
+
+**`/api/landings/[id]/delivery-prices` is dead code.**
+`db.landingDeliveryPrice` is `undefined`, so it throws on every call. Nothing
+references it — per-landing prices were superseded by global ones.
+
+**A nav bug only real rendering caught.** Every item whose href prefixed the
+current path was marked `aria-current`, so "Overview" was highlighted on every
+screen.
+
+#### Still on the legacy stack
+The **public storefront** — `/l/[slug]`, category pages, checkout, draft-order
+capture — and the legacy auth routes that serve it. These are customer-facing
+and move in 4.5 along with tenant-aware public routing (M-17).
+
+**Suite totals.** ERP 298 (297 pass, 1 skipped) · website-builder 79 · auth 32
+· db 29 · i18n 18 · product-registry 36 · ui 26.
+
+---
+
 ## Phase 3 — Platform foundations
 
 ### 3.3 Tenant isolation, verified against a real database

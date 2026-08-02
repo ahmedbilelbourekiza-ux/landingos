@@ -622,3 +622,78 @@ describe('the landing editor moved, not rewritten', { skip }, () => {
     assert.equal(r.status, 404);
   });
 });
+
+describe('the last screens: delivery prices, order detail, creation', { skip }, () => {
+  test('delivery prices list every wilaya and distinguish blank from zero', async () => {
+    const r = await fetch(BASE + '/console/settings/delivery-prices', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    assert.match(html, /data-testid="delivery-prices-form"/);
+    // All 58, from the shared reference data.
+    const rows = (html.match(/data-wilaya="/g) ?? []).length;
+    assert.equal(rows, 58, `expected 58 wilayas, rendered ${rows}`);
+    // The distinction that matters: unpriced is not free.
+    assert.match(html, /cannot be delivered to/i);
+  });
+
+  test('order detail shows history and only legal transitions', async () => {
+    const r = await fetch(`${BASE}/builder/orders/${orderId}`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    assert.match(html, /data-testid="order-details"/);
+    assert.match(html, /data-testid="order-history"/);
+    // This order was driven to CANCELLED earlier, which is terminal — so no
+    // transition control may be offered at all.
+    assert.match(html, /data-status="CANCELLED"/);
+    assert.ok(!/data-transition=/.test(html), 'a terminal order offers no transitions');
+    assert.match(html, /final state/i);
+  });
+
+  test('a live order offers exactly the transitions the API would accept', async () => {
+    const fresh = await withTenant(tenant, (tx) =>
+      (tx as any).salesOrder.create({
+        data: {
+          tenantId: tenant, landingPageId: pageId, customerName: 'Fresh Buyer',
+          phone: '0555222333', wilaya: 'Oran', baladia: 'Es Senia', address: 'y',
+          quantity: 1, productPrice: 1000, shippingPrice: 300, totalPrice: 1300,
+        },
+        select: { id: true },
+      }),
+    );
+
+    const r = await fetch(`${BASE}/builder/orders/${fresh.id}`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    const html = await r.text();
+    // NEW allows exactly CONFIRMED and CANCELLED.
+    assert.match(html, /data-transition="CONFIRMED"/);
+    assert.match(html, /data-transition="CANCELLED"/);
+    assert.ok(!/data-transition="DELIVERED"/.test(html), 'no illegal jump is offered');
+  });
+
+  test("another tenant's order detail is a 404", async () => {
+    const r = await fetch(`${BASE}/builder/orders/${orderId}`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.other}` },
+      redirect: 'manual',
+    });
+    assert.equal(r.status, 404);
+  });
+
+  test('the creation form renders for a writer and 404s for a viewer', async () => {
+    const owner = await fetch(BASE + '/builder/pages/new', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(owner.status, 200);
+    assert.match(await owner.text(), /data-testid="new-landing-form"/);
+
+    const unentitled = await fetch(BASE + '/builder/pages/new', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.unentitled}` },
+      redirect: 'manual',
+    });
+    assert.equal(unentitled.status, 404);
+  });
+});
