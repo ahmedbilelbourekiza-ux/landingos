@@ -5,6 +5,7 @@ import type { Prisma, TenantDb } from "@landingos/db";
 import { getAdapter, TERMINAL, type TrackingEvent } from "./carriers";
 import { syncClientFromOrder } from "./clients";
 import { raiseFollowupTask } from "./followup";
+import { notifyDeliveryUpdate, notifyFollowupRaised } from "./notify";
 
 /* =============================================================================
  * Shipments, and the settlement that BUG-02 was about.
@@ -182,7 +183,27 @@ export async function ingestEvents(
     // state is not.
     const trigger = events.length ? events[events.length - 1] : null;
     if (trigger) {
-      await raiseFollowupTask(db, tenantId, shipment.orderId, trigger);
+      const raised = await raiseFollowupTask(db, tenantId, shipment.orderId, trigger);
+
+      // M-16. The parcel moved, so somebody is told — and which of the two
+      // messages it is depends on whether a person now has to act. BUG-04 was
+      // that this notification, the one the console is built to render, never
+      // arrived at all.
+      const order = await db.fulfillmentOrder.findUnique({
+        where: { id: shipment.orderId },
+        select: { id: true, reference: true, agentUserId: true, followupUserId: true },
+      });
+      if (order) {
+        if (raised?.created) {
+          await notifyFollowupRaised(
+            db, tenantId, order,
+            (trigger.description || trigger.originalStatus || latest).trim(),
+            order.followupUserId,
+          );
+        } else {
+          await notifyDeliveryUpdate(db, tenantId, order, latest);
+        }
+      }
     }
   }
 

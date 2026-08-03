@@ -5,6 +5,7 @@ import { loadOwnedOrder } from "@/lib/erp/guard";
 import { addCall, updateOrder, CALL_RESULTS } from "@/lib/erp/orders";
 import { readSettings } from "@/lib/erp/settings";
 import { onOrderConfirmed } from "@/lib/erp/confirm";
+import { notifySuspiciousCall } from "@/lib/erp/notify";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,21 @@ export const POST = tenantRoute<Params>("erp:orders:write", async ({ db, req, se
     result === "confirmed"
       ? await onOrderConfirmed(db, tenantId, params.id, settings)
       : { shipmentBooked: false, followupUserId: null };
+
+  // The flag is only worth having if somebody is told. Manager-only, and
+  // deliberately not the agent it is about — see notifySuspiciousCall.
+  if (call.suspicious) {
+    const stamped = await db.fulfillmentOrder.findUnique({
+      where: { id: params.id },
+      select: { id: true, reference: true },
+    });
+    if (stamped) {
+      await notifySuspiciousCall(
+        db, tenantId, stamped,
+        call.noStart ? "no call was started" : "the call was shorter than the threshold",
+      );
+    }
+  }
 
   return apiOk({
     message: "logged",

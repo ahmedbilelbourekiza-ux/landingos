@@ -7,6 +7,7 @@ import { nextReference } from "./ids";
 import { normalizePhone } from "./phone";
 import { syncClientFromOrder } from "./clients";
 import { autoAssignOnCreate } from "./assign";
+import { notifyNewOrder } from "./notify";
 
 /* =============================================================================
  * Builder → ERP, as a domain event rather than a network call (M-05).
@@ -160,11 +161,15 @@ export async function fulfilmentFromSale(
       agentUserId,
     },
     select: {
-      id: true, status: true, deliveryOutcome: true, price: true,
+      id: true, reference: true, status: true, deliveryOutcome: true, price: true,
       phone: true, client: true, wilaya: true, commune: true, createdAt: true,
     },
   });
 
   await syncClientFromOrder(db, tenantId, null, created);
+  // A storefront sale is a new order like any other, and it is the one the
+  // call-centre most needs to be told about — it arrived while nobody was
+  // looking at a screen.
+  await notifyNewOrder(db, tenantId, { ...created, agentUserId });
   return { id: created.id, created: true };
 }

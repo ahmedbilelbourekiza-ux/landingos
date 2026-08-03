@@ -9,6 +9,9 @@ import { FOLLOWUP_TASK_TYPE } from "./followup";
 import { pickAgent } from "./assign";
 import { TERMINAL } from "./carriers";
 import { refreshShipment } from "./shipments";
+import {
+  notifyAgentOverdue, notifyAgentSuspended, notifyFollowupOverdue, notifyStaleOrders,
+} from "./notify";
 
 /* =============================================================================
  * The scheduled work — M-15.
@@ -39,7 +42,12 @@ import { refreshShipment } from "./shipments";
  * settings. There is no cross-tenant query anywhere here: the caller iterates.
  * ========================================================================== */
 
-export const JOBS = ["followup-escalation", "overdue-sweep", "tracking-poll"] as const;
+export const JOBS = [
+  "followup-escalation",
+  "overdue-sweep",
+  "tracking-poll",
+  "stale-orders",
+] as const;
 export type JobName = (typeof JOBS)[number];
 
 export interface JobResult {
@@ -61,7 +69,7 @@ export interface JobResult {
  * A RESOLVED TASK IS NEVER ESCALATED, however long ago it was due. Escalation
  * means "nobody did this"; somebody did.
  */
-export async function escalateFollowups(db: TenantDb): Promise<JobResult> {
+export async function escalateFollowups(db: TenantDb, tenantId: string): Promise<JobResult> {
   const { count } = await db.followupTask.updateMany({
     where: {
       status: "open",
@@ -71,7 +79,60 @@ export async function escalateFollowups(db: TenantDb): Promise<JobResult> {
     data: { status: "overdue" },
   });
 
+  // One summary, only when something actually escalated — the count came from
+  // the guarded `updateMany`, so a second pass reports zero and says nothing.
+  // An escalation means an agent let a reminder expire, which is a supervision
+  // signal rather than something to push at the agents.
+  if (count > 0) await notifyFollowupOverdue(db, tenantId, count);
+
   return { job: "followup-escalation", escalated: count };
+}
+
+/* -----------------------------------------------------------------------------
+ * The stale-order alert
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Orders nobody has called for longer than `alertMinutes`.
+ *
+ * THE SECOND OF THE ERP'S THREE LOOPS (`apps/erp/lib/jobs.js:61`), and the home
+ * `alertMinutes` always had. 6.5b read that setting in the overdue sweep, which
+ * is a different job with a different threshold (`reassignMinutes`); 6.6a
+ * separated them and this is the half that was missing.
+ *
+ * The two are not redundant. The SWEEP is about accountability — it counts a
+ * miss against a named agent and can move the order. This is a NUMBER on a
+ * supervisor's screen: how much work is sitting untouched right now, whoever it
+ * belongs to and whether or not anybody is at fault. That is why it is a summary
+ * rather than one alert per order, and why it counts unassigned orders too.
+ *
+ * It is NOT idempotent in the column-guard sense, because there is nothing to
+ * guard: it reports a live count and writes no state to the orders. Repeated
+ * passes therefore repeat the alert, which is what an "N orders are waiting"
+ * signal means — the ERP ran it hourly for that reason. `WORKER_INTERVAL_MS`
+ * governs how often, and a deployment that finds it noisy raises the interval or
+ * `alertMinutes` rather than adding state nobody can see.
+ */
+export async function alertStaleOrders(
+  db: TenantDb,
+  tenantId: string,
+  settings: ErpSettings,
+): Promise<JobResult> {
+  if (!withinWorkingHours(settings)) {
+    return { job: "stale-orders", stale: 0, skipped: "outside working hours" };
+  }
+
+  const minutes = Number(settings.alertMinutes) || 60;
+  const stale = await db.fulfillmentOrder.count({
+    where: {
+      status: { in: [...ACTIVE_STATUSES] },
+      createdAt: { lt: new Date(Date.now() - minutes * 60_000) },
+      calls: { none: {} },
+    },
+  });
+
+  if (stale > 0) await notifyStaleOrders(db, tenantId, stale, minutes);
+  return { job: "stale-orders", stale };
 }
 
 /* -----------------------------------------------------------------------------
@@ -270,6 +331,12 @@ export async function sweepOverdueOrders(
     suspended += 1;
   }
 
+  // Told once per pass, to the people who supervise. `agent_overdue` was one of
+  // the five alerts the audit found stored with `target: null` — so an alert
+  // about an agent's own missed order was stored for that agent to read.
+  if (flagged > 0) await notifyAgentOverdue(db, tenantId, flagged, reassigned);
+  if (suspended > 0) await notifyAgentSuspended(db, tenantId, suspended);
+
   return {
     job: "overdue-sweep",
     flagged,
@@ -400,10 +467,12 @@ export async function runJob(
   const settings = await readSettings(db);
   switch (job) {
     case "followup-escalation":
-      return escalateFollowups(db);
+      return escalateFollowups(db, tenantId);
     case "overdue-sweep":
       return sweepOverdueOrders(db, tenantId, settings);
     case "tracking-poll":
       return pollCarriers(db, tenantId, settings);
+    case "stale-orders":
+      return alertStaleOrders(db, tenantId, settings);
   }
 }

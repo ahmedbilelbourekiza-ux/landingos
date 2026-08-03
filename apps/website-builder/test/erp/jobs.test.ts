@@ -301,7 +301,10 @@ describe('the worker tick', () => {
     const body = await r.json() as { tenants: number; ran: number; failed: number };
 
     assert.ok(body.tenants >= 1, 'no tenant was entitled — the RLS trap again');
-    assert.equal(body.ran, body.tenants * 3, 'every job did not run for every tenant');
+    // Four jobs: followup-escalation, overdue-sweep, tracking-poll, stale-orders.
+    // Written out rather than derived, so adding a fifth makes somebody read
+    // this test rather than silently changing what it asserts.
+    assert.equal(body.ran, body.tenants * 4, 'every job did not run for every tenant');
     assert.equal(body.failed, 0, 'a job threw during the tick');
 
     const listed = await acme.manager.api('GET', '/api/erp/followup/tasks');

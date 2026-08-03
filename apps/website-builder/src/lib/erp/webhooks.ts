@@ -7,6 +7,7 @@ import type { TenantDb } from "@landingos/db";
 import { normalizePhone } from "./phone";
 import { toDecimal } from "./serialize";
 import { autoAssignOnCreate } from "./assign";
+import { notifyNewOrder } from "./notify";
 
 /* =============================================================================
  * Inbound webhooks from external sales channels.
@@ -216,8 +217,9 @@ export async function ingestOrder(
       status: "pending",
       agentUserId,
     },
-    select: { id: true },
+    select: { id: true, reference: true, client: true, phone: true, agentUserId: true },
   });
 
+  await notifyNewOrder(db, tenantId, created);
   return { created: true, id: created.id };
 }

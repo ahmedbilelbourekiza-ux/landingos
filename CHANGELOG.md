@@ -12,6 +12,128 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.6c M-16 (part 1) — notifications become a platform service
+
+`notifications.test.ts` is new at **18/18**, and it is the file
+`apps/erp/test/notifications.test.js` was deferred against in Phase 5.1:
+PORTING.md said porting it "against a transport that does not exist would encode
+a contract nobody has designed". This is the design of the storage half. The live
+transport is 6.6d.
+
+#### A platform service, under `/api/platform`
+
+`Notification` moved to `platform.prisma` in 3.2 because the vision names
+notifications a shared service; this is the other half of that decision. One feed
+per person spanning every product they use, one badge, and a `product` column so
+a tenth product raises into it by calling `notify` rather than by building its
+own. A product shipping its own feed would be N badges for one person — the same
+mistake `packages/product-registry` refuses for a Settings nav item.
+
+#### The audience is decided ONCE, at write time — one row per recipient
+
+The ERP stored one row with a free-text `target` (`''` | `'manager'` | an agent's
+name) and interpreted it on every read. **Every notification bug the audit found
+lived in that interpretation.** `target` was accepted by `push()` and had no
+column to land in, so the live hop was targeted and the stored row was not; and
+`agent_overdue`, `agent_suspended`, `stale_orders`, `followup_overdue` and
+`suspicious_call` were all stored with `target: null` — "everyone" — so an alert
+about an agent's own missed order was stored for that agent to read.
+
+Fanning out on write removes the class. A read is `targetUserId = me`: one
+indexed predicate, no role logic, nothing to get wrong later. It is also what the
+schema already expected — `@@index([tenantId, targetUserId, readAt])` is an index
+for exactly this query, and `readAt` on the row is only meaningful when the row
+belongs to one person.
+
+The cost is rows, bounded by `pruneNotifications`. That is the right trade
+against a read-time audience rule that has already leaked once.
+
+#### An audience is a PERMISSION, never a role list
+
+"Managers only" is not something the platform can evaluate: MANAGER, ADMIN and
+OWNER all supervise, and a MEMBER with an explicit grant may too. So a producer
+names the permission a recipient must hold and `can()` decides — the same
+function the routes use. Two are used, and both are already `SENSITIVE`:
+
+- `erp:agents:manage` — supervision **of people**: misconduct, accountability,
+  suspensions. No role grants it implicitly, so it cannot reach an agent by
+  accident.
+- `erp:clients:read` — sees the **whole book**. Already the predicate
+  `seesWholeBook` uses, so "supervisors of the work" means the same set here as
+  everywhere else in the product.
+
+Entitlement rides along inside `can`, so a tenant that dropped the ERP stops
+receiving the ERP's alerts without anybody editing a membership.
+
+#### There is no watermark to poison
+
+The ERP's read state was a stored number per account, and an unclamped
+`{"upToId": 999999999}` parked it in the future — suppressing that account's
+badge until a million notifications had been raised. Marking read here is an
+`updateMany` over rows that exist, so an id beyond the newest matches what exists
+and nothing more, and the next notification is unread like any other. The test
+asserts the **property** that clamping protected rather than the mechanism that
+has gone, and junk (`-5`, `"abc"`, `null`, `{}`, `[]`, `true`) is a no-op that
+leaves the account working.
+
+#### The stale-order alert, and the end of the `alertMinutes` confusion
+
+6.5b's sweep read `alertMinutes`; 6.6a moved it to `reassignMinutes` and said
+`alertMinutes` belonged to a different ERP job. This is that job — the second of
+the three loops in `apps/erp/lib/jobs.js` — and it closes the loop honestly.
+
+The two are not redundant. The **sweep** is accountability: it counts a miss
+against a named agent and can move the order. **Stale-orders** is a number on a
+supervisor's screen — how much work is untouched right now, whoever it belongs to
+and whether or not anybody is at fault. Different threshold, different audience,
+different question. It is deliberately **not** idempotent by column guard,
+because it writes no state to the orders and reports a live count; an "N are
+waiting" signal that stops after the first pass is not a signal.
+
+#### Every producer the ERP had
+
+`new_order` on all three creation paths (typed in, storefront checkout, channel
+webhook), `suspicious_call`, `delivery_update`, `followup_raised`,
+`followup_overdue`, `stale_orders`, `agent_overdue`, `agent_suspended`.
+
+One narrowed on purpose: an **unassigned** new order goes to everybody holding
+`erp:orders:write` rather than to everybody in the company. The ERP broadcast to
+all; a bookkeeper being told about each incoming order is noise, and noise is
+what makes a feed stop being read.
+
+Nothing raised here can fail the thing it is about — `notifyQuietly` logs and
+returns. A confirmed call is not undone because nobody could be told about it.
+
+#### Files
+`apps/website-builder/src/lib/platform/notifications.ts` (new),
+`src/lib/erp/notify.ts` (new),
+`src/app/api/platform/notifications/{route,read/route}.ts` (new),
+`src/lib/erp/{jobs,shipments,from-sale,webhooks}.ts`,
+`src/app/api/erp/orders/route.ts`, `orders/[id]/call/route.ts`,
+`test/erp/{notifications,jobs,helpers}.test.ts`.
+
+#### Migration
+M-16, part 1. **No schema change** — `Notification` has carried `product`,
+`targetUserId`, `targetRole`, `readAt` and its index since 3.2.
+
+#### Risk
+**The live transport does not exist yet.** The feed is correct, per-account and
+gated, and a console that wants it must poll. SSE with replay on reconnect, and
+Web Push, are 6.6d — until then this is M-16's storage half and `apps/erp` is
+still the only place an agent is *told* rather than having to look.
+
+`stale-orders` repeats its alert on every pass while orders are waiting. That is
+what the signal means, and `WORKER_INTERVAL_MS` governs how often; a deployment
+that finds it noisy raises the interval or `alertMinutes` rather than adding
+state nobody can see.
+
+**Verified live:** notifications 18/18 · jobs 16/16 · delivery 33/33 ·
+orders 38/38 · assign 25/25 · access 63/63 · validation 29/29 · listing 25/25 ·
+catalog 31/31 · integrations 29/29 · order-split 8/8 · screens 96/96 —
+**411/411**. website-builder 102/102.
+
+---
+
 ### 6.6b The carrier poll — and the worker that had never run a job
 
 The third of the ERP's three scheduled loops (`apps/erp/lib/jobs.js:28`), and the

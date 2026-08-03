@@ -4,6 +4,7 @@ import { tenantRoute, apiOk, apiError, pagination } from "@/lib/api/route";
 import { scopedWhere, seesWholeBook } from "@/lib/erp/scope";
 import { orderFilters, orderSort, ORDER_LIST_SELECT, createOrder, ORDER_STATUSES } from "@/lib/erp/orders";
 import { autoAssignOnCreate } from "@/lib/erp/assign";
+import { notifyNewOrder } from "@/lib/erp/notify";
 import { normalizePhone } from "@/lib/erp/phone";
 import { toJson, toDecimal } from "@/lib/erp/serialize";
 
@@ -137,6 +138,8 @@ export const POST = tenantRoute("erp:orders:write", async ({ db, req, session, s
     where: { id },
     select: ORDER_LIST_SELECT,
   });
+  await notifyNewOrder(db, tenantId, created!);
+
   const { _count, ...rest } = created!;
   return apiOk({ ...(toJson(rest) as object), callCount: _count.calls }, { status: 201 });
 });

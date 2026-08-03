@@ -484,15 +484,21 @@ export async function slugOf(tenantId: string): Promise<string> {
   return t?.slug ?? '';
 }
 
-/** Poll until `fn` returns something truthy. The ERP's `waitFor`, unchanged. */
+/**
+ * Poll until `fn` returns something truthy. The ERP's `waitFor`, unchanged.
+ *
+ * It returns `NonNullable<T>` because it cannot return anything else — it loops
+ * until the value is truthy or it throws. Saying so keeps every caller from
+ * having to write `!` on a value the function guarantees.
+ */
 export async function waitFor<T>(
   fn: () => Promise<T> | T,
   { timeout = 10000, interval = 150, label = 'condition' } = {},
-): Promise<T> {
+): Promise<NonNullable<T>> {
   const deadline = Date.now() + timeout;
   for (;;) {
     const value = await fn();
-    if (value) return value;
+    if (value) return value as NonNullable<T>;
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${label}`);
     await new Promise((r) => setTimeout(r, interval));
   }
