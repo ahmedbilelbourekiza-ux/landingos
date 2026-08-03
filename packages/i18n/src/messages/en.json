@@ -208,7 +208,29 @@
       "assign": "Assign",
       "deleteSelected": "Delete",
       "outcome": "Changed",
-      "of": "of"
+      "of": "of",
+      "parcelPanel": "Parcel",
+      "bookParcel": "Book the parcel",
+      "refreshParcel": "Ask the carrier",
+      "parcelHint": "Books with the carrier set on this order.",
+      "refreshHint": "Fetches whatever the carrier reports. Safe to repeat.",
+      "newProduct": "New product",
+      "create": "Create",
+      "archive": "Archive",
+      "restore": "Restore",
+      "adjustPanel": "Correct the stock",
+      "adjustHint": "A correction records a change and a reason, never a new total — damage, theft, a miscount.",
+      "product": "Product",
+      "allVariants": "All variants",
+      "packaging": "Packaging cost",
+      "adjust": "Record the correction",
+      "lotPanel": "Restock",
+      "lotHint": "A purchase creates its own lot at its own price, and a sale consumes the oldest first — which is what makes the reported margin the real one.",
+      "mode": "Kind",
+      "purchase": "Purchase",
+      "restock": "Returned to stock",
+      "unitCost": "Unit cost",
+      "addLot": "Add the stock"
     },
     "noteType": {
       "clientCalledBack": "The customer called back",
@@ -283,6 +305,7 @@
       "forbiddenField": "Only a manager can change that.",
       "notFound": "That record is no longer there. Reload the page.",
       "invalidInput": "That value was not accepted.",
+      "noCarrier": "No carrier is set on this order, so there is nothing to book with.",
       "internal": "Something went wrong. Nothing was saved."
     }
   }

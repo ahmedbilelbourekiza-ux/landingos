@@ -12,6 +12,89 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.3c The parcel, the catalogue and the stockroom
+
+Three more surfaces. `screens.test.ts` goes 50 → **59/59**.
+
+#### Three surfaces, three different permissions
+
+`erp:shipments:write`, `erp:products:write`, `erp:inventory:write` — and an ERP
+confirmation agent holds **none** of them. That is the point of this slice: the
+gate is the permission each *route* checks, not one blanket "may write" flag.
+An agent who logs calls and corrects their own orders still must not book
+parcels, create products or move stock, and the ERP's own split said so first.
+
+Each is asserted twice, in both directions: the control is absent from the
+screen, and the API answers 403 for the same person.
+
+#### Archive, never delete — said by the button
+
+`DELETE /products/[id]` sets a flag, because a product is referenced by every
+order that ever contained it, by its movement ledger and by its event timeline.
+The control therefore says **Archive**, and the archived view offers **Restore**
+rather than pretending the row is gone. The create panel is withheld from the
+archived view: a new product would land somewhere invisible.
+
+Both cost fields are on the create form, which is not padding. An earlier
+version of that route dropped `costPrice` and `packagingCost`; nothing failed,
+and the product simply appeared with a zero cost basis — which makes every
+profit figure derived from it wrong rather than absent.
+
+#### Stock moves by a delta and a reason. There is no box for a total.
+
+"Stock is 15" tells nobody anything; "20 → 15, five damaged, recorded by this
+person" is auditable. `POST /inventory/adjust` offers no way to set an absolute
+figure, so neither does the panel — a field labelled "new quantity" would be a
+control the API cannot honour. A test asserts the delta and reason inputs exist
+and that no total input does.
+
+The lot panel says on the page why lots exist at all — a purchase creates its
+own lot at its own price and a sale consumes the oldest first, which is what
+makes the reported margin the real one. And a **return carries no price field**,
+because it rejoins stock at the product's existing cost basis rather than
+inventing a purchase that never happened.
+
+The variant picker clears when the product changes. Carrying the old name over
+would send a variant the new product does not have, which the route answers 404
+for — a self-inflicted refusal rather than a mistake anybody made.
+
+#### One control at a time on the parcel
+
+Booking is idempotent — a second call returns the existing shipment rather than
+a second parcel — so offering **Book** again would not be dangerous, only a lie
+about what the button does. Once a shipment exists the control becomes *ask the
+carrier*, which is what refreshing is.
+
+`NO_CARRIER` gets its own translated message rather than the generic
+"that value was not accepted", because it names something the reader can go and
+fix.
+
+#### i18n
+
+25 more keys in all three catalogues. Two that already existed —
+`erp.inventory.change` and `.reason` — are reused rather than duplicated under
+`erp.write`: one word, one key, or the two drift.
+
+#### Files
+`apps/website-builder/src/components/console/erp/catalog-write.tsx` (new),
+`src/lib/console/erp-strings.ts` (new — one label bundle, two screens),
+`src/components/console/erp/order-write.tsx` (`ParcelPanel`),
+`src/lib/console/action-errors.ts`,
+`src/app/console/erp/{products,inventory,orders/[id]}/page.tsx`,
+`packages/i18n/src/messages/{en,fr,ar}.json`, `test/erp/screens.test.ts`.
+
+#### Migration
+None.
+
+#### Risk
+Carriers, finance, agents and settings still have no controls — 6.3d. `apps/erp`
+remains the only way to configure a carrier, save a P&L or set a pay rate.
+
+**Verified live:** screens 59/59 · access 62/62 · catalog 31/31 ·
+delivery 20/20 · i18n 18/18.
+
+---
+
 ### 6.3b Editing an order, reassigning it, and acting on many at once
 
 The second write slice. `screens.test.ts` goes 39 → **50/50**.

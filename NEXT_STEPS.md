@@ -1,7 +1,7 @@
 # Next Steps
 
-**Phase 5 is complete; Phase 6.3b is done.** Immediate tasks to continue from
-the Phase 6.3b commit. Full context is in `PROJECT_STATE.md` — read its "Read
+**Phase 5 is complete; Phase 6.3c is done.** Immediate tasks to continue from
+the Phase 6.3c commit. Full context is in `PROJECT_STATE.md` — read its "Read
 this first" section before starting.
 
 ---
@@ -38,21 +38,21 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **285/285** across the nine files: access 62 · orders 38 ·
+Expect **294/294** across the nine files: access 62 · orders 38 ·
 validation 29 · listing 25 · catalog 31 · delivery 20 · integrations 22 ·
-order-split 8 · screens 50.
+order-split 8 · screens 59.
 
 ---
 
 ## 1. Phase 6.3 — the write surfaces
 
-Every ERP screen exists. **6.3a and 6.3b made the order book workable**; the
-other screens are still read-only. Each mutation below already has a route and a
-passing contract test; what is missing is the control. That is the rest of 6.3,
-and it is why `apps/erp` cannot be deleted yet — it is still the only way to do
-most of this.
+Every ERP screen exists. **6.3a–c made the order book, the catalogue and the
+stockroom workable**; four screens are still read-only. Each mutation below
+already has a route and a passing contract test; what is missing is the control.
+That is the rest of 6.3, and it is why `apps/erp` cannot be deleted yet — it is
+still the only way to do these four.
 
-### Done — 6.3a and 6.3b
+### Done — 6.3a, 6.3b and 6.3c
 
 | Action | Route it calls | Screen |
 |---|---|---|
@@ -61,18 +61,28 @@ most of this.
 | Classify as fake | `POST orders/[id]/classify` | order detail |
 | Edit an order, reassign it | `PATCH orders/[id]` | order detail |
 | Bulk status / assign / delete | `POST orders/bulk` | order list |
+| Book / refresh a parcel | `POST orders/[id]/shipment`, `/refresh` | order detail |
+| Create / archive / restore a product | `POST products`, `DELETE`, `/unarchive` | products |
+| Adjust stock, add a lot | `POST products/[id]/inventory/adjust`, `/stock-lots` | inventory |
 
-### Remaining
+### Remaining — all of it is 6.3d
 
-| Slice | Action | Route it calls | Screen |
+| Action | Route it calls | Screen | Permission |
 |---|---|---|---|
-| **6.3c** | Book / refresh a parcel | `POST orders/[id]/shipment`, `/refresh` | order detail |
-| **6.3c** | Adjust stock, add a lot | `POST products/[id]/inventory/adjust`, `/stock-lots` | inventory |
-| **6.3c** | Create / archive a product | `POST products`, `DELETE products/[id]` | products |
-| **6.3d** | Configure a carrier | `POST/PUT carriers` | carriers |
-| **6.3d** | Save a P&L, add a charge | `POST financial-records`, `unexpected-charges` | finance |
-| **6.3d** | Pay rates, days off, suspend | `PATCH agents/[id]`, `/days-off`, `/suspend` | agents |
-| **6.3d** | Settings | `PUT settings` | new screen |
+| Configure a carrier, set the default, map statuses | `POST/PUT carriers`, `/default`, `/status-mappings` | carriers | `erp:shipments:write` |
+| Save a P&L, add / delete a one-off charge | `POST financial-records`, `unexpected-charges`, `DELETE …/[id]` | finance | `erp:finance:write` |
+| Pay rates, days off, suspend / reactivate | `PATCH agents/[id]`, `/days-off`, `/suspend`, `/reactivate` | agents | `erp:agents:manage` |
+| ERP settings | `PUT settings` | **new screen** | `erp:settings:write` |
+
+Two things 6.3d must get right, both already asserted by tests it must not break:
+
+- **A carrier's keys are never selected**, let alone rendered. The carriers
+  screen shows *that* credentials exist. The API masks them on read and
+  preserves the stored secret when the mask is sent back, so an edit form must
+  send the mask unchanged rather than a blank.
+- **A saved financial record has no delete or edit** — it is append-only and the
+  screen says so. A one-off charge *is* deletable. That asymmetry is the schema's
+  and `screens.test.ts` already asserts the absent control.
 
 ### The pattern 6.3a established — follow it
 

@@ -208,7 +208,29 @@
       "assign": "Affecter",
       "deleteSelected": "Supprimer",
       "outcome": "Modifiées",
-      "of": "sur"
+      "of": "sur",
+      "parcelPanel": "Colis",
+      "bookParcel": "Créer l'expédition",
+      "refreshParcel": "Interroger le transporteur",
+      "parcelHint": "Expédie avec le transporteur défini sur cette commande.",
+      "refreshHint": "Récupère ce que le transporteur signale. Peut être répété sans risque.",
+      "newProduct": "Nouveau produit",
+      "create": "Créer",
+      "archive": "Archiver",
+      "restore": "Restaurer",
+      "adjustPanel": "Corriger le stock",
+      "adjustHint": "Une correction enregistre un écart et un motif, jamais un nouveau total — casse, vol, erreur de comptage.",
+      "product": "Produit",
+      "allVariants": "Toutes les variantes",
+      "packaging": "Coût d'emballage",
+      "adjust": "Enregistrer la correction",
+      "lotPanel": "Réapprovisionner",
+      "lotHint": "Un achat crée son propre lot à son propre prix, et une vente consomme le plus ancien d'abord — c'est ce qui rend la marge affichée réelle.",
+      "mode": "Type",
+      "purchase": "Achat",
+      "restock": "Retour en stock",
+      "unitCost": "Coût unitaire",
+      "addLot": "Ajouter le stock"
     },
     "noteType": {
       "clientCalledBack": "Le client a rappelé",
@@ -283,6 +305,7 @@
       "forbiddenField": "Seul un responsable peut modifier cela.",
       "notFound": "Cet enregistrement n'existe plus. Rechargez la page.",
       "invalidInput": "Cette valeur n'a pas été acceptée.",
+      "noCarrier": "Aucun transporteur n'est défini sur cette commande, il n'y a donc rien à expédier.",
       "internal": "Une erreur est survenue. Rien n'a été enregistré."
     }
   }

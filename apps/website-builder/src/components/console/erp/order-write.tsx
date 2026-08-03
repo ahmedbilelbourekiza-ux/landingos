@@ -59,6 +59,11 @@ export interface OrderWriteStrings {
   readonly clearFake: string;
   readonly fakeReason: string;
   readonly fakeResponsible: string;
+  readonly parcelPanel: string;
+  readonly bookParcel: string;
+  readonly refreshParcel: string;
+  readonly parcelHint: string;
+  readonly refreshHint: string;
 }
 
 interface PanelProps {
@@ -193,6 +198,68 @@ export function EditPanel({
         >
           {s.save}
         </ActionButton>
+      </div>
+
+      <ActionError message={error} />
+    </section>
+  );
+}
+
+/* -----------------------------------------------------------------------------
+ * The parcel
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Book it, or ask the carrier where it is.
+ *
+ * A DIFFERENT PERMISSION from everything else on this screen:
+ * `erp:shipments:write`, not `erp:orders:write`. A confirmation agent logs calls
+ * and corrects their own orders and does not book parcels, so this panel is the
+ * one part of the write surface an agent does not get — decided by the
+ * permission the routes check rather than by any second opinion here.
+ *
+ * Only one of the two controls at a time. Booking is idempotent — a second call
+ * returns the existing shipment rather than a second parcel — so offering it
+ * again would not be dangerous, only a lie about what the button does.
+ */
+export function ParcelPanel({
+  orderId,
+  errors,
+  s,
+  hasShipment,
+}: PanelProps & { hasShipment: boolean }) {
+  const { run, pending, error } = useApiAction(errors);
+
+  return (
+    <section className="rounded-lg border border-border p-4" data-testid="erp-parcel-panel">
+      <h2 className="text-sm font-medium">{s.parcelPanel}</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {hasShipment ? s.refreshHint : s.parcelHint}
+      </p>
+
+      <div className="mt-3">
+        {hasShipment ? (
+          <ActionButton
+            data-testid="parcel-refresh"
+            pending={pending}
+            pendingLabel={s.saving}
+            onClick={() =>
+              void run("POST", `/api/erp/orders/${orderId}/shipment/refresh`)
+            }
+          >
+            {s.refreshParcel}
+          </ActionButton>
+        ) : (
+          <ActionButton
+            data-testid="parcel-book"
+            pending={pending}
+            pendingLabel={s.saving}
+            variant="primary"
+            onClick={() => void run("POST", `/api/erp/orders/${orderId}/shipment`)}
+          >
+            {s.bookParcel}
+          </ActionButton>
+        )}
       </div>
 
       <ActionError message={error} />

@@ -659,3 +659,154 @@ describe('the order list can act on many rows at once', () => {
     assert.ok(!/name="orderId"/.test(r.body), 'no control implies no selection');
   });
 });
+
+/* -----------------------------------------------------------------------------
+ * Phase 6.3c — the parcel, the catalogue and the stockroom
+ *
+ * Three surfaces, three DIFFERENT permissions — `erp:shipments:write`,
+ * `erp:products:write`, `erp:inventory:write` — none of which an ERP
+ * confirmation agent holds. That is the point of this block: the gate is the
+ * permission each ROUTE checks, not one blanket "may write" flag, and an agent
+ * who can work an order still must not book parcels or correct stock.
+ * -------------------------------------------------------------------------- */
+
+describe('the parcel can be booked from the order it belongs to', () => {
+  test('a manager gets the control; an agent does not', async () => {
+    const id = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Parcel Customer', phone: phone(), agentUserId: acme.agent.userId,
+    })).body.data.id as string;
+
+    const asManager = await html(`/console/erp/orders/${id}`, acme.manager.token);
+    assert.equal(asManager.status, 200);
+    assert.match(asManager.body, /data-testid="erp-parcel-panel"/);
+    assert.match(asManager.body, /data-testid="parcel-book"/, 'nothing booked yet');
+    assert.ok(!/data-testid="parcel-refresh"/.test(asManager.body), 'nothing to refresh');
+
+    // An agent holds erp:orders:write by explicit grant and NOT
+    // erp:shipments:write — which is the ERP's own split: a confirmation agent
+    // logs calls, they do not book parcels.
+    const asAgent = await html(`/console/erp/orders/${id}`, acme.agent.token);
+    assert.equal(asAgent.status, 200);
+    assert.match(asAgent.body, /data-testid="erp-call-panel"/, 'they can still work it');
+    assert.ok(!/data-testid="erp-parcel-panel"/.test(asAgent.body));
+
+    assert.equal(
+      (await acme.agent.api('POST', `/api/erp/orders/${id}/shipment`, {})).status,
+      403,
+      'and the API agrees with what they were not offered',
+    );
+  });
+
+  test('once a parcel exists the control becomes "ask the carrier"', async () => {
+    // Booking is idempotent — a second call returns the existing shipment — so
+    // offering it again would not be dangerous, only a lie about the button.
+    const carrierCode = `pc${uid()}`;
+    await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Parcel Carrier', code: carrierCode, adapter: 'mock',
+    });
+    const id = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Booked Customer', phone: phone(), carrierCode,
+    })).body.data.id as string;
+
+    const booked = await acme.manager.api('POST', `/api/erp/orders/${id}/shipment`, {});
+    assert.ok([200, 201].includes(booked.status), `booking answered ${booked.status}`);
+
+    const r = await html(`/console/erp/orders/${id}`, acme.manager.token);
+    assert.match(r.body, /data-testid="parcel-refresh"/);
+    assert.ok(!/data-testid="parcel-book"/.test(r.body));
+  });
+});
+
+describe('the catalogue can be added to and archived', () => {
+  test('a manager gets the create panel and a per-row archive control', async () => {
+    await acme.manager.api('POST', '/api/erp/products', {
+      name: `Archivable ${uid()}`, sku: `sku-${uid()}`, price: 1200, costPrice: 700,
+    });
+
+    const r = await html('/console/erp/products', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-product-create"/);
+    assert.match(r.body, /data-testid="product-archive"/);
+    // Archive, never delete. A product is referenced by every order that
+    // contained it and by its own ledger.
+    assert.ok(!/data-testid="product-delete"/.test(r.body));
+  });
+
+  test('the archived view offers restore instead, and no create', async () => {
+    const id = (await acme.manager.api('POST', '/api/erp/products', {
+      name: `Archived ${uid()}`,
+    })).body.data.id as string;
+    assert.equal((await acme.manager.api('DELETE', `/api/erp/products/${id}`)).status, 200);
+
+    const r = await html('/console/erp/products?archived=true', acme.manager.token);
+    assert.match(r.body, /data-testid="product-restore"/);
+    assert.ok(!/data-testid="product-archive"/.test(r.body));
+    assert.ok(
+      !/data-testid="erp-product-create"/.test(r.body),
+      'a new product would land somewhere invisible',
+    );
+  });
+
+  test('an agent gets neither, and the API refuses them too', async () => {
+    const r = await html('/console/erp/products', acme.agent.token);
+    assert.equal(r.status, 200, 'the catalogue is readable by role glob');
+    assert.ok(!/data-testid="erp-product-create"/.test(r.body));
+    assert.ok(!/data-testid="product-archive"/.test(r.body));
+
+    assert.equal(
+      (await acme.agent.api('POST', '/api/erp/products', { name: 'Nope' })).status,
+      403,
+    );
+  });
+});
+
+describe('stock moves by a delta and a reason, and the screen says so', () => {
+  before(async () => {
+    if (skip) return;
+    await acme.manager.api('POST', '/api/erp/products', {
+      name: `Stockable ${uid()}`, stock: 40, threshold: 5, costPrice: 600,
+    });
+  });
+
+  test('a manager gets both stockroom panels', async () => {
+    const r = await html('/console/erp/inventory', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-adjust-panel"/);
+    assert.match(r.body, /data-testid="erp-lot-panel"/);
+    assert.match(r.body, /id="adjust-product"/, 'and something to act on');
+  });
+
+  test('there is no way to type an absolute quantity', async () => {
+    // `POST /inventory/adjust` takes a DELTA and a REASON and offers no way to
+    // set a total, because "stock is 15" is not auditable and "20 → 15, five
+    // damaged, by this person" is. A box labelled "new quantity" would be a
+    // control the API cannot honour.
+    const r = await html('/console/erp/inventory', acme.manager.token);
+    assert.match(r.body, /id="adjust-delta"/);
+    assert.match(r.body, /id="adjust-reason"/);
+    assert.ok(!/id="adjust-total"|id="adjust-newQty"/.test(r.body));
+  });
+
+  test('the movement ledger still offers no edit', async () => {
+    // Append-only, and no such route exists.
+    const r = await html('/console/erp/inventory', acme.manager.token);
+    assert.match(r.body, /data-testid="erp-movements-table"/);
+    assert.ok(!/data-movement-edit/.test(r.body));
+  });
+
+  test('an agent gets no stockroom controls, and the API refuses them', async () => {
+    const r = await html('/console/erp/inventory', acme.agent.token);
+    assert.equal(r.status, 200);
+    assert.ok(!/data-testid="erp-adjust-panel"/.test(r.body));
+    assert.ok(!/data-testid="erp-lot-panel"/.test(r.body));
+
+    const product = (await acme.manager.api('GET', '/api/erp/products')).body.data.items[0];
+    assert.ok(product, 'fixture product missing');
+    assert.equal(
+      (await acme.agent.api('POST', `/api/erp/products/${product.id}/inventory/adjust`, {
+        delta: -1, reason: 'nope',
+      })).status,
+      403,
+    );
+  });
+});

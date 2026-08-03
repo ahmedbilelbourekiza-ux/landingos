@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 3 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.3b: editing, reassigning, bulk*
+**Branch:** `master` · **Last commit:** *Phase 6.3c: parcel, catalogue, stockroom*
 **Working tree:** clean, all work committed.
 
 ---
@@ -70,20 +70,20 @@ enumerates products — it reads a registry.
 
 ## Where we are
 
-**Phase 5 is complete; Phase 6.3b is done.** The ERP's backend runs entirely on
+**Phase 5 is complete; Phase 6.3c is done.** The ERP's backend runs entirely on
 the platform (235 contract tests), **every item in its navigation leads to a real
-screen** — eleven of them — and the order book can now be *worked*, not only
-read.
+screen** — eleven of them — and the order book, the catalogue and the stockroom
+can now be *worked*, not only read.
 
 **Phase 6.3 is the write surfaces, in four slices.** 6.3a landed the agent's
 working loop (start a call, log its result, add a note, classify an order as
 fake); 6.3b landed editing an order, reassigning it, and bulk status/assign/
-delete on the list. Still with no control: the parcel, inventory, products,
-carriers, finance, agents and settings — which is why `apps/erp` cannot be
-retired yet.
+delete; 6.3c landed the parcel, creating and archiving products, and stock
+corrections and restocking. Still with no control: **carriers, finance, agents
+and settings** — which is why `apps/erp` cannot be retired yet.
 
-**Exact stopping point:** committed and verified. The next task is **6.3c —
-the parcel, products and inventory**.
+**Exact stopping point:** committed and verified. The next task is **6.3d —
+carriers, finance, agents, and a settings screen**.
 
 ### How a write surface is built here (6.3)
 
@@ -96,9 +96,13 @@ Three decisions, made in 6.3a and binding on the rest:
   tested. The cost is that these controls need JavaScript.
 - **D-06.2.** A control is rendered only where the API would accept it, decided
   with the same function the route checks (`can`, `mayTouchOrder`,
-  `seesWholeBook`). Equally: never withhold a control the API *does* accept —
-  logging a result with no call-start is allowed and flagged, so the button
-  stays. Absence is stated on the page, not silent.
+  `seesWholeBook`) and with **the permission that route names** — the ERP write
+  surface spans five (`erp:orders:write`, `erp:shipments:write`,
+  `erp:products:write`, `erp:inventory:write`, plus `seesWholeBook` for
+  reassignment), and one blanket "may write" flag would be wrong for four of
+  them. Equally: never withhold a control the API *does* accept — logging a
+  result with no call-start is allowed and flagged, so the button stays. Absence
+  is stated on the page, not silent.
 - **D-06.3.** No optimistic UI. On success the router refreshes and the server
   component re-renders from the database; the control is busy until then.
 
@@ -189,6 +193,7 @@ stream and inbound carrier webhooks).
 | 6.2 | The remaining eight screens — every nav item leads somewhere, 31/31 |
 | 6.3a | The screens start writing — the call surface, 39/39 |
 | 6.3b | Editing, reassigning, and the list's bulk actions, 50/50 |
+| 6.3c | The parcel, the catalogue and the stockroom, 59/59 |
 
 ### Remaining roadmap
 
@@ -559,13 +564,13 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 285 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 294 | all pass against a running server |
 | `packages/auth` | 32 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **826** | green per suite |
+| **Total** | **835** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

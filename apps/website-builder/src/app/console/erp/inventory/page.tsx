@@ -1,9 +1,17 @@
 import { withTenant } from "@landingos/db";
+import { can } from "@landingos/auth";
 import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { actionErrors } from "@/lib/console/action-errors";
+import { catalogStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
+import {
+  StockAdjustPanel,
+  StockLotPanel,
+  type StockProduct,
+} from "@/components/console/erp/catalog-write";
 import { inventoryView } from "@/lib/erp/inventory";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +35,7 @@ export default async function ErpInventoryScreen() {
   const { session, locale: raw, t } = await requireProduct("erp", "/console/erp/inventory");
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
 
-  const { low, movements } = await withTenant(session.auth!.tenantId, async (db) => {
+  const { low, movements, stockProducts } = await withTenant(session.auth!.tenantId, async (db) => {
     const products = await db.catalogProduct.findMany({
       where: { archived: false },
       select: { id: true, reference: true, name: true, sku: true, stock: true, threshold: true, variants: true },
@@ -75,12 +83,36 @@ export default async function ErpInventoryScreen() {
       },
     });
 
-    return { low, movements };
+    // What the write panels can act on. Read from the SAME `products` the low
+    // stock scan already loaded — a second query would be a second answer to
+    // "which products exist", and the archived ones are excluded from both for
+    // the same reason: stock nobody sells cannot be corrected into usefulness.
+    const stockProducts: StockProduct[] = products
+      .map((p) => ({
+        id: p.id,
+        name: p.name ?? p.sku ?? p.reference ?? p.id,
+        variants: inventoryView(p).variants.map((v) => v.name),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return { low, movements, stockProducts };
   });
+
+  // Phase 6.3c. `erp:inventory:write` is what both stockroom routes check.
+  const mayWrite = can(session.auth!, "erp:inventory:write") && stockProducts.length > 0;
+  const errors = actionErrors(t);
+  const s = catalogStrings(t);
 
   return (
     <ConsoleShell session={session} productId="erp">
       <h1 className="text-xl font-semibold">{t("erp.inventory.title")}</h1>
+
+      {mayWrite && (
+        <>
+          <StockAdjustPanel errors={errors} s={s} products={stockProducts} />
+          <StockLotPanel errors={errors} s={s} products={stockProducts} />
+        </>
+      )}
 
       <h2 className="mt-6 text-sm font-medium">{t("erp.inventory.lowStock")}</h2>
       <DataTable

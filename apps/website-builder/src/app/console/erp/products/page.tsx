@@ -1,9 +1,17 @@
 import { withTenant } from "@landingos/db";
+import { can } from "@landingos/auth";
 import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
+import {
+  ProductCreatePanel,
+  ProductRowActions,
+  type CatalogStrings,
+} from "@/components/console/erp/catalog-write";
+import { catalogStrings } from "@/lib/console/erp-strings";
 import { inventoryView } from "@/lib/erp/inventory";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +54,12 @@ export default async function ErpProductsScreen({
 
   const currency = session.tenant!.currency;
 
+  // Phase 6.3c. `erp:products:write` is what both the create route and the
+  // archive route check, so it is what decides whether either control exists.
+  const mayWrite = can(session.auth!, "erp:products:write");
+  const errors = actionErrors(t);
+  const s: CatalogStrings = catalogStrings(t);
+
   return (
     <ConsoleShell session={session} productId="erp">
       <h1 className="text-xl font-semibold">
@@ -56,6 +70,10 @@ export default async function ErpProductsScreen({
           </span>
         )}
       </h1>
+
+      {/* Not on the archived view: creating a product from a list of things
+          nobody sells any more would put the new row somewhere invisible. */}
+      {mayWrite && !archived && <ProductCreatePanel errors={errors} s={s} />}
 
       <DataTable
         testId="erp-products-table"
@@ -132,6 +150,26 @@ export default async function ErpProductsScreen({
             align: "end",
             cell: (p) => inventoryView(p).variants.length,
           },
+          // Archive, never delete: a product is referenced by every order that
+          // contained it and by its own ledger. The archived view offers the
+          // other half rather than pretending the row is gone.
+          ...(mayWrite
+            ? [
+                {
+                  id: "actions",
+                  header: "",
+                  align: "end" as const,
+                  cell: (p: (typeof products)[number]) => (
+                    <ProductRowActions
+                      productId={p.id}
+                      archived={Boolean(p.archived)}
+                      errors={errors}
+                      s={s}
+                    />
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
     </ConsoleShell>

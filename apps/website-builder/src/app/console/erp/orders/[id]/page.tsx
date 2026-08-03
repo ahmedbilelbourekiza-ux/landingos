@@ -16,6 +16,7 @@ import {
   ClassifyPanel,
   EditPanel,
   ReassignPanel,
+  ParcelPanel,
   type OrderWriteStrings,
 } from "@/components/console/erp/order-write";
 import { editFingerprint, type EditField } from "@/components/console/edit-field";
@@ -135,6 +136,9 @@ export default async function ErpOrderDetail({
   // check it with. Reading this page needs `erp:orders:read`, which every
   // member holds by role glob; changing it needs a grant.
   const mayWrite = can(session.auth!, "erp:orders:write");
+  // A different permission, checked because the shipment routes check it. A
+  // confirmation agent logs calls and does not book parcels.
+  const mayShip = can(session.auth!, "erp:shipments:write");
 
   const managesBook = seesWholeBook(session);
 
@@ -164,6 +168,11 @@ export default async function ErpOrderDetail({
     clearFake: t("erp.write.clearFake"),
     fakeReason: t("erp.write.fakeReason"),
     fakeResponsible: t("erp.write.fakeResponsible"),
+    parcelPanel: t("erp.write.parcelPanel"),
+    bookParcel: t("erp.write.bookParcel"),
+    refreshParcel: t("erp.write.refreshParcel"),
+    parcelHint: t("erp.write.parcelHint"),
+    refreshHint: t("erp.write.refreshHint"),
   };
 
   // Straight from the module the routes validate against. `pending` is
@@ -422,16 +431,28 @@ export default async function ErpOrderDetail({
             </div>
           )}
         </div>
-      ) : (
+      ) : mayShip ? null : (
         // Absent, and SAID to be absent. A reader who can see the order but not
         // work it should learn that from the page rather than from a button
-        // that answers 403.
+        // that answers 403. Suppressed when the parcel panel below is offered,
+        // since "you cannot change this" beside a control would be wrong.
         <p
           data-testid="erp-order-readonly"
           className="mt-4 rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground"
         >
           {t("erp.write.readOnly")}
         </p>
+      )}
+
+      {mayShip && (
+        <div className="mt-4">
+          <ParcelPanel
+            orderId={order.id}
+            errors={errors}
+            s={writeStrings}
+            hasShipment={Boolean(shipment)}
+          />
+        </div>
       )}
 
       <section className="mt-4 rounded-lg border border-border p-4" data-testid="order-attempts">

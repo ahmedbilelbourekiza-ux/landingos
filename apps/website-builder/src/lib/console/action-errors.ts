@@ -40,6 +40,9 @@ const ERROR_KEYS: Record<string, string> = {
   INVALID_RESULT: "common.error.invalidInput",
   INVALID_NOTE_TYPE: "common.error.invalidInput",
   INVALID_CLASSIFICATION: "common.error.invalidInput",
+  // Its own message rather than the generic one, because this refusal names
+  // something the reader can go and fix: the order has no carrier to book with.
+  NO_CARRIER: "common.error.noCarrier",
   INTERNAL_ERROR: "common.error.internal",
   // Not from the server — the request never arrived. Worth its own wording
   // because "nothing was saved" is certain here and merely likely otherwise.
