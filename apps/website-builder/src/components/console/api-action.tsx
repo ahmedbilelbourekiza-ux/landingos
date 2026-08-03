@@ -41,8 +41,17 @@ export function useApiAction(errors: ActionErrors) {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, startTransition] = useTransition();
 
+  /**
+   * `data` comes back because some routes answer with something a person needs
+   * to read — `orders/bulk` reports per id, so forty-nine of fifty succeeding
+   * is a result, not a failure, and the caller has to be told which one did not.
+   */
   const run = useCallback(
-    async (method: string, path: string, body?: unknown): Promise<boolean> => {
+    async (
+      method: string,
+      path: string,
+      body?: unknown,
+    ): Promise<{ ok: boolean; data: unknown }> => {
       setSending(true);
       setError(null);
       try {
@@ -62,14 +71,14 @@ export function useApiAction(errors: ActionErrors) {
           // the failure mode this whole file exists to avoid.
           const code = String(envelope?.error?.code ?? "");
           setError(errors[code] ?? errors[FALLBACK]);
-          return false;
+          return { ok: false, data: null };
         }
 
         startTransition(() => router.refresh());
-        return true;
+        return { ok: true, data: envelope.data };
       } catch {
         setError(errors.NETWORK ?? errors[FALLBACK]);
-        return false;
+        return { ok: false, data: null };
       } finally {
         setSending(false);
       }

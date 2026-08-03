@@ -14,10 +14,13 @@ import {
   CallPanel,
   NotePanel,
   ClassifyPanel,
+  EditPanel,
+  ReassignPanel,
   type OrderWriteStrings,
 } from "@/components/console/erp/order-write";
+import { editFingerprint, type EditField } from "@/components/console/edit-field";
 import { mayTouchOrder, seesWholeBook } from "@/lib/erp/scope";
-import { CALL_RESULTS, NOTE_TYPES } from "@/lib/erp/orders";
+import { CALL_RESULTS, NOTE_TYPES, ORDER_STATUSES } from "@/lib/erp/orders";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +81,8 @@ export default async function ErpOrderDetail({
         // Phase 6.3: whether a call is running is the server's fact, and the
         // panel renders it rather than starting a timer of its own.
         pendingCallStart: true,
+        // 6.3b: the rest of what the edit form can write.
+        shippingNote: true, marketer: true, brand: true, expressDelivery: true,
       },
     });
     if (!order) return null;
@@ -91,6 +96,19 @@ export default async function ErpOrderDetail({
       },
     });
 
+    // Only for a caller who already sees the whole book. That is the same
+    // predicate `buildPatch` uses to decide whether reassignment is a 403, so
+    // the picker exists exactly where the write is allowed — and somebody who
+    // sees every order's `agentUserId` learns nothing new from a name beside it.
+    const members = seesWholeBook(session)
+      ? await db.membership.findMany({
+          orderBy: { createdAt: "asc" },
+          // Named fields, not `include: { user: true }`. SEC-02 arrived the
+          // first time by including a record that carried a password hash.
+          select: { userId: true, user: { select: { name: true, email: true } } },
+        })
+      : [];
+
     const shipment = await db.shipment.findFirst({
       where: { orderId: id },
       select: {
@@ -103,12 +121,12 @@ export default async function ErpOrderDetail({
       },
     });
 
-    return { order, calls, shipment };
+    return { order, calls, shipment, members };
   });
 
   if (!data || !mayTouchOrder(session, data.order)) notFound();
 
-  const { order, calls, shipment } = data;
+  const { order, calls, shipment, members } = data;
   const currency = session.tenant!.currency;
   const tone = resolveStatus("confirmation", order.status ?? "");
   const attempts = calls.filter((c) => c.result);
@@ -118,8 +136,17 @@ export default async function ErpOrderDetail({
   // member holds by role glob; changing it needs a grant.
   const mayWrite = can(session.auth!, "erp:orders:write");
 
+  const managesBook = seesWholeBook(session);
+
   const writeStrings: OrderWriteStrings = {
     saving: t("common.saving"),
+    save: t("common.save"),
+    editPanel: t("erp.write.editPanel"),
+    editManagerFields: t("erp.write.editManagerFields"),
+    reassignPanel: t("erp.write.reassignPanel"),
+    assignedAgent: t("erp.write.assignedAgent"),
+    followupAgent: t("erp.write.followupAgent"),
+    unassigned: t("erp.write.unassigned"),
     callPanel: t("erp.write.callPanel"),
     startCall: t("erp.write.startCall"),
     callRunning: t("erp.write.callRunning"),
@@ -152,6 +179,77 @@ export default async function ErpOrderDetail({
   }));
 
   const errors = actionErrors(t);
+
+  const statuses = ORDER_STATUSES.map((value) => ({
+    value,
+    label: t(resolveStatus("confirmation", value).labelKey),
+  }));
+
+  /* The edit form.
+   *
+   * The list mirrors AGENT_WRITABLE and MANAGER_WRITABLE in `lib/erp/orders.ts`
+   * — nothing here is offered that `buildPatch` would drop, and every
+   * manager-only field is withheld from an agent rather than dropped silently
+   * after they typed into it.
+   *
+   * Three writable fields carry no control on purpose. `deliveryMethod` is
+   * `'COD'` everywhere in the ERP and has no vocabulary, so a free-text box
+   * would invite writing a value nothing downstream understands. `lineItems` is
+   * a JSON document. `unitPrice`/`subtotal`/`discount`/`shippingCost` are the
+   * storefront's own arithmetic; offering them beside `price` would let the two
+   * disagree with nothing to reconcile them. */
+  const text = (name: string, label: string, value: unknown, manager = false): EditField => ({
+    name, label, value: value == null ? "" : String(value), kind: "text", manager,
+  });
+
+  const editFields: EditField[] = [
+    text("client", t("erp.orders.customer"), order.client),
+    text("phone", t("erp.clients.phone"), order.phone),
+    text("wilaya", t("erp.orders.wilaya"), order.wilaya),
+    text("commune", t("erp.orders.commune"), order.commune),
+    text("city", t("erp.orders.city"), order.city),
+    text("product", t("erp.orders.product"), order.product),
+    text("productVariant", t("erp.orders.variant"), order.productVariant),
+    {
+      name: "quantity", label: t("erp.orders.quantity"),
+      value: String(order.quantity ?? 1), kind: "number",
+    },
+    {
+      name: "status", label: t("erp.orders.status"),
+      value: order.status ?? "", kind: "select", options: statuses,
+    },
+    {
+      name: "expressDelivery", label: t("erp.orders.express"),
+      value: String(Boolean(order.expressDelivery)), kind: "checkbox",
+    },
+    { name: "note", label: t("erp.order.note"), value: order.note ?? "", kind: "textarea" },
+    {
+      name: "shippingNote", label: t("erp.order.shippingNote"),
+      value: order.shippingNote ?? "", kind: "textarea",
+    },
+    ...(managesBook
+      ? ([
+          {
+            // Money as text with a decimal keypad, never `type="number"`: a
+            // number input hands back a JS float and this column is Decimal
+            // precisely so money never touches binary floating point (M-06).
+            name: "price", label: t("erp.orders.total"),
+            value: order.price?.toString() ?? "", kind: "money", manager: true,
+          },
+          text("marketer", t("erp.orders.marketer"), order.marketer, true),
+          text("brand", t("erp.orders.brand"), order.brand, true),
+          {
+            name: "managerNote", label: t("erp.order.managerNote"),
+            value: order.managerNote ?? "", kind: "textarea", manager: true,
+          },
+        ] satisfies EditField[])
+      : []),
+  ];
+
+  const memberOptions = members.map((m) => ({
+    value: m.userId,
+    label: m.user.name || m.user.email,
+  }));
 
   return (
     <ConsoleShell session={session} productId="erp">
@@ -290,6 +388,39 @@ export default async function ErpOrderDetail({
               isFake={order.classification === "fake"}
             />
           </div>
+
+          <div className="lg:col-span-2">
+            {/* Keyed on what the server holds, so a refresh that changed a
+                value remounts the form on the server's answer — `buildPatch`
+                normalises a phone number, and the box must not go on showing
+                what was typed. See editFingerprint. */}
+            <EditPanel
+              key={editFingerprint(editFields)}
+              orderId={order.id}
+              errors={errors}
+              s={writeStrings}
+              fields={editFields}
+            />
+          </div>
+
+          {/* Only where `buildPatch` would allow it. For anyone else the field
+              is a loud 403 with FORBIDDEN_FIELD — deliberately loud, because
+              silently dropping it would let an agent believe they had picked up
+              work — and the way to keep that refusal unreachable from the
+              screen is to not offer the control. */}
+          {managesBook && (
+            <div>
+              <ReassignPanel
+                key={`${order.agentUserId ?? ""}/${order.followupUserId ?? ""}`}
+                orderId={order.id}
+                errors={errors}
+                s={writeStrings}
+                members={memberOptions}
+                currentAgentUserId={order.agentUserId ?? ""}
+                currentFollowupUserId={order.followupUserId ?? ""}
+              />
+            </div>
+          )}
         </div>
       ) : (
         // Absent, and SAID to be absent. A reader who can see the order but not

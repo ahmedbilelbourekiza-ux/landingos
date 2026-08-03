@@ -1,14 +1,17 @@
 import Link from "next/link";
 
 import { withTenant } from "@landingos/db";
+import { can } from "@landingos/auth";
 import { resolveStatus, toneVars } from "@landingos/ui";
 import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable, StatusPill } from "@/components/console/data-table";
-import { scopedWhere } from "@/lib/erp/scope";
-import { orderFilters, orderSort, ORDER_LIST_SELECT } from "@/lib/erp/orders";
+import { OrderBulkBar, type BulkStrings } from "@/components/console/erp/order-bulk";
+import { scopedWhere, seesWholeBook } from "@/lib/erp/scope";
+import { orderFilters, orderSort, ORDER_LIST_SELECT, ORDER_STATUSES } from "@/lib/erp/orders";
 
 export const dynamic = "force-dynamic";
 
@@ -46,28 +49,74 @@ export default async function ErpOrdersScreen({
     if (typeof v === "string") params.set(k, v);
   }
 
-  const orders = await withTenant(session.auth!.tenantId, (db) =>
-    db.fulfillmentOrder.findMany({
+  const managesBook = seesWholeBook(session);
+
+  const { orders, members } = await withTenant(session.auth!.tenantId, async (db) => ({
+    orders: await db.fulfillmentOrder.findMany({
       where: scopedWhere(session, orderFilters(params)),
       orderBy: orderSort(params.get("sort"), params.get("dir")),
       take: PAGE_SIZE,
       select: ORDER_LIST_SELECT,
     }),
-  );
+    // Same rule as the order detail: only for a caller who already sees the
+    // whole book, because assigning in bulk is refused for anybody else.
+    members: managesBook
+      ? await db.membership.findMany({
+          orderBy: { createdAt: "asc" },
+          select: { userId: true, user: { select: { name: true, email: true } } },
+        })
+      : [],
+  }));
 
   const currency = session.tenant!.currency;
 
-  return (
-    <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.orders.title")}</h1>
+  // Phase 6.3b. `erp:orders:write` is what `POST /orders/bulk` checks, so it is
+  // what decides whether the bar exists at all — a MEMBER reads the book by
+  // role glob and cannot change a row in it.
+  const mayWrite = can(session.auth!, "erp:orders:write");
 
-      <DataTable
+  const bulkStrings: BulkStrings = {
+    saving: t("common.saving"),
+    selected: t("erp.write.selected"),
+    changeStatus: t("erp.write.changeStatus"),
+    apply: t("erp.write.apply"),
+    assignTo: t("erp.write.assignTo"),
+    assign: t("erp.write.assign"),
+    deleteSelected: t("erp.write.deleteSelected"),
+    outcome: t("erp.write.outcome"),
+    of: t("erp.write.of"),
+  };
+
+  const table = (
+    <DataTable
         testId="erp-orders-table"
         empty={t("erp.orders.noneYet")}
         rows={orders}
         rowKey={(o) => o.id}
         rowAttrs={(o) => ({ "data-order-id": o.id })}
         columns={[
+          // The selection lives in the DOM as a plain checkbox, which is what
+          // HTML already has for choosing several rows. It keeps this table a
+          // SERVER component — the filter, the scope and the page all stay in
+          // the query (PERF-02) — and there is no second copy of what is ticked
+          // to drift from what is on screen.
+          ...(mayWrite
+            ? [
+                {
+                  id: "select",
+                  header: "",
+                  cell: (o: (typeof orders)[number]) => (
+                    <input
+                      type="checkbox"
+                      name="orderId"
+                      value={o.id}
+                      aria-label={o.reference ?? o.id}
+                      className="h-4 w-4 rounded border-input"
+                    />
+                  ),
+                },
+              ]
+            : []),
           {
             id: "reference",
             header: t("erp.orders.reference"),
@@ -151,6 +200,31 @@ export default async function ErpOrdersScreen({
           },
         ]}
       />
+  );
+
+  return (
+    <ConsoleShell session={session} productId="erp">
+      <h1 className="text-xl font-semibold">{t("erp.orders.title")}</h1>
+
+      {mayWrite ? (
+        <OrderBulkBar
+          errors={actionErrors(t)}
+          s={bulkStrings}
+          statuses={ORDER_STATUSES.map((value) => ({
+            value,
+            label: t(resolveStatus("confirmation", value).labelKey),
+          }))}
+          members={members.map((m) => ({
+            value: m.userId,
+            label: m.user.name || m.user.email,
+          }))}
+          managesBook={managesBook}
+        >
+          {table}
+        </OrderBulkBar>
+      ) : (
+        table
+      )}
     </ConsoleShell>
   );
 }

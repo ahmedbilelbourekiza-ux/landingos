@@ -482,3 +482,180 @@ describe('the order detail can be worked, not only read', () => {
     assert.match(marked.body, /data-testid="order-fake"/, 'and the badge agrees');
   });
 });
+
+/* -----------------------------------------------------------------------------
+ * Phase 6.3b — editing, reassigning, and the list's bulk actions
+ *
+ * The theme of this block is the SPLIT: `buildPatch` writes some fields for
+ * anybody who may touch the order and others only for a manager, and refuses
+ * reassignment LOUDLY rather than dropping it. Every one of those distinctions
+ * has to be visible on the screen, or an agent types into a box whose value is
+ * silently discarded.
+ * -------------------------------------------------------------------------- */
+
+describe('an order can be edited, and only where the API allows it', () => {
+  let owned = '';
+
+  const newOrder = async (body: Record<string, unknown> = {}) =>
+    (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Edit Customer', phone: phone(), price: 5500, product: 'Edit Widget',
+      wilaya: 'Alger', commune: 'Bab Ezzouar', ...body,
+    })).body.data.id as string;
+
+  before(async () => {
+    if (skip) return;
+    owned = await newOrder({ agentUserId: acme.agent.userId });
+  });
+
+  test('an agent gets the fields they may write and none of the ones they may not', async () => {
+    const r = await html(`/console/erp/orders/${owned}`, acme.agent.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-edit-panel"/);
+
+    // AGENT_WRITABLE: correcting the address on your own order is the job.
+    for (const field of ['client', 'phone', 'wilaya', 'commune', 'city', 'product', 'quantity']) {
+      assert.match(r.body, new RegExp(`id="edit-${field}"`), `no control for "${field}"`);
+    }
+
+    // MANAGER_WRITABLE: `price` is what payroll and the profit calculator are
+    // computed from. `buildPatch` DROPS it silently for an agent, so a box they
+    // could type into would swallow the change without a word.
+    for (const field of ['price', 'managerNote', 'marketer', 'brand']) {
+      assert.ok(
+        !new RegExp(`id="edit-${field}"`).test(r.body),
+        `an agent was offered the manager-only field "${field}"`,
+      );
+    }
+  });
+
+  test('and a manager gets both halves', async () => {
+    const r = await html(`/console/erp/orders/${owned}`, acme.manager.token);
+    assert.match(r.body, /id="edit-client"/);
+    assert.match(r.body, /id="edit-price"/);
+    assert.match(r.body, /id="edit-managerNote"/);
+  });
+
+  test('money is never a number input', async () => {
+    // A number input hands back a JS float, and 37 columns are Decimal
+    // precisely so money never touches binary floating point (M-06). The last
+    // place that guarantee can be lost is the box a person types into.
+    const r = await html(`/console/erp/orders/${owned}`, acme.manager.token);
+    const priceInput = r.body.match(/<input[^>]*id="edit-price"[^>]*>/)?.[0] ?? '';
+    assert.notEqual(priceInput, '', 'no price control found');
+    assert.ok(!/type="number"/.test(priceInput), `price rendered as ${priceInput}`);
+    assert.match(priceInput, /inputmode="decimal"/i);
+  });
+
+  test('an agent gets no reassign control, and the API would refuse it anyway', async () => {
+    const r = await html(`/console/erp/orders/${owned}`, acme.agent.token);
+    assert.ok(!/data-testid="erp-reassign-panel"/.test(r.body));
+
+    // Reassignment is the ONE field refused loudly rather than dropped, so that
+    // an agent cannot believe they picked up work. Keeping the control off the
+    // screen is what stops a person ever meeting that 403.
+    const refused = await acme.agent.api('PATCH', `/api/erp/orders/${owned}`, {
+      agentUserId: acme.other.userId,
+    });
+    assert.equal(refused.status, 403);
+    assert.equal(refused.body.error.code, 'FORBIDDEN_FIELD');
+  });
+
+  test('a manager gets the picker, listing this tenant’s people and no others', async () => {
+    const r = await html(`/console/erp/orders/${owned}`, acme.manager.token);
+    assert.match(r.body, /data-testid="erp-reassign-panel"/);
+    assert.match(r.body, /id="agentUserId"/);
+    assert.match(r.body, /id="followupUserId"/);
+
+    for (const userId of [acme.agent.userId, acme.other.userId, acme.manager.userId]) {
+      assert.ok(r.body.includes(userId), `the picker is missing ${userId}`);
+    }
+
+    // A membership is tenant-scoped and the binding is what enforces it, so a
+    // second tenant's people cannot appear — asserted rather than assumed,
+    // because this is the one screen that lists PEOPLE.
+    const beta = await makeErpTenant('reassign-beta');
+    const fresh = await html(`/console/erp/orders/${owned}`, acme.manager.token);
+    assert.ok(
+      !fresh.body.includes(beta.agent.userId),
+      "another tenant's member appeared in the picker",
+    );
+  });
+
+  test('the form re-renders on what the server stored, not on what was typed', async () => {
+    // `buildPatch` NORMALISES a phone number, because that value is the Client
+    // dedup key and `+213 555 12 34 56` must be the same customer as
+    // `0555123456`. So a PATCH does not always store what was sent — and the
+    // box has to show the stored form afterwards, or the screen is quietly
+    // lying about the field a customer record is keyed on.
+    const id = await newOrder({ agentUserId: acme.agent.userId });
+    const typed = '+213 555 12 34 56';
+
+    const r = await acme.manager.api('PATCH', `/api/erp/orders/${id}`, { phone: typed });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.phone, '0555123456', 'the server normalised it');
+
+    const screen = await html(`/console/erp/orders/${id}`, acme.manager.token);
+    const input = screen.body.match(/<input[^>]*id="edit-phone"[^>]*>/)?.[0] ?? '';
+    assert.match(input, /value="0555123456"/, `the form shows ${input}`);
+    assert.ok(!input.includes(typed), 'it must not still show the typed form');
+  });
+
+  test('no password material reaches the picker (SEC-02)', async () => {
+    const r = await html(`/console/erp/orders/${owned}`, acme.manager.token);
+    assert.ok(!r.body.includes('passwordHash'), 'not even the field name');
+    assert.ok(!/\$argon2|scrypt\$|\$2[aby]\$/.test(r.body), 'and no hash of any generation');
+  });
+});
+
+describe('the order list can act on many rows at once', () => {
+  test('a writer gets the bar and a checkbox per row', async () => {
+    const r = await html('/console/erp/orders', acme.agent.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-bulk-bar"/);
+    assert.match(r.body, /name="orderId"/, 'the selection is a form, not client state');
+    assert.match(r.body, /data-testid="erp-orders-table"/, 'and the table is still rendered');
+  });
+
+  test('status is offered to any writer; assign and delete are not', async () => {
+    // `POST /orders/bulk` refuses `delete` and `assign` for anyone
+    // `seesWholeBook` is false for, and says so explicitly.
+    const asAgent = await html('/console/erp/orders', acme.agent.token);
+    assert.match(asAgent.body, /data-testid="bulk-status-apply"/);
+    assert.ok(!/data-testid="bulk-delete"/.test(asAgent.body));
+    assert.ok(!/data-testid="bulk-assign-apply"/.test(asAgent.body));
+
+    const asManager = await html('/console/erp/orders', acme.manager.token);
+    assert.match(asManager.body, /data-testid="bulk-status-apply"/);
+    assert.match(asManager.body, /data-testid="bulk-delete"/);
+    assert.match(asManager.body, /data-testid="bulk-assign-apply"/);
+  });
+
+  test('and the API agrees with what each of them was offered', async () => {
+    const id = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Bulk Customer', phone: phone(), agentUserId: acme.agent.userId,
+    })).body.data.id as string;
+
+    assert.equal(
+      (await acme.agent.api('POST', '/api/erp/orders/bulk', {
+        ids: [id], action: 'status', value: 'callback',
+      })).status,
+      200,
+      'the agent was offered a status change and the API refused it',
+    );
+    assert.equal(
+      (await acme.agent.api('POST', '/api/erp/orders/bulk', {
+        ids: [id], action: 'delete',
+      })).status,
+      403,
+      'the agent was not offered delete, and this is why',
+    );
+  });
+
+  test('a reader without erp:orders:write gets no bar and no checkboxes', async () => {
+    const reader = await makeMember(acme.tenantId, { role: 'MEMBER' });
+    const r = await html('/console/erp/orders', reader.token);
+    assert.equal(r.status, 200, 'they can still read the list');
+    assert.ok(!/data-testid="erp-bulk-bar"/.test(r.body));
+    assert.ok(!/name="orderId"/.test(r.body), 'no control implies no selection');
+  });
+});

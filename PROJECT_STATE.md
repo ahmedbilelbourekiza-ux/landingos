@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 3 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.3a: the screens start writing*
+**Branch:** `master` · **Last commit:** *Phase 6.3b: editing, reassigning, bulk*
 **Working tree:** clean, all work committed.
 
 ---
@@ -70,19 +70,20 @@ enumerates products — it reads a registry.
 
 ## Where we are
 
-**Phase 5 is complete; Phase 6.3a is done.** The ERP's backend runs entirely on
+**Phase 5 is complete; Phase 6.3b is done.** The ERP's backend runs entirely on
 the platform (235 contract tests), **every item in its navigation leads to a real
-screen** — eleven of them — and the order detail can now be *worked*, not only
+screen** — eleven of them — and the order book can now be *worked*, not only
 read.
 
 **Phase 6.3 is the write surfaces, in four slices.** 6.3a landed the agent's
-working loop: start a call, log its result, add a note, classify an order as
-fake. The rest of the mutations still have no control — editing an order,
-reassigning it, bulk actions, the parcel, inventory, products, carriers,
-finance, agents and settings — which is why `apps/erp` cannot be retired yet.
+working loop (start a call, log its result, add a note, classify an order as
+fake); 6.3b landed editing an order, reassigning it, and bulk status/assign/
+delete on the list. Still with no control: the parcel, inventory, products,
+carriers, finance, agents and settings — which is why `apps/erp` cannot be
+retired yet.
 
-**Exact stopping point:** committed and verified. The next task is **6.3b —
-editing an order, reassigning it, and bulk status on the list**.
+**Exact stopping point:** committed and verified. The next task is **6.3c —
+the parcel, products and inventory**.
 
 ### How a write surface is built here (6.3)
 
@@ -102,8 +103,15 @@ Three decisions, made in 6.3a and binding on the rest:
   component re-renders from the database; the control is busy until then.
 
 Client components take **translated strings and vocabularies as props** and hold
-neither. `lib/console/action-errors.ts` maps the envelope's `code` to an i18n
-key, because the API's `message` is English written for a log.
+neither. Two modules carry no directive and are imported from both sides —
+`lib/console/action-errors.ts` (envelope `code` → i18n key, because the API's
+`message` is English written for a log) and `components/console/edit-field.ts`
+(the field descriptor and `editFingerprint`).
+
+**A value exported from a `"use client"` module is not callable on the server.**
+It is a client reference, and calling it throws at runtime while the build
+succeeds — which is how the order detail spent a cycle answering 500 in 6.3b.
+Anything both sides need goes in a directive-free module.
 
 ### Sequencing note
 
@@ -180,6 +188,7 @@ stream and inbound carrier webhooks).
 | 6.1 | The ERP's first real screens — overview, orders, order detail |
 | 6.2 | The remaining eight screens — every nav item leads somewhere, 31/31 |
 | 6.3a | The screens start writing — the call surface, 39/39 |
+| 6.3b | Editing, reassigning, and the list's bulk actions, 50/50 |
 
 ### Remaining roadmap
 
@@ -450,10 +459,17 @@ middleware and the pre-tenant Prisma client were all deleted in `82dacc9`.
 ## Known bugs and limitations
 
 1. **Full-workspace `npm test` is intermittently red.** Always
-   `Can't reach database server` against the free-tier Neon instance when
-   several suites run back to back. **Every suite passes reliably alone.** Root
-   causes already fixed: wrong endpoint, tiny pools, tight transaction timeout.
-   The residue is capacity. A paid instance or a local Postgres would remove it.
+   `Can't reach database server` (`P1001`) against the free-tier Neon instance
+   when several suites run back to back. **Every suite passes reliably alone.**
+   Root causes already fixed: wrong endpoint, tiny pools, tight transaction
+   timeout. The residue is capacity. A paid instance or a local Postgres would
+   remove it.
+
+   Observed repeatedly in 6.3 and worth knowing: **the first run right after
+   `builder:start` is the likeliest to trip it**, because the freshly started
+   server and the test process open their pools at the same moment. It also
+   surfaces as a **500 from a screen**, not only as a test-harness error — check
+   the server log for `P1001` before believing a page has regressed.
 2. **Uploads fall back to local disk** when R2 is unconfigured — reported by
    `/api/health` as `local disk (not durable)`. On an ephemeral host, images
    vanish on restart.
@@ -543,13 +559,13 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 274 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 285 | all pass against a running server |
 | `packages/auth` | 32 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **815** | green per suite |
+| **Total** | **826** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

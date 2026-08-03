@@ -12,6 +12,112 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.3b Editing an order, reassigning it, and acting on many at once
+
+The second write slice. `screens.test.ts` goes 39 → **50/50**.
+
+#### The theme is the split, made visible
+
+`buildPatch` writes some fields for anyone who may touch the order and others
+only for a manager, and it refuses reassignment **loudly** rather than dropping
+it. Every one of those distinctions now shows on the screen, because the
+alternative is an agent typing into a box whose value is silently discarded:
+
+- An agent's edit form carries the AGENT_WRITABLE fields — correcting the
+  address on your own order is the job. `price`, `managerNote`, `marketer` and
+  `brand` are **absent**, not disabled. `price` is what payroll and the profit
+  calculator are computed from.
+- The manager's form carries both halves, with the second captioned rather than
+  merely present.
+- **Reassignment is offered only where `seesWholeBook` is true** — the same
+  predicate `buildPatch` uses to decide that 403. Keeping the control off the
+  screen is what stops anyone meeting a refusal that exists so an agent cannot
+  believe they picked up work. The test asserts both: no panel, and a 403 with
+  `FORBIDDEN_FIELD` for the same person.
+
+Three writable fields carry no control on purpose. `deliveryMethod` is `'COD'`
+everywhere in the ERP and has no vocabulary, so a free-text box would invite
+writing a value nothing downstream understands — a worse failure than no
+control. `lineItems` is a JSON document. `unitPrice`/`subtotal`/`discount`/
+`shippingCost` are the storefront's own arithmetic, and offering them beside
+`price` would let the two disagree with nothing to reconcile them.
+
+#### Money is never a `type="number"` input
+
+A number input hands back a JS float, and 37 columns are `Decimal` precisely so
+money never touches binary floating point (M-06). The last place that guarantee
+can be lost is the box a person types into, so `price` is a text input with
+`inputmode="decimal"`, and a test reads the rendered tag to prove it.
+
+#### D-06.3, where it stops being a slogan
+
+`PATCH` does not always store what was typed: `buildPatch` **normalises a phone
+number**, because that value is the `Client` dedup key and `+213 555 12 34 56`
+has to be the same customer as `0555123456`. Without a remount the box would go
+on showing the typed form while the database held the normalised one — the
+screen quietly lying about the field a customer record is keyed on.
+
+The panel is therefore keyed on a fingerprint of the server's values. Derived
+from the values rather than from `updatedAt` on purpose: an unrelated write — a
+call logged in the panel above — bumps the timestamp, and remounting on that
+would discard whatever somebody was halfway through typing.
+
+#### The bulk selection is a form, not client state
+
+The order list stays a **server** component and is passed to the bar as
+`children`; the checkboxes are plain inputs read with `FormData`. The filter,
+the scope and the page all stay in the query (PERF-02), and there is no second
+copy of what is ticked to drift from what is on screen.
+
+`POST /orders/bulk` refuses `delete` and `assign` for anyone `seesWholeBook` is
+false for, so an agent is offered only the status change — asserted both by the
+absent controls and by a 403 from the API for the action they were not offered.
+The outcome is shown as a **count**, because the route reports per id: 49 of 50
+is a result, not a failure, and the one that did not move is what a person needs.
+
+#### A green build proving nothing, for the third time
+
+`editFingerprint` first lived beside the component in the `"use client"` module.
+A plain function exported from a client module is **not a function on the
+server** — it is a client reference. The build succeeded and every request to
+the order detail answered 500. It now lives in `components/console/edit-field.ts`
+with no directive, imported from both sides, the same shape `action-errors.ts`
+already had for the same reason.
+
+#### The reassign picker, and what it is allowed to know
+
+It lists memberships read inside the tenant binding, gated on `seesWholeBook` —
+somebody who already sees every order's `agentUserId` learns nothing new from a
+name beside it, and gating on `erp:agents:manage` instead would offer the
+control to the wrong set of people in both directions. The select names its
+fields rather than including the user record, which is how a password hash
+arrived on a screen the first time (SEC-02); a test asserts no hash of any
+generation appears, and another asserts a second tenant's people cannot.
+
+#### i18n
+26 more keys in all three catalogues — the edit form, assignment, and the bulk
+bar.
+
+#### Files
+`apps/website-builder/src/components/console/edit-field.ts` (new),
+`src/components/console/erp/order-bulk.tsx` (new),
+`src/components/console/erp/order-write.tsx`,
+`src/components/console/api-action.tsx` (`run` now returns the response data),
+`src/app/console/erp/orders/{page,[id]/page}.tsx`,
+`packages/i18n/src/messages/{en,fr,ar}.json`, `test/erp/screens.test.ts`.
+
+#### Migration
+None.
+
+#### Risk
+The parcel, inventory, products, carriers, finance, agents and settings still
+have no controls — 6.3c and 6.3d. `apps/erp` remains the only way to do those.
+
+**Verified live:** screens 50/50 · access 62/62 · listing 25/25 ·
+validation 29/29 · console-shell 13/13 · i18n 18/18.
+
+---
+
 ### 6.3a The screens start writing — the call surface
 
 Every ERP screen was read-only: each mutation had a route and a passing contract

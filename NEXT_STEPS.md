@@ -1,7 +1,7 @@
 # Next Steps
 
-**Phase 5 is complete; Phase 6.3a is done.** Immediate tasks to continue from
-the Phase 6.3a commit. Full context is in `PROJECT_STATE.md` — read its "Read
+**Phase 5 is complete; Phase 6.3b is done.** Immediate tasks to continue from
+the Phase 6.3b commit. Full context is in `PROJECT_STATE.md` — read its "Read
 this first" section before starting.
 
 ---
@@ -38,33 +38,34 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **274/274** across the nine files: access 62 · orders 38 ·
+Expect **285/285** across the nine files: access 62 · orders 38 ·
 validation 29 · listing 25 · catalog 31 · delivery 20 · integrations 22 ·
-order-split 8 · screens 39.
+order-split 8 · screens 50.
 
 ---
 
 ## 1. Phase 6.3 — the write surfaces
 
-Every ERP screen exists. **6.3a made the order detail workable**; the rest are
-still read-only. Each mutation below already has a route and a passing contract
-test; what is missing is the control. That is the rest of 6.3, and it is why
-`apps/erp` cannot be deleted yet — it is still the only way to do most of this.
+Every ERP screen exists. **6.3a and 6.3b made the order book workable**; the
+other screens are still read-only. Each mutation below already has a route and a
+passing contract test; what is missing is the control. That is the rest of 6.3,
+and it is why `apps/erp` cannot be deleted yet — it is still the only way to do
+most of this.
 
-### Done — 6.3a
+### Done — 6.3a and 6.3b
 
 | Action | Route it calls | Screen |
 |---|---|---|
 | Start a call, log its result | `POST orders/[id]/call-start`, `/call` | order detail |
 | Add a note | `POST orders/[id]/note` | order detail |
 | Classify as fake | `POST orders/[id]/classify` | order detail |
+| Edit an order, reassign it | `PATCH orders/[id]` | order detail |
+| Bulk status / assign / delete | `POST orders/bulk` | order list |
 
 ### Remaining
 
 | Slice | Action | Route it calls | Screen |
 |---|---|---|---|
-| **6.3b** | Edit an order, reassign it | `PATCH orders/[id]` | order detail |
-| **6.3b** | Bulk status change | `POST orders/bulk` | order list |
 | **6.3c** | Book / refresh a parcel | `POST orders/[id]/shipment`, `/refresh` | order detail |
 | **6.3c** | Adjust stock, add a lot | `POST products/[id]/inventory/adjust`, `/stock-lots` | inventory |
 | **6.3c** | Create / archive a product | `POST products`, `DELETE products/[id]` | products |
@@ -76,8 +77,13 @@ test; what is missing is the control. That is the rest of 6.3, and it is why
 ### The pattern 6.3a established — follow it
 
 The write primitive is `src/components/console/api-action.tsx`
-(`useApiAction`, `ActionError`, `ActionButton`) and the worked example is
-`src/components/console/erp/order-write.tsx`.
+(`useApiAction`, `ActionError`, `ActionButton`); the field descriptor and
+`editFingerprint` are in `src/components/console/edit-field.ts`; the worked
+examples are `src/components/console/erp/{order-write,order-bulk}.tsx`.
+
+**Anything both sides need goes in a directive-free module.** A value exported
+from a `"use client"` module is a client reference on the server, and calling it
+throws at runtime while the build succeeds — that cost a cycle in 6.3b.
 
 - **D-06.1. A control calls the API route.** No server actions for product
   writes. A server action is a second write path needing its own copy of the
@@ -101,6 +107,14 @@ The write primitive is `src/components/console/api-action.tsx`
 - **Test the control surface both ways.** The offered set must equal what the
   API accepts, and each offered value must then be exercised for real. That is
   how 6.3a found `tentative1/2/3` missing from the status registry.
+- **A form that a write can change must be keyed on the server's values**, so a
+  refresh remounts it on what was stored. `buildPatch` normalises a phone
+  number; without the key the box goes on showing what was typed.
+- **Money is a text input with `inputmode="decimal"`, never `type="number"`** —
+  a number input hands back a JS float and these columns are `Decimal` (M-06).
+- **Leave a field off rather than guess its vocabulary.** `deliveryMethod` is
+  `'COD'` everywhere and has no options, so a free-text box would write values
+  nothing downstream understands.
 
 ---
 
