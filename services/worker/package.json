@@ -1,0 +1,12 @@
+{
+  "name": "@landingos/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "M-15 — the scheduler. Calls the platform's job tick on an interval; holds no business logic and no database connection.",
+  "main": "./src/index.ts",
+  "scripts": {
+    "start": "node src/index.ts"
+  },
+  "engines": { "node": ">=22.6" }
+}

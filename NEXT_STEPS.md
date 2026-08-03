@@ -38,9 +38,9 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **345/345** across the nine files: access 63 · orders 38 ·
+Expect **359/359** across the TEN files: access 63 · orders 38 ·
 validation 29 · listing 25 · catalog 31 · delivery 26 · integrations 29 ·
-order-split 8 · screens 96.
+order-split 8 · screens 96 · jobs 14.
 
 ---
 
@@ -179,26 +179,39 @@ behind the `followupAutoAssign` setting. Tasks are raised unassigned instead,
 which `loadOwnedFollowupTask` treats as work anybody may pick up. Graceful, but
 it is a behaviour difference.
 
-### (2) THE REMAINING BLOCKER — nothing runs on a schedule (M-15)
+### (2) DONE in 6.5b — M-15, the scheduled work
 
-The platform has **no** `setInterval`, cron or worker. The ERP's jobs loop does
-four things nothing here does:
+`src/lib/erp/jobs.ts` holds follow-up escalation and the overdue sweep, both
+**idempotent by column guard** rather than by lock, each driven twice by a test
+that asserts the second pass changes nothing. Two ways to run them:
 
-- escalate an open follow-up task to `overdue` (`escalateOverdue`);
-- flag an order overdue past `alertMinutes`;
-- auto-reassign and auto-suspend against `missedOrders`;
-- poll carriers for tracking.
+- `POST /api/erp/jobs/[job]` — `erp:settings:write`, the caller's own tenant.
+  A manager's "run it now", and what makes any of this contract-testable: a
+  timer is not something a test can wait for.
+- `POST /api/jobs/tick` — `WORKER_SECRET`, every entitled tenant. **Fails
+  closed with 404**, not 401. `services/worker` calls it on an interval and
+  holds no business logic and no database connection.
 
-`services/` exists and is empty. This is M-15, and it owes
-`overdue-sweep.test.js` (~12 tests) a home.
+```bash
+WORKER_TARGET=http://127.0.0.1:3000 WORKER_SECRET=... npm run worker
+```
 
-### Then, and only then
+**Not ported, and stated rather than hidden:** auto-reassign of an overdue
+order, and the tracking poll. The first needs the same workload/eligibility
+logic as `assignFollowup` — do them together. The second is a job nobody has
+written; the machinery to schedule it now exists.
 
-Deleting `apps/erp` becomes a decision about **M-16 (notifications/Web Push)**
-and **installability**, both judgement calls assessed in PROJECT_STATE. Note
-that `apps/erp` is the source `overdue-sweep.test.js` and `notifications.test.js`
-would be ported *from*; after deletion they are recoverable only from git
-history.
+### `apps/erp` can now be retired
+
+Nothing it does is unavailable on the platform. PROJECT_STATE carries the full
+assessment; what retiring it costs, and should be accepted deliberately:
+no auto-assignment (either kind), no carrier polling on a timer, no
+notifications (M-16), and not installable. None is functionality a person
+invokes.
+
+`overdue-sweep.test.js` is superseded by `test/erp/jobs.test.ts`.
+`notifications.test.js` is not, and after deletion is recoverable only from git
+history — port it with M-16 or copy it out first.
 
 Its 298 tests go with the directory. They tested the Express stack; `test/erp/`
 tests the platform. See `apps/website-builder/test/erp/PORTING.md` for what was

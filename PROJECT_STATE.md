@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 3 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.5a: the follow-up producer*
+**Branch:** `master` · **Last commit:** *Phase 6.5b: M-15, the worker*
 **Working tree:** clean, all work committed.
 
 ---
@@ -89,15 +89,18 @@ a follow-up task — and that port exposed two Phase 5 gaps. **6.5a closed the
 first**: carrier events raise tasks again, on the `ingestEvents` choke point both
 the poll and the webhook pass through.
 
-**One blocker left: nothing runs on a schedule (M-15).** A raised task is never
-escalated to `overdue`, orders are never flagged overdue, `missedOrders` never
-moves, auto-reassign and auto-suspend never fire, and carriers are never polled.
+**6.5b closed the second: M-15 is done.** Follow-up escalation and the overdue
+sweep run as idempotent jobs in `src/lib/erp/jobs.ts`, driven either by a
+manager (`POST /api/erp/jobs/[job]`) or by `services/worker`, which is a timer
+and an HTTP client holding no logic and no database connection.
 
-Notifications/Web Push (M-16) and the AI assistant (a deliberate 501) remain
-unported and unfaked.
+**`apps/erp` can now be retired**, with two behaviour differences to accept
+first — see *What still prevents retiring `apps/erp`*. Notifications/Web Push
+(M-16) and the AI assistant (a deliberate 501) remain unported and unfaked.
 
-**Exact stopping point:** committed and verified. The next task is **M-15 — the
-worker**.
+**Exact stopping point:** committed and verified. The next work is **Production
+Readiness (Phase 8)**, and retiring `apps/erp` whenever the two differences are
+accepted.
 
 ### How a write surface is built here (6.3)
 
@@ -231,6 +234,7 @@ stream and inbound carrier webhooks).
 | 6.4b | Filters, the parcel line and the follow-up panel, 95/95 |
 | 6.4c | Resolving a follow-up task — and the two gaps it exposed, 96/96 |
 | 6.5a | The follow-up producer — carrier events raise tasks, 26/26 |
+| 6.5b | M-15 — the scheduled work leaves the web process, 14/14 |
 
 ### Remaining roadmap
 
@@ -455,13 +459,17 @@ Adding a product = adding a manifest + its own screens. No platform file changes
 | M-20 | Trilingual i18n |
 | — | Builder API + all screens ported; legacy stack deleted |
 
-**Not yet done:** M-12 (ERP UI), M-14 (ERP base64 images → R2), M-15 (jobs →
-worker), M-16 (notification unification), M-19 (template registry).
+| M-15 | Jobs → `services/worker`: idempotent job functions, a manager trigger, and a scheduler holding no logic |
 
-M-15 and M-16 each still owe M-18 a file: `overdue-sweep.test.js` (~12 tests)
-and `notifications.test.js` (~20) were deferred rather than dropped, because
-porting them against a worker and a notification transport that do not exist
-would encode a contract nobody has designed.
+**Not yet done:** M-12 (ERP UI — 6.3/6.4 have delivered it bar the retirement),
+M-14 (ERP base64 images → R2), M-16 (notification unification), M-19 (template
+registry).
+
+M-15 discharged its debt to M-18: `overdue-sweep.test.js` is superseded by
+`test/erp/jobs.test.ts`, which asserts the same behaviours plus the idempotence
+a scheduled job needs and an in-process timer never had. **M-16 still owes
+`notifications.test.js` (~20 tests)** — porting it against a transport that does
+not exist would encode a contract nobody has designed.
 
 ---
 
@@ -490,16 +498,18 @@ the ones this section listed before 6.4c.
 | AI assistant | `ai/chat`, `ai/chat/stream`, `ai/insights/deep` answer **501 by design**. Gated first, so the authorization contract is complete. | No |
 | Raising a follow-up task | **Ported in 6.5a** — `raiseFollowupTask` on the `ingestEvents` choke point, 6 contract tests | No |
 | **Auto-assigning a follow-up agent** | `assignFollowup` in the ERP workload-balances a follow-up agent on confirmation, behind `followupAutoAssign`. Not ported. Tasks are raised unassigned instead, which anybody may pick up. | **No** — graceful, but a stated behaviour difference |
-| **Anything on a schedule** | **M-15.** The platform runs **no** `setInterval`, cron or worker. The ERP's jobs loop does four things nothing here does: escalate an open follow-up task to `overdue`, flag an order overdue, auto-reassign / auto-suspend against `missedOrders`, and poll carriers for tracking. `services/` exists and is empty. | **YES** |
+| Escalation, the overdue sweep, missed-order counting, auto-suspend | **Ported in 6.5b (M-15)** — idempotent jobs plus `services/worker`, 14 contract tests | No |
+| **Auto-reassign an overdue order** | The ERP moved it to the least-loaded eligible agent. Needs the same workload/eligibility logic as `assignFollowup`, which is also unported; the two belong together. The sweep flags and counts, it does not move work. | **No** — a stated behaviour difference |
+| **Polling carriers on a timer** | The job system exists; a tracking-poll job is not written. A parcel updates on a carrier webhook, or when somebody presses "ask the carrier". | **No** — a stated behaviour difference |
 | **Notifications and Web Push** | **M-16.** The table moved to `platform.prisma` in 3.2; the transport — SSE, per-account read watermark, replay on reconnect, Web Push — has no equivalent. `notifications.test.js` (~20 tests) is still deferred against it. | **Judgement call.** Nothing an agent invokes, but ERP agents rely on being told about new orders; retiring first means they poll by refreshing. |
 | Service worker, installability, offline shell | Not built. The queue is a console screen. | **Judgement call.** Affects how agents launch it, not what it can do. |
 
-**Why these were invisible until now.** Both blockers are Phase 5 porting gaps,
-not Phase 6 regressions. Every route the ERP exposes was ported and is
-contract-tested; what was never ported is the code that runs *between* routes —
-one function on the carrier-ingest path, and a jobs loop. Contract tests over
-HTTP cannot see a producer that nobody calls, which is exactly why building the
-consumer end of the feature is what exposed it.
+**Why these were invisible until 6.4c.** Both were Phase 5 porting gaps, not
+Phase 6 regressions. Every route the ERP exposes was ported and contract-tested;
+what was never ported is the code that runs *between* routes — one function on
+the carrier-ingest path, and a jobs loop. Contract tests over HTTP cannot see a
+producer nobody calls, which is why building the consumer end exposed it. Both
+are now closed.
 
 **One consequence to note before deleting.** `apps/erp` is also the source
 `overdue-sweep.test.js` (~12 tests) and `notifications.test.js` (~20) would be
@@ -507,9 +517,23 @@ ported *from* — PORTING.md defers them with M-15 and M-16 and says explicitly
 they must be ported, not abandoned. After deletion they are recoverable only
 from git history.
 
-**Verdict: keep `apps/erp` until M-15 lands and the follow-up producer is
-ported.** Those two close the functional gap; M-16 and installability are then
-product decisions rather than missing behaviour.
+**Verdict: `apps/erp` can be retired.** Nothing it does is unavailable on the
+platform. What retiring it costs, and what should be accepted deliberately
+rather than discovered:
+
+1. **No auto-reassignment** of an overdue order, and no auto-assignment of a
+   follow-up agent. Both need the workload/eligibility logic, and neither is
+   ported.
+2. **No carrier polling on a timer** — parcels update on webhooks or on demand.
+3. **No notifications** (M-16). Agents refresh rather than being told.
+4. **Not installable** — the queue is a console screen, not a home-screen app.
+5. `overdue-sweep.test.js` is now **superseded** by `test/erp/jobs.test.ts`;
+   `notifications.test.js` still has no home and would be recoverable only from
+   git history after deletion.
+
+None is missing functionality a person invokes. Items 1–3 are scheduled or
+automatic behaviour a deployment can live without and should schedule work to
+restore.
 
 **Nothing else.** The legacy dashboard, legacy storefront, legacy JWT, legacy
 middleware and the pre-tenant Prisma client were all deleted in `82dacc9`.
@@ -525,8 +549,11 @@ middleware and the pre-tenant Prisma client were all deleted in `82dacc9`.
 2. **`apps/website-builder` is misnamed** — it hosts the whole platform.
 3. **Windows Prisma DLL lock** — building while the dev server runs fails with
    `EPERM`. Stop node first.
-4. **`services/worker` does not exist yet.** The ERP's jobs still run in-process
-   in `apps/erp` and would duplicate on a scaled deployment (M-15).
+4. **Auto-assignment is not ported.** The ERP workload-balanced a follow-up
+   agent on confirmation (`assignFollowup`) and moved an overdue order to the
+   least-loaded eligible agent. Both need the same eligibility/workload logic and
+   neither exists here; tasks are raised unassigned and the sweep flags without
+   moving work.
 5. **No template registry yet (M-19).** The storefront has one hardcoded
    template with colour-only themes; `/api/themes`-style branching on
    `isLuxury`/`isTech` was noted in Phase 3.2 and still stands.
@@ -641,13 +668,13 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 345 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 359 | all pass against a running server |
 | `packages/auth` | 32 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **886** | green per suite |
+| **Total** | **900** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

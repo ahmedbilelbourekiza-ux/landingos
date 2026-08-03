@@ -54,7 +54,24 @@ export const DEFAULT_SETTINGS = {
   fixedCosts: [] as Array<{ id: string; label: string; amount: string }>,
 } as const;
 
-export type ErpSettings = { [K in keyof typeof DEFAULT_SETTINGS]: (typeof DEFAULT_SETTINGS)[K] } & Record<string, unknown>;
+/**
+ * The stored settings, with every key present.
+ *
+ * The literal types from `DEFAULT_SETTINGS as const` are WIDENED here on
+ * purpose. Without this, `autoSuspend` is typed as the literal `false` — its
+ * default — so a stored `true` is unrepresentable and `settings.autoSuspend ===
+ * true` is a compile error saying the two "have no overlap". A default is not a
+ * domain: the whole point of these rows is that a tenant changes them.
+ */
+export type ErpSettings = {
+  [K in keyof typeof DEFAULT_SETTINGS]: (typeof DEFAULT_SETTINGS)[K] extends boolean
+    ? boolean
+    : (typeof DEFAULT_SETTINGS)[K] extends number
+      ? number
+      : (typeof DEFAULT_SETTINGS)[K] extends string
+        ? string
+        : (typeof DEFAULT_SETTINGS)[K];
+} & Record<string, unknown>;
 
 export type Spec =
   | { type: "boolean" }

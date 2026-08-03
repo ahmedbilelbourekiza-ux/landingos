@@ -12,6 +12,106 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.5b M-15 — the scheduled work leaves the web process
+
+The ERP ran its jobs on two `setInterval`s inside its web server. On a scaled
+deployment that runs once per instance, so every miss is counted as many times
+as there are instances. `jobs.test.ts` is new at **14/14**, and it is the file
+`apps/erp/test/overdue-sweep.test.js` was deferred against in 5.1 — PORTING.md
+said porting it "against a worker that does not exist would encode a contract
+nobody has designed", and this is the design.
+
+#### Idempotence instead of a lock
+
+Every job is written so that running it twice — or on three instances at the
+same moment — produces the same result as running it once, and each is **driven
+twice by a test that asserts the second pass changes nothing.** That is stronger
+than a lock: it needs no coordination, survives a crash mid-run, and cannot be
+defeated by a deployment topology nobody told it about.
+
+The mechanism is always a **column guard** matched in the same statement that
+writes — `status: "open"` for escalation, `overdueFlaggedAt: null` for the
+sweep. A second pass matches nothing because the first changed what it was
+matching on. The sweep guards *twice*: once in the read and again in the
+`updateMany`, so two instances that both selected a row have exactly one of them
+count the miss.
+
+#### BUG-01 is why this file is tested the way it is
+
+The ERP's sweep threw `ReferenceError` on its first candidate of every run.
+`setInterval` caught and logged it, so there was no symptom — and everything
+downstream of that line, the missed-order counter and auto-suspend included, had
+**never executed in production**. A job that fails silently is worse than one
+that does not exist, which is why the tick logs per tenant and keeps going
+rather than letting one tenant's bad data freeze everybody else's escalations.
+
+#### Two bugs the tests caught before the code shipped
+
+**`nightGraceMinutes` was applied to everything.** It is extra time for orders
+that arrived *outside* working hours, so the overnight backlog is not all
+flagged the instant the day starts — adding it to every order silently delayed
+every flag by two hours, which is its default. It is now applied per order, to
+the ones that actually arrived out of hours.
+
+**A test that would pass by day and fail at night.** The sweep is gated on the
+tenant's working hours (default 10–20) exactly as the ERP's was. The suite now
+pins them open. A test that depends on the wall clock fails in CI at 2am and
+nowhere else.
+
+#### A type that could not represent a changed setting
+
+`ErpSettings` derived its types from `DEFAULT_SETTINGS as const`, so
+`autoSuspend` was typed as the literal `false` — its default — and
+`settings.autoSuspend === true` was a compile error saying the two "have no
+overlap". A stored `true` was unrepresentable. **A default is not a domain:** the
+whole point of those rows is that a tenant changes them. The mapped type now
+widens.
+
+#### The worker holds no logic and no database connection
+
+`services/worker` is a timer and an HTTP client, ~60 lines. Every job lives in
+`src/lib/erp/jobs.ts` beside the domain code it uses, and both the worker's tick
+and the manager's "run it now" go through the same `runJob`. A worker that
+reimplemented any of it would be a second copy of rules the contract tests do
+not reach — the same mistake D-06.1 refuses for write controls, in a process
+nobody looks at.
+
+`POST /api/jobs/tick` **fails closed**: with no `WORKER_SECRET` configured it
+answers **404, not 401**, because "unauthorized" tells a stranger the endpoint is
+there and worth guessing at. The comparison is length-checked and constant-time.
+It is not reachable with a console session either — it is infrastructure, and it
+sits beside `/api/health` rather than on the product's surface.
+
+Which tenants it runs for comes from the **registry**: active subscription
+holding the ERP's declared entitlement. A lapsed subscription stops the
+scheduled work exactly as it stops the routes, and a tenth product's jobs would
+join the loop by registering rather than by editing this file.
+
+#### Files
+`apps/website-builder/src/lib/erp/jobs.ts` (new),
+`src/app/api/erp/jobs/[job]/route.ts` (new), `src/app/api/jobs/tick/route.ts` (new),
+`src/lib/erp/settings.ts` (the widened type),
+`services/worker/**` (new), root `package.json` (workspace + `npm run worker`),
+`test/erp/{helpers,jobs}.test.ts`.
+
+#### Migration
+M-15. No schema change — `overdueFlaggedAt` and the `agent:<userId>`
+ProductSetting already existed.
+
+#### Risk
+**Auto-reassign is not ported.** The ERP moved an overdue order to the
+least-loaded eligible agent; that needs the same workload/eligibility logic as
+`assignFollowup`, which is also unported, and the two belong together. The sweep
+flags and counts; it does not move work. Recorded in NEXT_STEPS.
+
+The tracking poll is likewise not scheduled — a parcel updates on a carrier
+webhook or when somebody presses "ask the carrier". Also recorded.
+
+**Verified live:** jobs 14/14 · delivery 26/26 · integrations 29/29 ·
+orders 38/38.
+
+---
+
 ### 6.5a The follow-up producer — carrier events raise tasks again
 
 The half of the follow-up module Phase 5 never carried across. `delivery.test.ts`

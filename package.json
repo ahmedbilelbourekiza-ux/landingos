@@ -1,11 +1,12 @@
 {
   "name": "landingos",
   "version": "3.0.0",
-  "description": "LandingOS — a modular SaaS platform. Shared platform services plus independently subscribable products.",
+  "description": "LandingOS \u2014 a modular SaaS platform. Shared platform services plus independently subscribable products.",
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "services/*"
   ],
   "scripts": {
     "erp": "npm run --workspace @landingos/erp",
@@ -15,12 +16,13 @@
     "builder:dev": "npm run dev --workspace @landingos/website-builder",
     "builder:start": "npm run start --workspace @landingos/website-builder",
     "test": "npm run test --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build --workspaces --if-present",
+    "worker": "npm start --workspace @landingos/worker"
   },
   "engines": {
     "node": ">=20"
   },
-  "//allowScripts": "npm ignores allowScripts declared inside a workspace and warns about it — it is only honoured at the workspace root, so install-script policy is now platform-wide rather than per-product. Every entry below is a package that does real work at install time: a native binding, a downloaded engine, or a generated client. A package that merely wants a postinstall is deliberately NOT listed.",
+  "//allowScripts": "npm ignores allowScripts declared inside a workspace and warns about it \u2014 it is only honoured at the workspace root, so install-script policy is now platform-wide rather than per-product. Every entry below is a package that does real work at install time: a native binding, a downloaded engine, or a generated client. A package that merely wants a postinstall is deliberately NOT listed.",
   "allowScripts": {
     "better-sqlite3@12.11.1": true,
     "prisma@6.19.3": true,

@@ -285,7 +285,14 @@ export async function cleanup() {
  */
 export async function makeFollowupTask(
   tenantId: string,
-  input: { orderId: string; agentUserId?: string | null; type?: string; reason?: string },
+  input: {
+    orderId: string;
+    agentUserId?: string | null;
+    type?: string;
+    reason?: string;
+    /** Explicit countdown, so a test can stage one that has already expired. */
+    dueAt?: Date;
+  },
 ): Promise<{ id: string; status: string | null; agentUserId: string | null }> {
   return withTenant(tenantId, (tx) =>
     (tx as any).followupTask.create({
@@ -296,9 +303,29 @@ export async function makeFollowupTask(
         status: 'open',
         agentUserId: input.agentUserId ?? null,
         reason: input.reason ?? 'customer_unavailable',
-        dueAt: new Date(Date.now() + 60 * 60 * 1000),
+        dueAt: input.dueAt ?? new Date(Date.now() + 60 * 60 * 1000),
       },
       select: { id: true, status: true, agentUserId: true },
+    }),
+  );
+}
+
+/**
+ * Move an order's `createdAt` into the past.
+ *
+ * The overdue sweep's shortest configurable threshold is ONE MINUTE
+ * (`alertMinutes` has `min: 1`), and a suite that slept 61 seconds per case to
+ * observe it would not be run. `createdAt` is server-set on purpose, so a test
+ * cannot ask the API for a past order — it stages one, the same way
+ * `makeFollowupTask` stages a task nothing has a route to create.
+ *
+ * Inside the tenant binding, so it cannot reach another company's rows.
+ */
+export async function backdateOrder(tenantId: string, orderId: string, minutes: number) {
+  await withTenant(tenantId, (tx) =>
+    (tx as any).fulfillmentOrder.update({
+      where: { id: orderId },
+      data: { createdAt: new Date(Date.now() - minutes * 60_000) },
     }),
   );
 }
