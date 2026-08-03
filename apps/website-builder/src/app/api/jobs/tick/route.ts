@@ -4,6 +4,7 @@ import { asPlatform, withTenant } from "@landingos/db";
 import { productRegistry } from "@landingos/product-registry";
 
 import { JOBS, runJob } from "@/lib/erp/jobs";
+import { hasProduct } from "@/lib/erp/from-sale";
 
 export const dynamic = "force-dynamic";
 
@@ -56,40 +57,45 @@ export async function POST(req: NextRequest) {
   }
 
   const erp = productRegistry.get("erp");
-  if (!erp) return NextResponse.json({ ran: [], tenants: 0 });
+  if (!erp) return NextResponse.json({ tenants: 0, ran: 0, failed: 0 });
 
   // Unscoped, and named so it is obvious in a diff. Enumerating tenants is the
   // one thing this endpoint exists to do, and it is why it cannot use a
-  // tenant-bound client to start with.
+  // tenant-bound client to start with. `Tenant` is one of the five tables with
+  // no RLS, so this read is legal without a binding — and it is the ONLY read
+  // here that is.
   const active = await asPlatform().tenant.findMany({
     where: { deletedAt: null, status: "ACTIVE" },
-    select: {
-      id: true,
-      subscription: { select: { status: true, entitlements: true } },
-    },
+    select: { id: true },
   });
 
-  // Only tenants that have actually bought the product whose jobs these are: a
-  // lapsed subscription stops the scheduled work exactly as it stops the routes,
-  // without anybody maintaining a second list.
-  //
-  // Filtered here rather than in the WHERE because `entitlements` is a Json
-  // column — a set, not a relation — and because reading the entitlement off the
-  // MANIFEST is what keeps this file from naming a product. A tenth product's
-  // jobs would join this loop by registering, not by editing it.
-  const tenants = active.filter((tenant) => {
-    if (tenant.subscription?.status !== "ACTIVE") return false;
-    const held = tenant.subscription.entitlements;
-    return Array.isArray(held) && held.includes(erp.entitlement);
-  });
+  const results: Array<{ tenantId: string; job: string; ok: boolean }> = [];
+  let entitled = 0;
 
-  const results: Array<{ tenantId: string; job: string; ok: boolean; detail?: unknown }> = [];
+  for (const tenant of active) {
+    // THE ENTITLEMENT IS READ INSIDE THE BINDING, and this is the whole of the
+    // bug 6.5b shipped. The first version selected `subscription` as a nested
+    // relation on the `asPlatform()` query above — but `Subscription` is one of
+    // the 47 RLS-scoped tables, so an unbound client reads NOTHING from it. Every
+    // tenant came back with `subscription: null`, the filter dropped all of them,
+    // and the tick answered `{ tenants: 0 }` — which the worker logged as
+    // "0 jobs over 0 tenants", indistinguishable from a quiet system. The
+    // scheduled work never ran once.
+    //
+    // It is the failure PROJECT_STATE warns about in its first paragraph: RLS
+    // denies by returning zero rows, not by erroring. `hasProduct` now says in
+    // its own contract that it must be given a bound client.
+    const held = await withTenant(tenant.id, (db) => hasProduct(db, erp.id));
+    if (!held) continue;
+    entitled += 1;
 
-  for (const tenant of tenants) {
     for (const job of JOBS) {
       try {
-        const result = await withTenant(tenant.id, (db) => runJob(db, tenant.id, job));
-        results.push({ tenantId: tenant.id, job, ok: true, detail: result });
+        // One transaction per job rather than one per tenant: the tracking poll
+        // makes carrier calls, and three jobs sharing a 15s transaction is how a
+        // slow carrier takes the escalations down with it.
+        await withTenant(tenant.id, (db) => runJob(db, tenant.id, job));
+        results.push({ tenantId: tenant.id, job, ok: true });
       } catch (error) {
         // Logged with the tenant, and the pass continues.
         console.error(`[worker] ${job} failed for ${tenant.id}`, error);
@@ -99,7 +105,7 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({
-    tenants: tenants.length,
+    tenants: entitled,
     ran: results.length,
     failed: results.filter((r) => !r.ok).length,
   });

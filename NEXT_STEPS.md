@@ -38,9 +38,14 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **384/384** across the ELEVEN files: access 63 · orders 38 ·
-validation 29 · listing 25 · catalog 31 · delivery 26 · integrations 29 ·
-order-split 8 · screens 96 · jobs 14 · assign 25.
+Expect **393/393** across the ELEVEN files: access 63 · orders 38 ·
+validation 29 · listing 25 · catalog 31 · delivery 33 · integrations 29 ·
+order-split 8 · screens 96 · jobs 16 · assign 25.
+
+`ERP_CONTRACT=strict` also requires **`WORKER_SECRET`** in
+`apps/website-builder/.env`, matching whatever the server was started with.
+Without it `POST /api/jobs/tick` answers 404 to everybody and only its refusal
+can be tested — which is how 6.5b shipped a tick that could never run a job.
 
 ---
 
@@ -218,6 +223,32 @@ exact defect the ERP records at `index.js:1685`.
 **The sweep's threshold is `reassignMinutes`, not `alertMinutes`.** They are
 different ERP jobs and 6.5b conflated them.
 
+### (4) DONE in 6.6b — the carrier poll, and a worker that had never worked
+
+`pollCarriers` in `src/lib/erp/jobs.ts`, driven by `trackingPollMinutes` and
+guarded by the new `Shipment.lastPolledAt` column — which is both the interval
+marker and the idempotency guard, matched in the same `updateMany` that writes
+it. It calls `refreshShipment`, so it feeds the same `ingestEvents` a webhook
+does: one ingest path, so a polled parcel raises follow-up tasks and settles its
+outcome exactly as a pushed one does.
+
+**And the thing worth remembering from this slice:** `services/worker` had never
+run a job. 6.5b's tick read `Subscription` through `asPlatform()`, which is
+unbound, and that table is RLS-scoped — so every tenant looked unentitled and the
+tick answered `{ tenants: 0 }`, which the worker logged as a quiet system. It was
+found by **running the worker**, because no test could reach the authorised half
+of a route that fails closed on a dev server with no secret.
+
+The entitlement is now read inside the binding via `hasProduct` — the same
+predicate the storefront checkout uses. `WORKER_SECRET` is required by
+`ERP_CONTRACT=strict`, and two tests exercise the authorised path: it escalates a
+real task, and a cancelled subscription is skipped.
+
+**The limitation to fix if a real carrier adapter is slow:** the carrier call
+happens inside the transaction `withTenant` opened, whose timeout is 15s. The
+batch size (25) is the mitigation, not the fix. Doing the HTTP outside the
+transaction and ingesting inside it is the shape to move to.
+
 ---
 
 ## 2c. WHAT NOW BLOCKS DELETING `apps/erp` — one thing, and it is not scheduled work
@@ -245,8 +276,8 @@ consumed**, read back from `MovementLotConsumption`, or every cancellation
 silently rewrites the cost basis and the profit calculator stops being true with
 no error anywhere. `planRestore` already does this; it simply has no caller.
 
-The other three differences remain, and none is functionality a person invokes:
-no carrier polling on a timer, no notifications (M-16), not installable.
+The other two differences remain, and neither is functionality a person invokes:
+no notifications (M-16), not installable.
 
 `overdue-sweep.test.js` is superseded by `test/erp/jobs.test.ts`.
 `notifications.test.js` is not, and after deletion is recoverable only from git
@@ -262,7 +293,7 @@ deliberately not carried across and why.
 
 | id | Scope | Owes |
 |---|---|---|
-| **M-15** | **DONE in 6.5b.** Jobs → `services/worker`. | Discharged: `test/erp/jobs.test.ts` supersedes `overdue-sweep.test.js`, asserting the same behaviours plus the idempotence a scheduled job needs. **Still owes the tracking-poll job itself** — the third of `apps/erp/lib/jobs.js`'s three loops, and the only one with no platform equivalent. |
+| **M-15** | **DONE — 6.5b and 6.6b.** Jobs → `services/worker`; all three of the ERP's scheduled loops have a platform equivalent. | Discharged. `test/erp/jobs.test.ts` supersedes `overdue-sweep.test.js`, asserting the same behaviours plus the idempotence a scheduled job needs — and, since 6.6b, the authorised half of the tick that had never been executed. |
 | **M-16** | Notification unification. The table already moved to `platform.prisma`; the transport — SSE, per-account read watermark, replay on reconnect, Web Push — has no platform equivalent. | Port `apps/erp/test/notifications.test.js` (~20 tests) and the SSE half of `delivery-outcome.test.js`, both deferred in 5.1. |
 | **M-14** | ERP images → R2. | — |
 | **M-19** | Template registry. The storefront has one hardcoded template with colour-only themes. | — |

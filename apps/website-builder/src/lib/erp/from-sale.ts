@@ -40,8 +40,17 @@ import { autoAssignOnCreate } from "./assign";
  * nothing here enumerates products.
  * ========================================================================== */
 
-/** Does this tenant hold the ERP? Read inside the caller's transaction. */
-export async function hasErp(db: TenantDb): Promise<boolean> {
+/**
+ * Does this tenant hold this product? **Read inside the caller's transaction.**
+ *
+ * `db` is not optional and cannot be `asPlatform()`. `Subscription` is one of
+ * the 47 RLS-scoped tables, so an unbound client reads NOTHING from it and every
+ * caller comes back `false` — silently, because row-level security denies by
+ * returning zero rows rather than by erroring. That is exactly how the worker's
+ * tick shipped in 6.5b reporting "0 jobs over 0 tenants" as though it were a
+ * quiet day; see the note on `POST /api/jobs/tick`.
+ */
+export async function hasProduct(db: TenantDb, productId: string): Promise<boolean> {
   const subscription = await db.subscription.findFirst({
     select: { status: true, entitlements: true },
   });
@@ -53,8 +62,11 @@ export async function hasErp(db: TenantDb): Promise<boolean> {
   const entitlements = Array.isArray(subscription.entitlements)
     ? (subscription.entitlements as unknown[]).map(String)
     : [];
-  return productRegistry.isEnabled("erp", entitlements);
+  return productRegistry.isEnabled(productId, entitlements);
 }
+
+/** Does this tenant hold the ERP? Read inside the caller's transaction. */
+export const hasErp = (db: TenantDb): Promise<boolean> => hasProduct(db, "erp");
 
 export interface SaleSnapshot {
   readonly id: string;

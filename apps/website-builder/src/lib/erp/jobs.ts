@@ -7,6 +7,8 @@ import { ACTIVE_STATUSES } from "./orders";
 import { readAgentConfig, writeAgentConfig } from "./agents";
 import { FOLLOWUP_TASK_TYPE } from "./followup";
 import { pickAgent } from "./assign";
+import { TERMINAL } from "./carriers";
+import { refreshShipment } from "./shipments";
 
 /* =============================================================================
  * The scheduled work — M-15.
@@ -37,7 +39,7 @@ import { pickAgent } from "./assign";
  * settings. There is no cross-tenant query anywhere here: the caller iterates.
  * ========================================================================== */
 
-export const JOBS = ["followup-escalation", "overdue-sweep"] as const;
+export const JOBS = ["followup-escalation", "overdue-sweep", "tracking-poll"] as const;
 export type JobName = (typeof JOBS)[number];
 
 export interface JobResult {
@@ -279,6 +281,108 @@ export async function sweepOverdueOrders(
 }
 
 /* -----------------------------------------------------------------------------
+ * The carrier tracking poll
+ * -------------------------------------------------------------------------- */
+
+/**
+ * How many parcels one pass will ask about.
+ *
+ * Deliberately much smaller than the sweep's 200. Each of these is a network
+ * round trip to somebody else's server, and it happens INSIDE the interactive
+ * transaction `withTenant` opened — whose timeout is 15s (TX_OPTIONS). A backlog
+ * is drained over several passes, oldest-poll-first, rather than in one
+ * transaction that times out and rolls back everything it had already ingested.
+ *
+ * That the carrier call happens inside a database transaction at all is a real
+ * limitation of the current shape and is recorded in NEXT_STEPS; it is why this
+ * number is 25 and not 200.
+ */
+const POLL_BATCH = 25;
+
+/**
+ * Ask each carrier where its parcels are.
+ *
+ * THE THIRD OF THE ERP'S THREE SCHEDULED LOOPS (`apps/erp/lib/jobs.js:28`) and
+ * the last one with no platform equivalent. Its own comment says why it exists:
+ * it "guarantees updates flow even when a carrier's webhook is silent" — and in
+ * this market most carriers have no webhook at all, so without it a parcel sat
+ * at "created" until a person opened the order and pressed *ask the carrier*.
+ *
+ * IT GOES THROUGH `refreshShipment`, WHICH IS THE POINT. That function feeds
+ * `ingestEvents`, the one choke point where events are stored idempotently, the
+ * delivery outcome is settled (BUG-02) and follow-up tasks are raised (6.5a). A
+ * poll that fetched and wrote events itself would be a second ingest path, and
+ * the half of it nobody tested would be the half that decides whether anybody
+ * rings a customer whose parcel came back.
+ *
+ * IDEMPOTENCE, and here it is also rate limiting. `lastPolledAt` is the guard,
+ * matched in the same `updateMany` that writes it — so two workers ticking at
+ * once, or a manager pressing "run it now" during a tick, cannot both call the
+ * carrier about the same parcel. It is written whether or not the carrier had
+ * news, which is why it cannot be `updatedAt`: a poll that found nothing must
+ * still count as a poll, or every quiet parcel is re-asked on every tick.
+ *
+ * ONE PARCEL'S FAILURE DOES NOT STOP THE PASS. A carrier being down, or one
+ * tracking number the carrier has never heard of, must not freeze every other
+ * parcel in the company — the shape of BUG-01, where one throw meant the loop
+ * never reached anything.
+ */
+export async function pollCarriers(
+  db: TenantDb,
+  tenantId: string,
+  settings: ErpSettings,
+): Promise<JobResult> {
+  const minutes = Math.max(1, Number(settings.trackingPollMinutes) || 15);
+  const earliest = new Date(Date.now() - minutes * 60_000);
+
+  const due = await db.shipment.findMany({
+    where: {
+      AND: [
+        // A parcel that has arrived, come back, or been called off is not going
+        // to move again. `crmStatus: null` is listed explicitly because SQL's
+        // `NOT IN` is unknown — not true — for a NULL, so a freshly booked
+        // parcel would otherwise never be due.
+        { OR: [{ crmStatus: null }, { crmStatus: { notIn: [...TERMINAL] } }] },
+        { OR: [{ lastPolledAt: null }, { lastPolledAt: { lt: earliest } }] },
+      ],
+    },
+    select: { id: true, orderId: true, lastPolledAt: true },
+    // Least recently asked about first, never-asked first of all, so a backlog
+    // drains fairly instead of the same 25 parcels being polled forever.
+    orderBy: [{ lastPolledAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
+    take: POLL_BATCH,
+  });
+
+  const now = new Date();
+  let polled = 0;
+  let failed = 0;
+
+  for (const shipment of due) {
+    const guard =
+      shipment.lastPolledAt === null
+        ? { lastPolledAt: null }
+        : { lastPolledAt: { lt: earliest } };
+
+    const { count } = await db.shipment.updateMany({
+      where: { id: shipment.id, ...guard },
+      data: { lastPolledAt: now },
+    });
+    // Somebody else claimed it between the read and here.
+    if (count === 0) continue;
+
+    try {
+      await refreshShipment(db, tenantId, shipment.orderId);
+      polled += 1;
+    } catch (error) {
+      failed += 1;
+      console.error(`[erp] tracking poll failed for shipment ${shipment.id}`, error);
+    }
+  }
+
+  return { job: "tracking-poll", polled, failed, due: due.length };
+}
+
+/* -----------------------------------------------------------------------------
  * The one entry point
  * -------------------------------------------------------------------------- */
 
@@ -299,5 +403,7 @@ export async function runJob(
       return escalateFollowups(db);
     case "overdue-sweep":
       return sweepOverdueOrders(db, tenantId, settings);
+    case "tracking-poll":
+      return pollCarriers(db, tenantId, settings);
   }
 }

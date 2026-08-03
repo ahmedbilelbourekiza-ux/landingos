@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   skip, uid, phone, waitFor, makeErpTenant, cleanup, BASE, slugOf,
+  backdateShipmentPoll,
   contractTest as test,
 } from './helpers.ts';
 
@@ -520,5 +521,145 @@ describe('a carrier reporting trouble raises a follow-up task', () => {
       0,
       "a neighbouring tenant could see this tenant's follow-up work",
     );
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * The tracking poll — Phase 6.6b
+ * -------------------------------------------------------------------------- */
+
+describe('the scheduled tracking poll', () => {
+  const run = () => acme.manager.api('POST', '/api/erp/jobs/tracking-poll', {});
+
+  /** A confirmed order with a booked parcel, never polled. */
+  const parcel = async () => {
+    const orderId = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: `Polled ${uid()}`, phone: phone(), price: 4000, carrierCode,
+    })).body.data.id as string;
+    const booked = await acme.manager.api('POST', `/api/erp/orders/${orderId}/shipment`, {});
+    assert.ok([200, 201].includes(booked.status), `booking answered ${booked.status}`);
+    return orderId;
+  };
+
+  const eventsFor = async (orderId: string) =>
+    ((await acme.manager.api('GET', `/api/erp/orders/${orderId}/shipment`)).body.data.events ??
+      []) as Array<{ crmStatus: string }>;
+
+  test('it asks the carrier without anybody pressing anything', async () => {
+    // This is the whole feature. Until now a parcel moved only on an inbound
+    // webhook or when a person opened the order and pressed "ask the carrier" —
+    // so a carrier that does not send webhooks (most of them, in this market)
+    // left every parcel frozen at "created" until somebody noticed.
+    const orderId = await parcel();
+    const before = await eventsFor(orderId);
+    assert.equal((await read(orderId)).deliveryStatus, 'created', 'precondition: freshly booked');
+
+    const r = await run();
+    assert.equal(r.status, 200);
+    // At least one, not exactly one: the job is tenant-wide and this tenant is
+    // carrying the parcels every test above it booked. What makes this test
+    // about THIS parcel is the two assertions below.
+    assert.ok(r.body.data.polled >= 1, 'nothing was polled at all');
+
+    const after = await eventsFor(orderId);
+    assert.ok(after.length > before.length, 'the poll stored nothing for this parcel');
+    assert.notEqual(
+      (await read(orderId)).deliveryStatus, 'created',
+      'the parcel is still where it was booked',
+    );
+  });
+
+  test('a second pass inside the interval polls nothing', async () => {
+    // The idempotency property every job in this file has, and here it is also
+    // rate limiting: a real carrier's API is somebody else's server, and a
+    // worker ticking every minute must not turn `trackingPollMinutes` into a
+    // suggestion.
+    await parcel();
+    const first = await run();
+    assert.ok(first.body.data.polled >= 1, 'nothing was polled on the first pass');
+
+    const second = await run();
+    assert.equal(second.body.data.polled, 0, 'the same parcels were polled twice');
+  });
+
+  test('trackingPollMinutes is what decides when it is due', async () => {
+    const orderId = await parcel();
+    await run();
+
+    // Long interval, poll marker moved back by less than it: not due.
+    await acme.manager.api('PUT', '/api/erp/settings', { trackingPollMinutes: 600 });
+    await backdateShipmentPoll(acme.tenantId, orderId, 30);
+    assert.equal((await run()).body.data.polled, 0, 'polled inside its own interval');
+
+    // Same marker, short interval: due.
+    await acme.manager.api('PUT', '/api/erp/settings', { trackingPollMinutes: 5 });
+    assert.ok((await run()).body.data.polled >= 1, 'never became due');
+  });
+
+  test('a settled parcel is left alone', async () => {
+    // A parcel that has arrived is not going to move again, and polling it
+    // forever is a request per parcel per interval for the life of the company.
+    const orderId = await deliverAnOrder();
+    const settledAt = (await read(orderId)).deliveryOutcomeAt;
+    assert.ok(settledAt, 'precondition: the parcel settled');
+
+    const eventsBefore = (await eventsFor(orderId)).length;
+    await backdateShipmentPoll(acme.tenantId, orderId, null);
+    await acme.manager.api('PUT', '/api/erp/settings', { trackingPollMinutes: 1 });
+    await run();
+
+    assert.equal((await eventsFor(orderId)).length, eventsBefore, 'a delivered parcel was polled');
+    assert.equal(
+      (await read(orderId)).deliveryOutcomeAt, settledAt,
+      'polling moved a settled outcome',
+    );
+  });
+
+  test('it goes through the same ingest path a webhook does', async () => {
+    // Not a separate write path. `ingestEvents` is the one choke point where
+    // events are stored, the outcome is settled and follow-up tasks are raised —
+    // a poll that wrote events directly would be a parcel that updates without
+    // ever ringing anybody about a problem.
+    const orderId = await parcel();
+    await acme.manager.api('PUT', '/api/erp/settings', { trackingPollMinutes: 1 });
+
+    for (let i = 0; i < 10; i += 1) {
+      await backdateShipmentPoll(acme.tenantId, orderId, 10);
+      await run();
+      if ((await read(orderId)).deliveryOutcome) break;
+    }
+
+    const order = await read(orderId);
+    assert.equal(order.deliveryOutcome, 'delivered', 'the poll never settled the parcel');
+    assert.ok(order.deliveryOutcomeAt, 'settled with no timestamp');
+  });
+
+  test('one tenant’s poll never touches another’s parcels', async () => {
+    const beta = await makeErpTenant('poll-beta');
+    const betaCode = `pb${uid()}`;
+    const betaCarrier = await beta.manager.api('POST', '/api/erp/carriers', {
+      name: 'Beta Carrier', code: betaCode, adapter: 'mock',
+    });
+    assert.equal(betaCarrier.status, 201);
+    const betaOrder = (await beta.manager.api('POST', '/api/erp/orders', {
+      client: 'Beta Parcel', phone: phone(), carrierCode: betaCode,
+    })).body.data.id as string;
+    await beta.manager.api('POST', `/api/erp/orders/${betaOrder}/shipment`, {});
+
+    const before = (await beta.manager.api('GET', `/api/erp/orders/${betaOrder}/shipment`))
+      .body.data.events.length;
+
+    await acme.manager.api('PUT', '/api/erp/settings', { trackingPollMinutes: 1 });
+    await run();
+
+    const after = (await beta.manager.api('GET', `/api/erp/orders/${betaOrder}/shipment`))
+      .body.data.events.length;
+    assert.equal(after, before, "acme's poll advanced beta's parcel");
+  });
+
+  test('an agent cannot run it', async () => {
+    // Same gate as every other job: it spends money at a carrier's API and
+    // moves other people's orders.
+    assert.equal((await acme.agent.api('POST', '/api/erp/jobs/tracking-poll', {})).status, 403);
   });
 });

@@ -12,6 +12,129 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.6b The carrier poll — and the worker that had never run a job
+
+The third of the ERP's three scheduled loops (`apps/erp/lib/jobs.js:28`), and the
+last one with no platform equivalent. `delivery.test.ts` goes 26 → **33/33** and
+`jobs.test.ts` 14 → **16/16**.
+
+#### The important part of this slice is not the poll
+
+**`services/worker` had never run a single job, and could not.** It was found by
+running it — not by a test, because no test could see it:
+
+```
+[worker] 0 jobs over 0 tenants (300ms)
+```
+
+6.5b's tick selected each tenant's `subscription` as a nested relation on an
+`asPlatform()` query. `Subscription` is one of the 47 RLS-scoped tables, and
+`asPlatform()` is deliberately unbound — so every tenant came back with
+`subscription: null`, the entitlement filter dropped all of them, and the
+endpoint answered `{ tenants: 0 }`. The worker logged that as a quiet system and
+carried on.
+
+This is the failure PROJECT_STATE warns about in its **first paragraph**: *RLS
+denies by returning zero rows, not by erroring.* Verified directly rather than
+inferred — the same tenant read through `asPlatform()` gives `subscription:
+null` and through `withTenant` gives
+`{status: "ACTIVE", entitlements: [...]}`.
+
+The entitlement is now read inside the binding, through **`hasProduct`** — the
+same predicate the storefront checkout uses to decide whether to create a
+fulfilment record, which `order-split.test.ts` already proves both ways. One
+rule, two callers. `hasErp` is a one-line wrapper over it.
+
+After the fix, against the running server:
+
+```
+[worker] 21 jobs over 7 tenants (8953ms)
+```
+
+#### Why no test caught it, and what now does
+
+`jobs.test.ts` could only ever assert the **refusal**, because the dev server had
+no `WORKER_SECRET` and the tick fails closed. The authorised half — every line
+that actually does anything — had never been executed by anything.
+
+`WORKER_SECRET` is now set in `apps/website-builder/.env` (gitignored, and the
+test process and the server read the same file), and **`ERP_CONTRACT=strict`
+refuses to run without it**, the same way it refuses to run against an unmounted
+`/api/erp/*`. A contract suite that is allowed to stay silent about half an
+endpoint is a contract suite that will be silent about the important half.
+
+Two new tests: the tick with the right bearer actually escalates a staged task
+and reports `ran === tenants × jobs`; and a tenant whose subscription has been
+cancelled is skipped, so a company that stopped paying stops having its agents
+chased and its carriers polled at our expense. The negative cases keep their
+404s, and gained one — a bearer that is the real secret minus its last character,
+which is what a timing probe looks like.
+
+#### The poll itself
+
+`pollCarriers` asks each carrier where its non-terminal parcels are. It exists
+because in this market most carriers have no webhook at all: until now a parcel
+sat at "created" until a person opened the order and pressed *ask the carrier*.
+
+**It goes through `refreshShipment`, which is the point.** That feeds
+`ingestEvents` — the one choke point where events are stored idempotently, the
+delivery outcome is settled (BUG-02) and follow-up tasks are raised (6.5a). A
+poll that fetched and wrote events itself would be a second ingest path, and the
+half nobody tested would be the half deciding whether anybody rings a customer
+whose parcel came back. A test drives a parcel all the way to `delivered`
+through the job alone and asserts the outcome settles.
+
+**`lastPolledAt` is the guard and the interval marker**, matched in the same
+`updateMany` that writes it — so two workers, or a worker and a manager pressing
+"run it now", cannot both call the carrier about one parcel. It is written
+whether or not there was news, which is why it cannot be `updatedAt`: a poll that
+found nothing must still count as a poll, or every quiet parcel is re-asked on
+every tick. A settled parcel is never polled again — asserted, because otherwise
+it is one request per delivered parcel per interval for the life of the company.
+
+The batch is **25**, not the sweep's 200: each of these is a network round trip
+to somebody else's server and it happens inside the transaction `withTenant`
+opened, whose timeout is 15s. That the carrier call is inside a database
+transaction at all is a real limitation of the current shape and is recorded in
+NEXT_STEPS.
+
+#### Files
+`packages/db/prisma/schema/erp.prisma` (`Shipment.lastPolledAt` + its index),
+`apps/website-builder/src/lib/erp/jobs.ts`, `src/lib/erp/from-sale.ts`,
+`src/app/api/jobs/tick/route.ts`,
+`test/erp/{delivery,jobs,helpers}.test.ts`, `apps/website-builder/.env`.
+
+#### Migration
+Additive: one nullable `TIMESTAMP(3)` column and one index. DDL rendered against
+the live database and read before applying:
+
+```sql
+ALTER TABLE "Shipment" ADD COLUMN "lastPolledAt" TIMESTAMP(3);
+CREATE INDEX "Shipment_tenantId_lastPolledAt_idx" ON "Shipment"("tenantId", "lastPolledAt");
+```
+
+No backfill: null means "never polled", which is what every existing row means
+and what every new one starts as. RLS re-applied — 47 tables, 9 preflight checks
+pass.
+
+#### Risk
+**A deployment must set `WORKER_SECRET` on both the platform and the worker, and
+they must match.** They already had to; the difference is that the tick now does
+something when they do. A deployment that has been running the worker since 6.5b
+has been running nothing, and will start doing real work — including polling
+carriers — the moment this ships.
+
+The carrier call inside the tenant transaction is the shape to change next if a
+real adapter is slow: the batch size is the mitigation, not the fix.
+
+**Verified live:** delivery 33/33 · jobs 16/16 · access 63/63 · orders 38/38 ·
+validation 29/29 · listing 25/25 · catalog 31/31 · integrations 29/29 ·
+order-split 8/8 · screens 96/96 · assign 25/25 — **393/393**. website-builder
+102/102 · db 29/29 · auth 36/36 · product-registry 36/36 · ui 26/26 · i18n 18/18.
+And the worker itself, end to end: 21 jobs over 7 tenants.
+
+---
+
 ### 6.6a Auto-assignment — who work lands on, and when it moves
 
 The first of the four behaviours PROJECT_STATE listed as accepted differences

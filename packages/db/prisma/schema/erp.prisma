@@ -464,6 +464,22 @@ model Shipment {
   // The carrier's raw createShipment response.
   raw                Json?
 
+  // When the scheduled tracking poll last ASKED this carrier about this parcel
+  // — whether or not anything came back. It is both the interval marker and the
+  // idempotency guard for that job: the poll claims a parcel by matching the
+  // column it is about to write, so two workers running at once cannot both
+  // call the carrier about the same shipment. See `pollCarriers` in
+  // apps/website-builder/src/lib/erp/jobs.ts.
+  //
+  // Deliberately NOT `updatedAt`: that column only moves when something on the
+  // shipment actually changed, so a poll that found no news would leave it
+  // untouched and the parcel would be re-polled on every single tick.
+  //
+  // Null means never polled, which is the state every shipment starts in and
+  // the state every row had before this column existed — so no backfill is
+  // needed and an old parcel is simply due immediately.
+  lastPolledAt DateTime?
+
   carrier Carrier?        @relation(fields: [carrierId], references: [id], onDelete: SetNull)
   events  ShipmentEvent[]
 
@@ -473,6 +489,9 @@ model Shipment {
   @@index([tenantId, orderId])
   @@index([tenantId, crmStatus])
   @@index([tenantId, trackingNumber])
+  // The tracking poll's own query: non-terminal parcels, least recently polled
+  // first. Leads with tenantId like every other index here (M-03).
+  @@index([tenantId, lastPolledAt])
 }
 
 // APPEND-ONLY. No UPDATE or DELETE path exists for this table anywhere in the

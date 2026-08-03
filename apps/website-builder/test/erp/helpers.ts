@@ -130,6 +130,30 @@ if (STRICT && SERVER_UP && HAS_DB && !ERP_MOUNTED) {
 }
 
 /**
+ * The secret `services/worker` presents to `POST /api/jobs/tick`.
+ *
+ * REQUIRED IN STRICT MODE, and it is worth saying why so nobody removes it. The
+ * tick fails closed: with no secret configured it answers 404 for everybody, so
+ * a suite running against a server that has none can only ever test the refusal.
+ * That is precisely how 6.5b shipped a tick which — once authorised — read
+ * `Subscription` through an unbound client, matched no tenant, and reported
+ * "0 jobs over 0 tenants" as though the system were quiet. The scheduled work
+ * never ran a single time and every test passed.
+ *
+ * The test process and the server must agree, which they do because both read
+ * `apps/website-builder/.env`.
+ */
+export const WORKER_SECRET = process.env.WORKER_SECRET ?? '';
+
+if (STRICT && SERVER_UP && HAS_DB && !WORKER_SECRET) {
+  throw new Error(
+    'ERP_CONTRACT=strict: WORKER_SECRET is not set, so the authorised half of ' +
+      'POST /api/jobs/tick cannot be exercised. Set it in apps/website-builder/.env ' +
+      '(the same value the server reads).',
+  );
+}
+
+/**
  * Why this suite is not running, or `false` if it is.
  *
  * A string rather than a boolean on purpose — node:test prints it, so the run
@@ -339,6 +363,41 @@ export async function backdateOrder(
         createdAt: when,
         ...(also.overdueFlaggedAt ? { overdueFlaggedAt: when } : {}),
       },
+    }),
+  );
+}
+
+/**
+ * Change a tenant's subscription status.
+ *
+ * Entitlement is the gate on the scheduled work as well as on the routes, and
+ * "this company stopped paying" has no route that produces it — billing is
+ * Phase 7. So a test stages it, inside the binding.
+ */
+export async function setSubscriptionStatus(tenantId: string, status: string) {
+  await withTenant(tenantId, (tx) =>
+    (tx as any).subscription.updateMany({ where: { tenantId }, data: { status } }),
+  );
+}
+
+/**
+ * Move a shipment's `lastPolledAt` into the past — or clear it.
+ *
+ * The tracking poll's interval is `trackingPollMinutes`, whose floor is one
+ * minute, and a suite that slept through it per case would not be run. This is
+ * `backdateOrder`'s counterpart and exists for the same reason: the column is
+ * written by the job itself, so a test stages the passage of time rather than
+ * waiting for it.
+ */
+export async function backdateShipmentPoll(
+  tenantId: string,
+  orderId: string,
+  minutes: number | null,
+) {
+  await withTenant(tenantId, (tx) =>
+    (tx as any).shipment.updateMany({
+      where: { orderId },
+      data: { lastPolledAt: minutes === null ? null : new Date(Date.now() - minutes * 60_000) },
     }),
   );
 }

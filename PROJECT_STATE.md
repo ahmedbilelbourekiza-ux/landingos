@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 3 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.6a: auto-assignment*
+**Branch:** `master` · **Last commit:** *Phase 6.6b: the carrier poll*
 **Working tree:** clean, all work committed.
 
 ---
@@ -97,12 +97,24 @@ and an HTTP client holding no logic and no database connection.
 **6.6a closed the first of the four accepted behaviour differences:
 auto-assignment.** `src/lib/erp/assign.ts` is the one eligibility-and-workload
 rule behind all three of the ERP's assignment behaviours — a new order, a
-confirmed one, and an overdue one that changes hands. Notifications/Web Push
-(M-16) and the AI assistant (a deliberate 501) remain unported and unfaked.
+confirmed one, and an overdue one that changes hands.
+
+**6.6b closed the second — the carrier tracking poll — and found that
+`services/worker` had never run a single job.** 6.5b's tick read `Subscription`
+through the unbound `asPlatform()` client, and that table is RLS-scoped, so every
+tenant came back unentitled and the tick answered `{ tenants: 0 }`. The worker
+logged "0 jobs over 0 tenants" and looked healthy. **It was found by running the
+worker, not by a test** — the authorised half of the endpoint had never been
+executed by anything, because the dev server had no `WORKER_SECRET` and the tick
+fails closed. `ERP_CONTRACT=strict` now refuses to run without one.
+
+Notifications/Web Push (M-16) and the AI assistant (a deliberate 501) remain
+unported and unfaked.
 
 **Exact stopping point:** committed and verified. Remaining before `apps/erp`
-can be retired with no functional regression: the carrier tracking poll, M-16,
-and PWA installability — see *What still prevents retiring `apps/erp`*.
+can be retired with no functional regression: **stock reservation on
+confirm/cancel** (the one real gap), M-16, and PWA installability — see *What
+still prevents retiring `apps/erp`*.
 
 ### The assignment rule (6.6a)
 
@@ -194,15 +206,15 @@ domain at a time.
 |---|---|
 | orders (+ stats, bulk, 6 per-order routes), clients, settings, audit | orders 38/38 · validation 29/29 · listing 25/25 |
 | products, inventory, stock lots, agents, payroll, finance | catalog 31/31 |
-| carriers, shipments, delivery settlement, the follow-up producer | delivery 26/26 |
+| carriers, shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 33/33 |
 | sales channels, inbound webhooks, AI, follow-up | integrations 29/29 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
 | every ERP screen, read and write | screens 96/96 |
-| the scheduled work (M-15) | jobs 14/14 |
+| the scheduled work (M-15), and the worker's tick both ways | jobs 16/16 |
 | assignment — new, confirmed and overdue orders | assign 25/25 |
 | every surface, gated | access 63/63 |
 
-**384/384**, each file verified on its own. Running several back to back still
+**393/393**, each file verified on its own. Running several back to back still
 trips the documented Neon connection limit — judge them per file.
 
 Three routes answer **501 by design**, and are not gaps: `POST /api/erp/agents`
@@ -267,6 +279,7 @@ stream and inbound carrier webhooks).
 | 6.5a | The follow-up producer — carrier events raise tasks, 26/26 |
 | 6.5b | M-15 — the scheduled work leaves the web process, 14/14 |
 | 6.6a | Auto-assignment — new, confirmed and overdue orders, 25/25 |
+| 6.6b | The carrier poll — and the worker that had never run a job, 33+16 |
 
 ### Remaining roadmap
 
@@ -535,7 +548,7 @@ the ones this section listed before 6.4c.
 | Auto-assigning a new order | **Ported in 6.6a** — `autoAssignOnCreate`, behind `autoAssign`, on all three creation paths | No |
 | Escalation, the overdue sweep, missed-order counting, auto-suspend | **Ported in 6.5b (M-15)** — idempotent jobs plus `services/worker`, 14 contract tests | No |
 | Auto-reassign an overdue order | **Ported in 6.6a** — behind `autoReassign`, to the least-loaded eligible agent or to the unassigned queue | No |
-| **Polling carriers on a timer** | The job system exists; a tracking-poll job is not written. A parcel updates on a carrier webhook, or when somebody presses "ask the carrier". | **No** — a stated behaviour difference |
+| Polling carriers on a timer | **Ported in 6.6b** — `pollCarriers`, driven by `trackingPollMinutes`, guarded by `Shipment.lastPolledAt`, going through the same `ingestEvents` a webhook does | No |
 | **Reserving stock on confirmation** | `reserveOnConfirm` / `releaseOnCancel` were never ported in Phase 5. `lib/erp/inventory.ts` has the FIFO movement machinery and nothing calls it on a status change; stock moves only when somebody adjusts it by hand. Found in 6.6a while building the shared confirm path. | **Yes** — a real functional gap, not a scheduled behaviour |
 | **Notifications and Web Push** | **M-16.** The table moved to `platform.prisma` in 3.2; the transport — SSE, per-account read watermark, replay on reconnect, Web Push — has no equivalent. `notifications.test.js` (~20 tests) is still deferred against it. | **Judgement call.** Nothing an agent invokes, but ERP agents rely on being told about new orders; retiring first means they poll by refreshing. |
 | Service worker, installability, offline shell | Not built. The queue is a console screen. | **Judgement call.** Affects how agents launch it, not what it can do. |
@@ -569,14 +582,13 @@ day, and it is not scheduled behaviour a deployment can live without.
 The rest is what retiring it costs, and should be accepted deliberately rather
 than discovered:
 
-1. **No carrier polling on a timer** — parcels update on webhooks or on demand.
-2. **No notifications** (M-16). Agents refresh rather than being told.
-3. **Not installable** — the queue is a console screen, not a home-screen app.
-4. `overdue-sweep.test.js` is now **superseded** by `test/erp/jobs.test.ts`;
+1. **No notifications** (M-16). Agents refresh rather than being told.
+2. **Not installable** — the queue is a console screen, not a home-screen app.
+3. `overdue-sweep.test.js` is now **superseded** by `test/erp/jobs.test.ts`;
    `notifications.test.js` still has no home and would be recoverable only from
    git history after deletion.
 
-None of those four is functionality a person invokes.
+Neither of the first two is functionality a person invokes.
 
 **Nothing else.** The legacy dashboard, legacy storefront, legacy JWT, legacy
 middleware and the pre-tenant Prisma client were all deleted in `82dacc9`.
@@ -673,7 +685,13 @@ npm run seed:dev     --workspace @landingos/db      # 2 tenants, 3 users
 
 `apps/website-builder/.env` — `PLATFORM_DATABASE_URL` (same as the app role
 URL; named separately so it can never be confused with another client),
-`AUTH_SECRET`, optional R2 variables.
+`AUTH_SECRET`, `WORKER_SECRET`, optional R2 variables.
+
+**`WORKER_SECRET` is not optional for the test suite.** `POST /api/jobs/tick`
+fails closed, so without it the contract suite can only exercise the refusal —
+which is exactly how 6.5b shipped a tick that could never run a job.
+`ERP_CONTRACT=strict` refuses to start without it. The value must match whatever
+`services/worker` is given.
 
 ### Seeded development accounts
 
@@ -712,13 +730,13 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 384 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 393 | all pass against a running server |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **929** | green per suite |
+| **Total** | **938** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

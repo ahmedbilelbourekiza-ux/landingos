@@ -2,7 +2,8 @@ import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  skip, phone, makeErpTenant, makeMember, makeFollowupTask, backdateOrder, cleanup,
+  skip, phone, makeErpTenant, makeMember, makeFollowupTask, backdateOrder,
+  setSubscriptionStatus, WORKER_SECRET, cleanup,
   contractTest as test,
 } from './helpers.ts';
 
@@ -247,21 +248,31 @@ describe('the overdue order sweep (BUG-01)', () => {
   });
 });
 
-describe('the worker tick fails closed', () => {
+describe('the worker tick', () => {
   const tick = (headers: Record<string, string> = {}) =>
     fetch('http://127.0.0.1:3000/api/jobs/tick', { method: 'POST', headers });
 
-  test('no secret, no endpoint — 404, not 401', async () => {
-    // With WORKER_SECRET unset the tick answers 404 on purpose: an
-    // unconfigured deployment should look like it has no such endpoint,
-    // because "unauthorized" tells a stranger it is there and worth guessing
-    // at. The dev environment has no secret, so this is that state.
+  const authorised = () => tick({ authorization: `Bearer ${WORKER_SECRET}` });
+
+  test('no bearer at all — 404, not 401', async () => {
+    // The tick answers 404 for anybody it does not recognise, on purpose:
+    // "unauthorized" tells a stranger the endpoint is there and worth guessing
+    // at. The same answer covers the unconfigured case — with no WORKER_SECRET
+    // set, `authorised()` returns false before looking at the request at all,
+    // so a deployment that has not configured it looks like it has no such
+    // endpoint.
     assert.equal((await tick()).status, 404);
   });
 
   test('a wrong bearer gets the same answer as none', async () => {
     assert.equal((await tick({ authorization: 'Bearer not-the-secret' })).status, 404);
     assert.equal((await tick({ authorization: 'Bearer ' })).status, 404);
+    // A prefix of the real secret, which is what a timing attack would probe
+    // with. The comparison is length-checked first and then constant-time.
+    assert.equal(
+      (await tick({ authorization: `Bearer ${WORKER_SECRET.slice(0, -1)}` })).status,
+      404,
+    );
   });
 
   test('it is not reachable with a console session either', async () => {
@@ -269,5 +280,59 @@ describe('the worker tick fails closed', () => {
     // who it is for, and holding erp:settings:write does not open it.
     const r = await acme.manager.api('POST', '/api/jobs/tick', {});
     assert.equal(r.status, 404);
+  });
+
+  test('with the right bearer it actually runs the jobs', async () => {
+    // THE TEST THIS FILE DID NOT HAVE, and the reason it matters: 6.5b's tick
+    // selected each tenant's `subscription` as a nested relation on an
+    // `asPlatform()` query. `Subscription` is RLS-scoped, so an unbound client
+    // reads nothing from it — every tenant came back with `subscription: null`,
+    // the entitlement filter dropped all of them, and the endpoint answered
+    // `{ tenants: 0 }`. The worker logged "0 jobs over 0 tenants" and looked
+    // healthy. The scheduled work never ran once, and every test passed,
+    // because nothing had ever called this endpoint with a valid secret.
+    const orderId = await newOrder({ agentUserId: acme.agent.userId });
+    const task = await makeFollowupTask(acme.tenantId, {
+      orderId, agentUserId: acme.agent.userId, dueAt: new Date(Date.now() - 60_000),
+    });
+
+    const r = await authorised();
+    assert.equal(r.status, 200);
+    const body = await r.json() as { tenants: number; ran: number; failed: number };
+
+    assert.ok(body.tenants >= 1, 'no tenant was entitled — the RLS trap again');
+    assert.equal(body.ran, body.tenants * 3, 'every job did not run for every tenant');
+    assert.equal(body.failed, 0, 'a job threw during the tick');
+
+    const listed = await acme.manager.api('GET', '/api/erp/followup/tasks');
+    assert.equal(
+      (listed.body.data.items as any[]).find((t) => t.id === task.id)?.status,
+      'overdue',
+      'the tick reported success without escalating anything',
+    );
+  });
+
+  test('a tenant whose subscription has lapsed is skipped', async () => {
+    // Entitlement stops the scheduled work exactly as it stops the routes,
+    // through the same predicate (`hasProduct`) the checkout path uses. Without
+    // this, a company that stopped paying would keep having its agents chased
+    // and its carriers polled at our expense.
+    const lapsed = await makeErpTenant('jobs-lapsed');
+    const lapsedOrder = (await lapsed.manager.api('POST', '/api/erp/orders', {
+      client: 'Lapsed', phone: phone(),
+    })).body.data.id as string;
+    const lapsedTask = await makeFollowupTask(lapsed.tenantId, {
+      orderId: lapsedOrder, dueAt: new Date(Date.now() - 60_000),
+    });
+    await setSubscriptionStatus(lapsed.tenantId, 'CANCELED');
+
+    await authorised();
+
+    const listed = await lapsed.manager.api('GET', '/api/erp/followup/tasks');
+    assert.equal(
+      (listed.body.data.items as any[]).find((t) => t.id === lapsedTask.id)?.status,
+      'open',
+      "a cancelled subscription's scheduled work still ran",
+    );
   });
 });
