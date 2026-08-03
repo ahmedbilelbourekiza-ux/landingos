@@ -655,3 +655,84 @@ describe('web push registration', () => {
     );
   });
 });
+
+/* -----------------------------------------------------------------------------
+ * Installability — Phase 6.6e
+ * -------------------------------------------------------------------------- */
+
+describe('the console is installable', () => {
+  test('the manifest is served and says what an installer needs', async () => {
+    const r = await fetch(`${BASE}/manifest.webmanifest`);
+    assert.equal(r.status, 200);
+
+    const m = await r.json();
+    assert.equal(m.display, 'standalone', 'a browser tab is not an installed app');
+    assert.equal(m.start_url, '/console', 'it must open on the console, not the storefront');
+    assert.equal(m.scope, '/console');
+    assert.ok(m.name && m.short_name, 'a launcher needs both names');
+
+    // Chrome requires a 192px icon AND a 512px icon to offer installation, and
+    // a maskable one so a launcher can apply its own shape without cropping the
+    // mark. All three, or the install prompt silently never appears.
+    const sizes = (m.icons ?? []).map((i: { sizes: string }) => i.sizes);
+    assert.ok(sizes.includes('192x192'), 'no 192px icon');
+    assert.ok(sizes.includes('512x512'), 'no 512px icon');
+    assert.ok(
+      (m.icons ?? []).some((i: { purpose?: string }) => i.purpose === 'maskable'),
+      'no maskable icon — a launcher will crop the corners off a square one',
+    );
+  });
+
+  test('every icon it names actually exists and is a PNG', async () => {
+    // A manifest naming an icon that 404s is a manifest that fails installation
+    // with no message anybody sees.
+    const m = await (await fetch(`${BASE}/manifest.webmanifest`)).json();
+    for (const icon of m.icons as Array<{ src: string; sizes: string }>) {
+      const res = await fetch(BASE + icon.src);
+      assert.equal(res.status, 200, `${icon.src} is missing`);
+
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      assert.deepEqual(
+        [...bytes.slice(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+        `${icon.src} is not a PNG`,
+      );
+      // Width and height live at bytes 16..24 of the IHDR.
+      const view = new DataView(bytes.buffer);
+      const declared = Number(icon.sizes.split('x')[0]);
+      assert.equal(view.getUint32(16), declared, `${icon.src} is not ${icon.sizes}`);
+      assert.equal(view.getUint32(20), declared, `${icon.src} is not square`);
+    }
+  });
+
+  test('the service worker is served, and caches nothing', async () => {
+    const r = await fetch(`${BASE}/sw.js`);
+    assert.equal(r.status, 200);
+    const src = await r.text();
+
+    assert.match(src, /addEventListener\(\s*["']push["']/, 'it cannot receive a push');
+    assert.match(src, /showNotification/, 'a push would arrive and show nothing');
+    assert.match(src, /addEventListener\(\s*["']notificationclick["']/, 'tapping it does nothing');
+
+    // THE ASSERTION THIS FILE EXISTS FOR. Every page under /console is
+    // server-rendered from a session-scoped database read, so a cache keyed by
+    // URL alone would serve one tenant's customer list to the next person on a
+    // shared handset — through a mechanism that survives signing out, because a
+    // cache is not a session.
+    assert.ok(
+      !/caches\.(open|match)|addEventListener\(\s*["']fetch["']/.test(src),
+      'the service worker caches or intercepts requests — see the header of public/sw.js',
+    );
+  });
+
+  test('the console page links the manifest; the storefront does not', async () => {
+    // The root layout also serves the public storefront. Offering "install
+    // LandingOS Console" to a shopper is the wrong offer, and it would put the
+    // platform's name and icon on a page a tenant thinks of as their shop.
+    const consoleHtml = await (await fetch(`${BASE}/console/login`)).text();
+    assert.match(consoleHtml, /rel="manifest"/, 'the console does not link its manifest');
+    assert.match(consoleHtml, /manifest\.webmanifest/);
+
+    const storefrontHtml = await (await fetch(`${BASE}/robots.txt`)).text();
+    assert.ok(!storefrontHtml.includes('manifest.webmanifest'));
+  });
+});

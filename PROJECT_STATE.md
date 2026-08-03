@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 3 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.6d: M-16, part 2*
+**Branch:** `master` · **Last commit:** *Phase 6.6e: installability*
 **Working tree:** clean, all work committed.
 
 ---
@@ -221,7 +221,7 @@ domain at a time.
 | notifications: storage, audience, badge, the live stream, Web Push (M-16) | notifications 29/29 |
 | every surface, gated | access 63/63 |
 
-**422/422**, each file verified on its own. Running several back to back still
+**426/426**, each file verified on its own. Running several back to back still
 trips the documented Neon connection limit — judge them per file.
 
 Three routes answer **501 by design**, and are not gaps: `POST /api/erp/agents`
@@ -289,6 +289,7 @@ stream and inbound carrier webhooks).
 | 6.6b | The carrier poll — and the worker that had never run a job, 33+16 |
 | 6.6c | M-16 part 1 — notifications become a platform service, 18/18 |
 | 6.6d | M-16 part 2 — the live stream and Web Push, 29/29 |
+| 6.6e | The console installs, and can receive a push, 33/33 |
 
 ### Remaining roadmap
 
@@ -559,8 +560,8 @@ the ones this section listed before 6.4c.
 | Auto-reassign an overdue order | **Ported in 6.6a** — behind `autoReassign`, to the least-loaded eligible agent or to the unassigned queue | No |
 | Polling carriers on a timer | **Ported in 6.6b** — `pollCarriers`, driven by `trackingPollMinutes`, guarded by `Shipment.lastPolledAt`, going through the same `ingestEvents` a webhook does | No |
 | **Reserving stock on confirmation** | `reserveOnConfirm` / `releaseOnCancel` were never ported in Phase 5. `lib/erp/inventory.ts` has the FIFO movement machinery and nothing calls it on a status change; stock moves only when somebody adjusts it by hand. Found in 6.6a while building the shared confirm path. | **Yes** — a real functional gap, not a scheduled behaviour |
-| Notifications and Web Push | **M-16 complete (6.6c + 6.6d)** — `/api/platform/notifications`, a live SSE stream with exact replay, and Web Push registration and sending. 29 contract tests. `notifications.test.js` is discharged. | No — **except** that a browser can only RECEIVE a push through a service worker, which is 6.6e. |
-| Service worker, installability, offline shell | Not built. The queue is a console screen. | **Judgement call.** Affects how agents launch it, not what it can do. |
+| Notifications and Web Push | **M-16 complete (6.6c–6.6e)** — `/api/platform/notifications`, a live SSE stream with exact replay, Web Push sending, and the service worker that receives it. 33 contract tests. `notifications.test.js` is discharged. | No |
+| Service worker and installability | **Done in 6.6e** — manifest, icons, a registered worker, and the `push`/`notificationclick` handlers Web Push needs to be received. **No offline shell, deliberately**: every console page is session-scoped, and a cache keyed by URL survives signing out. | No |
 
 **Why these keep being invisible.** Every one of them is a Phase 5 porting gap,
 not a Phase 6 regression, and every one is **code that runs between routes**: a
@@ -743,13 +744,13 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 422 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 426 | all pass against a running server |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **967** | green per suite |
+| **Total** | **971** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

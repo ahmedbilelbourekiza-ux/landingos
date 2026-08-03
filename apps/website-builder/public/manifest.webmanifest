@@ -1,0 +1,26 @@
+{
+  "id": "/console",
+  "name": "LandingOS Console",
+  "short_name": "LandingOS",
+  "description": "Confirm orders, chase parcels and run the shop.",
+  "start_url": "/console",
+  "scope": "/console",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#1e1b4b",
+  "theme_color": "#1e1b4b",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "My queue",
+      "short_name": "Queue",
+      "description": "The orders waiting to be called.",
+      "url": "/console/erp/queue",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

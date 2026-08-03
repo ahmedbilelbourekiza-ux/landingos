@@ -38,9 +38,9 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **422/422** across the TWELVE files: access 63 · orders 38 ·
+Expect **426/426** across the TWELVE files: access 63 · orders 38 ·
 validation 29 · listing 25 · catalog 31 · delivery 33 · integrations 29 ·
-order-split 8 · screens 96 · jobs 16 · assign 25 · notifications 29.
+order-split 8 · screens 96 · jobs 16 · assign 25 · notifications 33.
 
 `ERP_CONTRACT=strict` also requires **`WORKER_SECRET`** in
 `apps/website-builder/.env`, matching whatever the server was started with.
@@ -277,8 +277,8 @@ silently rewrites the cost basis and the profit calculator stops being true with
 no error anywhere. `planRestore` already does this; it simply has no caller.
 
 The other two differences remain, and neither is functionality a person invokes:
-no service worker — so the console is not installable AND a registered device
-cannot RECEIVE the Web Push that 6.6d sends it. Both are 6.6e.
+**none.** 6.6e closed the last of them: the console installs, and its service
+worker receives the push 6.6d sends.
 
 `overdue-sweep.test.js` is superseded by `test/erp/jobs.test.ts`.
 `notifications.test.js` is not, and after deletion is recoverable only from git
@@ -295,7 +295,7 @@ deliberately not carried across and why.
 | id | Scope | Owes |
 |---|---|---|
 | **M-15** | **DONE — 6.5b and 6.6b.** Jobs → `services/worker`; all three of the ERP's scheduled loops have a platform equivalent. | Discharged. `test/erp/jobs.test.ts` supersedes `overdue-sweep.test.js`, asserting the same behaviours plus the idempotence a scheduled job needs — and, since 6.6b, the authorised half of the tick that had never been executed. |
-| **M-16** | **DONE — 6.6c and 6.6d.** Storage, audience, per-account read state, every producer, a live SSE stream with exact replay, and Web Push. | Discharged: `test/erp/notifications.test.ts` (29 tests) supersedes `notifications.test.js` and covers the SSE half of `delivery-outcome.test.js`. **Still owes a service worker** so a browser can RECEIVE the push — 6.6e. |
+| **M-16** | **DONE — 6.6c, 6.6d, 6.6e.** Storage, audience, per-account read state, every producer, a live SSE stream with exact replay, Web Push, and the service worker that receives it. | Discharged: `test/erp/notifications.test.ts` (33 tests) supersedes `notifications.test.js` and covers the SSE half of `delivery-outcome.test.js`. |
 | **M-14** | ERP images → R2. | — |
 | **M-19** | Template registry. The storefront has one hardcoded template with colour-only themes. | — |
 | **—** | **Stock reservation on confirm/cancel.** Not a migration and not on any list until 6.6a found it; see §2c. `reservationMode` is rendered by the automation screen and read by nothing. | Contract tests over FIFO lot consumption, in `catalog.test.ts`. |
