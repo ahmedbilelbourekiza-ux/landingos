@@ -1096,3 +1096,160 @@ describe('the ERP has an automation screen, which is not a second Settings', () 
     assert.equal((await page('/console/erp/automation', acme.agent.token)).status, 404);
   });
 });
+
+/* -----------------------------------------------------------------------------
+ * Phase 6.4a — the confirmation agent's queue
+ *
+ * The port of `apps/erp/agent.html`, which is the last thing that application
+ * served with no replacement. The whole app is one gesture — tap to dial, tap
+ * the outcome — so these assert that the gesture is present, correctly scoped,
+ * and calls the routes the contract already covers.
+ * -------------------------------------------------------------------------- */
+
+describe('the agent has a queue to work', () => {
+  let mineActive = '';
+  let mineDone = '';
+
+  const newOrder = async (body: Record<string, unknown> = {}) =>
+    (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Queue Customer', phone: phone(), price: 2400, product: 'Queue Widget',
+      wilaya: 'Alger', commune: 'Bab Ezzouar', ...body,
+    })).body.data.id as string;
+
+  before(async () => {
+    if (skip) return;
+    mineActive = await newOrder({ agentUserId: acme.agent.userId });
+    mineDone = await newOrder({ agentUserId: acme.agent.userId });
+    await acme.agent.api('POST', `/api/erp/orders/${mineDone}/call`, { result: 'confirmed' });
+  });
+
+  test('it renders inside the console shell, not as a second application', async () => {
+    // The ERP's app had its own login screen and a stored server URL. Neither
+    // ports: the platform session is a cookie on this origin.
+    const r = await html('/console/erp/queue', acme.agent.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-queue"/);
+    assert.match(r.body, /data-testid="product-switcher"/, 'inside the shell');
+    assert.match(r.body, /data-nav="queue"/);
+  });
+
+  test('the queue holds what is still to be called, and not what is done', async () => {
+    const r = await html('/console/erp/queue', acme.agent.token);
+    assert.match(r.body, new RegExp(`data-order-id="${mineActive}"`), 'a pending order is missing');
+    assert.ok(
+      !new RegExp(`data-order-id="${mineDone}"`).test(r.body),
+      'a confirmed order is still in the call queue',
+    );
+  });
+
+  test('an agent sees only their own queue', async () => {
+    // The same `orderScope` the list and the API use — not a second opinion.
+    const theirs = await newOrder({ client: 'Not Mine', agentUserId: acme.other.userId });
+
+    const asAgent = await html('/console/erp/queue', acme.agent.token);
+    assert.ok(
+      !new RegExp(`data-order-id="${theirs}"`).test(asAgent.body),
+      "a colleague's order appeared in the agent's queue",
+    );
+
+    // A manager sees the whole book, which is what `seesWholeBook` means.
+    const asManager = await html('/console/erp/queue', acme.manager.token);
+    assert.match(asManager.body, new RegExp(`data-order-id="${theirs}"`));
+  });
+
+  test('the dial control is a real tel: link carrying the number', async () => {
+    // The gesture the whole app exists for. An anchor, so the phone dials even
+    // with no network — `call-start` rides along rather than gating it.
+    const detail = await acme.agent.api('GET', `/api/erp/orders/${mineActive}`);
+    const number = detail.body.data.phone as string;
+
+    const r = await html('/console/erp/queue', acme.agent.token);
+    const dial = r.body.match(
+      new RegExp(`<a[^>]*data-testid="queue-dial"[^>]*data-order-id="${mineActive}"[^>]*>`),
+    )?.[0] ?? '';
+    assert.notEqual(dial, '', 'no dial control on the card');
+    assert.match(dial, new RegExp(`href="tel:${number}"`), `dial rendered as ${dial}`);
+  });
+
+  test('the result buttons are the same vocabulary the API accepts', async () => {
+    const r = await html('/console/erp/queue', acme.agent.token);
+    const offered = [
+      ...new Set(
+        [...r.body.matchAll(/data-result="([^"]+)"/g)].map((m) => m[1]),
+      ),
+    ].sort();
+    assert.deepEqual(offered, [...CALL_RESULTS].sort());
+    assert.ok(!offered.includes('pending'), 'offered a result the API would refuse');
+  });
+
+  test('the note types are on the card too, without a tap', async () => {
+    // Hidden, not unmounted (D-06.4) — the vocabulary is in the document.
+    const r = await html('/console/erp/queue', acme.agent.token);
+    assert.match(r.body, /data-testid="queue-note-panel"/);
+    for (const type of NOTE_TYPES) {
+      assert.match(r.body, new RegExp(`<option value="${type}"`), `no note type ${type}`);
+    }
+  });
+
+  test('overdue is judged against the tenant’s own alert threshold', async () => {
+    // The ERP hardcoded 60 minutes in three places. The platform has the
+    // setting the overdue sweep already uses, so shortening it on the
+    // automation screen shortens it here too.
+    assert.equal(
+      (await acme.manager.api('PUT', '/api/erp/settings', { alertMinutes: 10080 })).status,
+      200,
+      'could not widen the threshold',
+    );
+    const wide = await html('/console/erp/queue', acme.agent.token);
+    assert.ok(!/data-overdue="true"/.test(wide.body), 'nothing should be overdue at a week');
+
+    assert.equal(
+      (await acme.manager.api('PUT', '/api/erp/settings', { alertMinutes: 1 })).status,
+      200,
+    );
+    const tight = await html('/console/erp/queue', acme.agent.token);
+    assert.match(tight.body, /data-overdue="true"/, 'a never-called order should be overdue at 1m');
+    assert.match(tight.body, /data-testid="queue-overdue"/);
+  });
+
+  test('logging a call from the queue moves the order out of it', async () => {
+    // Pressing a result button is exactly this request; the queue then shows
+    // the server's answer rather than a guess at it (D-06.3).
+    const id = await newOrder({ agentUserId: acme.agent.userId });
+    const before = await html('/console/erp/queue', acme.agent.token);
+    assert.match(before.body, new RegExp(`data-order-id="${id}"`));
+
+    assert.equal(
+      (await acme.agent.api('POST', `/api/erp/orders/${id}/call`, { result: 'confirmed' })).status,
+      200,
+    );
+
+    const after = await html('/console/erp/queue', acme.agent.token);
+    assert.ok(
+      !new RegExp(`data-order-id="${id}"`).test(after.body),
+      'a confirmed order is still in the call queue',
+    );
+  });
+
+  test('a reader without erp:orders:write gets no queue at all', async () => {
+    // A queue you cannot work is the order list, which already exists.
+    const reader = await makeMember(acme.tenantId, { role: 'MEMBER' });
+    assert.equal((await page('/console/erp/queue', reader.token)).status, 404);
+
+    const r = await html('/console/erp', reader.token);
+    assert.ok(!/data-nav="queue"/.test(r.body), 'no link to a screen that would 404');
+  });
+
+  test('another tenant’s queue is not reachable through this one', async () => {
+    const beta = await makeErpTenant('queue-beta');
+    const betaOrder = (await beta.manager.api('POST', '/api/erp/orders', {
+      client: 'Beta Queue', phone: phone(),
+    })).body.data.id as string;
+
+    const r = await html('/console/erp/queue', acme.manager.token);
+    assert.ok(
+      !new RegExp(`data-order-id="${betaOrder}"`).test(r.body),
+      "another tenant's order reached this queue",
+    );
+  });
+});

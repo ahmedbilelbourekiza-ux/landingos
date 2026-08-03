@@ -12,6 +12,90 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.4a The confirmation agent's queue
+
+The port of `apps/erp/agent.html` begins — the last thing that application
+serves with no replacement. `screens.test.ts` goes 80 → **90/90**.
+
+#### Measured first, and it was bigger than the note said
+
+NEXT_STEPS described the app from a partial read. Reading all 1,172 lines found
+seven surfaces, not three: the scoped queue, the call loop, notes, a **delivery
+tracking modal**, a **follow-up task panel with a resolve button**, a
+notification bell with **Web Push**, and an **AI assistant**. Three of those do
+not port, and each is recorded below rather than faked.
+
+#### One gesture, and the server does not get to block it
+
+The whole application is: tap to dial, tap the outcome. The dial is a real
+`tel:` anchor whose default is never prevented, with `POST /call-start` fired
+alongside it.
+
+That is the one place in the entire write surface where a request is not
+awaited, and it is deliberate. `call-start` is what makes duration measurable
+and duration is what makes the suspicious-call flag mean anything — but an agent
+on a bad connection still has to be able to ring the customer. If the request
+loses, the call still happens and `addCall` records it as `noStart`, which is
+exactly the state that flag exists to describe. Blocking the dial to guarantee
+the timestamp would trade the customer's phone call for a metric about it.
+
+#### A screen, not a second application
+
+The ERP's app had its own login screen and a stored server URL. Neither ports:
+the platform session is a cookie on this origin. So this is `/console/erp/queue`
+inside the console shell, and every control calls the routes the order detail
+calls — no new write path, no second copy of the ownership guard.
+
+#### Oldest first, in the query
+
+The ERP downloaded every order and sorted client-side by three keys — overdue,
+then pending, then newest. Oldest-first puts the same rows on top for the same
+reason (the longest-waiting customer has waited longest) in one `ORDER BY`,
+which is what PERF-02 was about. The overdue badge is still computed and shown;
+it simply is not what decides the order.
+
+#### Two constants became one derived set and one setting
+
+`ACTIVE_STATUSES` is now **derived by subtracting the terminal ones** rather than
+listed. The ERP wrote the seven out by hand in three places, which is three
+places to forget when the call-centre invents an outcome — and `tentative3`
+proves they do. Subtracting means a status added later lands in the queue by
+default: an agent seeing an order they need not have called is a moment's
+confusion, an order that silently never appears is a customer nobody rings.
+
+**Overdue is judged against `alertMinutes`**, the tenant's own setting that the
+overdue sweep already uses, not the ERP's hardcoded 60. A manager who shortens it
+on the automation screen shortens it here. Asserted both ways — nothing overdue
+at a week, everything overdue at a minute.
+
+#### Files
+`apps/website-builder/src/components/console/erp/queue-card.tsx` (new),
+`src/app/console/erp/queue/page.tsx` (new), `src/lib/erp/orders.ts`,
+`packages/product-registry/src/manifests.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json`, `test/erp/screens.test.ts`.
+
+#### Migration
+None.
+
+#### Risk
+Three surfaces of the ERP's app are **not** ported, none of them faked:
+
+- **Notifications and Web Push** — M-16, no platform transport exists.
+- **The AI assistant** — `ai/chat` answers 501 by design.
+- **Resolving a follow-up task** — `POST /api/followup/tasks/:id/resolve` exists
+  in the ERP, has **no platform route**, and is absent from `access.test.ts`'s
+  inventory, so it was never ported in Phase 5. The queue can therefore show
+  follow-up work but not action it. **This blocks retiring `apps/erp`** and is
+  not something 6.4 should invent — a route without a contract test would be the
+  one write path nothing covers.
+
+Delivery tracking and the follow-up panel are 6.4b.
+
+**Verified live:** screens 90/90 · access 62/62 · console-shell 13/13 ·
+product-registry 36/36 · i18n 18/18.
+
+---
+
 ### 6.3d Carriers, the books, the team and automation — Phase 6.3 is complete
 
 The last four write surfaces. `screens.test.ts` goes 59 → **80/80**, and every

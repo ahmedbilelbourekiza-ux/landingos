@@ -1,8 +1,8 @@
 # Next Steps
 
-**Phase 5 is complete. Phase 6.3 is complete.** Immediate tasks to continue from
-the Phase 6.3d commit. Full context is in `PROJECT_STATE.md` — read its "Read
-this first" section before starting.
+**Phase 5 is complete. Phase 6.3 is complete. Phase 6.4 is in progress.**
+Immediate tasks to continue from the Phase 6.4a commit. Full context is in
+`PROJECT_STATE.md` — read its "Read this first" section before starting.
 
 ---
 
@@ -38,9 +38,9 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **315/315** across the nine files: access 62 · orders 38 ·
+Expect **325/325** across the nine files: access 62 · orders 38 ·
 validation 29 · listing 25 · catalog 31 · delivery 20 · integrations 22 ·
-order-split 8 · screens 80.
+order-split 8 · screens 90.
 
 ---
 
@@ -128,28 +128,41 @@ throws at runtime while the build succeeds — that cost a cycle in 6.3b.
 
 ## 2. NEXT — 6.4, the agent PWA, and retiring `apps/erp`
 
-**This is the current task.** The confirmation agent's phone app
-(`apps/erp/agent.html`, 1,261 lines) is the last thing `apps/erp` serves that has
-no replacement. Everything the manager console does now exists on the platform
-with a contract test on it. Once the PWA does too, delete `apps/erp` — it is a UI
-in front of an API that has been superseded.
+**This is the current task.** All 1,172 lines of `apps/erp/agent.html` were read
+in 6.4a; this table is the measurement, not a guess.
 
-What that app actually does, from its source, so the port is measured rather than
-guessed:
+### Done — 6.4a
 
-- **A queue of the agent's own orders**, filtered to the active statuses
-  (`pending`, `no_answer`, `callback`, `tentative1/2/3`, `unreachable`). The
-  platform equivalent is `orderScope` + `orderFilters`, both already used by
-  `/console/erp/orders`.
-- **The call loop**: dial, then log one of the eight `RESULT_OPTIONS` — the same
-  vocabulary the order-detail call panel already renders, with the same
-  `call-start` → `call` pair behind it.
-- **A note modal** with the five note types.
-- **Its own login screen and a stored server URL.** Neither ports: the platform
-  session is a cookie and the app is served from the same origin.
-- **Web Push and an SSE feed.** These are **M-16** and have no platform
-  equivalent — see §3. Port the app without them rather than inventing a
-  transport, and say on the screen that live updates are not there yet.
+`/console/erp/queue`. The scoped queue over `ACTIVE_STATUSES`, oldest first;
+tap-to-dial as a real `tel:` anchor with `call-start` fired alongside; the eight
+result buttons; the five note types; the overdue badge judged against the
+tenant's `alertMinutes`.
+
+### Remaining — 6.4b
+
+| Feature in `agent.html` | Platform route | Do |
+|---|---|---|
+| Delivery tracking modal | `GET orders/[id]/shipment` — exists | Port onto the queue card, for confirmed orders |
+| Follow-up task panel | `GET followup/tasks` — exists | Port, **read-only** (see the blocker) |
+
+### Does not port, and must not be faked
+
+- **Login screen and stored server URL.** The platform session is a cookie on
+  this origin; there is nothing to port to.
+- **Notifications and Web Push** — M-16 (§3). No platform transport exists.
+- **AI assistant** — `ai/chat` answers 501 by design (§5).
+
+### The blocker to deleting `apps/erp`
+
+**`POST /api/followup/tasks/:id/resolve` was never ported.** It exists in the
+ERP (`agent.html:853`), has no platform route, and does not appear in
+`access.test.ts`'s inventory — so it is a Phase 5 gap, not a 6.4 one. Until it
+lands, an agent can see follow-up work on the platform but cannot mark it done,
+and `apps/erp` is the only place that can.
+
+Do it in the order this project uses: **the contract test first**, then the
+route. It needs the same record-level scope `followup/tasks` already applies —
+`hardening.test.js §7` exists because the ERP let an agent resolve by asking.
 
 Its 298 tests go with the directory. They tested the Express stack; `test/erp/`
 tests the platform. See `apps/website-builder/test/erp/PORTING.md` for what was

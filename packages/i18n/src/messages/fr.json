@@ -23,6 +23,7 @@
   "erp": {
     "nav": {
       "overview": "Aperçu",
+      "queue": "Mes appels",
       "orders": "Commandes",
       "clients": "Clients",
       "products": "Produits",
@@ -291,6 +292,15 @@
         "on_confirm": "À la confirmation",
         "none": "Jamais"
       }
+    },
+    "queue": {
+      "title": "Mes appels",
+      "toCall": "À appeler",
+      "overdue": "En retard",
+      "call": "Appeler",
+      "neverCalled": "Pas encore appelée",
+      "clear": "Plus rien à appeler",
+      "open": "Ouvrir la commande"
     },
     "jobRole": {
       "confirmation": "Confirmation",

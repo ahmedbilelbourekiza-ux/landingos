@@ -36,6 +36,29 @@ export const NOTE_TYPES = [
 
 export const CLASSIFICATIONS = ["", "fake"] as const;
 
+/**
+ * Statuses an order does not move on from by being called again.
+ *
+ * `abandoned` belongs here with the other two: it is a cart nobody completed,
+ * not a customer waiting for a phone call.
+ */
+export const TERMINAL_STATUSES = ["confirmed", "cancelled", "abandoned"] as const;
+
+/**
+ * What the agent's queue holds — Phase 6.4.
+ *
+ * DERIVED by subtraction rather than listed. The ERP wrote the seven out by hand
+ * in three separate places (`agent.html` twice, `index.js` once), which is three
+ * places to forget when the call-centre invents an outcome — and "tentative3"
+ * proves they do. Subtracting the terminal set means a status added later lands
+ * in the queue by default, which is the safe direction: an agent seeing an order
+ * they need not have called is a moment's confusion, an order that silently
+ * never appears is a customer nobody rings.
+ */
+export const ACTIVE_STATUSES = ORDER_STATUSES.filter(
+  (s) => !(TERMINAL_STATUSES as readonly string[]).includes(s),
+);
+
 /* -----------------------------------------------------------------------------
  * Which fields a client may write, and who counts as a client
  * -------------------------------------------------------------------------- */

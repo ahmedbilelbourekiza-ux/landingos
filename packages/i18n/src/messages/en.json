@@ -23,6 +23,7 @@
   "erp": {
     "nav": {
       "overview": "Overview",
+      "queue": "My calls",
       "orders": "Orders",
       "clients": "Customers",
       "products": "Products",
@@ -291,6 +292,15 @@
         "on_confirm": "When the order is confirmed",
         "none": "Never"
       }
+    },
+    "queue": {
+      "title": "My calls",
+      "toCall": "To call",
+      "overdue": "Overdue",
+      "call": "Call",
+      "neverCalled": "Not called yet",
+      "clear": "Nothing left to call",
+      "open": "Open the order"
     },
     "jobRole": {
       "confirmation": "Confirmation",

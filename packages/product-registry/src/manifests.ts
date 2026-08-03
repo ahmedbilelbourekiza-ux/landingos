@@ -73,6 +73,10 @@ export const erp: ProductManifest = {
   ],
   nav: [
     { id: 'overview', titleKey: 'erp.nav.overview', path: '', icon: 'layout-dashboard' },
+    // Phase 6.4. The confirmation agent's working screen — the port of
+    // apps/erp/agent.html. Second, because for the people who hold
+    // `erp:orders:write` and nothing else it is the only screen they use.
+    { id: 'queue', titleKey: 'erp.nav.queue', path: 'queue', icon: 'phone-call', permission: 'erp:orders:write' },
     { id: 'orders', titleKey: 'erp.nav.orders', path: 'orders', icon: 'clipboard-list', permission: 'erp:orders:read' },
     { id: 'clients', titleKey: 'erp.nav.clients', path: 'clients', icon: 'users', permission: 'erp:clients:read' },
     { id: 'products', titleKey: 'erp.nav.products', path: 'products', icon: 'box' },
