@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
-**Last updated:** 3 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.6f: stock, and the reassessment*
+**Last updated:** 4 August 2026
+**Branch:** `master` · **Last commit:** *Phase 7.1a: the platform learns to have a team*
 **Working tree:** clean, all work committed.
 
 ---
@@ -117,10 +117,16 @@ routes apply. **6.6d completed M-16**: a live SSE stream that polls the table ra
 fanning out in process — correct on one instance and on ten — with exact replay
 from `Last-Event-ID`, and Web Push. The AI assistant remains a deliberate 501.
 
-**Exact stopping point:** committed and verified. Remaining before `apps/erp`
-can be retired with no functional regression: **stock reservation on
-confirm/cancel** (the one real gap), M-16, and PWA installability — see *What
-still prevents retiring `apps/erp`*.
+**Phase 6 closed with 6.6f.** Every ERP behaviour is on the platform; `apps/erp`
+is kept deliberately as the reference implementation — see *What still prevents
+retiring `apps/erp`*.
+
+**Phase 7 has started. 7.1a landed the team API** — six routes under
+`/api/platform/team/*`, 39 contract tests, purely additive. The next slice is
+**7.1b, accepting an invitation**; see *Next recommended task* below.
+
+**Exact stopping point:** committed and verified. Nothing is half-built: 7.1a is
+a complete, tested slice, and the join flow it does not include was never started.
 
 ### The assignment rule (6.6a)
 
@@ -291,31 +297,65 @@ stream and inbound carrier webhooks).
 | 6.6d | M-16 part 2 — the live stream and Web Push, 29/29 |
 | 6.6e | The console installs, and can receive a push, 33/33 |
 | 6.6f | Stock moves on confirm/cancel — the last gap, 40/40 |
+| 7.1a | The team API — invitations, members, roles, suspension, removal, 39/39 |
 
 ### Remaining roadmap
 
 | Phase | Scope |
 |---|---|
-| 7 | SaaS layer — team management, billing, self-serve signup. **Next.** See NEXT_STEPS §7. |
+| 7 | SaaS layer — team management (**in progress**), billing, self-serve signup. See NEXT_STEPS §7. |
 | 8 | Hardening — adversarial isolation review, load testing, backup/restore, runbooks |
 
-### Next recommended task — Phase 7.1, team management
+### Next recommended task — Phase 7.1b, accepting an invitation
 
-**Phase 6 is complete.** Every ERP behaviour is on the platform; the full
-reassessment, and the decision to keep `apps/erp` as the reference
-implementation until Phase 7, Phase 8 and production readiness are done, are
-below under *What still prevents retiring `apps/erp`*.
+**7.1a landed the team API.** Six routes under `/api/platform/team/*` — issue and
+revoke invitations, list members, change a role, suspend, reactivate, remove —
+with 39 contract tests in `test/platform/team.test.ts`. The 501 on
+`POST /api/erp/agents` now names a surface that exists.
 
-Phase 7.1 is **team management**, and it is first because the platform has
-already promised it. `POST /api/erp/agents` answers **501** with "Team members
-are invited from company settings, not from a product" — and that screen does
-not exist. Every agent today was created by `seed:dev` or by a test fixture: the
-agents screen can set somebody's pay rate and cannot add them.
+**What it does not yet do: an invitation cannot be accepted.**
+`GET/POST /console/join/[token]` does not exist, so the link the invite route
+hands back is a 404 today. That is 7.1b, and one finding from 7.1a shapes it:
 
-`Invitation`, `Membership` and `platform:team:*` — already in `SENSITIVE`, so no
-role reaches it implicitly — all exist. Every route and every screen is missing.
-NEXT_STEPS §7.1 lists them, and the seven rules each of which needs a test that
-violates it.
+> **`asPlatform()` does not bypass RLS.** The app role is not the database owner,
+> so an unbound read of `Invitation` — which is tenant-scoped — returns zero rows,
+> silently, the way RLS always denies. The join flow resolves a token *before* any
+> tenant is bound, so it needs the pattern `Membership` already demonstrates: a
+> second, narrower policy (`FOR SELECT USING token = current_setting(...)`) plus a
+> `withInvitationToken` binding in `packages/db`, opening exactly the row whose
+> token was presented.
+
+After that, 7.1c is `/console/settings/team`. NEXT_STEPS §7.1 has both.
+
+### Decisions taken in Phase 7
+
+- **D-07.1.** `OWNER` is not a role the team API hands out. A tenant has exactly
+  one owner and the schema states it in a comment rather than a constraint, so an
+  assignable OWNER would silently produce two — both holding `*`, neither
+  removable. The invariant is held by the vocabulary (`ASSIGNABLE_ROLES`) rather
+  than by a count query that races itself. Ownership transfer is a separate,
+  deliberate operation and is not built.
+- **D-07.2.** Suspending a member does **not** destroy their sessions.
+  `resolveSession` re-reads the membership every request and `can()` refuses a
+  suspended context, so the flag alone takes effect on the next call — the exact
+  property M-09 bought. `destroySessionsForUser` is keyed on the *user*, and one
+  person belongs to many companies, so using it here would sign a consultant out
+  of an unrelated employer.
+- **D-07.3.** An invitation token is returned **once**, by the call that creates
+  it; the list carries state and never the secret. Same rule as a raw session
+  token. Recovery for a mislaid link is revoke-and-reinvite, which mints a new
+  one.
+- **D-07.4.** Nobody may act on their own membership through the team surface —
+  no self-promotion, self-suspension or self-removal. Leaving a company is a
+  different operation and belongs to the person, not to a row in a list of
+  colleagues.
+- **The owner cannot be demoted, suspended or removed by anybody**, themselves
+  included. There is deliberately no "last administrator" check, because the
+  unremovable owner already guarantees somebody holds `*`.
+- **Team management is not entitlement-gated.** `productOf("platform:…")` is null,
+  so a lapsed subscription still leaves a company able to manage its own people —
+  otherwise a bounced invoice removes the ability to remove whoever stopped
+  paying.
 
 ---
 
@@ -357,7 +397,7 @@ src/app/
 │   └── thank-you/[orderId]/
 └── api/
     ├── builder/              Console API for the builder product
-    ├── platform/             Cross-product surfaces (integrations)
+    ├── platform/             Cross-product surfaces (integrations, notifications, push, team)
     ├── storefront/[tenant]/  Public API — checkout, wilayas, drafts, pixels
     ├── health/               Deploy healthcheck
     └── uploads/[...path]/    Serves uploaded images
@@ -782,12 +822,13 @@ fail without it, so check the counts, not just the exit code.
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
 | `apps/website-builder` — ERP contract | 435 | all pass against a running server |
+| `apps/website-builder` — platform contract | 39 | team management (7.1a), against a running server |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **980** | green per suite |
+| **Total** | **1019** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

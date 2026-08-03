@@ -1,7 +1,8 @@
 # Next Steps
 
-**Phase 5 and Phase 6 are complete. Phase 7 is next — see §7.**
-Immediate tasks to continue from the Phase 6.6f commit. Full context is in
+**Phase 5 and Phase 6 are complete. Phase 7 has started — see §7.**
+**THE NEXT TASK IS 7.1b: accepting an invitation. See §7.1b.**
+Immediate tasks to continue from the Phase 7.1a commit. Full context is in
 `PROJECT_STATE.md` — read its "Read this first" section before starting.
 
 ---
@@ -41,6 +42,17 @@ ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/a
 Expect **435/435** across the TWELVE files: access 63 · orders 38 ·
 validation 29 · listing 25 · catalog 40 · delivery 33 · integrations 29 ·
 order-split 8 · screens 96 · jobs 16 · assign 25 · notifications 33.
+
+The platform contract suite lives beside it and runs the same way — **39/39**:
+
+```bash
+ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/platform/team.test.ts"
+```
+
+It imports the harness from `../erp/helpers.ts` on purpose. That file is the
+app's contract-test harness, not the ERP's; tenants, members, sessions and the
+skip-with-a-reason machinery are product-agnostic, and the directory name is
+historical in the same way `apps/website-builder` is.
 
 `ERP_CONTRACT=strict` also requires **`WORKER_SECRET`** in
 `apps/website-builder/.env`, matching whatever the server was started with.
@@ -297,56 +309,96 @@ the agent PWA, 6.5a for the follow-up producer, 6.6a for assignment, 6.6f for th
 in-process timers — and **each read found something the platform was missing**.
 Weigh that before the last working copy goes behind a `git show`.
 
-## 7. NEXT — Phase 7, the SaaS layer
+## 7. Phase 7, the SaaS layer — IN PROGRESS
 
 **Phase 6 is complete.** Every ERP behaviour is on the platform (6.6f), and
 `apps/erp` is kept as the reference implementation until Phase 7, Phase 8 and
 production readiness are done — see §2c.
 
+**7.1a is done** (the team API). **7.1b is the next task**, below.
+
 Phase 7 is what turns the platform from *a thing two seeded tenants use* into a
 product somebody can buy. Three pieces, in this order, and the order is the
 argument:
 
-### 7.1 — Team management. Do this first.
+### 7.1a — DONE. The team API.
 
-**It is the one the platform has already promised.** `POST /api/erp/agents`
-answers **501** with "Team members are invited from company settings, not from a
-product" — and that screen does not exist. Every ERP agent today was created by
-`seed:dev` or by a test fixture. The agents screen can set somebody's pay rate
-and cannot add them.
+Six routes under `/api/platform/team/*`, 39 contract tests in
+`test/platform/team.test.ts`, purely additive — no existing file was modified.
 
-What exists: `Invitation` (token, role, expiry, `acceptedAt`, `revokedAt`,
-one outstanding per address per tenant), `Membership`, `TenantRole`, and
-`platform:team:*` already listed in `SENSITIVE` so no role reaches it implicitly.
+| Route | What it does |
+|---|---|
+| `GET/POST /api/platform/team/invitations` | list · invite by address and role |
+| `POST .../invitations/[id]/revoke` | withdraw one; idempotent |
+| `GET /api/platform/team/members` | the company, plus `assignableRoles` |
+| `PATCH .../members/[userId]` | change a role |
+| `POST .../members/[userId]/{suspend,reactivate}` | |
+| `DELETE .../members/[userId]` | remove the membership, never the person |
 
-What is missing: every route and every screen.
+The rules, all enforced and each with a test that violates it: the owner cannot
+be demoted, suspended or removed by anybody including themselves; nobody hands
+out more access than they hold (by promotion *or* by invitation — both doors are
+tested); nobody acts on their own membership; suspension takes effect on the next
+request and is per-company, not per-person; an invitation is replaced rather than
+duplicated; the token is shown once. Four decisions — **D-07.1** to **D-07.4** —
+are recorded in PROJECT_STATE.
 
-- `GET/POST /api/platform/team/invitations` — invite by email and role.
-- `POST /api/platform/team/invitations/[id]/revoke`.
-- `GET /api/platform/team/members`, `PATCH .../[userId]` (role),
-  `POST .../[userId]/{suspend,reactivate}`, `DELETE .../[userId]`.
-- `GET/POST /console/join/[token]` — accept, **before a session exists**. This is
-  the interesting one: the token is globally unique precisely because it is
-  followed from an email link with no tenant bound, exactly like a session token.
-- `/console/settings/team`.
+**Every guard returns a CODE, and every test asserts it.** A test that only
+checks for 403 passes against a route that refused for the wrong reason.
 
-**The rules to get right, and each needs a test that violates it:**
+### 7.1b — THE NEXT TASK. Accepting an invitation.
 
-- **The owner cannot be removed, demoted or suspended** — by anyone, including
-  themselves. `Tenant` has exactly one, and the ERP's "last manager" protection
-  is the same rule one generation earlier.
-- **Nobody may raise somebody above their own role**, and nobody may promote
-  themselves. Otherwise `platform:team:write` is a route to OWNER.
-- **Suspension takes effect on the next request** — that is the whole reason
-  M-09 chose server-side sessions, and `destroySessionsForUser` already exists.
-- **An invitation is not an account.** Accepting one creates a `Membership`; the
-  `User` may already exist (one person, many companies — the seeded consultant is
-  exactly this case and must keep working).
-- **An expired, revoked or already-accepted token is refused identically.** A
-  different answer per case is an oracle for which addresses are invited.
-- **The email is not proof of anything.** Sending it is out of scope until a
-  transport exists; the route returns the link and says so, the way the AI
-  surface answers 501 rather than pretending.
+7.1a issues links that lead to a 404. This closes that.
+
+- `GET /console/join/[token]` — show who is inviting, to what company, in what
+  role. **Before a session exists**, so it must render for a signed-out visitor.
+- `POST /console/join/[token]` — accept. Creates a `Membership`; the `User` may
+  already exist (one person, many companies — the seeded consultant is exactly
+  this case and must keep working). Sets `acceptedAt`.
+
+**Start here, because it is the part that is not obvious:**
+
+> **`asPlatform()` does not bypass RLS.** The app role is not the database owner,
+> so an unbound read of `Invitation` returns **zero rows, silently** — RLS denies
+> by returning nothing, not by erroring. Resolving a token before a tenant is
+> bound therefore needs the pattern `Membership` already demonstrates in
+> `packages/db/scripts/apply-rls.ts`:
+>
+> - a second, narrower policy on `Invitation` —
+>   `FOR SELECT USING ("token" = current_setting('app.invitation_token', true))`
+> - a `withInvitationToken(token, work)` binding in
+>   `packages/db/src/tenant-client.ts`, alongside `withUser`
+> - `npm run rls --workspace @landingos/db` to apply it, then re-run the
+>   preflight
+>
+> It opens exactly the row whose token was presented and nothing else. Do not
+> reach for it to sidestep a tenant binding — like `withUser`, it grants a
+> strictly narrower view, not a wider one.
+
+**The rules for this slice, each needing a test that violates it:**
+
+- **An expired, revoked or already-accepted token is refused IDENTICALLY.** A
+  different answer per case turns the endpoint into an oracle for which addresses
+  have been invited and which have joined.
+- **An invitation is not an account.** Accepting creates a `Membership` only. If
+  no `User` holds that address, this slice must not create one — that is 7.3,
+  self-serve signup. Say so; do not half-build it.
+- **The address on the invitation is not proof of identity.** Whoever follows the
+  link is whoever received it. Decide explicitly whether accepting requires being
+  signed in as *that* address, and write the reasoning down — it is the one real
+  design question in the slice.
+- **Accepting twice creates one membership.** Idempotent by `acceptedAt`, the
+  same shape as every job in `jobs.ts`.
+- **A token for a soft-deleted tenant is refused**, like every other bad token.
+
+### 7.1c — then the screen.
+
+`/console/settings/team`, gated on `platform:team:read`, with the write controls
+rendered only where the API would accept them (D-06.2) and calling the routes
+directly (D-06.1). The vocabulary comes from `assignableRoles` on the members
+response, which is already served for exactly this reason. Add the section to
+`/console/settings/page.tsx`, which filters by permission and so will hide it
+from a MANAGER by itself.
 
 ### 7.2 — Billing
 

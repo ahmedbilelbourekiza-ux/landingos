@@ -10,6 +10,129 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## Phase 7 — The SaaS layer
+
+### 7.1a The platform learns to have a team
+
+`test/platform/team.test.ts` — a new suite, **39/39**. The first slice of Phase 7,
+and the one the platform had already promised: `POST /api/erp/agents` has answered
+501 with *"team members are invited from company settings, not from a product"*
+since Phase 5.3, and until now that sentence named a surface that did not exist.
+Every agent in the system was created by `seed:dev` or by a test fixture — the
+ERP's agents screen could set somebody's pay rate and could not add them.
+
+Six routes under `/api/platform/team/*`: list and issue invitations, revoke one,
+list members, change a role, suspend, reactivate, remove.
+
+#### The permission is SENSITIVE, and that is the whole shape of the feature
+
+`platform:team:*` was already on the SENSITIVE list in `packages/auth` before this
+slice, which means no role glob reaches it: OWNER and ADMIN hold it through a bare
+`*` and everybody else needs it granted by name. Three tests assert the negative
+space — a MEMBER cannot read the team even though `*:*:read` would otherwise
+grant it, and neither can a MANAGER, because running a call centre day to day is
+not the same job as deciding who works there.
+
+It is also **not entitlement-gated**, because `productOf("platform:…")` is null. A
+tenant whose subscription lapsed still manages its own people, and there is a test
+for it: losing the team screen when the invoice bounces is how a company loses the
+ability to remove whoever stopped paying.
+
+#### Four decisions, each of which is a rule with a test that violates it
+
+- **D-07.1 — OWNER is not a role this API hands out.** `Tenant` has exactly one
+  owner and the schema says so in a comment rather than a constraint, so an
+  assignable OWNER would silently produce two — both holding `*`, neither
+  removable, no way back without a database edit. Excluding the value from the
+  vocabulary means the invariant is held by what can be said rather than by a
+  count query that races itself. Ownership transfer is a separate, deliberate
+  operation and is not this.
+- **D-07.2 — suspending somebody does NOT destroy their sessions**, and that is
+  the design. `resolveSession` re-reads the membership on every request and copies
+  `suspended` into the `AuthContext`, so the flag alone takes effect on the
+  caller's very next call — which is precisely the property M-09 bought by paying
+  a database read per request. `destroySessionsForUser` exists and would be the
+  *wrong* tool: it is keyed on the user, not the membership, and one person
+  belongs to many companies. A consultant suspended by one client would be signed
+  out of the other, on a screen that never mentioned them. Two tests: the same
+  token that worked a moment ago is refused and then comes back, and a suspension
+  in one company leaves the same person's session in another untouched.
+- **D-07.3 — an invitation token is returned once, by the call that creates it.**
+  `listInvitations` carries state and never the secret, the way `createSession`
+  hands back a raw token once and stores only its hash. There is no mail transport,
+  so the link IS the delivery mechanism, and a list endpoint that hands it back
+  turns *"who have we invited?"* — a question a team screen asks on every page
+  load — into a live credential in a response body, a log and a browser cache. The
+  recovery path for a mislaid link is revoke, then invite again, which produces a
+  new token; that is the correct outcome, because a link that has been mislaid is
+  a link that may have been seen.
+- **D-07.4 — nobody acts on their own membership here.** It reads as three
+  separate foot-guns — promoting yourself, suspending yourself, removing yourself
+  — and is one rule: a team screen administers *other* people. Leaving a company
+  is a real operation and a different one; it belongs to the person, with its own
+  confirmation, not to a row in a list of colleagues.
+
+And the rule that needed no decision, only enforcing: **the owner cannot be
+demoted, suspended or removed by anybody, themselves included.** Four tests, one
+per door, plus one that reads the list afterwards and finds them unchanged. The
+ERP's "last manager" protection was this same rule one generation earlier, and it
+existed because that system had been locked out of a tenant by exactly this.
+
+There is deliberately **no "last administrator" check**, because there does not
+need to be one: the owner is unremovable, so a tenant always has at least one
+person holding `*`.
+
+#### Refusals are codes, not statuses
+
+Every guard returns `{ status, code, message }` and every test asserts the code.
+A test that only checked for 403 would pass against a route that refused for the
+wrong reason — which is how a permission gate quietly becomes the only thing
+standing between an ADMIN and the owner's account. `ROLE_ABOVE_SELF` is the one
+that matters most: without it, `platform:team:write` granted by name to a MANAGER
+— which is the entire point of a SENSITIVE permission being grantable — would be
+a route to ADMIN, by promotion or by invitation, and both doors are tested.
+
+#### What this slice does NOT do, stated plainly
+
+**An invitation cannot yet be accepted.** `GET/POST /console/join/[token]` is
+7.1b and there is no screen. The invite route returns the link and reports
+`delivery: "none"` — stated, not simulated, the same stance the AI surface takes
+with its 501 — but following that link today is a 404.
+
+And a finding that shapes 7.1b, recorded before it is forgotten: **`asPlatform()`
+does not bypass RLS.** `Invitation` is tenant-scoped, and the join flow resolves a
+token *before* any tenant is bound, so an unbound read returns zero rows —
+silently, the way RLS always denies. The fix is the one `Membership` already
+demonstrates: a second, narrower policy (`USING token = current_setting(...)`)
+plus a `withInvitationToken` binding in `packages/db`, which opens exactly the one
+row whose token was presented and nothing else.
+
+#### Files
+`apps/website-builder/src/lib/platform/team.ts` (new),
+`src/app/api/platform/team/invitations/{route.ts,[id]/revoke/route.ts}` (new),
+`src/app/api/platform/team/members/{route.ts,[userId]/route.ts,[userId]/suspend/route.ts,[userId]/reactivate/route.ts}` (new),
+`test/platform/team.test.ts` (new).
+
+Purely additive — no existing file was modified.
+
+#### Migration
+None. `Invitation`, `Membership`, `TenantRole` and `platform:team:*` all existed
+already; this slice is the routes over them.
+
+#### Risk
+**There is no mail transport, and the address is not verified.** Whoever follows
+the link is whoever received it; the invitation carries a role, not an identity.
+That is why the token is 32 random bytes and why it expires after seven days. A
+deployment that hands these links out over an untrusted channel is handing out
+membership of a company.
+
+**Verified live:** platform/team 39/39 (twice, on the exact committed source) ·
+access 63/63 · website-builder 102/102. One run of the non-ERP suites tripped the
+documented Neon `P1001` connection-limit flake — three of them in the server log —
+and was green on re-run; see *Known bugs and limitations* in PROJECT_STATE.
+
+---
+
 ## Phase 6 — The ERP interface
 
 ### 6.6f Stock moves again — and the reassessment of `apps/erp`
