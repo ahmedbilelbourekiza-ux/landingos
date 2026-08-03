@@ -66,6 +66,7 @@ Three verdicts are possible:
 | `ProductSetting(tenantId, product, key)` | **per-tenant** | Replaces the ERP's global `settings` key/value table. Keyed by product so a tenth product needs no new table. |
 | `StoreSettings.tenantId` | **per-tenant** | The primary key *is* the tenant — this is the de-singletonised `StoreSettings`. |
 | `PushSubscription.endpoint` | **public-namespace** | Listed again here because it is the one ERP constraint that stays global. A URL issued by the browser's push service; scoping it per-tenant would let one physical device register twice and receive every notification in duplicate. |
+| `FulfillmentOrder.salesOrderId` | **platform-global** | Added by M-05 in Phase 5.4 and the one deliberate exception to the per-tenant rule. That rule exists because *human-meaningful* values — a slug, a phone number, an order number — legitimately repeat across companies. A cuid does not, and per-tenant scoping here would buy nothing while implying two tenants might share a sales order id. The foreign key still cannot cross a tenant boundary: RLS `WITH CHECK` enforces that, and `test/erp/order-split.test.ts` proves it by trying. *(Recorded in the changelog when the decision was made, but not added to the allow-list in `constraints.test.ts` until Phase 6.6 — so the assertion had been failing for two phases, which is the mechanism this file exists to keep switched on.)* |
 
 ---
 

@@ -12,6 +12,180 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.6a Auto-assignment — who work lands on, and when it moves
+
+The first of the four behaviours PROJECT_STATE listed as accepted differences
+rather than blockers. `assign.test.ts` is new at **25/25**, and it covers all
+three ERP behaviours at once because they share one rule: `autoAssign()` on a new
+order, `assignFollowup()` on a confirmed one, and the reassignment branch of the
+overdue sweep. Three copies of an eligibility rule is three places for somebody
+to stay assignable after they have been suspended.
+
+**Verified to bite.** The 25 tests were run against the pre-change build first:
+**11 failed**. The 14 that passed are the ones asserting an *absence* — a
+suspended agent receiving nothing, a manager's choice not being overruled — which
+were trivially true when nothing was assigned at all, and which exist to stop the
+new behaviour over-reaching.
+
+#### D-06.5 — automatic assignment requires an explicit job role
+
+The ERP treated a missing role as "confirmation agent"
+(`a.role === 'confirmation' || a.role === 'both' || !a.role`). That was safe
+there: every row in its `agents` table WAS a call-centre agent, because the table
+existed for nothing else. `Membership` is not that table. It is **everybody in
+the company** — the bookkeeper, the person who only uses the website builder, the
+owner who signed up — and `jobRole` is null for all of them, so carrying the
+fallback across would hand a customer's order to somebody who has never opened
+the product.
+
+The safe direction is the opposite of the usual one here. An agent who is not
+offered work notices within a shift and asks; a customer whose order is sitting
+with the accountant is a customer nobody rings.
+
+#### D-06.6 — and the permission the route would check
+
+A job role says what somebody does. It does not say whether the API will let
+them. Eligibility therefore asks `can(..., "erp:orders:write")` — the same
+function and the same permission `POST /orders/[id]/call` checks — because
+assigning an order to somebody that route answers 403 for produces work nobody
+can do and, once the sweep is running, a missed-order counter climbing against a
+person who was never able to act.
+
+This is D-06.2 turned around: *render a control only where the API would accept
+it* becomes *never hand out work the API would refuse*. Entitlement rides along
+inside `can`, so a lapsed ERP subscription has no eligible agents and assigns
+nothing — the rule that already closes the routes, rather than a second one.
+
+#### D-06.7 — the reassignment clock, and the runaway it prevents
+
+The ERP cleared `overdueFlaggedAt` when it moved an order, while still computing
+the deadline from `createdAt`, which never moves. So the very next tick found the
+same order overdue, counted a miss against an agent who had held it for sixty
+seconds, and moved it on again. **One ignored order would walk the whole roster
+in minutes and, with `autoSuspend` on, lock everybody out.** BUG-01 meant that
+code never executed in production, so nobody ever saw it.
+
+`overdueFlaggedAt` is now both the guard and the clock: for an order that has
+never been flagged the guard is `null`, and once one has changed hands the column
+is the moment it did, with the next deadline measured from there. Re-arming
+applies **only when `autoReassign` is on** — with it off the ERP flagged an order
+exactly once, ever, and that is preserved, because nothing changed hands and
+counting a second miss would punish one person twice for one failure.
+
+Both halves are asserted: the order does not move twice inside one threshold and
+one ignored order yields exactly one miss; and once the threshold passes again,
+the new holder is accountable too.
+
+#### A setting that would have done nothing
+
+6.5b's sweep read `alertMinutes`. That is a **different ERP job** — the hourly
+"N orders nobody has called" manager alert (`apps/erp/lib/jobs.js:61`), which is
+also what the queue screen's overdue badge uses. The sweep's own threshold is
+`reassignMinutes`, and the two had been conflated, so the number a manager
+changes on the automation screen to control reassignment did nothing at all.
+
+That is BUG-03's exact shape, and shipping auto-reassign on top of it would have
+made it permanent and invisible. The sweep now reads `reassignMinutes`, and a
+test pins the two settings *apart* — a short `alertMinutes` and a long
+`reassignMinutes` — so it fails if the wrong one is read. `Number(...) || 5`
+keeps the ERP's quirk that a stored 0 means five minutes: "flag everything
+instantly" is not what a manager means by typing 0.
+
+#### One confirm path, because there are two doors
+
+An order reaches `confirmed` either by an agent logging a call or by somebody
+setting the status directly, and the platform had re-introduced the exact
+divergence the ERP warns about in a comment at `index.js:1685` — `/call` booked
+the parcel and `PATCH` did not. Both now call `onOrderConfirmed`, which books and
+assigns in one place. Asserted by confirming through `PATCH` and checking the
+follow-up agent arrives.
+
+Each step is caught and **logged** rather than swallowed: the agent has just rung
+a customer and that has to be recorded whatever the carrier's API is doing, but
+BUG-01 was a job whose only symptom was silence, and a bare `catch` is the same
+defect waiting.
+
+#### Every door, not just the front one
+
+The ERP called `resolveAgent('')` on nine separate paths. Assignment is therefore
+wired into all three creation paths here — the manual route, the storefront
+bridge (M-05) and the inbound channel webhooks — because an order that arrives
+assigned through one door and unassigned through another is a queue that owns
+half its work depending on where the customer bought. On the storefront and
+webhook paths a failure is caught and the order created unassigned: a roster
+problem must never fail a customer's purchase, and a webhook that answers non-2xx
+gets its endpoint disabled by the platform sending it.
+
+#### Two things the ERP's own comment asked for and its code did not do
+
+`workloadByAgent` was documented as "current **open** follow-up workload" and
+counted every order the agent had ever been given, so balance was by lifetime
+total and a newcomer received everything until they caught up. This counts orders
+whose parcel has not settled, which is what the comment says.
+
+And the sweep now requires an order to be **somebody's** responsibility
+(`agentUserId` non-null and non-empty, as the ERP's own query did). The sweep
+asks "has this person done their job"; an unassigned order has no such person,
+and without the filter an order released into the unassigned queue would be
+re-flagged for the rest of its life.
+
+#### Two assertions in `packages/db` that had been red for two phases
+
+Found while re-measuring the baseline, and unrelated to this slice except that a
+red gate is a gate nobody reads. `packages/db` was **27/29**, not the 29/29
+PROJECT_STATE recorded:
+
+- **`FulfillmentOrder.salesOrderId`** — M-05's deliberate global unique, decided
+  and written up in Phase 5.4 and never added to `GLOBAL_UNIQUES`. The allow-list
+  *is* the mechanism for recording that decision, so the omission switched off
+  the check that exists to make a missed constraint mechanical rather than a
+  matter of vigilance.
+- **`TenantSequence`** — reported as an unindexed tenant-scoped model since Phase
+  5.2. A false positive: its `@@id([tenantId, name])` is backed by a unique btree
+  index leading with `tenantId`, and the check only recognised a single-column
+  `tenantId @id`. **Verified against the live database** rather than assumed —
+  `CREATE UNIQUE INDEX "TenantSequence_pkey" … USING btree ("tenantId", name)`.
+
+Both assertions demonstrably fire, which is how they were found.
+
+#### Files
+`apps/website-builder/src/lib/erp/assign.ts` (new),
+`src/lib/erp/confirm.ts` (new), `src/lib/erp/jobs.ts`, `src/lib/erp/orders.ts`,
+`src/lib/erp/from-sale.ts`, `src/lib/erp/webhooks.ts`,
+`src/app/api/erp/orders/route.ts`, `orders/[id]/route.ts`,
+`orders/[id]/call/route.ts`,
+`test/erp/{assign,helpers,jobs,order-split}.test.ts`,
+`packages/db/test/constraints.test.ts`, `packages/db/CONSTRAINTS.md`.
+
+#### Migration
+None. `followupAssignedAt` and `overdueFlaggedAt` already existed;
+`followupAssignedAt` is now returned by the order read so a screen can show when
+the handover happened.
+
+#### Risk
+**Auto-suspend can now be reached by a route it could not reach before.** With
+`autoReassign` on, an order re-arms after each threshold, so one order that
+nobody ever calls produces one miss per threshold rather than one miss ever —
+which is the ERP's intent and the point of the feature, but it means
+`suspendThreshold` is reachable faster than it was yesterday. Both `autoReassign`
+and `autoSuspend` default to **false**; the ERP's own advice on turning BUG-01's
+machinery on for the first time still applies — deploy with both off, watch a
+day, then enable.
+
+**Inventory is still not wired to confirmation.** `reserveOnConfirm` /
+`releaseOnCancel` were never ported in Phase 5: `lib/erp/inventory.ts` has the
+FIFO movement machinery and nothing calls it on a status change. Found while
+building `confirm.ts`, stated rather than invented — it needs its own contract
+tests over lot consumption, which is the part of this codebase most expensive to
+get wrong. Recorded in NEXT_STEPS.
+
+**Verified live:** assign 25/25 · jobs 14/14 · orders 38/38 · order-split 8/8 ·
+access 63/63 · validation 29/29 · listing 25/25 · catalog 31/31 · delivery 26/26 ·
+integrations 29/29 · screens 96/96 — **384/384**. website-builder 102/102 ·
+db 29/29 · auth 36/36 · product-registry 36/36 · ui 26/26 · i18n 18/18.
+
+---
+
 ### 6.5b M-15 — the scheduled work leaves the web process
 
 The ERP ran its jobs on two `setInterval`s inside its web server. On a scaled

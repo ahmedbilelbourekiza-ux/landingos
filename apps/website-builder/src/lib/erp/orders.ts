@@ -214,7 +214,7 @@ export const ORDER_LIST_SELECT = {
   wilaya: true, commune: true, city: true,
   product: true, productVariant: true, quantity: true,
   price: true, status: true, orderType: true, classification: true,
-  agentUserId: true, followupUserId: true,
+  agentUserId: true, followupUserId: true, followupAssignedAt: true,
   carrierCode: true, deliveryStatus: true, deliveryOutcome: true, deliveryOutcomeAt: true,
   trackingNumber: true, shipmentId: true,
   marketer: true, managerNote: true, note: true,

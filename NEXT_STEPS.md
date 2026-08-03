@@ -1,7 +1,7 @@
 # Next Steps
 
-**Phase 5 is complete. Phase 6.3 is complete. Phase 6.4 is in progress.**
-Immediate tasks to continue from the Phase 6.4a commit. Full context is in
+**Phase 5 is complete. Phases 6.1–6.5 are complete. Phase 6.6 is in progress.**
+Immediate tasks to continue from the Phase 6.6a commit. Full context is in
 `PROJECT_STATE.md` — read its "Read this first" section before starting.
 
 ---
@@ -38,9 +38,9 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **359/359** across the TEN files: access 63 · orders 38 ·
+Expect **384/384** across the ELEVEN files: access 63 · orders 38 ·
 validation 29 · listing 25 · catalog 31 · delivery 26 · integrations 29 ·
-order-split 8 · screens 96 · jobs 14.
+order-split 8 · screens 96 · jobs 14 · assign 25.
 
 ---
 
@@ -173,11 +173,10 @@ history no longer re-raises a task an agent has resolved. Both halves of
 `statusRequiresCall` ported (the CRM status list and the keyword fallback over
 the carrier's own wording). Six contract tests in `delivery.test.ts`.
 
-**Still not ported, and stated rather than hidden:** `assignFollowup` — the
-ERP's workload-balanced auto-assignment of a follow-up agent on confirmation,
-behind the `followupAutoAssign` setting. Tasks are raised unassigned instead,
-which `loadOwnedFollowupTask` treats as work anybody may pick up. Graceful, but
-it is a behaviour difference.
+A task raised here carries the order's `followupUserId`, and unassigned is fine
+— `loadOwnedFollowupTask` treats an unowned task as work anybody may pick up.
+6.6a closed the other half: `autoAssignFollowup` now sets that field on
+confirmation, so a task raised later already names somebody.
 
 ### (2) DONE in 6.5b — M-15, the scheduled work
 
@@ -196,18 +195,58 @@ that asserts the second pass changes nothing. Two ways to run them:
 WORKER_TARGET=http://127.0.0.1:3000 WORKER_SECRET=... npm run worker
 ```
 
-**Not ported, and stated rather than hidden:** auto-reassign of an overdue
-order, and the tracking poll. The first needs the same workload/eligibility
-logic as `assignFollowup` — do them together. The second is a job nobody has
-written; the machinery to schedule it now exists.
+### (3) DONE in 6.6a — auto-assignment
 
-### `apps/erp` can now be retired
+`src/lib/erp/assign.ts` is the one eligibility-and-workload rule behind all three
+ERP behaviours: `autoAssignOnCreate` (behind `autoAssign`, on all three creation
+paths), `autoAssignFollowup` (behind `followupAutoAssign`, on both confirm
+paths), and reassignment inside the overdue sweep (behind `autoReassign`).
+25 contract tests in `assign.test.ts`, **11 of which were verified to fail
+against the pre-change build.**
 
-Nothing it does is unavailable on the platform. PROJECT_STATE carries the full
-assessment; what retiring it costs, and should be accepted deliberately:
-no auto-assignment (either kind), no carrier polling on a timer, no
-notifications (M-16), and not installable. None is functionality a person
-invokes.
+Three decisions, in PROJECT_STATE: **D-06.5** an explicit `jobRole` is required
+(`Membership` is everybody in the company, not a staff table); **D-06.6**
+eligibility also asks `can(..., "erp:orders:write")`, so automation never hands
+out work the API would refuse; **D-06.7** `overdueFlaggedAt` is both the guard
+and the clock, which is what stops one ignored order walking the whole roster in
+minutes.
+
+`onOrderConfirmed` in `src/lib/erp/confirm.ts` is now the single confirm path for
+both doors into `confirmed` — `/call` and `PATCH` had diverged, which is the
+exact defect the ERP records at `index.js:1685`.
+
+**The sweep's threshold is `reassignMinutes`, not `alertMinutes`.** They are
+different ERP jobs and 6.5b conflated them.
+
+---
+
+## 2c. WHAT NOW BLOCKS DELETING `apps/erp` — one thing, and it is not scheduled work
+
+**Stock does not move when an order is confirmed or cancelled.**
+
+The ERP's `decrementOnConfirm` / `releaseOnCancel` (`apps/erp/lib/inventory.js:346`)
+honour `reservationMode` — `immediate` | `on_confirm` | `none` — and write a real
+FIFO movement per order line. On the platform `applyMovement` has **one** caller,
+`POST /products/[id]/inventory/adjust`. So a confirmed order consumes nothing, a
+cancellation restores nothing, and `reservationMode` is a setting the automation
+screen renders and nothing reads.
+
+Found in 6.6a while building `confirm.ts`, which is also where it belongs: that
+function already runs on both doors into `confirmed`, and the cancel side needs
+the same treatment for `cancelled`.
+
+Why it was invisible: it is code that runs *between* routes. `catalog.test.ts`
+attacks the adjust endpoint and passes; nothing asserts that confirming an order
+moves stock, because until 6.3 nothing on the platform could confirm one.
+
+It needs its own contract tests over FIFO lot consumption before any of it ships
+— the cancellation path must return stock to **the same lots the reservation
+consumed**, read back from `MovementLotConsumption`, or every cancellation
+silently rewrites the cost basis and the profit calculator stops being true with
+no error anywhere. `planRestore` already does this; it simply has no caller.
+
+The other three differences remain, and none is functionality a person invokes:
+no carrier polling on a timer, no notifications (M-16), not installable.
 
 `overdue-sweep.test.js` is superseded by `test/erp/jobs.test.ts`.
 `notifications.test.js` is not, and after deletion is recoverable only from git
@@ -215,13 +254,7 @@ history — port it with M-16 or copy it out first.
 
 Its 298 tests go with the directory. They tested the Express stack; `test/erp/`
 tests the platform. See `apps/website-builder/test/erp/PORTING.md` for what was
-deliberately not carried across and why — and note M-15 and M-16 below still owe
-two of those files a home.
-
-Its 298 tests go with it. They tested the Express stack; `test/erp/` tests the
-platform. See `apps/website-builder/test/erp/PORTING.md` for what was
-deliberately not carried across and why — and note M-15 and M-16 below still owe
-two of those files a home.
+deliberately not carried across and why.
 
 ---
 
@@ -229,10 +262,11 @@ two of those files a home.
 
 | id | Scope | Owes |
 |---|---|---|
-| **M-15** | Jobs → `services/worker`. The overdue sweep and tracking poll are in-process `setInterval`s in `apps/erp`; on a scaled deployment they run once per instance and double-count every miss. `services/` exists and is empty. | Port `apps/erp/test/overdue-sweep.test.js` (~12 tests), deferred in 5.1. |
+| **M-15** | **DONE in 6.5b.** Jobs → `services/worker`. | Discharged: `test/erp/jobs.test.ts` supersedes `overdue-sweep.test.js`, asserting the same behaviours plus the idempotence a scheduled job needs. **Still owes the tracking-poll job itself** — the third of `apps/erp/lib/jobs.js`'s three loops, and the only one with no platform equivalent. |
 | **M-16** | Notification unification. The table already moved to `platform.prisma`; the transport — SSE, per-account read watermark, replay on reconnect, Web Push — has no platform equivalent. | Port `apps/erp/test/notifications.test.js` (~20 tests) and the SSE half of `delivery-outcome.test.js`, both deferred in 5.1. |
 | **M-14** | ERP images → R2. | — |
 | **M-19** | Template registry. The storefront has one hardcoded template with colour-only themes. | — |
+| **—** | **Stock reservation on confirm/cancel.** Not a migration and not on any list until 6.6a found it; see §2c. `reservationMode` is rendered by the automation screen and read by nothing. | Contract tests over FIFO lot consumption, in `catalog.test.ts`. |
 
 ---
 

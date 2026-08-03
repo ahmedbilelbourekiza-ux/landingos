@@ -1,10 +1,10 @@
 import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { asPlatform, withTenant } from '@landingos/db';
+import { withTenant } from '@landingos/db';
 
 import {
-  skip, BASE, uid, phone, makeTenant, makeMember, makeErpTenant, slugOf, cleanup,
+  skip, makeTenant, makeMember, makeErpTenant, slugOf, storefront, checkout, cleanup,
   contractTest as test,
   type Caller,
 } from './helpers.ts';
@@ -35,55 +35,9 @@ let builderOnly = '';
 let builderOnlySlug = '';
 let builderOnlyOwner: Caller;
 
-/** Build a published page with a priced wilaya, and return what checkout needs. */
-async function storefront(tenantId: string) {
-  return withTenant(tenantId, async (db) => {
-    const page = await db.landingPage.create({
-      data: {
-        tenantId,
-        title: `Split Widget ${uid()}`,
-        slug: `split-${uid()}`,
-        price: 4900,
-        published: true,
-        status: 'PUBLISHED',
-      },
-      select: { id: true, title: true },
-    });
-    const wilaya = await asPlatform().wilaya.findFirst({ select: { id: true, name: true } });
-    // Upsert, not create: the price is per (tenant, wilaya) and this helper runs
-    // once per test against the same tenant and the same first wilaya.
-    await db.tenantDeliveryPrice.upsert({
-      where: { tenantId_wilayaId: { tenantId, wilayaId: wilaya!.id } },
-      create: { tenantId, wilayaId: wilaya!.id, homePrice: 500, deskPrice: 300 },
-      update: {},
-    });
-    const baladia = await asPlatform().baladia.findFirst({
-      where: { wilayaId: wilaya!.id },
-      select: { name: true },
-    });
-    return { page, wilaya: wilaya!, baladiaName: baladia?.name ?? 'Centre' };
-  });
-}
-
-async function checkout(slug: string, shop: Awaited<ReturnType<typeof storefront>>) {
-  const res = await fetch(`${BASE}/api/storefront/${slug}/orders`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      landingPageId: shop.page.id,
-      customerName: 'Split Customer',
-      phone: phone(),
-      wilayaId: shop.wilaya.id,
-      baladiaName: shop.baladiaName,
-      address: '12 Rue de Test',
-      quantity: 2,
-      variantIds: [],
-      shippingMethod: 'HOME',
-    }),
-  });
-  const body = await res.json().catch(() => null);
-  return { status: res.status, body };
-}
+/* The `storefront` and `checkout` fixtures moved to helpers.ts when a second
+ * file needed to place a real order through the public endpoint — one copy, so
+ * both stay in step with the checkout contract. */
 
 before(async () => {
   if (skip) return;

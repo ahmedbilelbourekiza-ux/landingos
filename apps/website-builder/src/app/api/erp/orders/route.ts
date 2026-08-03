@@ -3,6 +3,7 @@ import { z } from "zod";
 import { tenantRoute, apiOk, apiError, pagination } from "@/lib/api/route";
 import { scopedWhere, seesWholeBook } from "@/lib/erp/scope";
 import { orderFilters, orderSort, ORDER_LIST_SELECT, createOrder, ORDER_STATUSES } from "@/lib/erp/orders";
+import { autoAssignOnCreate } from "@/lib/erp/assign";
 import { normalizePhone } from "@/lib/erp/phone";
 import { toJson, toDecimal } from "@/lib/erp/serialize";
 
@@ -103,6 +104,13 @@ export const POST = tenantRoute("erp:orders:write", async ({ db, req, session, s
   // coincidence.
   const phone = normalizePhone(input.phone);
 
+  // An explicit agent wins; otherwise the roster decides, if the tenant has
+  // asked it to. That order is the ERP's `resolveAgent` — a manager naming
+  // somebody is a decision, and the automation exists to fill the gap when
+  // nobody has made one.
+  const agentUserId =
+    input.agentUserId ?? (await autoAssignOnCreate(db, tenantId));
+
   const id = await createOrder(db, tenantId, {
     tenantId,
     client: input.client ?? "",
@@ -119,7 +127,7 @@ export const POST = tenantRoute("erp:orders:write", async ({ db, req, session, s
     deliveryMethod: input.deliveryMethod ?? "",
     note: input.note ?? "",
     status: input.status ?? "pending",
-    agentUserId: input.agentUserId ?? null,
+    agentUserId,
     // Set by the system, never by a caller: an order claiming to have arrived
     // from Shopify when it did not corrupts every channel report downstream.
     source: "manual",

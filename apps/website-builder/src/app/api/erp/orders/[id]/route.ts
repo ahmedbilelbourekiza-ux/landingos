@@ -2,6 +2,8 @@ import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
 import { loadOwnedOrder } from "@/lib/erp/guard";
 import { seesWholeBook } from "@/lib/erp/scope";
 import { buildPatch, updateOrder, ORDER_LIST_SELECT } from "@/lib/erp/orders";
+import { onOrderConfirmed } from "@/lib/erp/confirm";
+import { readSettings } from "@/lib/erp/settings";
 import { toJson } from "@/lib/erp/serialize";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +50,17 @@ export const PATCH = tenantRoute<Params>("erp:orders:write", async ({ db, req, s
     return apiError(422, "INVALID_INPUT", patch.invalid);
   }
 
-  await updateOrder(db, session.auth!.tenantId, params.id, patch.data);
+  const tenantId = session.auth!.tenantId;
+  await updateOrder(db, tenantId, params.id, patch.data);
+
+  // The second door into `confirmed`. The ERP's comment on its own version of
+  // this branch is the reason it exists: a status change made from the list
+  // dropdown must trigger the same side effects as one made by logging a call,
+  // or the two silently diverge and the difference only shows up in whichever
+  // door is used less. See confirm.ts.
+  if (patch.data.status === "confirmed" && order.status !== "confirmed") {
+    await onOrderConfirmed(db, tenantId, params.id, await readSettings(db));
+  }
 
   const after = await db.fulfillmentOrder.findUnique({
     where: { id: params.id },

@@ -6,6 +6,7 @@ import type { TenantDb } from "@landingos/db";
 
 import { normalizePhone } from "./phone";
 import { toDecimal } from "./serialize";
+import { autoAssignOnCreate } from "./assign";
 
 /* =============================================================================
  * Inbound webhooks from external sales channels.
@@ -179,6 +180,17 @@ export async function ingestOrder(
 
   const phone = normalizePhone(parsed.phone);
 
+  // Assigned like every other inbound order. A carrier of orders that arrives
+  // unassigned while the storefront's are assigned is a queue nobody owns half
+  // of — and a failure here must never turn into a non-2xx, because a platform
+  // that gets one disables the endpoint and the tenant stops receiving orders.
+  let agentUserId: string | null = null;
+  try {
+    agentUserId = await autoAssignOnCreate(db, tenantId);
+  } catch (error) {
+    console.error("[webhook] auto-assign failed; order left unassigned", error);
+  }
+
   const created = await db.fulfillmentOrder.create({
     data: {
       tenantId,
@@ -202,6 +214,7 @@ export async function ingestOrder(
       price: toDecimal(parsed.price),
       lineItems: parsed.lineItems as never,
       status: "pending",
+      agentUserId,
     },
     select: { id: true },
   });

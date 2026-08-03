@@ -6,6 +6,7 @@ import { productRegistry } from "@landingos/product-registry";
 import { nextReference } from "./ids";
 import { normalizePhone } from "./phone";
 import { syncClientFromOrder } from "./clients";
+import { autoAssignOnCreate } from "./assign";
 
 /* =============================================================================
  * Builder → ERP, as a domain event rather than a network call (M-05).
@@ -97,6 +98,17 @@ export async function fulfilmentFromSale(
 
   const phone = normalizePhone(sale.phone);
 
+  // The storefront is where most orders come from, so it is the door that
+  // matters most for assignment. It must never be the door that FAILS a
+  // purchase, though: a roster problem is not a reason to lose a sale, so the
+  // order is created unassigned if this cannot answer.
+  let agentUserId: string | null = null;
+  try {
+    agentUserId = await autoAssignOnCreate(db, tenantId);
+  } catch (error) {
+    console.error("[erp] auto-assign on checkout failed; order left unassigned", error);
+  }
+
   const created = await db.fulfillmentOrder.create({
     data: {
       tenantId,
@@ -133,6 +145,7 @@ export async function fulfilmentFromSale(
       // Arrives unconfirmed, like every other order: a storefront submission is
       // a request to buy, and the call-centre confirming it is the product.
       status: "pending",
+      agentUserId,
     },
     select: {
       id: true, status: true, deliveryOutcome: true, price: true,

@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 3 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.5b: M-15, the worker*
+**Branch:** `master` · **Last commit:** *Phase 6.6a: auto-assignment*
 **Working tree:** clean, all work committed.
 
 ---
@@ -94,13 +94,41 @@ sweep run as idempotent jobs in `src/lib/erp/jobs.ts`, driven either by a
 manager (`POST /api/erp/jobs/[job]`) or by `services/worker`, which is a timer
 and an HTTP client holding no logic and no database connection.
 
-**`apps/erp` can now be retired**, with two behaviour differences to accept
-first — see *What still prevents retiring `apps/erp`*. Notifications/Web Push
+**6.6a closed the first of the four accepted behaviour differences:
+auto-assignment.** `src/lib/erp/assign.ts` is the one eligibility-and-workload
+rule behind all three of the ERP's assignment behaviours — a new order, a
+confirmed one, and an overdue one that changes hands. Notifications/Web Push
 (M-16) and the AI assistant (a deliberate 501) remain unported and unfaked.
 
-**Exact stopping point:** committed and verified. The next work is **Production
-Readiness (Phase 8)**, and retiring `apps/erp` whenever the two differences are
-accepted.
+**Exact stopping point:** committed and verified. Remaining before `apps/erp`
+can be retired with no functional regression: the carrier tracking poll, M-16,
+and PWA installability — see *What still prevents retiring `apps/erp`*.
+
+### The assignment rule (6.6a)
+
+Three decisions, and the first two are both places where the platform is
+deliberately **stricter** than the ERP:
+
+- **D-06.5.** Automatic assignment requires an **explicit** `jobRole` of
+  `confirmation`, `followup` or `both`. The ERP treated a missing role as
+  "confirmation agent" because every row in its `agents` table was one;
+  `Membership` is everybody in the company, and `jobRole` is null for the
+  bookkeeper, the builder-only user and the owner.
+- **D-06.6.** Eligibility also asks `can(..., "erp:orders:write")` — the same
+  function and permission the route checks. Never hand out work the API would
+  refuse; it produces work nobody can do and a missed-order counter climbing
+  against somebody who was never able to act. Entitlement rides along inside
+  `can`, so a lapsed subscription assigns nothing.
+- **D-06.7.** `overdueFlaggedAt` is **both the guard and the clock**. The ERP
+  cleared it on reassignment while measuring the deadline from `createdAt`,
+  which never moves — so one ignored order would walk the whole roster in
+  minutes, counting a miss against each agent sixty seconds after they received
+  it. Re-arming from the handover applies only when `autoReassign` is on; with
+  it off an order is flagged exactly once, as before.
+
+The sweep's threshold is **`reassignMinutes`**, not `alertMinutes`. The two are
+different ERP jobs and 6.5b conflated them: `alertMinutes` is the hourly
+stale-order alert and the queue screen's overdue badge.
 
 ### How a write surface is built here (6.3)
 
@@ -166,12 +194,15 @@ domain at a time.
 |---|---|
 | orders (+ stats, bulk, 6 per-order routes), clients, settings, audit | orders 38/38 · validation 29/29 · listing 25/25 |
 | products, inventory, stock lots, agents, payroll, finance | catalog 31/31 |
-| carriers, shipments, delivery settlement | delivery 20/20 |
-| sales channels, inbound webhooks, AI, follow-up | integrations 22/22 |
+| carriers, shipments, delivery settlement, the follow-up producer | delivery 26/26 |
+| sales channels, inbound webhooks, AI, follow-up | integrations 29/29 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
-| every surface, gated | access 62/62 |
+| every ERP screen, read and write | screens 96/96 |
+| the scheduled work (M-15) | jobs 14/14 |
+| assignment — new, confirmed and overdue orders | assign 25/25 |
+| every surface, gated | access 63/63 |
 
-**235/235**, each file verified on its own. Running several back to back still
+**384/384**, each file verified on its own. Running several back to back still
 trips the documented Neon connection limit — judge them per file.
 
 Three routes answer **501 by design**, and are not gaps: `POST /api/erp/agents`
@@ -235,6 +266,7 @@ stream and inbound carrier webhooks).
 | 6.4c | Resolving a follow-up task — and the two gaps it exposed, 96/96 |
 | 6.5a | The follow-up producer — carrier events raise tasks, 26/26 |
 | 6.5b | M-15 — the scheduled work leaves the web process, 14/14 |
+| 6.6a | Auto-assignment — new, confirmed and overdue orders, 25/25 |
 
 ### Remaining roadmap
 
@@ -246,11 +278,13 @@ stream and inbound carrier webhooks).
 
 ### Next recommended task
 
-See `NEXT_STEPS.md`. In short: **Phase 6.4 — the agent PWA, then delete
-`apps/erp`.** Phase 6.3 is done: the write primitive is in
-`src/components/console/api-action.tsx`, five worked examples are in
-`src/components/console/erp/`, and every one of the ERP's manager-facing
-mutations has a control with a contract test on it.
+See `NEXT_STEPS.md`. In short: **finish 6.6 — the carrier tracking poll, M-16
+notifications, PWA installability — and port stock reservation on confirm, which
+is the one thing that would be a functional regression if `apps/erp` were deleted
+today.** The eligibility rule any of them needs is already written
+(`src/lib/erp/assign.ts`), the job machinery exists (`src/lib/erp/jobs.ts` plus
+`services/worker`), and `onOrderConfirmed` in `src/lib/erp/confirm.ts` is where
+the stock movement belongs.
 
 ---
 
@@ -497,19 +531,23 @@ the ones this section listed before 6.4c.
 | Agent login screen, stored server URL | Nothing to port to — the session is a cookie on this origin | No |
 | AI assistant | `ai/chat`, `ai/chat/stream`, `ai/insights/deep` answer **501 by design**. Gated first, so the authorization contract is complete. | No |
 | Raising a follow-up task | **Ported in 6.5a** — `raiseFollowupTask` on the `ingestEvents` choke point, 6 contract tests | No |
-| **Auto-assigning a follow-up agent** | `assignFollowup` in the ERP workload-balances a follow-up agent on confirmation, behind `followupAutoAssign`. Not ported. Tasks are raised unassigned instead, which anybody may pick up. | **No** — graceful, but a stated behaviour difference |
+| Auto-assigning a follow-up agent | **Ported in 6.6a** — `autoAssignFollowup`, behind `followupAutoAssign`, on both confirm paths | No |
+| Auto-assigning a new order | **Ported in 6.6a** — `autoAssignOnCreate`, behind `autoAssign`, on all three creation paths | No |
 | Escalation, the overdue sweep, missed-order counting, auto-suspend | **Ported in 6.5b (M-15)** — idempotent jobs plus `services/worker`, 14 contract tests | No |
-| **Auto-reassign an overdue order** | The ERP moved it to the least-loaded eligible agent. Needs the same workload/eligibility logic as `assignFollowup`, which is also unported; the two belong together. The sweep flags and counts, it does not move work. | **No** — a stated behaviour difference |
+| Auto-reassign an overdue order | **Ported in 6.6a** — behind `autoReassign`, to the least-loaded eligible agent or to the unassigned queue | No |
 | **Polling carriers on a timer** | The job system exists; a tracking-poll job is not written. A parcel updates on a carrier webhook, or when somebody presses "ask the carrier". | **No** — a stated behaviour difference |
+| **Reserving stock on confirmation** | `reserveOnConfirm` / `releaseOnCancel` were never ported in Phase 5. `lib/erp/inventory.ts` has the FIFO movement machinery and nothing calls it on a status change; stock moves only when somebody adjusts it by hand. Found in 6.6a while building the shared confirm path. | **Yes** — a real functional gap, not a scheduled behaviour |
 | **Notifications and Web Push** | **M-16.** The table moved to `platform.prisma` in 3.2; the transport — SSE, per-account read watermark, replay on reconnect, Web Push — has no equivalent. `notifications.test.js` (~20 tests) is still deferred against it. | **Judgement call.** Nothing an agent invokes, but ERP agents rely on being told about new orders; retiring first means they poll by refreshing. |
 | Service worker, installability, offline shell | Not built. The queue is a console screen. | **Judgement call.** Affects how agents launch it, not what it can do. |
 
-**Why these were invisible until 6.4c.** Both were Phase 5 porting gaps, not
-Phase 6 regressions. Every route the ERP exposes was ported and contract-tested;
-what was never ported is the code that runs *between* routes — one function on
-the carrier-ingest path, and a jobs loop. Contract tests over HTTP cannot see a
-producer nobody calls, which is why building the consumer end exposed it. Both
-are now closed.
+**Why these keep being invisible.** Every one of them is a Phase 5 porting gap,
+not a Phase 6 regression, and every one is **code that runs between routes**: a
+producer on the carrier-ingest path, a jobs loop, an assignment rule, a stock
+movement on a status change. Contract tests over HTTP attack endpoints, and an
+endpoint that answers correctly while a side effect nobody asked for silently
+does not happen is exactly what they cannot see. Each has surfaced by building
+the thing at the far end of it — which is the argument for finishing the
+consumer side before declaring a port complete.
 
 **One consequence to note before deleting.** `apps/erp` is also the source
 `overdue-sweep.test.js` (~12 tests) and `notifications.test.js` (~20) would be
@@ -517,23 +555,28 @@ ported *from* — PORTING.md defers them with M-15 and M-16 and says explicitly
 they must be ported, not abandoned. After deletion they are recoverable only
 from git history.
 
-**Verdict: `apps/erp` can be retired.** Nothing it does is unavailable on the
-platform. What retiring it costs, and what should be accepted deliberately
-rather than discovered:
+**Verdict as of 6.6a: not yet, and for one reason that is not a judgement call.**
 
-1. **No auto-reassignment** of an overdue order, and no auto-assignment of a
-   follow-up agent. Both need the workload/eligibility logic, and neither is
-   ported.
-2. **No carrier polling on a timer** — parcels update on webhooks or on demand.
-3. **No notifications** (M-16). Agents refresh rather than being told.
-4. **Not installable** — the queue is a console screen, not a home-screen app.
-5. `overdue-sweep.test.js` is now **superseded** by `test/erp/jobs.test.ts`;
+**Stock does not move when an order is confirmed or cancelled.** The ERP's
+`decrementOnConfirm` / `releaseOnCancel` honour `reservationMode`
+(`immediate` | `on_confirm` | `none`) and write a real FIFO movement per line.
+On the platform `applyMovement` has exactly **one** caller — the manual adjust
+route — so a confirmed order consumes nothing and a cancellation restores
+nothing. `reservationMode` is a setting the automation screen renders and
+nothing reads. That is a functional regression a person would notice within a
+day, and it is not scheduled behaviour a deployment can live without.
+
+The rest is what retiring it costs, and should be accepted deliberately rather
+than discovered:
+
+1. **No carrier polling on a timer** — parcels update on webhooks or on demand.
+2. **No notifications** (M-16). Agents refresh rather than being told.
+3. **Not installable** — the queue is a console screen, not a home-screen app.
+4. `overdue-sweep.test.js` is now **superseded** by `test/erp/jobs.test.ts`;
    `notifications.test.js` still has no home and would be recoverable only from
    git history after deletion.
 
-None is missing functionality a person invokes. Items 1–3 are scheduled or
-automatic behaviour a deployment can live without and should schedule work to
-restore.
+None of those four is functionality a person invokes.
 
 **Nothing else.** The legacy dashboard, legacy storefront, legacy JWT, legacy
 middleware and the pre-tenant Prisma client were all deleted in `82dacc9`.
@@ -549,11 +592,12 @@ middleware and the pre-tenant Prisma client were all deleted in `82dacc9`.
 2. **`apps/website-builder` is misnamed** — it hosts the whole platform.
 3. **Windows Prisma DLL lock** — building while the dev server runs fails with
    `EPERM`. Stop node first.
-4. **Auto-assignment is not ported.** The ERP workload-balanced a follow-up
-   agent on confirmation (`assignFollowup`) and moved an overdue order to the
-   least-loaded eligible agent. Both need the same eligibility/workload logic and
-   neither exists here; tasks are raised unassigned and the sweep flags without
-   moving work.
+4. **Stock does not move on confirmation or cancellation.** The ERP's
+   `reservationMode` drove `decrementOnConfirm` / `releaseOnCancel`;
+   `applyMovement` on the platform has one caller, the manual adjust route. The
+   setting is rendered by the automation screen and read by nothing. Found in
+   6.6a while building the shared confirm path — it is the one gap that blocks
+   retiring `apps/erp` without a functional regression.
 5. **No template registry yet (M-19).** The storefront has one hardcoded
    template with colour-only themes; `/api/themes`-style branching on
    `isLuxury`/`isTech` was noted in Phase 3.2 and still stands.
@@ -668,13 +712,13 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 359 | all pass against a running server |
-| `packages/auth` | 32 | all pass |
-| `packages/db` | 29 | all pass (11 schema + 18 isolation) |
+| `apps/website-builder` — ERP contract | 384 | all pass against a running server |
+| `packages/auth` | 36 | all pass |
+| `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **900** | green per suite |
+| **Total** | **929** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

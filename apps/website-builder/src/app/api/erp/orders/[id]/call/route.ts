@@ -4,7 +4,7 @@ import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
 import { loadOwnedOrder } from "@/lib/erp/guard";
 import { addCall, updateOrder, CALL_RESULTS } from "@/lib/erp/orders";
 import { readSettings } from "@/lib/erp/settings";
-import { createShipment } from "@/lib/erp/shipments";
+import { onOrderConfirmed } from "@/lib/erp/confirm";
 
 export const dynamic = "force-dynamic";
 
@@ -55,24 +55,19 @@ export const POST = tenantRoute<Params>("erp:orders:write", async ({ db, req, se
   const tenantId = session.auth!.tenantId;
   await updateOrder(db, tenantId, params.id, { status: result });
 
-  // Confirming is what books the parcel, when the tenant has asked for that.
-  // Doing it here rather than on a timer means the tracking number exists by
-  // the time the agent finishes the sentence, which is when the customer asks
-  // for it.
-  let shipmentBooked = false;
-  if (result === "confirmed" && settings.autoCreateShipment) {
-    const order = await db.fulfillmentOrder.findUnique({
-      where: { id: params.id },
-      select: { id: true, carrierCode: true },
-    });
-    if (order) {
-      // A missing or unconfigured carrier must not fail the CALL. The
-      // confirmation is real work an agent just did and has to be recorded;
-      // the parcel can be booked by hand afterwards.
-      const booked = await createShipment(db, tenantId, order).catch(() => null);
-      shipmentBooked = Boolean(booked?.created);
-    }
-  }
+  // Confirming books the parcel and hands the order to a follow-up agent, when
+  // the tenant has asked for either. Both live in one place because `PATCH`
+  // reaches the same state and must not behave differently — see confirm.ts.
+  const confirmed =
+    result === "confirmed"
+      ? await onOrderConfirmed(db, tenantId, params.id, settings)
+      : { shipmentBooked: false, followupUserId: null };
 
-  return apiOk({ message: "logged", callId: call.id, suspicious: call.suspicious, shipmentBooked });
+  return apiOk({
+    message: "logged",
+    callId: call.id,
+    suspicious: call.suspicious,
+    shipmentBooked: confirmed.shipmentBooked,
+    followupUserId: confirmed.followupUserId,
+  });
 });

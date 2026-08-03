@@ -59,6 +59,18 @@ const GLOBAL_UNIQUES = new Set([
   // it per-tenant would let one physical device register twice and receive
   // every notification in duplicate.
   'PushSubscription.endpoint',
+
+  // M-05's stated exception, decided in Phase 5.4 and recorded in CONSTRAINTS.md
+  // — but never added here, so this assertion has been red ever since and the
+  // mechanism that exists to catch a missed constraint was switched off.
+  //
+  // M-04 rescopes uniques because HUMAN-MEANINGFUL values (a slug, a phone
+  // number, an order number) legitimately repeat across companies. A cuid does
+  // not, and per-tenant scoping here would buy nothing while implying two
+  // tenants might share a sales order id. The foreign key still cannot cross a
+  // tenant boundary: RLS `WITH CHECK` sees to that, and order-split.test.ts
+  // proves it.
+  'FulfillmentOrder.salesOrderId',
 ]);
 
 interface Model {
@@ -102,6 +114,26 @@ function blockUniques(m: Model): string[][] {
 
 function blockIndexes(m: Model): string[][] {
   return [...m.body.matchAll(/@@index\(\[([^\]]+)\]/g)].map((x) =>
+    x[1].split(',').map((s) => s.trim()),
+  );
+}
+
+/**
+ * Block-level `@@id([...])` — a COMPOSITE primary key.
+ *
+ * Postgres backs a primary key with a unique index over its columns in order, so
+ * `@@id([tenantId, name])` already provides everything a tenantId-leading index
+ * would. Verified against the live database rather than assumed:
+ *
+ *   CREATE UNIQUE INDEX "TenantSequence_pkey"
+ *     ON public."TenantSequence" USING btree ("tenantId", name)
+ *
+ * Without this, `TenantSequence` (added in Phase 5.2) has been reported as an
+ * unindexed tenant-scoped model ever since — a false positive, and a red
+ * assertion is a gate nobody can read.
+ */
+function blockIds(m: Model): string[][] {
+  return [...m.body.matchAll(/@@id\(\[([^\]]+)\]/g)].map((x) =>
     x[1].split(',').map((s) => s.trim()),
   );
 }
@@ -208,6 +240,8 @@ describe('indexes lead with the column every query filters on', () => {
       .filter((m) => !blockUniques(m).some((u) => u[0] === 'tenantId'))
       // A model whose primary key IS the tenant needs no separate index.
       .filter((m) => !/^\s*tenantId\s+String\s+@id/m.test(m.body))
+      // …and neither does one whose COMPOSITE key leads with it. See blockIds.
+      .filter((m) => !blockIds(m).some((k) => k[0] === 'tenantId'))
       .map((m) => `${m.file}:${m.name}`);
     assert.deepEqual(unindexed, [], 'every tenant-scoped table needs a tenantId index');
   });

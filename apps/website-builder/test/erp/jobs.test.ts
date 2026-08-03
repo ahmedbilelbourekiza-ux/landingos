@@ -147,7 +147,7 @@ describe('follow-up escalation', () => {
 });
 
 /**
- * Working hours pinned open, the alert threshold at one minute, and no
+ * Working hours pinned open, the reassignment threshold at one minute, and no
  * overnight grace.
  *
  * Without this the suite would pass by day and fail at night: the sweep is
@@ -155,9 +155,16 @@ describe('follow-up escalation', () => {
  * because an order arriving at 23:00 must not be counted against an agent who is
  * not working. A test that depends on the wall clock is a test that fails in CI
  * at 2am and nowhere else.
+ *
+ * `reassignMinutes`, not `alertMinutes`. The two were conflated when this file
+ * was written; `alertMinutes` is the hourly stale-order ALERT and the queue
+ * screen's overdue badge, and `reassignMinutes` is how long an order may sit
+ * with an agent uncalled — which is what this sweep measures. See
+ * `sweepOverdueOrders`. The assertions below are unchanged; only the name of
+ * the threshold they set is.
  */
 const WIDE_OPEN = {
-  alertMinutes: 1,
+  reassignMinutes: 1,
   workHoursStart: 0,
   workHoursEnd: 24,
   nightGraceMinutes: 0,

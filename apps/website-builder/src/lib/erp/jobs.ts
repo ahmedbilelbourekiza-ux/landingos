@@ -1,11 +1,12 @@
 import "server-only";
 
-import type { TenantDb } from "@landingos/db";
+import type { Prisma, TenantDb } from "@landingos/db";
 
 import { readSettings, type ErpSettings } from "./settings";
 import { ACTIVE_STATUSES } from "./orders";
 import { readAgentConfig, writeAgentConfig } from "./agents";
 import { FOLLOWUP_TASK_TYPE } from "./followup";
+import { pickAgent } from "./assign";
 
 /* =============================================================================
  * The scheduled work — M-15.
@@ -96,12 +97,42 @@ function withinWorkingHours(settings: ErpSettings, now = new Date()): boolean {
 }
 
 /**
- * Flag orders nobody has called, count the miss against the agent, and suspend
- * on repeat if the tenant has asked for it.
+ * Flag orders nobody has called, count the miss against the agent, move the
+ * order on if the tenant has asked for that, and suspend on repeat.
  *
- * `overdueFlaggedAt: null` is the guard, and it is why the counter moves exactly
- * once per order rather than once per pass. The ERP's own test called this
- * "single-counting per timeout"; it is the property BUG-01 destroyed.
+ * WHICH SETTING IS THE THRESHOLD. `reassignMinutes` — how long an order may sit
+ * with an agent uncalled — which is what the ERP's sweep used and what the
+ * automation screen labels it as. 6.5b read `alertMinutes` instead, which is a
+ * different ERP job entirely (the hourly "N orders nobody has called" manager
+ * alert, `apps/erp/lib/jobs.js:61`, and the queue screen's overdue badge). The
+ * two were conflated, so the number a manager changes to control reassignment
+ * did nothing — which is BUG-03's exact shape, and it would have shipped
+ * invisibly the moment auto-reassign went live.
+ *
+ * `Number(...) || 5` keeps the ERP's quirk that a stored 0 means five minutes,
+ * not zero. It reads like a bug and is the safer of the two readings: "flag
+ * everything instantly" is not a thing a manager means by typing 0.
+ *
+ * THE CLOCK, AND WHY `overdueFlaggedAt` IS BOTH GUARD AND TIMESTAMP.
+ *
+ * `overdueFlaggedAt: null` is the guard for an order that has never been
+ * flagged, and it is why the counter moves once per order rather than once per
+ * pass — the ERP's own test called this "single-counting per timeout", and it is
+ * the property BUG-01 destroyed.
+ *
+ * Once auto-reassign moves an order, the column becomes the moment it changed
+ * hands, and the next deadline is measured from THERE. The ERP cleared it on
+ * reassignment while still measuring from `createdAt`, which never moves — so
+ * the very next tick found the same order overdue, counted a miss against an
+ * agent who had held it for sixty seconds, and moved it on again. One ignored
+ * order would walk the whole roster in minutes and, with auto-suspend on, lock
+ * everybody out. BUG-01 meant that code never ran in production, so nobody saw
+ * it. Re-arming from the handover is what a "threshold" means.
+ *
+ * The re-arm applies ONLY when auto-reassign is on. With it off the ERP flagged
+ * an order exactly once, ever, and that is preserved: nothing changes hands, so
+ * counting a second miss against the same person for the same order would be
+ * punishing them twice for one failure.
  *
  * AUTO-SUSPEND IS OFF BY DEFAULT AND STAYS OFF UNTIL ASKED FOR. It locks a
  * person out of the product mid-shift, and it takes effect on their very next
@@ -117,26 +148,42 @@ export async function sweepOverdueOrders(
     return { job: "overdue-sweep", flagged: 0, skipped: "outside working hours" };
   }
 
-  const alertMinutes = Number(settings.alertMinutes) || 60;
+  const thresholdMinutes = Number(settings.reassignMinutes) || 5;
   const grace = Number(settings.nightGraceMinutes) || 0;
+  const mayReassign = settings.autoReassign === true;
 
   // The query uses the SHORTEST possible deadline; the grace is applied per
   // order below. `nightGraceMinutes` is extra time for orders that arrived
   // OUTSIDE working hours — so the overnight backlog is not all flagged the
   // instant the day starts — and adding it to everything would silently delay
   // every flag by two hours, which is its default.
-  const earliest = new Date(Date.now() - alertMinutes * 60_000);
+  const earliest = new Date(Date.now() - thresholdMinutes * 60_000);
+
+  const due: Prisma.FulfillmentOrderWhereInput = mayReassign
+    ? {
+        OR: [
+          { overdueFlaggedAt: null, createdAt: { lt: earliest } },
+          { overdueFlaggedAt: { lt: earliest } },
+        ],
+      }
+    : { overdueFlaggedAt: null, createdAt: { lt: earliest } };
 
   const candidates = await db.fulfillmentOrder.findMany({
     where: {
-      overdueFlaggedAt: null,
-      createdAt: { lt: earliest },
+      ...due,
       status: { in: [...ACTIVE_STATUSES] },
+      // Somebody's responsibility. The sweep asks "has this person done their
+      // job", and an order assigned to nobody has no such person — which is why
+      // the ERP's own query required a non-empty agent, and why an order that
+      // ends up in the unassigned queue leaves the sweep rather than being
+      // re-flagged for the rest of its life. Both empty states, because the
+      // column is nullable and reassignment used to write "".
+      AND: [{ agentUserId: { not: null } }, { agentUserId: { not: "" } }],
       // Never called. An order somebody has already tried is not a miss —
       // `no_answer` three times is the job working, not somebody ignoring it.
       calls: { none: {} },
     },
-    select: { id: true, agentUserId: true, createdAt: true },
+    select: { id: true, agentUserId: true, createdAt: true, overdueFlaggedAt: true },
     // Bounded: a backlog is worked through over several passes rather than in
     // one transaction that times out (TX_OPTIONS is 15s).
     take: 200,
@@ -144,26 +191,37 @@ export async function sweepOverdueOrders(
   })
     .then((rows) =>
       rows.filter((order) => {
-        if (withinWorkingHours(settings, order.createdAt)) return true;
+        // From the handover if there has been one, otherwise from arrival.
+        const since = order.overdueFlaggedAt ?? order.createdAt;
+        if (withinWorkingHours(settings, since)) return true;
         // Arrived overnight: it gets the grace on top before it counts.
-        return order.createdAt.getTime() + (alertMinutes + grace) * 60_000 < Date.now();
+        return since.getTime() + (thresholdMinutes + grace) * 60_000 < Date.now();
       }),
     );
 
   if (candidates.length === 0) {
-    return { job: "overdue-sweep", flagged: 0, missed: 0, suspended: 0 };
+    return { job: "overdue-sweep", flagged: 0, missed: 0, suspended: 0, reassigned: 0, unassigned: 0 };
   }
 
   const flaggedAt = new Date();
   // Guarded again in the WHERE, not just in the read above: two instances can
-  // both have selected this row, and only the one whose UPDATE matches a still
-  // -null column is allowed to count the miss.
+  // both have selected this row, and only the one whose UPDATE still matches is
+  // allowed to count the miss. The guard is the same predicate the read used,
+  // so it holds for a re-armed order too — the first writer moves the column
+  // past `earliest` and the second matches nothing.
   let flagged = 0;
+  let reassigned = 0;
+  let unassigned = 0;
   const missesByAgent = new Map<string, number>();
 
   for (const order of candidates) {
+    const guard =
+      order.overdueFlaggedAt === null
+        ? { overdueFlaggedAt: null }
+        : { overdueFlaggedAt: { lt: earliest } };
+
     const { count } = await db.fulfillmentOrder.updateMany({
-      where: { id: order.id, overdueFlaggedAt: null },
+      where: { id: order.id, ...guard },
       data: { overdueFlaggedAt: flaggedAt },
     });
     if (count === 0) continue;
@@ -171,6 +229,20 @@ export async function sweepOverdueOrders(
     if (order.agentUserId) {
       missesByAgent.set(order.agentUserId, (missesByAgent.get(order.agentUserId) ?? 0) + 1);
     }
+
+    if (!mayReassign) continue;
+
+    // Somebody else, never the person who has already ignored it. When there is
+    // nobody, the order is released rather than left with them: an unassigned
+    // order is visible to every agent (`orderScope`), so it becomes work anybody
+    // may pick up instead of work one person has demonstrably not done.
+    const next = await pickAgent(db, tenantId, "confirmation", { exclude: order.agentUserId });
+    await db.fulfillmentOrder.update({
+      where: { id: order.id },
+      data: { agentUserId: next },
+    });
+    if (next) reassigned += 1;
+    else unassigned += 1;
   }
 
   let suspended = 0;
@@ -196,7 +268,14 @@ export async function sweepOverdueOrders(
     suspended += 1;
   }
 
-  return { job: "overdue-sweep", flagged, missed: missesByAgent.size, suspended };
+  return {
+    job: "overdue-sweep",
+    flagged,
+    missed: missesByAgent.size,
+    suspended,
+    reassigned,
+    unassigned,
+  };
 }
 
 /* -----------------------------------------------------------------------------

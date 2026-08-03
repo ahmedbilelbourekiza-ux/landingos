@@ -313,21 +313,101 @@ export async function makeFollowupTask(
 /**
  * Move an order's `createdAt` into the past.
  *
- * The overdue sweep's shortest configurable threshold is ONE MINUTE
- * (`alertMinutes` has `min: 1`), and a suite that slept 61 seconds per case to
- * observe it would not be run. `createdAt` is server-set on purpose, so a test
- * cannot ask the API for a past order — it stages one, the same way
- * `makeFollowupTask` stages a task nothing has a route to create.
+ * The overdue sweep's shortest useful threshold is ONE MINUTE, and a suite that
+ * slept 61 seconds per case to observe it would not be run. `createdAt` is
+ * server-set on purpose, so a test cannot ask the API for a past order — it
+ * stages one, the same way `makeFollowupTask` stages a task nothing has a route
+ * to create.
+ *
+ * `overdueFlaggedAt` moves with it when asked. That column is the sweep's clock
+ * for an order that has already been reassigned once, so staging a SECOND
+ * timeout means backdating the handover rather than the creation.
  *
  * Inside the tenant binding, so it cannot reach another company's rows.
  */
-export async function backdateOrder(tenantId: string, orderId: string, minutes: number) {
+export async function backdateOrder(
+  tenantId: string,
+  orderId: string,
+  minutes: number,
+  also: { overdueFlaggedAt?: boolean } = {},
+) {
+  const when = new Date(Date.now() - minutes * 60_000);
   await withTenant(tenantId, (tx) =>
     (tx as any).fulfillmentOrder.update({
       where: { id: orderId },
-      data: { createdAt: new Date(Date.now() - minutes * 60_000) },
+      data: {
+        createdAt: when,
+        ...(also.overdueFlaggedAt ? { overdueFlaggedAt: when } : {}),
+      },
     }),
   );
+}
+
+/* -----------------------------------------------------------------------------
+ * A storefront, for the paths that start with a customer rather than an agent
+ * -------------------------------------------------------------------------- */
+
+export interface Storefront {
+  readonly page: { id: string; title: string };
+  readonly wilaya: { id: number; name: string };
+  readonly baladiaName: string;
+}
+
+/**
+ * A published page with a priced wilaya — everything a checkout needs.
+ *
+ * Here rather than in one test file because two of them now place real orders
+ * through the public endpoint, and a second copy of this fixture is a second
+ * thing to keep in step with the checkout contract.
+ */
+export async function storefront(tenantId: string): Promise<Storefront> {
+  return withTenant(tenantId, async (db) => {
+    const page = await (db as any).landingPage.create({
+      data: {
+        tenantId,
+        title: `Fixture Widget ${uid()}`,
+        slug: `fixture-${uid()}`,
+        price: 4900,
+        published: true,
+        status: 'PUBLISHED',
+      },
+      select: { id: true, title: true },
+    });
+    const wilaya = await asPlatform().wilaya.findFirst({ select: { id: true, name: true } });
+    // Upsert, not create: the price is per (tenant, wilaya) and this helper runs
+    // once per test against the same tenant and the same first wilaya.
+    await (db as any).tenantDeliveryPrice.upsert({
+      where: { tenantId_wilayaId: { tenantId, wilayaId: wilaya!.id } },
+      create: { tenantId, wilayaId: wilaya!.id, homePrice: 500, deskPrice: 300 },
+      update: {},
+    });
+    const baladia = await asPlatform().baladia.findFirst({
+      where: { wilayaId: wilaya!.id },
+      select: { name: true },
+    });
+    return { page, wilaya: wilaya!, baladiaName: baladia?.name ?? 'Centre' };
+  });
+}
+
+/** Place a real order through the public, anonymous checkout. */
+export async function checkout(slug: string, shop: Storefront, customerName = 'Split Customer') {
+  const res = await fetch(`${BASE}/api/storefront/${slug}/orders`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      landingPageId: shop.page.id,
+      customerName,
+      phone: phone(),
+      wilayaId: shop.wilaya.id,
+      baladiaName: shop.baladiaName,
+      address: '12 Rue de Test',
+      quantity: 2,
+      variantIds: [],
+      shippingMethod: 'HOME',
+    }),
+  });
+  const body = await res.json().catch(() => null);
+  return { status: res.status, body };
 }
 
 /**
