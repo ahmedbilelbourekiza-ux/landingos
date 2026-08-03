@@ -1,10 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { asPlatform, withTenant } from "@landingos/db";
+import { purgeExpiredSessions } from "@landingos/auth";
 import { productRegistry } from "@landingos/product-registry";
 
 import { JOBS, runJob } from "@/lib/erp/jobs";
 import { hasProduct } from "@/lib/erp/from-sale";
+import { pruneNotifications } from "@/lib/platform/notifications";
+
+/** How many notifications a tenant keeps. The ERP's `NOTIFICATION_RETENTION`. */
+const RETENTION = Math.max(100, Number(process.env.NOTIFICATION_RETENTION) || 5000);
 
 export const dynamic = "force-dynamic";
 
@@ -72,7 +77,32 @@ export async function POST(req: NextRequest) {
   const results: Array<{ tenantId: string; job: string; ok: boolean }> = [];
   let entitled = 0;
 
+  // Unscoped platform housekeeping, once per tick rather than once per tenant.
+  // `Session` is one of the five tables with no RLS — it is read before a tenant
+  // is known — so it is pruned here rather than inside a binding. The row is
+  // only a revocation record; letting expired ones accumulate serves no purpose,
+  // and the ERP pruned them hourly. `purgeExpiredSessions` has existed in
+  // `packages/auth` since M-09 with no caller at all.
+  try {
+    const purged = await purgeExpiredSessions();
+    if (purged) console.log(`[worker] purged ${purged} expired sessions`);
+  } catch (error) {
+    console.error("[worker] session purge failed", error);
+  }
+
   for (const tenant of active) {
+    // PLATFORM HOUSEKEEPING, for every tenant and before the entitlement check.
+    // Notifications are a platform service, so the table needs bounding whatever
+    // products a tenant holds — and it needs it more since 6.6c, which writes one
+    // row per recipient. The ERP ran the same prune hourly; without a caller the
+    // table grows forever, which is a slow failure nobody sees until a query
+    // that used to be fast is not.
+    try {
+      await withTenant(tenant.id, (db) => pruneNotifications(db, RETENTION));
+    } catch (error) {
+      console.error(`[worker] notification prune failed for ${tenant.id}`, error);
+    }
+
     // THE ENTITLEMENT IS READ INSIDE THE BINDING, and this is the whole of the
     // bug 6.5b shipped. The first version selected `subscription` as a nested
     // relation on the `asPlatform()` query above — but `Subscription` is one of

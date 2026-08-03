@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 3 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.6e: installability*
+**Branch:** `master` · **Last commit:** *Phase 6.6f: stock, and the reassessment*
 **Working tree:** clean, all work committed.
 
 ---
@@ -211,7 +211,7 @@ domain at a time.
 | Surface | Contract |
 |---|---|
 | orders (+ stats, bulk, 6 per-order routes), clients, settings, audit | orders 38/38 · validation 29/29 · listing 25/25 |
-| products, inventory, stock lots, agents, payroll, finance | catalog 31/31 |
+| products, inventory, stock lots (incl. stock on confirm/cancel), agents, payroll, finance | catalog 40/40 |
 | carriers, shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 33/33 |
 | sales channels, inbound webhooks, AI, follow-up | integrations 29/29 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
@@ -221,7 +221,7 @@ domain at a time.
 | notifications: storage, audience, badge, the live stream, Web Push (M-16) | notifications 29/29 |
 | every surface, gated | access 63/63 |
 
-**426/426**, each file verified on its own. Running several back to back still
+**435/435**, each file verified on its own. Running several back to back still
 trips the documented Neon connection limit — judge them per file.
 
 Three routes answer **501 by design**, and are not gaps: `POST /api/erp/agents`
@@ -290,6 +290,7 @@ stream and inbound carrier webhooks).
 | 6.6c | M-16 part 1 — notifications become a platform service, 18/18 |
 | 6.6d | M-16 part 2 — the live stream and Web Push, 29/29 |
 | 6.6e | The console installs, and can receive a push, 33/33 |
+| 6.6f | Stock moves on confirm/cancel — the last gap, 40/40 |
 
 ### Remaining roadmap
 
@@ -559,7 +560,7 @@ the ones this section listed before 6.4c.
 | Escalation, the overdue sweep, missed-order counting, auto-suspend | **Ported in 6.5b (M-15)** — idempotent jobs plus `services/worker`, 14 contract tests | No |
 | Auto-reassign an overdue order | **Ported in 6.6a** — behind `autoReassign`, to the least-loaded eligible agent or to the unassigned queue | No |
 | Polling carriers on a timer | **Ported in 6.6b** — `pollCarriers`, driven by `trackingPollMinutes`, guarded by `Shipment.lastPolledAt`, going through the same `ingestEvents` a webhook does | No |
-| **Reserving stock on confirmation** | `reserveOnConfirm` / `releaseOnCancel` were never ported in Phase 5. `lib/erp/inventory.ts` has the FIFO movement machinery and nothing calls it on a status change; stock moves only when somebody adjusts it by hand. Found in 6.6a while building the shared confirm path. | **Yes** — a real functional gap, not a scheduled behaviour |
+| Reserving stock on confirmation | **Ported in 6.6f** — `reserveOnConfirm` / `releaseOnCancel` on both doors into `confirmed`, honouring `reservationMode`, idempotent by the ledger, restoring to the lots the reservation consumed. 9 contract tests. | No |
 | Notifications and Web Push | **M-16 complete (6.6c–6.6e)** — `/api/platform/notifications`, a live SSE stream with exact replay, Web Push sending, and the service worker that receives it. 33 contract tests. `notifications.test.js` is discharged. | No |
 | Service worker and installability | **Done in 6.6e** — manifest, icons, a registered worker, and the `push`/`notificationclick` handlers Web Push needs to be received. **No offline shell, deliberately**: every console page is session-scoped, and a cache keyed by URL survives signing out. | No |
 
@@ -578,27 +579,40 @@ ported *from* — PORTING.md defers them with M-15 and M-16 and says explicitly
 they must be ported, not abandoned. After deletion they are recoverable only
 from git history.
 
-**Verdict as of 6.6a: not yet, and for one reason that is not a judgement call.**
+## Verdict as of 6.6f: **YES — with nothing outstanding that keeping it would fix**
 
-**Stock does not move when an order is confirmed or cancelled.** The ERP's
-`decrementOnConfirm` / `releaseOnCancel` honour `reservationMode`
-(`immediate` | `on_confirm` | `none`) and write a real FIFO movement per line.
-On the platform `applyMovement` has exactly **one** caller — the manual adjust
-route — so a confirmed order consumes nothing and a cancellation restores
-nothing. `reservationMode` is a setting the automation screen renders and
-nothing reads. That is a functional regression a person would notice within a
-day, and it is not scheduled behaviour a deployment can live without.
+Every behaviour `apps/erp` has is on the platform, and both deferred test files
+are discharged rather than abandoned:
 
-The rest is what retiring it costs, and should be accepted deliberately rather
-than discovered:
+| What it was | Where it went |
+|---|---|
+| `overdue-sweep.test.js` (~12) | superseded by `test/erp/jobs.test.ts` (16) |
+| `notifications.test.js` (~20) | superseded by `test/erp/notifications.test.ts` (33) |
+| SSE half of `delivery-outcome.test.js` | covered by the same file |
 
-1. **No notifications** (M-16). Agents refresh rather than being told.
-2. **Not installable** — the queue is a console screen, not a home-screen app.
-3. `overdue-sweep.test.js` is now **superseded** by `test/erp/jobs.test.ts`;
-   `notifications.test.js` still has no home and would be recoverable only from
-   git history after deletion.
+**The three things that are still true, and none is caused by deleting it:**
 
-Neither of the first two is functionality a person invokes.
+1. **No cross-origin state-change refusal, and no rate limiting.** Both were real
+   and tested in the ERP; both left the product suite in 5.1 because neither
+   belongs in one. They were never on the platform, so keeping `apps/erp` running
+   does not give them to it — it only means a second, unrelated application also
+   has them. Phase 8 work either way.
+2. **Web Push has never crossed a real push service**, and whether a browser
+   OFFERS the install prompt needs a real device over HTTPS. Nothing is deployed,
+   so both are untested by construction rather than by omission.
+3. **The AI assistant answers 501 by design** — calling a model is deployment
+   configuration, and it is gated first so the authorization contract is complete.
+
+**What deleting it costs, stated plainly:** 298 tests of an Express + SQLite
+stack that no longer runs anything, and the reference implementation for
+everything ported since Phase 5. Both stay reachable in git history. The
+directory has been read end to end four times during this port — 6.4a for the
+agent PWA, 6.5a for the follow-up producer, 6.6a for assignment, 6.6f for the
+in-process timers — and each read found something. That is worth weighing before
+the last copy goes behind a `git show`.
+
+**Recommended:** delete it as one commit that touches nothing else, so the diff
+is a pure removal and a revert is one command.
 
 **Nothing else.** The legacy dashboard, legacy storefront, legacy JWT, legacy
 middleware and the pre-tenant Prisma client were all deleted in `82dacc9`.
@@ -744,13 +758,13 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 426 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 435 | all pass against a running server |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **971** | green per suite |
+| **Total** | **980** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

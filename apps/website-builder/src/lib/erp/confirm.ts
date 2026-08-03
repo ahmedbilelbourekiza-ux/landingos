@@ -4,6 +4,7 @@ import type { TenantDb } from "@landingos/db";
 
 import { autoAssignFollowup } from "./assign";
 import { createShipment } from "./shipments";
+import { reserveOnConfirm, releaseOnCancel } from "./inventory";
 import type { ErpSettings } from "./settings";
 
 /* =============================================================================
@@ -29,39 +30,59 @@ import type { ErpSettings } from "./settings";
  * caught and LOGGED rather than swallowed: BUG-01 was a job whose only symptom
  * was silence, and a caught exception with no log is the same defect waiting.
  *
- * WHAT IS DELIBERATELY MISSING: the inventory side. `reserveOnConfirm` /
- * `releaseOnCancel` were never ported in Phase 5 — `lib/erp/inventory.ts` has
- * the movement machinery and nothing calls it on a status change. That is a
- * stated gap, recorded in NEXT_STEPS, not something to invent here: it needs its
- * own contract tests over FIFO lot consumption, which is the part of this
- * codebase most expensive to get wrong.
+ * THE INVENTORY SIDE LIVES HERE TOO — Phase 6.6f. It was never ported in Phase
+ * 5: `lib/erp/inventory.ts` had the whole FIFO movement machinery and nothing
+ * called it on a status change, so a confirmed order consumed no stock and a
+ * cancellation restored none, while `reservationMode` sat on the automation
+ * screen being read by nothing. That was the last functional difference between
+ * this platform and `apps/erp`.
  * ========================================================================== */
 
 export interface ConfirmResult {
   readonly shipmentBooked: boolean;
   readonly followupUserId: string | null;
+  readonly stockLinesMoved: number;
 }
+
+/** The order fields both handlers need. */
+const CONFIRM_SELECT = {
+  id: true, reference: true, carrierCode: true,
+  product: true, productVariant: true, quantity: true,
+} as const;
 
 export async function onOrderConfirmed(
   db: TenantDb,
   tenantId: string,
   orderId: string,
   settings: ErpSettings,
+  actorUserId: string,
 ): Promise<ConfirmResult> {
+  const order = await db.fulfillmentOrder.findUnique({
+    where: { id: orderId },
+    select: CONFIRM_SELECT,
+  });
+
+  // Stock first, and before the parcel: a confirmation that cannot be covered
+  // is worth knowing about before a carrier has been asked to collect it.
+  let stockLinesMoved = 0;
+  if (order) {
+    try {
+      stockLinesMoved = await reserveOnConfirm(
+        db, tenantId, order, String(settings.reservationMode ?? "on_confirm"), actorUserId,
+      );
+    } catch (error) {
+      console.error(`[erp] stock reservation failed for order ${orderId}`, error);
+    }
+  }
+
   let shipmentBooked = false;
 
   // Booking here rather than on a timer means the tracking number exists by the
   // time the agent finishes the sentence, which is when the customer asks for it.
-  if (settings.autoCreateShipment) {
+  if (settings.autoCreateShipment && order) {
     try {
-      const order = await db.fulfillmentOrder.findUnique({
-        where: { id: orderId },
-        select: { id: true, carrierCode: true },
-      });
-      if (order) {
-        const booked = await createShipment(db, tenantId, order);
-        shipmentBooked = Boolean(booked.created);
-      }
+      const booked = await createShipment(db, tenantId, order);
+      shipmentBooked = Boolean(booked.created);
     } catch (error) {
       console.error(`[erp] auto-booking failed for order ${orderId}`, error);
     }
@@ -74,5 +95,32 @@ export async function onOrderConfirmed(
     console.error(`[erp] follow-up auto-assign failed for order ${orderId}`, error);
   }
 
-  return { shipmentBooked, followupUserId };
+  return { shipmentBooked, followupUserId, stockLinesMoved };
+}
+
+/**
+ * The other side of the same transition.
+ *
+ * Cancelling a confirmed order gives the stock back — to the same lots the
+ * reservation consumed, which is what keeps the cost basis true. Called from
+ * both doors, for the same reason `onOrderConfirmed` is.
+ */
+export async function onOrderCancelled(
+  db: TenantDb,
+  tenantId: string,
+  orderId: string,
+  actorUserId: string,
+): Promise<{ stockLinesMoved: number }> {
+  const order = await db.fulfillmentOrder.findUnique({
+    where: { id: orderId },
+    select: CONFIRM_SELECT,
+  });
+  if (!order) return { stockLinesMoved: 0 };
+
+  try {
+    return { stockLinesMoved: await releaseOnCancel(db, tenantId, order, actorUserId) };
+  } catch (error) {
+    console.error(`[erp] stock release failed for order ${orderId}`, error);
+    return { stockLinesMoved: 0 };
+  }
 }

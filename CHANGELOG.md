@@ -12,6 +12,105 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.6f Stock moves again — and the reassessment of `apps/erp`
+
+`catalog.test.ts` goes 31 → **40/40**. This closes the last functional
+difference between the platform and `apps/erp`, and it was found by building
+6.6a's shared confirm path rather than by any test.
+
+#### The gap: `applyMovement` had one caller
+
+`lib/erp/inventory.ts` has the whole FIFO machinery — `planConsumption`,
+`planRestore`, lot draws, `MovementLotConsumption` — and Phase 5 ported all of
+it. What it never ported was the two functions that CALL it on a status change.
+So a confirmed order consumed no stock, a cancellation restored none, and
+`reservationMode` sat on the automation screen since 6.3d being read by nothing.
+
+Invisible to a contract test for the usual reason: `catalog.test.ts` attacks the
+adjust endpoint and passes, and nothing asserted that *confirming an order* moves
+stock — because until Phase 6.3 nothing on the platform could confirm one.
+
+#### It moves once, and the guard is the ledger
+
+A double-submitted button, a status set twice, `PATCH` and `/call` racing: a
+`confirm` movement already recorded against this order means this has run. Same
+shape as every job in `jobs.ts` — idempotent by what is already written, not by a
+lock. A test confirms, un-confirms and re-confirms, and asserts one movement.
+
+#### Cancelling returns stock to the lots it came from
+
+Not to the newest lot and not to the cheapest. `planRestore` reads
+`MovementLotConsumption` back, and anything else silently rewrites the cost basis
+on every cancellation and the profit calculator stops being true with no error
+anywhere. The test buys 3 at 1,000 and 5 at 2,000, confirms an order for 4,
+cancels it, and asserts **both lots** are whole again — reading the exhausted
+list as well as the active one, because a lot the reservation emptied moves
+between them and looking only at `active` would pass while the cheap lot stayed
+at zero.
+
+#### The name is matched leniently, and a mismatch is loud
+
+An order stores the product NAME — it arrives from a storefront, a webhook or a
+keyboard, none of which knows the catalogue's key. A trademark symbol, a
+non-breaking space or different casing must not silently stop stock moving, so
+the match is on a normalised form, and a name matching nothing is **logged** and
+does not fail the confirmation: the agent rang a customer and that has to be
+recorded whether or not the catalogue has a row.
+
+#### Two housekeeping jobs that existed and had no caller
+
+Both found while re-measuring `apps/erp`'s in-process timers against the
+platform, and both the same shape as the tick bug in 6.6b — a function that was
+written, was correct, and was never called:
+
+- **`pruneNotifications`** — written in 6.6c, called by nothing. The ERP pruned
+  hourly, and 6.6c writes ONE ROW PER RECIPIENT, so an unbounded table matters
+  more here than it did there. Now runs per tenant on every tick, before the
+  entitlement check, because notifications are a platform service.
+- **`purgeExpiredSessions`** — in `packages/auth` since M-09 **with no caller at
+  all**. Runs once per tick, unscoped, because `Session` is one of the five
+  tables with no RLS.
+
+#### The reassessment
+
+Every behaviour `apps/erp` has is now on the platform. The full table is in
+PROJECT_STATE; the short version is that the four items this phase set out to
+close — auto-assignment, carrier polling, notifications, installability — are
+closed, and re-measuring turned up three more that were closed with them (stock
+on confirm/cancel, notification retention, session purge).
+
+What retiring it does **not** fix, and never would have: the platform still has
+no cross-origin state-change refusal and no rate limiting. Those left the product
+suite in 5.1 and were never on the platform, so keeping `apps/erp` does not give
+them to it. They are Phase 8 work either way.
+
+#### Files
+`apps/website-builder/src/lib/erp/{inventory,confirm}.ts`,
+`src/app/api/erp/orders/{route,[id]/route,[id]/call/route}.ts`,
+`src/app/api/jobs/tick/route.ts`, `test/erp/catalog.test.ts`.
+
+#### Migration
+None.
+
+#### Risk
+**Stock will start moving on the next deploy.** Every order confirmed since the
+platform took over has consumed nothing, so current stock figures are higher than
+reality by whatever has been confirmed and not manually adjusted. `reservationMode`
+defaults to `on_confirm`, so this is on by default — a deployment that wants a
+stock count first should set it to `none`, reconcile, and switch it back.
+
+There is no backfill, deliberately. Replaying every past confirmation through the
+FIFO machinery would invent lot consumptions at today's cost basis for sales that
+happened at last quarter's, which is worse than a one-time manual count.
+
+**Verified live:** catalog 40/40 · notifications 33/33 · jobs 16/16 ·
+orders 38/38 · assign 25/25 · delivery 33/33 · access 63/63 · validation 29/29 ·
+listing 25/25 · integrations 29/29 · order-split 8/8 · screens 96/96 —
+**435/435**. website-builder 102/102 · db 29/29 · auth 36/36 ·
+product-registry 36/36 · ui 26/26 · i18n 18/18.
+
+---
+
 ### 6.6e The console installs to a home screen — and can receive a push
 
 `notifications.test.ts` goes 29 → **33/33**. The last of the four items

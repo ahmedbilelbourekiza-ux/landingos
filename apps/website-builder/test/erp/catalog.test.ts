@@ -463,3 +463,184 @@ describe('financial records', () => {
     assert.equal(mine.body.data.items.length, 0, "another company's revenue must not be visible");
   });
 });
+
+/* -----------------------------------------------------------------------------
+ * Stock moving when an order is confirmed or cancelled — Phase 6.6f
+ * -------------------------------------------------------------------------- */
+
+describe('confirming an order takes the stock', () => {
+  /** A product with one variant and a known cost, plus two lots at two prices. */
+  const stocked = async () => {
+    const name = `Widget ${uid()}`;
+    const product = (await acme.manager.api('POST', '/api/erp/products', {
+      name, sku: `SKU${uid()}`, price: 5000, costPrice: 1000, packagingCost: 100,
+      variants: [{ name: 'M', stock: 0 }],
+    })).body.data;
+
+    // Two purchases at different prices. Which one a sale consumes is what
+    // decides whether that sale made money — the whole reason StockLot exists.
+    await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      variantName: 'M', qty: 3, unitCost: 1000, packagingCost: 100,
+    });
+    await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      variantName: 'M', qty: 5, unitCost: 2000, packagingCost: 200,
+    });
+    return { id: product.id as string, name };
+  };
+
+  const stockOf = async (productId: string) => {
+    const r = await acme.manager.api('GET', `/api/erp/products/${productId}/inventory`);
+    const variants = (r.body.data.variants ?? []) as Array<{ name: string; stock: number }>;
+    return variants.find((v) => v.name === 'M')?.stock ?? 0;
+  };
+
+  const movementsFor = async (productId: string) =>
+    ((await acme.manager.api('GET', `/api/erp/products/${productId}/inventory/history`))
+      .body.data.items ?? []) as Array<{ reason: string; delta: number; orderId: string | null }>;
+
+  const orderFor = async (product: { name: string }, quantity = 2) =>
+    (await acme.manager.api('POST', '/api/erp/orders', {
+      client: `Stock Buyer ${uid()}`, phone: phone(), price: 5000,
+      product: product.name, productVariant: 'M', quantity,
+    })).body.data as { id: string };
+
+  test('a confirmed order decrements the variant and records why', async () => {
+    // This is the gap that would have been a functional regression if apps/erp
+    // had been deleted: applyMovement had exactly one caller, the manual adjust
+    // route, so a confirmed order consumed nothing at all.
+    const product = await stocked();
+    assert.equal(await stockOf(product.id), 8, 'precondition: two lots, eight units');
+
+    const order = await orderFor(product, 2);
+    await acme.manager.api('PATCH', `/api/erp/orders/${order.id}`, { status: 'confirmed' });
+
+    assert.equal(await stockOf(product.id), 6, 'confirming did not take the stock');
+
+    const moves = await movementsFor(product.id);
+    const confirm = moves.find((m) => m.orderId === order.id && m.reason === 'confirm');
+    assert.ok(confirm, 'no ledger row explains where the stock went');
+    assert.equal(confirm!.delta, -2);
+  });
+
+  test('logging a confirmed call moves it too — the two doors agree', async () => {
+    const product = await stocked();
+    const order = await orderFor(product, 3);
+    await acme.agent.api('POST', `/api/erp/orders/${order.id}/call`, { result: 'confirmed' });
+
+    assert.equal(await stockOf(product.id), 5, 'confirming by call did not take the stock');
+  });
+
+  test('confirming twice does not take the stock twice', async () => {
+    // A double-submitted button, a status set twice, PATCH and /call racing.
+    // The guard is the ledger itself: a `confirm` movement already recorded
+    // against this order means this has run.
+    const product = await stocked();
+    const order = await orderFor(product, 2);
+
+    await acme.manager.api('PATCH', `/api/erp/orders/${order.id}`, { status: 'confirmed' });
+    await acme.manager.api('PATCH', `/api/erp/orders/${order.id}`, { status: 'no_answer' });
+    await acme.manager.api('PATCH', `/api/erp/orders/${order.id}`, { status: 'confirmed' });
+
+    assert.equal(await stockOf(product.id), 6, 'the stock was taken twice for one order');
+    assert.equal(
+      (await movementsFor(product.id)).filter((m) => m.orderId === order.id && m.reason === 'confirm').length,
+      1,
+    );
+  });
+
+  test('cancelling gives it back, to the lots it came from', async () => {
+    // The property that makes the profit calculator true: a cancellation
+    // returns stock to the SAME lots the reservation consumed, read back from
+    // MovementLotConsumption — not to the newest lot and not to the cheapest.
+    const product = await stocked();
+    const order = await orderFor(product, 4);
+
+    await acme.manager.api('PATCH', `/api/erp/orders/${order.id}`, { status: 'confirmed' });
+    assert.equal(await stockOf(product.id), 4);
+
+    await acme.manager.api('PATCH', `/api/erp/orders/${order.id}`, { status: 'cancelled' });
+    assert.equal(await stockOf(product.id), 8, 'cancelling did not restore the stock');
+
+    // FIFO: the four units came from the 3-unit lot at 1000 and one from the
+    // 5-unit lot at 2000, and they must go back the same way. The lot listing
+    // is what proves it, not the variant total.
+    const listed = (await acme.manager.api('GET', `/api/erp/products/${product.id}/stock-lots`))
+      .body.data as {
+        active: Array<{ unitCost: string; qtyRemaining: number }>;
+        exhausted: Array<{ unitCost: string; qtyRemaining: number }>;
+      };
+    // Both halves: a lot the reservation emptied moves to `exhausted`, and
+    // restoring has to bring it back — looking only at `active` would pass while
+    // the cheap lot stayed at zero.
+    const lots = [...listed.active, ...listed.exhausted];
+    const cheap = lots.find((l) => Number(l.unitCost) === 1000);
+    const dear = lots.find((l) => Number(l.unitCost) === 2000);
+    assert.equal(cheap?.qtyRemaining, 3, 'the cheap lot was not made whole');
+    assert.equal(dear?.qtyRemaining, 5, 'the dear lot was not made whole');
+  });
+
+  test('cancelling an order that was never confirmed invents no stock', async () => {
+    const product = await stocked();
+    const order = await orderFor(product, 2);
+
+    await acme.manager.api('PATCH', `/api/erp/orders/${order.id}`, { status: 'cancelled' });
+
+    assert.equal(await stockOf(product.id), 8, 'a cancellation created stock out of nothing');
+    assert.equal(
+      (await movementsFor(product.id)).filter((m) => m.orderId === order.id).length, 0,
+    );
+  });
+
+  test('reservationMode decides — `none` moves nothing', async () => {
+    // The setting has been on the automation screen since 6.3d and read by
+    // nothing at all until now, which is BUG-03's shape.
+    const product = await stocked();
+    await acme.manager.api('PUT', '/api/erp/settings', { reservationMode: 'none' });
+    try {
+      const order = await orderFor(product, 2);
+      await acme.manager.api('PATCH', `/api/erp/orders/${order.id}`, { status: 'confirmed' });
+      assert.equal(await stockOf(product.id), 8, 'stock moved while reservation was off');
+    } finally {
+      await acme.manager.api('PUT', '/api/erp/settings', { reservationMode: 'on_confirm' });
+    }
+  });
+
+  test('a product name that matches nothing moves nothing, and does not fail the confirm', async () => {
+    // The silent-failure case the ERP guarded with a log. The confirmation is
+    // real work an agent did; it must be recorded whether or not the catalogue
+    // has a matching row.
+    const order = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Unmatched', phone: phone(), price: 1000, product: `Nothing ${uid()}`, quantity: 1,
+    })).body.data;
+
+    const r = await acme.manager.api('PATCH', `/api/erp/orders/${order.id}`, { status: 'confirmed' });
+    assert.equal(r.status, 200, 'an unmatched product name failed the confirmation');
+    assert.equal(r.body.data.status, 'confirmed');
+  });
+
+  test('the name is matched leniently, because a human typed it', async () => {
+    // An order stores the product NAME. A trademark symbol, a double space or
+    // different casing must not silently stop stock moving.
+    const product = await stocked();
+    const order = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Sloppy', phone: phone(), price: 5000,
+      product: `  ${product.name.toUpperCase()}™  `, productVariant: 'M', quantity: 1,
+    })).body.data;
+
+    await acme.manager.api('PATCH', `/api/erp/orders/${order.id}`, { status: 'confirmed' });
+    assert.equal(await stockOf(product.id), 7, 'a cosmetic name difference stopped the stock moving');
+  });
+
+  test('another tenant’s catalogue is never touched', async () => {
+    const product = await stocked();
+    const beta = await makeErpTenant('stock-beta');
+    const order = (await beta.manager.api('POST', '/api/erp/orders', {
+      client: 'Beta Buyer', phone: phone(), price: 5000,
+      product: product.name, productVariant: 'M', quantity: 2,
+    })).body.data;
+
+    await beta.manager.api('PATCH', `/api/erp/orders/${order.id}`, { status: 'confirmed' });
+
+    assert.equal(await stockOf(product.id), 8, "a neighbouring tenant consumed this tenant's stock");
+  });
+});

@@ -38,8 +38,8 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **426/426** across the TWELVE files: access 63 · orders 38 ·
-validation 29 · listing 25 · catalog 31 · delivery 33 · integrations 29 ·
+Expect **435/435** across the TWELVE files: access 63 · orders 38 ·
+validation 29 · listing 25 · catalog 40 · delivery 33 · integrations 29 ·
 order-split 8 · screens 96 · jobs 16 · assign 25 · notifications 33.
 
 `ERP_CONTRACT=strict` also requires **`WORKER_SECRET`** in
@@ -251,44 +251,40 @@ transaction and ingesting inside it is the shape to move to.
 
 ---
 
-## 2c. WHAT NOW BLOCKS DELETING `apps/erp` — one thing, and it is not scheduled work
+## 2c. NOTHING BLOCKS DELETING `apps/erp` — the 6.6f reassessment
 
-**Stock does not move when an order is confirmed or cancelled.**
+Every behaviour it has is on the platform. The full table is in PROJECT_STATE
+under *What still prevents retiring `apps/erp`*; both deferred test files are
+discharged rather than abandoned (`overdue-sweep.test.js` → `jobs.test.ts`,
+`notifications.test.js` → `notifications.test.ts`, which also covers the SSE half
+of `delivery-outcome.test.js`).
 
-The ERP's `decrementOnConfirm` / `releaseOnCancel` (`apps/erp/lib/inventory.js:346`)
-honour `reservationMode` — `immediate` | `on_confirm` | `none` — and write a real
-FIFO movement per order line. On the platform `applyMovement` has **one** caller,
-`POST /products/[id]/inventory/adjust`. So a confirmed order consumes nothing, a
-cancellation restores nothing, and `reservationMode` is a setting the automation
-screen renders and nothing reads.
+The three things still true, and **none is caused by deleting it**:
 
-Found in 6.6a while building `confirm.ts`, which is also where it belongs: that
-function already runs on both doors into `confirmed`, and the cancel side needs
-the same treatment for `cancelled`.
+1. **No cross-origin state-change refusal, and no rate limiting** (§4). Both left
+   the product suite in 5.1 because neither belongs in one, and neither was ever
+   on the platform — so keeping `apps/erp` running does not give them to it.
+2. **Web Push has never crossed a real push service**, and installability needs a
+   real device over HTTPS. Nothing is deployed, so both are untested by
+   construction rather than by omission.
+3. **The AI assistant answers 501 by design** (§5).
 
-Why it was invisible: it is code that runs *between* routes. `catalog.test.ts`
-attacks the adjust endpoint and passes; nothing asserts that confirming an order
-moves stock, because until 6.3 nothing on the platform could confirm one.
+### If you delete it
 
-It needs its own contract tests over FIFO lot consumption before any of it ships
-— the cancellation path must return stock to **the same lots the reservation
-consumed**, read back from `MovementLotConsumption`, or every cancellation
-silently rewrites the cost basis and the profit calculator stops being true with
-no error anywhere. `planRestore` already does this; it simply has no caller.
+One commit that touches nothing else, so the diff is a pure removal and a revert
+is one command. Then:
 
-The other two differences remain, and neither is functionality a person invokes:
-**none.** 6.6e closed the last of them: the console installs, and its service
-worker receives the push 6.6d sends.
+- `package.json` — drop `apps/erp` from the workspace globs if they are explicit,
+  and `better-sqlite3` from `allowScripts`, which nothing else needs.
+- PROJECT_STATE's *Legacy still remaining* section and its suite totals
+  (929 → 682, since the 298 go with the directory).
+- `apps/website-builder/test/erp/PORTING.md` references files that will be gone.
+  Keep the reasoning and say where each went.
 
-`overdue-sweep.test.js` is superseded by `test/erp/jobs.test.ts`.
-`notifications.test.js` is not, and after deletion is recoverable only from git
-history — port it with M-16 or copy it out first.
-
-Its 298 tests go with the directory. They tested the Express stack; `test/erp/`
-tests the platform. See `apps/website-builder/test/erp/PORTING.md` for what was
-deliberately not carried across and why.
-
----
+That directory has been read end to end four times during this port — 6.4a for
+the agent PWA, 6.5a for the follow-up producer, 6.6a for assignment, 6.6f for the
+in-process timers — and **each read found something the platform was missing**.
+Weigh that before the last working copy goes behind a `git show`.
 
 ## 3. The migrations Phase 5 left, with what they owe
 
@@ -298,7 +294,7 @@ deliberately not carried across and why.
 | **M-16** | **DONE — 6.6c, 6.6d, 6.6e.** Storage, audience, per-account read state, every producer, a live SSE stream with exact replay, Web Push, and the service worker that receives it. | Discharged: `test/erp/notifications.test.ts` (33 tests) supersedes `notifications.test.js` and covers the SSE half of `delivery-outcome.test.js`. |
 | **M-14** | ERP images → R2. | — |
 | **M-19** | Template registry. The storefront has one hardcoded template with colour-only themes. | — |
-| **—** | **Stock reservation on confirm/cancel.** Not a migration and not on any list until 6.6a found it; see §2c. `reservationMode` is rendered by the automation screen and read by nothing. | Contract tests over FIFO lot consumption, in `catalog.test.ts`. |
+| **—** | **DONE in 6.6f.** Stock reservation on confirm/cancel, plus the notification-retention and expired-session prunes that existed with no caller. | Discharged: 9 contract tests over FIFO lot consumption in `catalog.test.ts`. |
 
 ---
 

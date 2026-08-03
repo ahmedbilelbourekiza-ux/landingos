@@ -4,7 +4,7 @@ import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
 import { loadOwnedOrder } from "@/lib/erp/guard";
 import { addCall, updateOrder, CALL_RESULTS } from "@/lib/erp/orders";
 import { readSettings } from "@/lib/erp/settings";
-import { onOrderConfirmed } from "@/lib/erp/confirm";
+import { onOrderConfirmed, onOrderCancelled } from "@/lib/erp/confirm";
 import { notifySuspiciousCall } from "@/lib/erp/notify";
 
 export const dynamic = "force-dynamic";
@@ -61,8 +61,14 @@ export const POST = tenantRoute<Params>("erp:orders:write", async ({ db, req, se
   // reaches the same state and must not behave differently — see confirm.ts.
   const confirmed =
     result === "confirmed"
-      ? await onOrderConfirmed(db, tenantId, params.id, settings)
-      : { shipmentBooked: false, followupUserId: null };
+      ? await onOrderConfirmed(db, tenantId, params.id, settings, session.user.id)
+      : { shipmentBooked: false, followupUserId: null, stockLinesMoved: 0 };
+
+  // The other half of the same transition: cancelling gives the stock back, to
+  // the same lots the reservation consumed.
+  if (result === "cancelled" && order.status === "confirmed") {
+    await onOrderCancelled(db, tenantId, params.id, session.user.id);
+  }
 
   // The flag is only worth having if somebody is told. Manager-only, and
   // deliberately not the agent it is about — see notifySuspiciousCall.

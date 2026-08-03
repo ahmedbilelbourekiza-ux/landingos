@@ -296,6 +296,171 @@ export async function applyMovement(
   return { prevQty, newQty };
 }
 
+/* -----------------------------------------------------------------------------
+ * Stock moving when an order is confirmed or cancelled — Phase 6.6f
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Match a product name the way a human typed it.
+ *
+ * An order stores the product NAME, not an id — it arrives from a storefront, a
+ * channel webhook or a manager's keyboard, and none of those knows the
+ * catalogue's primary key. So the match is on a normalised form, because a
+ * trademark symbol, a non-breaking space or different casing silently breaks it
+ * otherwise and the symptom is stock that never moves with no error anywhere.
+ */
+export function normalizeProductName(input: string | null | undefined): string {
+  return String(input ?? "")
+    .replace(/ /g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/[™®©]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+export interface StockLine {
+  readonly productId: string;
+  readonly variantName: string;
+  readonly qty: number;
+}
+
+/**
+ * Which catalogue lines an order actually consumes.
+ *
+ * Returns nothing when no product matches, and says so in the log. That is the
+ * ERP's own "silent-failure guard", kept verbatim in spirit: a one-character
+ * mismatch means stock quietly never moves, and the only way anybody finds out
+ * is by counting the shelf.
+ */
+export async function resolveStockLines(
+  db: TenantDb,
+  order: {
+    id: string;
+    product: string | null;
+    productVariant: string | null;
+    quantity: number | null;
+  },
+): Promise<StockLine[]> {
+  const wanted = normalizeProductName(order.product);
+  if (!wanted) return [];
+
+  // The catalogue is tens to hundreds of rows for a call centre, and the match
+  // is on a normalised form Postgres has no index for — so it is done here
+  // rather than inventing a stored normalised column for one caller.
+  const products = await db.catalogProduct.findMany({
+    where: { archived: false },
+    select: { id: true, name: true },
+  });
+
+  const match = products.find((p) => normalizeProductName(p.name) === wanted);
+  if (!match) {
+    console.warn(
+      "[inventory] no catalogue product matches this order line — stock will NOT move",
+      { orderId: order.id, orderProduct: order.product },
+    );
+    return [];
+  }
+
+  return [
+    {
+      productId: match.id,
+      variantName: order.productVariant ?? "",
+      qty: Math.max(1, Number(order.quantity) || 1),
+    },
+  ];
+}
+
+/**
+ * Take stock for a confirmed order, honouring `reservationMode`.
+ *
+ * `none` moves nothing. `immediate` means the stock was taken when the order
+ * arrived, so confirming is a no-op — the ERP's own reading, and it is why this
+ * cannot simply always decrement.
+ *
+ * IT MOVES ONCE. The guard is the movement ledger itself: a `confirm` movement
+ * already recorded against this order means this has run, so a second
+ * confirmation — a double-submitted button, a status set twice, `PATCH` and
+ * `/call` racing — cannot take the stock twice. That is the same shape as every
+ * job in `jobs.ts`: idempotent by what is already written, not by a lock.
+ */
+export async function reserveOnConfirm(
+  db: TenantDb,
+  tenantId: string,
+  order: {
+    id: string;
+    product: string | null;
+    productVariant: string | null;
+    quantity: number | null;
+  },
+  reservationMode: string,
+  actorUserId: string,
+): Promise<number> {
+  if (reservationMode === "none" || reservationMode === "immediate") return 0;
+
+  const already = await db.inventoryMovement.count({
+    where: { orderId: order.id, reason: "confirm" },
+  });
+  if (already > 0) return 0;
+
+  let moved = 0;
+  for (const line of await resolveStockLines(db, order)) {
+    const result = await applyMovement(db, tenantId, {
+      productId: line.productId,
+      variantName: line.variantName,
+      delta: -line.qty,
+      reason: "confirm",
+      orderId: order.id,
+      actorUserId,
+    });
+    if (result) moved += 1;
+  }
+  return moved;
+}
+
+/**
+ * Give it back when a confirmation is cancelled.
+ *
+ * `applyMovement`'s `cancel` path returns stock to **the same lots the
+ * reservation consumed**, read back from `MovementLotConsumption` — not to the
+ * newest lot and not to the cheapest. Anything else silently rewrites the cost
+ * basis on every cancellation and the profit calculator stops being true without
+ * a single error.
+ *
+ * Guarded both ways: nothing to restore unless a `confirm` movement exists, and
+ * not twice if a `cancel` already does.
+ */
+export async function releaseOnCancel(
+  db: TenantDb,
+  tenantId: string,
+  order: {
+    id: string;
+    product: string | null;
+    productVariant: string | null;
+    quantity: number | null;
+  },
+  actorUserId: string,
+): Promise<number> {
+  const [taken, given] = await Promise.all([
+    db.inventoryMovement.count({ where: { orderId: order.id, reason: "confirm" } }),
+    db.inventoryMovement.count({ where: { orderId: order.id, reason: "cancel" } }),
+  ]);
+  if (taken === 0 || given > 0) return 0;
+
+  let moved = 0;
+  for (const line of await resolveStockLines(db, order)) {
+    const result = await applyMovement(db, tenantId, {
+      productId: line.productId,
+      variantName: line.variantName,
+      delta: line.qty,
+      reason: "cancel",
+      orderId: order.id,
+      actorUserId,
+    });
+    if (result) moved += 1;
+  }
+  return moved;
+}
+
 /** The inventory view for one product: per-variant stock and thresholds. */
 export function inventoryView(product: {
   stock: number | null;
