@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
-**Last updated:** 2 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.2: the rest of the ERP's screens*
+**Last updated:** 3 August 2026
+**Branch:** `master` · **Last commit:** *Phase 6.3a: the screens start writing*
 **Working tree:** clean, all work committed.
 
 ---
@@ -70,18 +70,40 @@ enumerates products — it reads a registry.
 
 ## Where we are
 
-**Phase 5 is complete; Phase 6.2 is done.** The ERP's backend runs entirely on
-the platform (235 contract tests), and **every item in its navigation now leads
-to a real screen** — eleven of them, on the console shell.
+**Phase 5 is complete; Phase 6.3a is done.** The ERP's backend runs entirely on
+the platform (235 contract tests), **every item in its navigation leads to a real
+screen** — eleven of them — and the order detail can now be *worked*, not only
+read.
 
-**The screens are READ-ONLY.** Every mutation the old SPA can perform has a
-route and a contract test behind it, but no control on the new screens yet.
-That is why `apps/erp` cannot be retired: it is still the only way to *do*
-anything.
+**Phase 6.3 is the write surfaces, in four slices.** 6.3a landed the agent's
+working loop: start a call, log its result, add a note, classify an order as
+fake. The rest of the mutations still have no control — editing an order,
+reassigning it, bulk actions, the parcel, inventory, products, carriers,
+finance, agents and settings — which is why `apps/erp` cannot be retired yet.
 
-**Exact stopping point:** committed and verified. The next task is **Phase 6.3 —
-the write surfaces**: logging a call, adjusting stock, editing a carrier — then
-the agent PWA, then `apps/erp` can be deleted.
+**Exact stopping point:** committed and verified. The next task is **6.3b —
+editing an order, reassigning it, and bulk status on the list**.
+
+### How a write surface is built here (6.3)
+
+Three decisions, made in 6.3a and binding on the rest:
+
+- **D-06.1.** A control calls the API route. It does **not** get its own server
+  action. Every mutation already has a route with contract tests in front of it;
+  a server action would be a second write path with its own copy of the
+  permission gate, the ownership guard and the validation — the half nobody
+  tested. The cost is that these controls need JavaScript.
+- **D-06.2.** A control is rendered only where the API would accept it, decided
+  with the same function the route checks (`can`, `mayTouchOrder`,
+  `seesWholeBook`). Equally: never withhold a control the API *does* accept —
+  logging a result with no call-start is allowed and flagged, so the button
+  stays. Absence is stated on the page, not silent.
+- **D-06.3.** No optimistic UI. On success the router refreshes and the server
+  component re-renders from the database; the control is busy until then.
+
+Client components take **translated strings and vocabularies as props** and hold
+neither. `lib/console/action-errors.ts` maps the envelope's `code` to an i18n
+key, because the API's `message` is English written for a log.
 
 ### Sequencing note
 
@@ -157,6 +179,7 @@ stream and inbound carrier webhooks).
 | 5.4 | The order split (M-05) — Builder→ERP in one transaction, 235/235 |
 | 6.1 | The ERP's first real screens — overview, orders, order detail |
 | 6.2 | The remaining eight screens — every nav item leads somewhere, 31/31 |
+| 6.3a | The screens start writing — the call surface, 39/39 |
 
 ### Remaining roadmap
 
@@ -168,10 +191,11 @@ stream and inbound carrier webhooks).
 
 ### Next recommended task
 
-See `NEXT_STEPS.md`. In short: **Phase 6.3 — the write surfaces**, then the
-agent PWA, then delete `apps/erp`. The
-foundation in `apps/website-builder/src/lib/erp/` is in place and the contract
-each slice must satisfy is already written in `apps/website-builder/test/erp/`.
+See `NEXT_STEPS.md`. In short: **finish Phase 6.3 — the remaining write
+surfaces** (6.3b–d), then the agent PWA, then delete `apps/erp`. The foundation
+in `apps/website-builder/src/lib/erp/` is in place, the write primitive is in
+`src/components/console/api-action.tsx`, and the contract each slice must satisfy
+is already written in `apps/website-builder/test/erp/`.
 
 ---
 
@@ -519,13 +543,13 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 266 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 274 | all pass against a running server |
 | `packages/auth` | 32 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **807** | green per suite |
+| **Total** | **815** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

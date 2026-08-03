@@ -2,13 +2,22 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { withTenant } from "@landingos/db";
+import { can } from "@landingos/auth";
 import { resolveStatus, toneVars } from "@landingos/ui";
 import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { StatusPill } from "@/components/console/data-table";
+import {
+  CallPanel,
+  NotePanel,
+  ClassifyPanel,
+  type OrderWriteStrings,
+} from "@/components/console/erp/order-write";
 import { mayTouchOrder, seesWholeBook } from "@/lib/erp/scope";
+import { CALL_RESULTS, NOTE_TYPES } from "@/lib/erp/orders";
 
 export const dynamic = "force-dynamic";
 
@@ -26,9 +35,24 @@ export const dynamic = "force-dynamic";
  *
  * The call history is attached HERE and only here. The list carries a count,
  * because joining history per row is what made it quadratic.
+ *
+ * PHASE 6.3 — THE WRITE CONTROLS.
+ *
+ * D-06.2: a control is rendered only where the API would accept it. The write
+ * routes require `erp:orders:write`, which an agent holds by explicit grant and
+ * a plain MEMBER or VIEWER does not — and both of those can READ this page,
+ * through the `*:*:read` role glob. So the panels are gated on the permission
+ * itself, resolved with `can()`, the same function `tenantRoute` calls. A button
+ * that 403s is worse than no button.
+ *
+ * The vocabularies and every label are resolved here and passed down, so the
+ * client components hold no copy of either.
  * ========================================================================== */
 
 const ATTEMPT_SLOTS = 9;
+
+/** `client_called_back` -> `clientCalledBack`, the shape of an i18n key. */
+const camel = (value: string) => value.replace(/_(.)/g, (_, c: string) => c.toUpperCase());
 
 export default async function ErpOrderDetail({
   params,
@@ -51,6 +75,9 @@ export default async function ErpOrderDetail({
         note: true, managerNote: true, source: true,
         deliveryStatus: true, deliveryOutcome: true, deliveryOutcomeAt: true,
         trackingNumber: true, createdAt: true,
+        // Phase 6.3: whether a call is running is the server's fact, and the
+        // panel renders it rather than starting a timer of its own.
+        pendingCallStart: true,
       },
     });
     if (!order) return null;
@@ -85,6 +112,46 @@ export default async function ErpOrderDetail({
   const currency = session.tenant!.currency;
   const tone = resolveStatus("confirmation", order.status ?? "");
   const attempts = calls.filter((c) => c.result);
+
+  // The permission the write routes check, checked by the same function they
+  // check it with. Reading this page needs `erp:orders:read`, which every
+  // member holds by role glob; changing it needs a grant.
+  const mayWrite = can(session.auth!, "erp:orders:write");
+
+  const writeStrings: OrderWriteStrings = {
+    saving: t("common.saving"),
+    callPanel: t("erp.write.callPanel"),
+    startCall: t("erp.write.startCall"),
+    callRunning: t("erp.write.callRunning"),
+    logResult: t("erp.write.logResult"),
+    callNote: t("erp.write.callNote"),
+    noStartHint: t("erp.write.noStartHint"),
+    notePanel: t("erp.write.notePanel"),
+    noteKind: t("erp.write.noteKind"),
+    noteDetail: t("erp.write.noteDetail"),
+    noteHint: t("erp.write.noteHint"),
+    addNote: t("erp.write.addNote"),
+    classifyPanel: t("erp.write.classifyPanel"),
+    classifyHint: t("erp.write.classifyHint"),
+    markFake: t("erp.write.markFake"),
+    clearFake: t("erp.write.clearFake"),
+    fakeReason: t("erp.write.fakeReason"),
+    fakeResponsible: t("erp.write.fakeResponsible"),
+  };
+
+  // Straight from the module the routes validate against. `pending` is
+  // deliberately absent: it is an order STATUS, not a call result, and offering
+  // it would be a button the API answers 422 to.
+  const results = CALL_RESULTS.map((value) => {
+    const d = resolveStatus("confirmation", value);
+    return { value, label: t(d.labelKey), vars: toneVars(d.tone) };
+  });
+  const noteTypes = NOTE_TYPES.map((value) => ({
+    value,
+    label: t(`erp.noteType.${camel(value)}`),
+  }));
+
+  const errors = actionErrors(t);
 
   return (
     <ConsoleShell session={session} productId="erp">
@@ -198,6 +265,43 @@ export default async function ErpOrderDetail({
           </dl>
         </section>
       </div>
+
+      {mayWrite ? (
+        <div className="mt-4 grid gap-4 lg:grid-cols-3" data-testid="erp-order-write">
+          <div className="lg:col-span-2">
+            <CallPanel
+              orderId={order.id}
+              errors={errors}
+              s={writeStrings}
+              results={results}
+              runningSince={
+                order.pendingCallStart
+                  ? formatDate(order.pendingCallStart, locale, { timeStyle: "short" })
+                  : null
+              }
+            />
+          </div>
+          <div className="space-y-4">
+            <NotePanel orderId={order.id} errors={errors} s={writeStrings} noteTypes={noteTypes} />
+            <ClassifyPanel
+              orderId={order.id}
+              errors={errors}
+              s={writeStrings}
+              isFake={order.classification === "fake"}
+            />
+          </div>
+        </div>
+      ) : (
+        // Absent, and SAID to be absent. A reader who can see the order but not
+        // work it should learn that from the page rather than from a button
+        // that answers 403.
+        <p
+          data-testid="erp-order-readonly"
+          className="mt-4 rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground"
+        >
+          {t("erp.write.readOnly")}
+        </p>
+      )}
 
       <section className="mt-4 rounded-lg border border-border p-4" data-testid="order-attempts">
         <h2 className="text-sm font-medium">

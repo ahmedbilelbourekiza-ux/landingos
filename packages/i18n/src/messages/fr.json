@@ -167,6 +167,33 @@
       "suspended": "Suspendu",
       "daysOff": "Jours de repos",
       "none": "Aucun membre"
+    },
+    "write": {
+      "readOnly": "Vous pouvez consulter cette commande, pas la modifier.",
+      "callPanel": "Appel de confirmation",
+      "startCall": "Démarrer l'appel",
+      "callRunning": "Appel en cours depuis",
+      "logResult": "Résultat de l'appel",
+      "callNote": "Note (facultatif)",
+      "noStartHint": "Un résultat saisi sans avoir démarré l'appel est enregistré comme tel.",
+      "notePanel": "Ajouter une note",
+      "noteKind": "Que s'est-il passé",
+      "noteDetail": "Détails",
+      "noteHint": "Une note rejoint l'historique et ne change pas le statut de la commande.",
+      "addNote": "Enregistrer la note",
+      "classifyPanel": "Classification",
+      "classifyHint": "Une commande fictive reste confirmée si elle l'était. Ce sont deux faits distincts.",
+      "markFake": "Marquer comme fictive",
+      "clearFake": "Retirer la marque",
+      "fakeReason": "Motif",
+      "fakeResponsible": "Responsable"
+    },
+    "noteType": {
+      "clientCalledBack": "Le client a rappelé",
+      "complaint": "Réclamation du client",
+      "addressChange": "Changement d'adresse",
+      "clientInstructions": "Consignes du client",
+      "other": "Autre"
     }
   },
   "status": {
@@ -178,7 +205,10 @@
       "callback": "Rappeler",
       "noAnswer": "Pas de réponse",
       "unreachable": "Injoignable",
-      "abandoned": "Panier abandonné"
+      "abandoned": "Panier abandonné",
+      "tentative1": "Tentative 1",
+      "tentative2": "Tentative 2",
+      "tentative3": "Tentative 3"
     },
     "delivery": {
       "created": "Colis créé",
@@ -220,6 +250,18 @@
     "notifications": "Notifications",
     "switchProduct": "Changer d'application",
     "switchTenant": "Changer d'entreprise",
-    "language": "Langue"
+    "language": "Langue",
+    "saving": "Enregistrement…",
+    "error": {
+      "unknown": "Cela n'a pas fonctionné.",
+      "network": "Serveur injoignable. Rien n'a été enregistré.",
+      "signedOut": "Votre session a expiré. Reconnectez-vous.",
+      "noTenant": "Choisissez une entreprise avant d'utiliser cette fonction.",
+      "forbidden": "Vous n'avez pas accès à cela.",
+      "forbiddenField": "Seul un responsable peut modifier cela.",
+      "notFound": "Cet enregistrement n'existe plus. Rechargez la page.",
+      "invalidInput": "Cette valeur n'a pas été acceptée.",
+      "internal": "Une erreur est survenue. Rien n'a été enregistré."
+    }
   }
 }

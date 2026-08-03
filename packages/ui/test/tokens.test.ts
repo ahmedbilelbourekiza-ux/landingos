@@ -168,9 +168,14 @@ describe('the status vocabulary covers both products', () => {
     // that stops being added to.
     for (const [registry, entries] of Object.entries(STATUS_REGISTRIES)) {
       for (const [status, d] of Object.entries(entries)) {
+        // A trailing digit is admissible — `tentative1` is a status the ERP
+        // ships, and the leaf mirrors it. The property being asserted is that a
+        // label is a KEY and not a human string, and that still bites: "Attempt
+        // 1" has a space and no dots, and any Arabic literal fails on the first
+        // character.
         assert.match(
           d.labelKey,
-          /^status\.[a-zA-Z]+\.[a-zA-Z]+$/,
+          /^status\.[a-zA-Z]+\.[a-zA-Z][a-zA-Z0-9]*$/,
           `${registry}.${status} label "${d.labelKey}" is not a dotted i18n key`,
         );
       }

@@ -12,6 +12,121 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.3a The screens start writing — the call surface
+
+Every ERP screen was read-only: each mutation had a route and a passing contract
+test, and no control. This is the first of them — the agent's working loop.
+Start the call, log what happened, record something that was not a call, mark an
+order fake. `screens.test.ts` goes 31 → **39/39**.
+
+#### D-06.1 — a control calls the API route, it does not get its own write path
+
+The builder's order detail already shows the alternative and its cost: its
+server action re-declares `VALID_TRANSITIONS` in the page with a comment saying
+it "mirrors the API route exactly" — a promise, not a mechanism.
+
+A server action here would be a **second write path**, and a second write path
+needs its own copy of the permission gate, the ownership guard and the
+validation. The read screens deliberately avoided that by calling
+`mayTouchOrder` and `orderScope` rather than reimplementing them. This is the
+same rule for writes, and it matters more: the copy would not merely drift, it
+would be the half nobody tested. 6.3a therefore adds **no authorization code at
+all** — the write path is the path 266 contract tests already attack.
+
+The cost, stated: these controls need JavaScript where the rest of the console
+does not. That is the trade NEXT_STEPS predicted.
+
+#### D-06.2 — the control is rendered only where the API would accept it
+
+A plain `MEMBER` reaches `erp:orders:read` through the `*:*:read` glob and can
+open the order; nothing reaches `erp:orders:write`, which an agent holds by
+explicit grant. So the panels are gated on the permission itself, resolved with
+`can()` — the same function `tenantRoute` calls — and the test asserts both
+halves: no controls on the page, and a 403 from the API for the same person.
+
+Absence is **stated** rather than silent. Somebody who can read an order but not
+work it should learn that from the page, not from a button that 403s.
+
+#### D-06.3 — no optimistic UI, and the panel proves it
+
+A confirmed call is money: it moves the status, it is what an agent is paid per,
+and it is what the suspicious-call flag watches. So nothing is guessed. On
+success the router refreshes and the server component re-renders from the
+database; the control stays busy until that arrives, which is why the refresh is
+wrapped in a transition rather than fired and forgotten.
+
+The call panel renders `pendingCallStart` as stored, so a second tab and a
+colleague see the same thing. Once a call is running the **start button is
+gone** — pressing it again would overwrite the start time the suspicious flag
+rests on.
+
+#### What is deliberately NOT gated
+
+The result buttons are offered whether or not a call was started. `POST /call`
+accepts that and **flags** it (`noStart`), so hiding the control would refuse
+work the API allows and strand an agent who forgot to press start with no way to
+record a call they really made. The screen says what happens instead.
+
+Never offer a control the API will refuse; equally, never withhold one it
+accepts. The tests assert both directions — the offered set equals
+`CALL_RESULTS` exactly, and every one of the eight is then logged for real.
+
+#### The picker found a gap three phases of read screens could not
+
+`tentative1`, `tentative2` and `tentative3` are first-class ERP statuses — they
+are in `ORDER_STATUSES`, in `CALL_RESULTS` and in the attempts matrix — and they
+were **missing from the console's status registry entirely**. Nothing had ever
+reached a tentative state, so every read screen rendered correctly; the moment a
+result picker existed, three of its eight buttons came back labelled "Unknown".
+
+Added to `CONFIRMATION_STATUS` with one tone for all three, not the ERP's
+escalating yellow → orange → rust: each means the same thing to whoever is
+looking at the queue — call this person back — and the attempt number is already
+in the label. That is the reasoning `DELIVERY_STATUS` already follows.
+
+`tokens.test.ts` refused the new keys, because its shape assertion allowed no
+digits. Widened to `[a-zA-Z][a-zA-Z0-9]*` on the leaf, with the reason recorded
+in place: the property is "a label is a key, not a human string", and it still
+bites — "Attempt 1" has a space and no dots.
+
+#### Refusals in the reader's language
+
+The API's `message` is English, written for whoever reads a log. A screen cannot
+show it. `lib/console/action-errors.ts` maps the machine-readable **code** to an
+i18n key, which is what a code is for and lets a route improve its wording
+without changing what an agent reads. It is deliberately **not** `server-only`,
+unlike its neighbours: it is the contract between the envelope and the control,
+both sides import it, and it reaches nothing. That boundary was found by the
+build, which refused a `"use client"` module importing a `server-only` one.
+
+#### i18n
+
+40 keys across all three catalogues — the write surface, a shared `common.error`
+vocabulary, the five note types and the three tentative statuses. The tentative
+labels are the ERP's own (`مبدئي 1` / `Tentative 1`). A test renders the same
+control in two locales and asserts neither shows a raw key or "Unknown".
+
+#### Files
+`packages/ui/src/status.ts` + `test/tokens.test.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json`,
+`apps/website-builder/src/lib/console/action-errors.ts` (new),
+`src/components/console/api-action.tsx` (new),
+`src/components/console/erp/order-write.tsx` (new),
+`src/app/console/erp/orders/[id]/page.tsx`, `test/erp/screens.test.ts`.
+
+#### Migration
+None.
+
+#### Risk
+Still read-only: editing an order, reassigning it, bulk actions, the parcel,
+inventory, products, carriers, finance, agents and settings. `apps/erp` remains
+the only way to do those, so it cannot be retired yet. Those are 6.3b–d.
+
+**Verified live:** screens 39/39 · access 62/62 · orders 38/38 ·
+console-shell 13/13 · ui 26/26 · i18n 18/18.
+
+---
+
 ### 6.2 The rest of the ERP's screens
 
 Eight more: customers, products, inventory, shipments, carriers, follow-up,

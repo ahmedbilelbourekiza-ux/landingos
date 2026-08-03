@@ -1,7 +1,7 @@
 # Next Steps
 
-**Phase 5 is complete; Phase 6.2 is done.** Immediate tasks to continue from
-the Phase 6.2 commit. Full context is in `PROJECT_STATE.md` — read its "Read
+**Phase 5 is complete; Phase 6.3a is done.** Immediate tasks to continue from
+the Phase 6.3a commit. Full context is in `PROJECT_STATE.md` — read its "Read
 this first" section before starting.
 
 ---
@@ -38,46 +38,69 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **266/266** across the nine files: access 62 · orders 38 ·
+Expect **274/274** across the nine files: access 62 · orders 38 ·
 validation 29 · listing 25 · catalog 31 · delivery 20 · integrations 22 ·
-order-split 8 · screens 31.
+order-split 8 · screens 39.
 
 ---
 
 ## 1. Phase 6.3 — the write surfaces
 
-Every ERP screen exists and **every one is read-only.** Each mutation below
-already has a route and a passing contract test; what is missing is the control.
-That is the whole of 6.3, and it is why `apps/erp` cannot be deleted yet — it is
-still the only way to *do* anything.
+Every ERP screen exists. **6.3a made the order detail workable**; the rest are
+still read-only. Each mutation below already has a route and a passing contract
+test; what is missing is the control. That is the rest of 6.3, and it is why
+`apps/erp` cannot be deleted yet — it is still the only way to do most of this.
+
+### Done — 6.3a
 
 | Action | Route it calls | Screen |
 |---|---|---|
 | Start a call, log its result | `POST orders/[id]/call-start`, `/call` | order detail |
 | Add a note | `POST orders/[id]/note` | order detail |
 | Classify as fake | `POST orders/[id]/classify` | order detail |
-| Edit an order, reassign it | `PATCH orders/[id]` | order detail |
-| Bulk status change | `POST orders/bulk` | order list |
-| Book / refresh a parcel | `POST orders/[id]/shipment`, `/refresh` | order detail |
-| Adjust stock, add a lot | `POST products/[id]/inventory/adjust`, `/stock-lots` | inventory |
-| Create / archive a product | `POST products`, `DELETE products/[id]` | products |
-| Configure a carrier | `POST/PUT carriers` | carriers |
-| Save a P&L, add a charge | `POST financial-records`, `unexpected-charges` | finance |
-| Pay rates, days off, suspend | `PATCH agents/[id]`, `/days-off`, `/suspend` | agents |
-| Settings | `PUT settings` | new screen |
 
-**These need client components** — the screens so far are server components with
-no interactivity. The builder's editor (`src/app/console/builder/pages/[id]/edit`)
-is the pattern that already exists in this codebase for a form posting to a
-console API.
+### Remaining
 
-Two things to carry over, both already true of the read screens:
+| Slice | Action | Route it calls | Screen |
+|---|---|---|---|
+| **6.3b** | Edit an order, reassign it | `PATCH orders/[id]` | order detail |
+| **6.3b** | Bulk status change | `POST orders/bulk` | order list |
+| **6.3c** | Book / refresh a parcel | `POST orders/[id]/shipment`, `/refresh` | order detail |
+| **6.3c** | Adjust stock, add a lot | `POST products/[id]/inventory/adjust`, `/stock-lots` | inventory |
+| **6.3c** | Create / archive a product | `POST products`, `DELETE products/[id]` | products |
+| **6.3d** | Configure a carrier | `POST/PUT carriers` | carriers |
+| **6.3d** | Save a P&L, add a charge | `POST financial-records`, `unexpected-charges` | finance |
+| **6.3d** | Pay rates, days off, suspend | `PATCH agents/[id]`, `/days-off`, `/suspend` | agents |
+| **6.3d** | Settings | `PUT settings` | new screen |
 
-- **Never offer a control the API will refuse.** An agent must not see a
-  reassign control, a delete button on a saved P&L, or an edit on a movement —
-  the API refuses all three, and a button that 403s is worse than no button.
-- **Optimistic UI is wrong here.** A confirmed call is money; show the server's
-  answer, not a guess at it.
+### The pattern 6.3a established — follow it
+
+The write primitive is `src/components/console/api-action.tsx`
+(`useApiAction`, `ActionError`, `ActionButton`) and the worked example is
+`src/components/console/erp/order-write.tsx`.
+
+- **D-06.1. A control calls the API route.** No server actions for product
+  writes. A server action is a second write path needing its own copy of the
+  permission gate, the ownership guard and the validation — and that copy is the
+  half no contract test covers. The builder's order detail shows the cost: it
+  re-declares `VALID_TRANSITIONS` in the page.
+- **D-06.2. Render a control only where the API would accept it** — decided with
+  the same function the route checks (`can`, `mayTouchOrder`, `seesWholeBook`),
+  never a second opinion. An agent must not see a reassign control, a delete
+  button on a saved P&L, or an edit on a movement. **And the converse:** do not
+  withhold a control the API accepts. Logging a result with no call-start is
+  allowed and flagged, so the button stays. State the absence on the page rather
+  than leaving a reader guessing.
+- **D-06.3. No optimistic UI.** A confirmed call is money. `router.refresh()` on
+  success, inside a transition, and the control stays busy until the server
+  component re-renders.
+- **Client components hold no strings and no vocabularies.** Both arrive as
+  props from the server, which reads them from the same `lib/erp` modules the
+  routes validate against. `lib/console/action-errors.ts` turns the envelope's
+  `code` into an i18n key — the API's `message` is English, for a log.
+- **Test the control surface both ways.** The offered set must equal what the
+  API accepts, and each offered value must then be exercised for real. That is
+  how 6.3a found `tentative1/2/3` missing from the status registry.
 
 ---
 

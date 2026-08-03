@@ -167,6 +167,33 @@
       "suspended": "Suspended",
       "daysOff": "Days off",
       "none": "Nobody on the team yet"
+    },
+    "write": {
+      "readOnly": "You can read this order but not change it.",
+      "callPanel": "Confirmation call",
+      "startCall": "Start the call",
+      "callRunning": "Call in progress since",
+      "logResult": "How did it go?",
+      "callNote": "Note (optional)",
+      "noStartHint": "A result logged without starting the call is recorded as such.",
+      "notePanel": "Add a note",
+      "noteKind": "What happened",
+      "noteDetail": "Details",
+      "noteHint": "A note joins the history and does not change the order's status.",
+      "addNote": "Add the note",
+      "classifyPanel": "Classification",
+      "classifyHint": "A fake order stays confirmed if it was confirmed. The two are separate facts.",
+      "markFake": "Mark as fake",
+      "clearFake": "Clear the mark",
+      "fakeReason": "Reason",
+      "fakeResponsible": "Who is responsible"
+    },
+    "noteType": {
+      "clientCalledBack": "The customer called back",
+      "complaint": "Customer complaint",
+      "addressChange": "Address change",
+      "clientInstructions": "Customer instructions",
+      "other": "Something else"
     }
   },
   "status": {
@@ -178,7 +205,10 @@
       "callback": "Call back",
       "noAnswer": "No answer",
       "unreachable": "Unreachable",
-      "abandoned": "Abandoned cart"
+      "abandoned": "Abandoned cart",
+      "tentative1": "Attempt 1",
+      "tentative2": "Attempt 2",
+      "tentative3": "Attempt 3"
     },
     "delivery": {
       "created": "Shipment created",
@@ -220,6 +250,18 @@
     "notifications": "Notifications",
     "switchProduct": "Switch app",
     "switchTenant": "Switch company",
-    "language": "Language"
+    "language": "Language",
+    "saving": "Saving…",
+    "error": {
+      "unknown": "That did not work.",
+      "network": "Could not reach the server. Nothing was saved.",
+      "signedOut": "Your session has ended. Sign in again.",
+      "noTenant": "Choose a company before using this feature.",
+      "forbidden": "You do not have access to this.",
+      "forbiddenField": "Only a manager can change that.",
+      "notFound": "That record is no longer there. Reload the page.",
+      "invalidInput": "That value was not accepted.",
+      "internal": "Something went wrong. Nothing was saved."
+    }
   }
 }

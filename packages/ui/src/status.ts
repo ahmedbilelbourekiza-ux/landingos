@@ -45,6 +45,20 @@ export const CONFIRMATION_STATUS: Record<string, StatusDescriptor> = {
   no_answer:   { tone: 'neutral', labelKey: 'status.confirmation.noAnswer' },
   unreachable: { tone: 'neutral', labelKey: 'status.confirmation.unreachable' },
   abandoned:   { tone: 'warning', labelKey: 'status.confirmation.abandoned' },
+  // The three escalating attempts. First-class ERP statuses — they appear in
+  // ORDER_STATUSES, in CALL_RESULTS and in the attempts matrix — and they were
+  // missing here until Phase 6.3 offered a result picker and three of its eight
+  // buttons came back labelled "Unknown". The read screens never showed it
+  // because nothing had reached a tentative state.
+  //
+  // One tone for all three, not the ERP's escalating yellow → orange → rust.
+  // Each one means the same thing to whoever is looking at the queue — call
+  // this person back — and the attempt NUMBER is already in the label. Three
+  // shades of "call back" would be three things to learn where one is a glance,
+  // which is the reasoning DELIVERY_STATUS already follows below.
+  tentative1:  { tone: 'warning', labelKey: 'status.confirmation.tentative1' },
+  tentative2:  { tone: 'warning', labelKey: 'status.confirmation.tentative2' },
+  tentative3:  { tone: 'warning', labelKey: 'status.confirmation.tentative3' },
 };
 
 /**

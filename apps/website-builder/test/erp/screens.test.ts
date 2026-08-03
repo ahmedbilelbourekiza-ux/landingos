@@ -33,14 +33,23 @@ let builderOnly: Caller;
 let mine = '';
 let theirs = '';
 
-const page = (path: string, token?: string) =>
-  fetch(BASE + path, {
+const page = (path: string, token?: string, locale?: string) => {
+  // The console has no locale segment in its URLs (R-08) — the choice is a
+  // cookie, which is what the locale switcher writes. Passing one here makes a
+  // label assertion deterministic instead of depending on Arabic being the
+  // default.
+  const cookie = [
+    token ? `${SESSION_COOKIE}=${token}` : '',
+    locale ? `locale=${locale}` : '',
+  ].filter(Boolean).join('; ');
+  return fetch(BASE + path, {
     redirect: 'manual',
-    headers: token ? { cookie: `${SESSION_COOKIE}=${token}` } : {},
+    headers: cookie ? { cookie } : {},
   });
+};
 
-const html = async (path: string, token?: string) => {
-  const res = await page(path, token);
+const html = async (path: string, token?: string, locale?: string) => {
+  const res = await page(path, token, locale);
   return { status: res.status, body: await res.text() };
 };
 
@@ -302,5 +311,174 @@ describe('money and figures render correctly', () => {
     const r = await html('/console/erp/finance', acme.manager.token);
     assert.match(r.body, /data-testid="erp-finance-table"/);
     assert.ok(!/>\s*Delete\s*</.test(r.body), 'no delete control for a saved record');
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * Phase 6.3a — the write surfaces
+ *
+ * Until now every ERP screen was read-only: each mutation had a route and a
+ * passing contract test, and no control. These assert the CONTROL SURFACE, which
+ * is the half an API test cannot reach —
+ *
+ *   - a control exists wherever the API would accept it, and
+ *   - no control exists where the API would refuse.
+ *
+ * The behaviour behind each button is already covered by orders.test.ts; a
+ * button is a `fetch` to a route those tests attack from every direction. What
+ * is new here is the offer, and an offer the server will refuse is worse than no
+ * offer at all — it teaches an agent that the console is unreliable.
+ * -------------------------------------------------------------------------- */
+
+/** Every result POST /call accepts. Deliberately written out rather than
+ *  imported: `src/lib/erp/orders.ts` is `server-only` and would throw here, and
+ *  a contract test asserting the vocabulary the ERP shipped with is exactly what
+ *  this directory is for. */
+const CALL_RESULTS = [
+  'no_answer', 'callback', 'confirmed', 'cancelled',
+  'tentative1', 'tentative2', 'tentative3', 'unreachable',
+];
+
+const NOTE_TYPES = [
+  'client_called_back', 'complaint', 'address_change', 'client_instructions', 'other',
+];
+
+describe('the order detail can be worked, not only read', () => {
+  let workable = '';
+  let reader: Caller;
+  let readerOrder = '';
+
+  const newOrder = async (body: Record<string, unknown> = {}) =>
+    (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Write Customer', phone: phone(), price: 3200, product: 'Write Widget',
+      wilaya: 'Alger', commune: 'Bab Ezzouar', ...body,
+    })).body.data.id as string;
+
+  before(async () => {
+    if (skip) return;
+    workable = await newOrder({ agentUserId: acme.agent.userId });
+
+    // A plain MEMBER: `*:*:read` reaches erp:orders:read, so they can OPEN the
+    // order, and nothing reaches erp:orders:write. That combination is the
+    // whole reason the panels are gated on the permission rather than on
+    // whether the page rendered.
+    reader = await makeMember(acme.tenantId, { role: 'MEMBER' });
+    readerOrder = await newOrder({ agentUserId: reader.userId });
+  });
+
+  test('the agent who owns the order gets the write panels', async () => {
+    const r = await html(`/console/erp/orders/${workable}`, acme.agent.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-order-write"/);
+    assert.match(r.body, /data-testid="erp-call-panel"/);
+    assert.match(r.body, /data-testid="erp-note-panel"/);
+    assert.match(r.body, /data-testid="erp-classify-panel"/);
+  });
+
+  test('the result buttons are exactly the vocabulary the API accepts', async () => {
+    const r = await html(`/console/erp/orders/${workable}`, acme.agent.token);
+    const offered = [...r.body.matchAll(/data-result="([^"]+)"/g)].map((m) => m[1]).sort();
+    assert.deepEqual(offered, [...CALL_RESULTS].sort());
+    // `pending` is where an order STARTS, not an outcome. It is in
+    // ORDER_STATUSES and not in CALL_RESULTS, and POST /call answers 422 —
+    // so a button for it would be a control the API refuses.
+    assert.ok(!offered.includes('pending'), 'offered a result the API would refuse');
+  });
+
+  test('and every one of them really is accepted', async () => {
+    // The other direction, which is the one that matters: the screen must not
+    // be offering a button that 403s or 422s. Each result is logged for real
+    // against a throwaway order.
+    const id = await newOrder({ agentUserId: acme.agent.userId });
+    for (const result of CALL_RESULTS) {
+      const r = await acme.agent.api('POST', `/api/erp/orders/${id}/call`, { result });
+      assert.equal(r.status, 200, `the screen offers "${result}" and the API refused it`);
+    }
+  });
+
+  test('the note panel offers exactly the note types the API accepts', async () => {
+    const r = await html(`/console/erp/orders/${workable}`, acme.agent.token);
+    const options = [...r.body.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1]);
+    for (const type of NOTE_TYPES) {
+      assert.ok(options.includes(type), `no control for note type "${type}"`);
+    }
+  });
+
+  test('the three tentative results have real labels, in every locale', async () => {
+    // They are first-class ERP statuses — ORDER_STATUSES, CALL_RESULTS and the
+    // attempts matrix all carry them — and they were missing from the console's
+    // status registry entirely until a result picker rendered three buttons
+    // labelled "Unknown". Nothing had reached a tentative state before, so no
+    // read screen could have shown it.
+    for (const [locale, unknown] of [['en', 'Unknown'], ['fr', 'Inconnu']] as const) {
+      const r = await html(`/console/erp/orders/${workable}`, acme.agent.token, locale);
+      assert.equal(r.status, 200);
+      for (const n of [1, 2, 3]) {
+        const button = new RegExp(`data-result="tentative${n}"[^>]*>([^<]*)<`);
+        const label = r.body.match(button)?.[1] ?? '';
+        assert.notEqual(label.trim(), '', `tentative${n} has no label in ${locale}`);
+        assert.notEqual(label.trim(), unknown, `tentative${n} is unlabelled in ${locale}`);
+        assert.ok(!label.includes('status.'), `tentative${n} leaked a raw key in ${locale}`);
+      }
+    }
+  });
+
+  test('a reader without erp:orders:write gets no controls, and is told why', async () => {
+    const r = await html(`/console/erp/orders/${readerOrder}`, reader.token);
+    assert.equal(r.status, 200, 'they can read it — the glob grants erp:orders:read');
+    assert.ok(!/data-testid="erp-order-write"/.test(r.body), 'but nothing to press');
+    assert.ok(!/data-result="/.test(r.body));
+    assert.match(r.body, /data-testid="erp-order-readonly"/, 'absence is stated, not silent');
+
+    // And the API agrees, which is the point of gating on the permission the
+    // route checks rather than on anything the page knows.
+    const refused = await reader.api('POST', `/api/erp/orders/${readerOrder}/call`, {
+      result: 'confirmed',
+    });
+    assert.equal(refused.status, 403);
+  });
+
+  test('the call panel shows the server’s state, never a guess at it', async () => {
+    const id = await newOrder({ agentUserId: acme.agent.userId });
+
+    const before = await html(`/console/erp/orders/${id}`, acme.agent.token);
+    assert.match(before.body, /data-testid="call-start"/);
+    assert.ok(!/data-testid="call-running"/.test(before.body));
+
+    // Pressing "start" is exactly this request. A confirmed call is money, so
+    // the panel renders `pendingCallStart` as the database holds it — which is
+    // also what makes a second tab, or a colleague, see the same thing.
+    assert.equal(
+      (await acme.agent.api('POST', `/api/erp/orders/${id}/call-start`, {})).status,
+      200,
+    );
+
+    const after = await html(`/console/erp/orders/${id}`, acme.agent.token);
+    assert.match(after.body, /data-testid="call-running"/);
+    assert.ok(
+      !/data-testid="call-start"/.test(after.body),
+      'starting twice would overwrite the start time the suspicious flag rests on',
+    );
+    // The results stay offered throughout: POST /call accepts a result with no
+    // start and FLAGS it, so withholding the control would refuse work the API
+    // allows and strand an agent who forgot to press start.
+    assert.match(after.body, /data-result="confirmed"/);
+  });
+
+  test('classification offers the opposite of whatever is true now', async () => {
+    const id = await newOrder({ agentUserId: acme.agent.userId });
+
+    const clean = await html(`/console/erp/orders/${id}`, acme.agent.token);
+    assert.match(clean.body, /data-testid="classify-fake"/);
+    assert.ok(!/data-testid="classify-clear"/.test(clean.body));
+
+    await acme.agent.api('POST', `/api/erp/orders/${id}/classify`, {
+      classification: 'fake', reason: 'duplicate', responsible: 'marketing',
+    });
+
+    const marked = await html(`/console/erp/orders/${id}`, acme.agent.token);
+    assert.match(marked.body, /data-testid="classify-clear"/);
+    assert.ok(!/data-testid="classify-fake"/.test(marked.body));
+    assert.match(marked.body, /data-testid="order-fake"/, 'and the badge agrees');
   });
 });
