@@ -38,9 +38,9 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **325/325** across the nine files: access 62 · orders 38 ·
+Expect **330/330** across the nine files: access 62 · orders 38 ·
 validation 29 · listing 25 · catalog 31 · delivery 20 · integrations 22 ·
-order-split 8 · screens 90.
+order-split 8 · screens 95.
 
 ---
 
@@ -131,19 +131,14 @@ throws at runtime while the build succeeds — that cost a cycle in 6.3b.
 **This is the current task.** All 1,172 lines of `apps/erp/agent.html` were read
 in 6.4a; this table is the measurement, not a guess.
 
-### Done — 6.4a
+### Done — 6.4a and 6.4b
 
 `/console/erp/queue`. The scoped queue over `ACTIVE_STATUSES`, oldest first;
 tap-to-dial as a real `tel:` anchor with `call-start` fired alongside; the eight
 result buttons; the five note types; the overdue badge judged against the
-tenant's `alertMinutes`.
-
-### Remaining — 6.4b
-
-| Feature in `agent.html` | Platform route | Do |
-|---|---|---|
-| Delivery tracking modal | `GET orders/[id]/shipment` — exists | Port onto the queue card, for confirmed orders |
-| Follow-up task panel | `GET followup/tasks` — exists | Port, **read-only** (see the blocker) |
+tenant's `alertMinutes`; a plain GET filter form read by `orderFilters`; the
+parcel's status and tracking number on the card; and the follow-up panel,
+read-only.
 
 ### Does not port, and must not be faked
 
@@ -152,7 +147,7 @@ tenant's `alertMinutes`.
 - **Notifications and Web Push** — M-16 (§3). No platform transport exists.
 - **AI assistant** — `ai/chat` answers 501 by design (§5).
 
-### The blocker to deleting `apps/erp`
+### THE NEXT TASK — the one blocker to deleting `apps/erp`
 
 **`POST /api/followup/tasks/:id/resolve` was never ported.** It exists in the
 ERP (`agent.html:853`), has no platform route, and does not appear in
@@ -160,9 +155,25 @@ ERP (`agent.html:853`), has no platform route, and does not appear in
 lands, an agent can see follow-up work on the platform but cannot mark it done,
 and `apps/erp` is the only place that can.
 
-Do it in the order this project uses: **the contract test first**, then the
-route. It needs the same record-level scope `followup/tasks` already applies —
-`hardening.test.js §7` exists because the ERP let an agent resolve by asking.
+Do it in the order this project uses — **the contract test first**, then the
+route:
+
+1. Add it to the route inventory in `access.test.ts`, and assert the record
+   scope: an agent resolving a colleague's task must get 404, the same answer
+   `loadOwnedOrder` gives. `hardening.test.js §7` exists because the ERP let an
+   agent widen this queue by asking.
+2. `POST /api/erp/followup/tasks/[id]/resolve`, `tenantRoute("erp:orders:write")`,
+   scoped with **`followupScope`** from `lib/erp/scope.ts` — the function the
+   `GET` and the queue screen already share. Set `status` and `resolvedAt`; the
+   columns exist.
+3. Then the queue's follow-up panel gets its button. `screens.test.ts` has a
+   test asserting the route 404s — **it will fail the moment the route exists**,
+   and its message names the panel and this file as what to update. That is
+   deliberate: the gap announces its own closure.
+
+After that, deleting `apps/erp` is a decision about **M-16 (notifications) and
+installability**, not about missing functionality. Both are assessed in
+PROJECT_STATE under *What still prevents retiring `apps/erp`*.
 
 Its 298 tests go with the directory. They tested the Express stack; `test/erp/`
 tests the platform. See `apps/website-builder/test/erp/PORTING.md` for what was

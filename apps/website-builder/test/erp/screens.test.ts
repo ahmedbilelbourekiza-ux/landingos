@@ -1240,6 +1240,91 @@ describe('the agent has a queue to work', () => {
     assert.ok(!/data-nav="queue"/.test(r.body), 'no link to a screen that would 404');
   });
 
+  /* --- 6.4b --------------------------------------------------------------- */
+
+  test('the filters round-trip through the URL and work without JavaScript', async () => {
+    // A plain GET form, read by the SAME `orderFilters` the API uses — so the
+    // screen and the endpoint cannot interpret `?status=` differently.
+    const r = await html('/console/erp/queue', acme.agent.token);
+    const form = r.body.match(/<form[^>]*data-testid="erp-queue-filters"[^>]*>/)?.[0] ?? '';
+    assert.notEqual(form, '', 'no filter form on the queue');
+    // A GET form, so the filters are in the URL and survive a reload. Matched
+    // without assuming attribute order, which is React's business and not a
+    // property worth pinning.
+    assert.match(form, /method="get"/i, `filters rendered as ${form}`);
+    assert.match(r.body, /name="status"/);
+    assert.match(r.body, /name="search"/);
+  });
+
+  test('filtering to a terminal status shows settled orders, without call controls', async () => {
+    // The queue defaults to work still to be done; a settled order appears only
+    // when somebody asks for one — to answer "where is my parcel?". The ERP's
+    // card dropped the dial and the results there and kept the note.
+    const r = await html('/console/erp/queue?status=confirmed', acme.agent.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, new RegExp(`data-order-id="${mineDone}"`), 'the confirmed order is missing');
+    assert.ok(
+      !new RegExp(`data-testid="queue-dial"[^>]*data-order-id="${mineDone}"`).test(r.body),
+      'a settled order was offered the dial',
+    );
+    assert.ok(
+      !new RegExp(`data-result="[^"]+"[^>]*data-order-id="${mineDone}"`).test(r.body),
+      'a settled order was offered the result buttons',
+    );
+    // The note stays, as it did in the ERP.
+    assert.match(r.body, /data-testid="queue-note-toggle"/);
+  });
+
+  test('search narrows the queue through the same filter the API uses', async () => {
+    const needle = `Findable${uid()}`;
+    const found = await newOrder({ client: needle, agentUserId: acme.agent.userId });
+
+    const hit = await html(
+      `/console/erp/queue?search=${encodeURIComponent(needle)}`, acme.agent.token,
+    );
+    assert.match(hit.body, new RegExp(`data-order-id="${found}"`));
+    assert.ok(
+      !new RegExp(`data-order-id="${mineActive}"`).test(hit.body),
+      'search did not narrow the queue',
+    );
+  });
+
+  test('a parcel’s state is on the card once one exists', async () => {
+    const carrierCode = `qc${uid()}`;
+    await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Queue Carrier', code: carrierCode, adapter: 'mock',
+    });
+    const id = await newOrder({ agentUserId: acme.agent.userId, carrierCode });
+
+    const before = await html('/console/erp/queue', acme.agent.token);
+    assert.ok(
+      !new RegExp(`data-order-id="${id}"[\\s\\S]{0,2000}?data-testid="queue-delivery"`).test(before.body),
+      'a delivery line appeared before anything was booked',
+    );
+
+    const booked = await acme.manager.api('POST', `/api/erp/orders/${id}/shipment`, {});
+    assert.ok([200, 201].includes(booked.status), `booking answered ${booked.status}`);
+
+    const after = await html('/console/erp/queue', acme.agent.token);
+    assert.match(after.body, /data-testid="queue-delivery"/);
+  });
+
+  test('the follow-up panel is read-only, and says why', async () => {
+    // `POST /followup/tasks/:id/resolve` exists in the ERP and has NO platform
+    // route — it was never ported in Phase 5 and is absent from the inventory
+    // in this file. A resolve button here would 404; showing none and saying so
+    // is the honest state, and it is what blocks deleting apps/erp.
+    const r = await html('/console/erp/queue', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.ok(!/data-testid="followup-resolve"/.test(r.body), 'offered a control with no route');
+
+    assert.equal(
+      (await acme.manager.api('POST', '/api/erp/followup/tasks/anything/resolve', {})).status,
+      404,
+      'a resolve route now exists — the panel and NEXT_STEPS both need updating',
+    );
+  });
+
   test('another tenant’s queue is not reachable through this one', async () => {
     const beta = await makeErpTenant('queue-beta');
     const betaOrder = (await beta.manager.api('POST', '/api/erp/orders', {

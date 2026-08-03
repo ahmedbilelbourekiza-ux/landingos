@@ -59,6 +59,10 @@ export interface QueueOrder {
   /** Formatted when `pendingCallStart` is set; null otherwise. */
   readonly callingSince: string | null;
   readonly lastNote: string | null;
+  /** Where the parcel is, when there is one. Null while nothing is booked. */
+  readonly delivery: { label: string; tracking: string | null } | null;
+  /** False once the order reaches a terminal status — see TERMINAL_STATUSES. */
+  readonly workable: boolean;
 }
 
 export function QueueCard({
@@ -143,6 +147,23 @@ export function QueueCard({
         <p className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-sm">{order.lastNote}</p>
       )}
 
+      {/* Where the parcel is. The ERP opened a modal for this; the full event
+          timeline already lives on the order detail, so the card carries the
+          one line a customer actually rings to ask about and links to the rest.
+          Only ever rendered when a shipment exists. */}
+      {order.delivery && (
+        <p
+          data-testid="queue-delivery"
+          className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
+        >
+          <span>{order.delivery.label}</span>
+          {order.delivery.tracking && (
+            <span className="font-mono text-xs" dir="ltr">{order.delivery.tracking}</span>
+          )}
+          <a href={detailHref} className="underline underline-offset-2">{s.open}</a>
+        </p>
+      )}
+
       <p className="mt-3 text-xs text-muted-foreground">
         {order.callCount > 0
           ? `${order.callCount} ${s.attempts}`
@@ -154,6 +175,14 @@ export function QueueCard({
         )}
       </p>
 
+      {/* An order only reaches this card in a terminal status when the agent
+          has filtered for one deliberately — to answer "where is my parcel?".
+          The ERP's card dropped the dial and the result buttons there and kept
+          the note, and that boundary is part of what is being ported: the queue
+          is for orders still to be worked. Changing a settled one is a
+          deliberate act on the order detail, which has the full call panel. */}
+      {order.workable && (
+      <>
       {/* The gesture. A real anchor, so the phone dials even with no network —
           and `call-start` rides along rather than gating it. */}
       <a
@@ -189,6 +218,8 @@ export function QueueCard({
           </ActionButton>
         ))}
       </div>
+      </>
+      )}
 
       <div className="mt-3">
         <ActionButton

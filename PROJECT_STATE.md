@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 3 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.4a: the agent's queue*
+**Branch:** `master` · **Last commit:** *Phase 6.4b: filters, parcel line, follow-up*
 **Working tree:** clean, all work committed.
 
 ---
@@ -80,17 +80,20 @@ its result, add a note, classify an order as fake); 6.3b editing an order,
 reassigning it, and bulk status/assign/delete; 6.3c the parcel, products and the
 stockroom; 6.3d carriers, the books, the team and the automation rules.
 
-**Phase 6.4 is in progress.** 6.4a ported the confirmation agent's queue —
-`/console/erp/queue`, the tap-to-dial working screen that was `agent.html`.
+**Phase 6.4 has ported everything `agent.html` shows that the platform can
+serve.** `/console/erp/queue` is the tap-to-dial working screen: the scoped
+queue, the call loop, notes, filters, the parcel line, and the follow-up panel.
 
 **Three surfaces of that app do not port, and are not faked:** notifications and
 Web Push (M-16, no transport), the AI assistant (`ai/chat` is a deliberate 501),
 and **resolving a follow-up task** — `POST /api/followup/tasks/:id/resolve` was
 never ported in Phase 5 and is absent from the contract inventory. That last one
-**blocks retiring `apps/erp`**; see *What still prevents retiring `apps/erp`*.
+is the **one functional blocker** to retiring `apps/erp`; see below.
 
-**Exact stopping point:** committed and verified. The next task is **6.4b —
-delivery tracking and the follow-up panel on the queue**.
+**Exact stopping point:** committed and verified. The next task is **the
+follow-up resolve route — contract test first, then the route** — after which
+deleting `apps/erp` becomes a decision about M-16 rather than about missing
+functionality.
 
 ### How a write surface is built here (6.3)
 
@@ -221,6 +224,7 @@ stream and inbound carrier webhooks).
 | 6.3c | The parcel, the catalogue and the stockroom, 59/59 |
 | 6.3d | Carriers, books, team, automation — **Phase 6.3 complete**, 80/80 |
 | 6.4a | The confirmation agent's queue — tap to dial, 90/90 |
+| 6.4b | Filters, the parcel line and the follow-up panel, 95/95 |
 
 ### Remaining roadmap
 
@@ -465,20 +469,30 @@ As of 6.3d the **manager console it serves is fully superseded** — every scree
 and every mutation exists on the platform with a contract test on it. 6.4a
 ported the agent's working queue.
 
-### What still prevents retiring `apps/erp`
+### What still prevents retiring `apps/erp` — the assessment
 
-Measured against `agent.html`, not assumed. One is a genuine blocker; the other
-two are stated absences the platform has never claimed to cover.
+Every surface of `agent.html` (1,172 lines) and of the manager SPA was measured
+against the platform. **One functional blocker remains.**
 
-| Feature | Status | Blocks deletion? |
+| Feature | Platform state | Blocks deletion? |
 |---|---|---|
-| **Resolve a follow-up task** — `POST /api/followup/tasks/:id/resolve` | Exists in the ERP. **No platform route**, and absent from `access.test.ts`'s inventory, so it was never ported in Phase 5. The queue can show follow-up work but not action it. | **YES.** Needs a route + a contract test, in that order. |
-| **Notifications and Web Push** | M-16. The table moved to `platform.prisma` in 3.2; the transport (SSE, per-account watermark, replay, Web Push) has none. | Judgement call — the ERP's agents rely on it in practice. |
-| **AI assistant** | `ai/chat`, `ai/chat/stream`, `ai/insights/deep` answer **501 by design** — calling a model is deployment configuration, not a port. | No. Deliberate, and gated first. |
+| Manager console — all twelve screens, every mutation | Ported, 325 contract tests | No |
+| Agent queue, call loop, notes, filters, parcel line | `/console/erp/queue` (6.4) | No |
+| Agent login screen, stored server URL | Nothing to port to — the session is a cookie on this origin | No |
+| **Resolve a follow-up task** — `POST /api/followup/tasks/:id/resolve` | **No platform route.** Exists in the ERP (`agent.html:853`); absent from `access.test.ts`'s inventory, so it was never ported in Phase 5 — a Phase 5 gap, not a 6.4 one. The queue shows follow-up work and cannot action it. | **YES** |
+| **Notifications and Web Push** | **M-16.** The table moved to `platform.prisma` in 3.2; the transport — SSE, per-account read watermark, replay on reconnect, Web Push — has no equivalent. `notifications.test.js` (~20 tests) is still deferred against it. | **Judgement call.** Not missing *functionality* an agent invokes, but the ERP's agents rely on being told about new orders. Retiring before M-16 means they poll by refreshing. |
+| AI assistant | `ai/chat`, `ai/chat/stream`, `ai/insights/deep` answer **501 by design** — calling a model is deployment configuration, not a port. Gated first, so the authorization contract is complete. | No |
+| Service worker, installability, offline shell | Not built. The queue is a console screen; "add to home screen" and the offline app shell have no platform equivalent. | **Judgement call.** Affects how agents launch it, not what it can do. |
 
-Nothing else in that directory has a user. When the follow-up resolve route
-lands with its test, deleting `apps/erp` becomes a decision about M-16 rather
-than about missing functionality.
+**Verdict: not yet, and the shortest path is one route.** Add
+`POST /api/erp/followup/tasks/[id]/resolve` — contract test first, then the
+route, scoped with `followupScope` — and the last thing only `apps/erp` can do is
+gone. `screens.test.ts` already asserts that route returns 404 and will fail the
+day it exists, naming what to update.
+
+After that, deleting the directory is a decision about **M-16 and installability**
+rather than about missing functionality, and both are visible above rather than
+discovered afterwards.
 
 **Nothing else.** The legacy dashboard, legacy storefront, legacy JWT, legacy
 middleware and the pre-tenant Prisma client were all deleted in `82dacc9`.
@@ -610,13 +624,13 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 325 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 330 | all pass against a running server |
 | `packages/auth` | 32 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **866** | green per suite |
+| **Total** | **871** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

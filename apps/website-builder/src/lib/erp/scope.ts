@@ -83,6 +83,29 @@ export function scopedWhere(
 }
 
 /**
+ * The `where` fragment that limits the FOLLOW-UP queue to what this caller may
+ * see — Phase 6.4b.
+ *
+ * Extracted from `api/erp/followup/tasks/route.ts` when the queue screen needed
+ * the same rule. `hardening.test.js §7` exists because the ERP accepted
+ * `?agent=` here and honoured it, so an agent could list a colleague's tasks by
+ * asking; a screen that reimplemented the scope would be a second chance to make
+ * that mistake, in the place nobody thinks to test.
+ *
+ * A manager may narrow to one person deliberately. Everybody else is pinned to
+ * themselves, and the parameter is ignored rather than refused — which is what
+ * the contract test asserts.
+ */
+export function followupScope(
+  session: ConsoleSession,
+  requestedAgentUserId?: string | null,
+): { agentUserId?: string } {
+  if (!seesWholeBook(session)) return { agentUserId: session.user.id };
+  const requested = requestedAgentUserId?.trim();
+  return requested ? { agentUserId: requested } : {};
+}
+
+/**
  * May this caller act on this specific order?
  *
  * Used by the per-order routes, which is where the ERP's real defect was:

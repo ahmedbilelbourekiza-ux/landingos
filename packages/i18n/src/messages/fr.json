@@ -300,7 +300,9 @@
       "call": "Appeler",
       "neverCalled": "Pas encore appelée",
       "clear": "Plus rien à appeler",
-      "open": "Ouvrir la commande"
+      "open": "Ouvrir la commande",
+      "allActive": "Encore à appeler",
+      "followUpReadOnly": "Clôturer un suivi n'est pas encore possible ici — utilisez l'ancienne console."
     },
     "jobRole": {
       "confirmation": "Confirmation",

@@ -9,9 +9,10 @@ import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { QueueCard, type QueueStrings, type QueueOrder } from "@/components/console/erp/queue-card";
-import { scopedWhere, seesWholeBook } from "@/lib/erp/scope";
+import { scopedWhere, seesWholeBook, followupScope } from "@/lib/erp/scope";
 import {
-  ACTIVE_STATUSES, CALL_RESULTS, NOTE_TYPES, ORDER_LIST_SELECT, orderFilters,
+  ACTIVE_STATUSES, TERMINAL_STATUSES, ORDER_STATUSES,
+  CALL_RESULTS, NOTE_TYPES, ORDER_LIST_SELECT, orderFilters,
 } from "@/lib/erp/orders";
 import { readSettings } from "@/lib/erp/settings";
 
@@ -60,7 +61,41 @@ export default async function ErpQueueScreen({
     if (typeof v === "string") params.set(k, v);
   }
 
-  const { orders, settings, counts } = await withTenant(session.auth.tenantId, async (db) => {
+  /**
+   * The follow-up queue, with the order each task is about.
+   *
+   * `FollowupTask.orderId` is a plain column with no relation — the ERP
+   * referenced orders by value and M-06 did not invent a foreign key for it —
+   * so the orders are fetched in one second query and joined here rather than by
+   * Prisma. Both reads are inside the tenant binding, so neither can reach
+   * another company's rows.
+   *
+   * Scoped with `followupScope`, the same function the follow-up ROUTE uses:
+   * `hardening.test.js §7` exists because the ERP accepted `?agent=` here and
+   * honoured it.
+   */
+  const followupWithOrders = async (db: Parameters<Parameters<typeof withTenant>[1]>[0]) => {
+    const tasks = await db.followupTask.findMany({
+      where: { ...followupScope(session), status: "pending" },
+      orderBy: [{ dueAt: "asc" }, { id: "asc" }],
+      take: 20,
+      select: { id: true, orderId: true, type: true, dueAt: true, reason: true },
+    });
+    if (!tasks.length) return [];
+
+    const orders = await db.fulfillmentOrder.findMany({
+      where: { id: { in: tasks.map((t) => t.orderId) } },
+      select: { id: true, reference: true, client: true },
+    });
+    const byId = new Map(orders.map((o) => [o.id, o]));
+    return tasks.map((task) => ({
+      ...task,
+      reference: byId.get(task.orderId)?.reference ?? "",
+      client: byId.get(task.orderId)?.client ?? "",
+    }));
+  };
+
+  const { orders, followup, settings, counts } = await withTenant(session.auth.tenantId, async (db) => {
     const filters = orderFilters(params);
     // A chosen status wins; otherwise the queue is everything still to be
     // worked. `scopedWhere` ANDs rather than spreads, so neither can widen the
@@ -78,6 +113,7 @@ export default async function ErpQueueScreen({
         take: PAGE_SIZE,
         select: { ...ORDER_LIST_SELECT, calls: { select: { note: true }, orderBy: { time: "desc" }, take: 1 } },
       }),
+      followup: await followupWithOrders(db),
       settings: await readSettings(db),
       counts: {
         active: await db.fulfillmentOrder.count({
@@ -142,6 +178,15 @@ export default async function ErpQueueScreen({
       ? formatDate(o.pendingCallStart, locale, { timeStyle: "short" })
       : null,
     lastNote: o.calls[0]?.note ?? null,
+    // Only when a parcel exists. The full event timeline is on the order
+    // detail; this is the one line a customer rings back to ask about.
+    delivery: o.deliveryStatus || o.trackingNumber
+      ? {
+          label: t(resolveStatus("delivery", o.deliveryStatus ?? "").labelKey),
+          tracking: o.trackingNumber ?? null,
+        }
+      : null,
+    workable: !(TERMINAL_STATUSES as readonly string[]).includes(o.status ?? ""),
   }));
 
   const errors = actionErrors(t);
@@ -168,6 +213,80 @@ export default async function ErpQueueScreen({
           <dd className="mt-1 text-2xl font-semibold tabular-nums" dir="ltr">{overdueCount}</dd>
         </div>
       </dl>
+
+      {/* A plain GET form. The filters round-trip through the URL and are read
+          by the SAME `orderFilters` the API uses, so the screen and the endpoint
+          cannot interpret `?status=` differently — and it works before
+          hydration, which the rest of this screen cannot claim. */}
+      <form method="get" className="mt-4 flex flex-wrap items-end gap-3" data-testid="erp-queue-filters">
+        <div>
+          <label htmlFor="status" className="block text-xs text-muted-foreground">
+            {t("erp.orders.status")}
+          </label>
+          <select
+            id="status" name="status" defaultValue={params.get("status") ?? ""}
+            className="mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="">{t("erp.queue.allActive")}</option>
+            {ORDER_STATUSES.map((value) => (
+              <option key={value} value={value}>
+                {t(resolveStatus("confirmation", value).labelKey)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="search" className="block text-xs text-muted-foreground">
+            {t("common.search")}
+          </label>
+          <input
+            id="search" name="search" defaultValue={params.get("search") ?? ""}
+            className="mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+        </div>
+        <button
+          type="submit"
+          className="rounded-md border border-input px-3 py-2 text-sm font-medium"
+        >
+          {t("erp.write.apply")}
+        </button>
+      </form>
+
+      {/* Read-only, and it SAYS so. `POST /followup/tasks/:id/resolve` exists in
+          the ERP and has no platform route — it was never ported in Phase 5 and
+          is absent from the contract inventory. Showing a resolve button that
+          404s would be worse than showing none; inventing the route here would
+          be the one write path no contract test covers. */}
+      {followup.length > 0 && (
+        <section className="mt-6 rounded-lg border border-border p-4" data-testid="erp-queue-followup">
+          <h2 className="text-sm font-medium">{t("erp.nav.followUp")}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">{t("erp.queue.followUpReadOnly")}</p>
+          <ul className="mt-3 space-y-2">
+            {followup.map((task) => (
+              <li
+                key={String(task.id)}
+                data-followup-id={String(task.id)}
+                className="flex flex-wrap items-center gap-2 border-t border-border pt-2 text-sm first:border-0 first:pt-0"
+              >
+                <a
+                  href={`/console/erp/orders/${task.orderId}`}
+                  className="font-mono text-xs underline underline-offset-2"
+                  dir="ltr"
+                >
+                  {task.reference}
+                </a>
+                <span>{task.client || "—"}</span>
+                <span className="text-muted-foreground">{task.type ?? ""}</span>
+                {task.dueAt && (
+                  <span className="text-xs text-muted-foreground">
+                    {formatDate(task.dueAt, locale)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {cards.length === 0 ? (
         <p

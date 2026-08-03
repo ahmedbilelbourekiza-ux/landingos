@@ -300,7 +300,9 @@
       "call": "Call",
       "neverCalled": "Not called yet",
       "clear": "Nothing left to call",
-      "open": "Open the order"
+      "open": "Open the order",
+      "allActive": "Still to call",
+      "followUpReadOnly": "Marking follow-up done is not available here yet — use the old console."
     },
     "jobRole": {
       "confirmation": "Confirmation",

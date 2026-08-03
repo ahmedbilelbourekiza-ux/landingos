@@ -12,6 +12,76 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.4b Filters, the parcel line and the follow-up panel
+
+The rest of what `agent.html` shows. `screens.test.ts` goes 90 → **95/95**.
+
+#### The filters are a plain GET form
+
+No client component, no JavaScript. The status select and the search box submit
+to the same path and are read by the **same `orderFilters`** the API uses, so the
+screen and the endpoint cannot interpret `?status=` differently — and the filter
+survives a reload, a shared link and a browser back button, none of which client
+state does.
+
+#### Where the parcel is, without a modal
+
+The ERP opened a tracking dialog. The full event timeline already lives on the
+order detail, so the card carries the one line a customer actually rings back to
+ask about — status plus tracking number — and links to the rest. It renders only
+when a shipment exists, so an unbooked order shows nothing rather than an empty
+dialog.
+
+#### A settled order keeps the note and loses the call controls
+
+The queue defaults to work still to be done; a terminal order appears only when
+somebody filters for one. The ERP's card dropped the dial and the result buttons
+there and kept the note, and that boundary is part of what is being ported —
+changing a settled order is a deliberate act on the order detail, which has the
+full call panel. `workable` comes from `TERMINAL_STATUSES`, so it cannot drift
+from the set the queue filters on.
+
+#### One scope rule, two callers
+
+`followupScope` moved out of `api/erp/followup/tasks/route.ts` into
+`lib/erp/scope.ts`, and the route now calls it. The screen calls the same
+function rather than a copy: `hardening.test.js §7` exists because the ERP
+accepted `?agent=` on this queue and honoured it, so an agent could list a
+colleague's tasks by asking — and a screen that reimplemented the rule would be a
+second chance to make that mistake, in the place nobody thinks to test.
+
+`FollowupTask.orderId` is a plain column with no relation (M-06 did not invent a
+foreign key the ERP never had), so the orders are fetched in a second query
+inside the same tenant binding and joined in memory.
+
+#### The panel is read-only, and the test says when to change that
+
+`POST /followup/tasks/:id/resolve` exists in the ERP and has **no platform
+route**. A resolve button would 404, so there is none, and the screen says so in
+all three languages. The test asserts the *absence of the route* — it fails the
+day one appears, with a message naming the panel and NEXT_STEPS as the things
+that then need updating. A gap that announces its own closure beats a TODO.
+
+#### Files
+`apps/website-builder/src/lib/erp/scope.ts`,
+`src/app/api/erp/followup/tasks/route.ts`,
+`src/app/console/erp/queue/page.tsx`,
+`src/components/console/erp/queue-card.tsx`,
+`packages/i18n/src/messages/{en,fr,ar}.json`, `test/erp/screens.test.ts`.
+
+#### Migration
+None.
+
+#### Risk
+`apps/erp` **cannot yet be deleted**, for exactly one functional reason: nobody
+can mark a follow-up task done on the platform. See *What still prevents
+retiring `apps/erp`* in PROJECT_STATE for the full assessment, including the two
+absences that are judgement calls rather than blockers.
+
+**Verified live:** screens 95/95 · access 62/62 · listing 25/25 · i18n 18/18.
+
+---
+
 ### 6.4a The confirmation agent's queue
 
 The port of `apps/erp/agent.html` begins — the last thing that application

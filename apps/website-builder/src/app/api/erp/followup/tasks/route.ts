@@ -1,5 +1,5 @@
 import { tenantRoute, apiOk, pagination } from "@/lib/api/route";
-import { seesWholeBook } from "@/lib/erp/scope";
+import { followupScope } from "@/lib/erp/scope";
 import { toJson } from "@/lib/erp/serialize";
 
 export const dynamic = "force-dynamic";
@@ -16,10 +16,9 @@ export const dynamic = "force-dynamic";
 export const GET = tenantRoute("erp:orders:read", async ({ db, session, searchParams }) => {
   const { skip, take, page, pageSize } = pagination(searchParams);
 
-  const requested = searchParams.get("agentUserId")?.trim();
-  const scope = seesWholeBook(session)
-    ? (requested ? { agentUserId: requested } : {})
-    : { agentUserId: session.user.id };
+  // The rule lives in `lib/erp/scope.ts` so the queue screen applies the same
+  // one rather than a copy of it (6.4b).
+  const scope = followupScope(session, searchParams.get("agentUserId"));
 
   const status = searchParams.get("status")?.trim();
   const where = { ...scope, ...(status ? { status } : {}) };
