@@ -1,7 +1,7 @@
 # Next Steps
 
-**Phase 5 is complete; Phase 6.3c is done.** Immediate tasks to continue from
-the Phase 6.3c commit. Full context is in `PROJECT_STATE.md` — read its "Read
+**Phase 5 is complete. Phase 6.3 is complete.** Immediate tasks to continue from
+the Phase 6.3d commit. Full context is in `PROJECT_STATE.md` — read its "Read
 this first" section before starting.
 
 ---
@@ -38,58 +38,42 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **294/294** across the nine files: access 62 · orders 38 ·
+Expect **315/315** across the nine files: access 62 · orders 38 ·
 validation 29 · listing 25 · catalog 31 · delivery 20 · integrations 22 ·
-order-split 8 · screens 59.
+order-split 8 · screens 80.
 
 ---
 
-## 1. Phase 6.3 — the write surfaces
+## 1. Phase 6.3 is done — what it built
 
-Every ERP screen exists. **6.3a–c made the order book, the catalogue and the
-stockroom workable**; four screens are still read-only. Each mutation below
-already has a route and a passing contract test; what is missing is the control.
-That is the rest of 6.3, and it is why `apps/erp` cannot be deleted yet — it is
-still the only way to do these four.
-
-### Done — 6.3a, 6.3b and 6.3c
+**Every mutation the ERP's SPA can perform now has a control on the platform.**
+Twelve screens, all writable where the API allows it:
 
 | Action | Route it calls | Screen |
 |---|---|---|
 | Start a call, log its result | `POST orders/[id]/call-start`, `/call` | order detail |
-| Add a note | `POST orders/[id]/note` | order detail |
-| Classify as fake | `POST orders/[id]/classify` | order detail |
+| Add a note · classify as fake | `POST orders/[id]/note`, `/classify` | order detail |
 | Edit an order, reassign it | `PATCH orders/[id]` | order detail |
 | Bulk status / assign / delete | `POST orders/bulk` | order list |
 | Book / refresh a parcel | `POST orders/[id]/shipment`, `/refresh` | order detail |
 | Create / archive / restore a product | `POST products`, `DELETE`, `/unarchive` | products |
 | Adjust stock, add a lot | `POST products/[id]/inventory/adjust`, `/stock-lots` | inventory |
+| Configure a carrier, default, status mappings | `POST/PUT carriers`, `/default`, `/status-mappings` | carriers |
+| Save a P&L, add / delete a one-off charge | `POST financial-records`, `unexpected-charges` | finance |
+| Pay rates, days off, suspend / reactivate | `PATCH agents/[id]`, `/days-off`, `/suspend` | agents |
+| Automation rules | `PUT settings` | **automation** (new) |
 
-### Remaining — all of it is 6.3d
+**`/console/erp/automation`, not `/settings`.** `packages/product-registry`
+refuses a product nav item named `settings` — a tenant with N products must still
+see ONE Settings, owned by the shell. The name was the defect: every key on that
+screen is a rule the ERP applies by itself.
 
-| Action | Route it calls | Screen | Permission |
-|---|---|---|---|
-| Configure a carrier, set the default, map statuses | `POST/PUT carriers`, `/default`, `/status-mappings` | carriers | `erp:shipments:write` |
-| Save a P&L, add / delete a one-off charge | `POST financial-records`, `unexpected-charges`, `DELETE …/[id]` | finance | `erp:finance:write` |
-| Pay rates, days off, suspend / reactivate | `PATCH agents/[id]`, `/days-off`, `/suspend`, `/reactivate` | agents | `erp:agents:manage` |
-| ERP settings | `PUT settings` | **new screen** | `erp:settings:write` |
-
-Two things 6.3d must get right, both already asserted by tests it must not break:
-
-- **A carrier's keys are never selected**, let alone rendered. The carriers
-  screen shows *that* credentials exist. The API masks them on read and
-  preserves the stored secret when the mask is sent back, so an edit form must
-  send the mask unchanged rather than a blank.
-- **A saved financial record has no delete or edit** — it is append-only and the
-  screen says so. A one-off charge *is* deletable. That asymmetry is the schema's
-  and `screens.test.ts` already asserts the absent control.
-
-### The pattern 6.3a established — follow it
+### The pattern to follow for any new write surface
 
 The write primitive is `src/components/console/api-action.tsx`
-(`useApiAction`, `ActionError`, `ActionButton`); the field descriptor and
-`editFingerprint` are in `src/components/console/edit-field.ts`; the worked
-examples are `src/components/console/erp/{order-write,order-bulk}.tsx`.
+(`useApiAction`, `ActionError`, `ActionButton`); the field descriptors are in
+`src/components/console/{edit-field,setting-field}.ts`; the worked examples are
+the five files in `src/components/console/erp/`.
 
 **Anything both sides need goes in a directive-free module.** A value exported
 from a `"use client"` module is a client reference on the server, and calling it
@@ -124,16 +108,53 @@ throws at runtime while the build succeeds — that cost a cycle in 6.3b.
   a number input hands back a JS float and these columns are `Decimal` (M-06).
 - **Leave a field off rather than guess its vocabulary.** `deliveryMethod` is
   `'COD'` everywhere and has no options, so a free-text box would write values
-  nothing downstream understands.
+  nothing downstream understands. Where a vocabulary *does* exist, export it from
+  the module the route validates against (`SETTINGS_SCHEMA`, `PERIOD_TYPES`,
+  `JOB_ROLES`, `CALL_RESULTS`) — a form with its own list goes stale silently.
+- **Exclude by TYPE, not by a list of names.** The automation screen skips the
+  structured settings because their declared type has no editor, so one added
+  later is excluded automatically instead of rendering as a checkbox.
+- **A collapsible panel is `hidden`, never unmounted.** Mounting on click means
+  the offered vocabulary only exists after JavaScript runs — unassertable by a
+  contract test and unreadable to assistive tech until somebody clicks.
+- **A screen that reads the database directly must apply the permission its API
+  equivalent applies.** 6.3d found the carriers page rendering for an agent who
+  could not call a single carrier route. A nav item is a hint; the URL is
+  typeable; the gate belongs on the page.
+- **A product must never ship a nav item the platform owns** — `settings`,
+  `profile`, `billing`, `team`, `notifications`. The registry asserts it.
 
 ---
 
-## 2. Then 6.4 — the agent PWA, and retiring `apps/erp`
+## 2. NEXT — 6.4, the agent PWA, and retiring `apps/erp`
 
-The confirmation agent's phone app (`apps/erp/agent.html`, 1,261 lines) is the
-last thing `apps/erp` serves that has no replacement. Once it does, delete
-`apps/erp` — it is a UI in front of an API that has been superseded, and every
-screen it has is covered by a contract test against the platform.
+**This is the current task.** The confirmation agent's phone app
+(`apps/erp/agent.html`, 1,261 lines) is the last thing `apps/erp` serves that has
+no replacement. Everything the manager console does now exists on the platform
+with a contract test on it. Once the PWA does too, delete `apps/erp` — it is a UI
+in front of an API that has been superseded.
+
+What that app actually does, from its source, so the port is measured rather than
+guessed:
+
+- **A queue of the agent's own orders**, filtered to the active statuses
+  (`pending`, `no_answer`, `callback`, `tentative1/2/3`, `unreachable`). The
+  platform equivalent is `orderScope` + `orderFilters`, both already used by
+  `/console/erp/orders`.
+- **The call loop**: dial, then log one of the eight `RESULT_OPTIONS` — the same
+  vocabulary the order-detail call panel already renders, with the same
+  `call-start` → `call` pair behind it.
+- **A note modal** with the five note types.
+- **Its own login screen and a stored server URL.** Neither ports: the platform
+  session is a cookie and the app is served from the same origin.
+- **Web Push and an SSE feed.** These are **M-16** and have no platform
+  equivalent — see §3. Port the app without them rather than inventing a
+  transport, and say on the screen that live updates are not there yet.
+
+Its 298 tests go with the directory. They tested the Express stack; `test/erp/`
+tests the platform. See `apps/website-builder/test/erp/PORTING.md` for what was
+deliberately not carried across and why — and note M-15 and M-16 below still owe
+two of those files a home.
 
 Its 298 tests go with it. They tested the Express stack; `test/erp/` tests the
 platform. See `apps/website-builder/test/erp/PORTING.md` for what was

@@ -2,6 +2,8 @@ import "server-only";
 
 import type { Prisma } from "@landingos/db";
 
+import { CARRIER_SECRET_MASK, CARRIER_SECRET_FIELDS } from "./carrier-mask";
+
 /* =============================================================================
  * Carrier adapters.
  *
@@ -171,8 +173,10 @@ export const listAdapters = () =>
  * Secrets
  * -------------------------------------------------------------------------- */
 
-const MASK = "••••";
-const SECRET_FIELDS = ["apiKey", "secretKey", "webhookSecret"] as const;
+// From a directive-free module, because the console form needs the same value
+// to recognise its own placeholder. See lib/erp/carrier-mask.ts.
+const MASK = CARRIER_SECRET_MASK;
+const SECRET_FIELDS = CARRIER_SECRET_FIELDS;
 
 /**
  * Replace stored credentials with a mask, and say whether there are any.

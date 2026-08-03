@@ -6,7 +6,8 @@ import { toJson, toDecimal, toDate } from "@/lib/erp/serialize";
 
 export const dynamic = "force-dynamic";
 
-const PERIOD_TYPES = ["day", "week", "month", "quarter", "year", "custom"] as const;
+/** Exported so the finance SCREEN offers exactly what this route accepts. */
+export const PERIOD_TYPES = ["day", "week", "month", "quarter", "year", "custom"] as const;
 
 /**
  * Saved profit-and-loss records. INSERT-ONLY.

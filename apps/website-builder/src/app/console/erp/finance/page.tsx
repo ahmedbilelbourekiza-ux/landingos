@@ -1,11 +1,20 @@
 import { notFound } from "next/navigation";
 
 import { withTenant } from "@landingos/db";
+import { can } from "@landingos/auth";
 import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { actionErrors } from "@/lib/console/action-errors";
+import { financeStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
+import {
+  ChargeAddPanel,
+  ChargeRemove,
+  RecordSavePanel,
+} from "@/components/console/erp/finance-write";
+import { PERIOD_TYPES } from "@/app/api/erp/financial-records/route";
 import { seesWholeBook } from "@/lib/erp/scope";
 
 export const dynamic = "force-dynamic";
@@ -55,10 +64,28 @@ export default async function ErpFinanceScreen() {
   const currency = session.tenant!.currency;
   const money = (v: { toString(): string }) => formatMoney(v.toString(), locale, currency);
 
+  /* Phase 6.3d. Reading the books is `erp:finance:read` (checked above via
+     seesWholeBook's sibling gate); WRITING them is `erp:finance:write`, and the
+     two are separate permissions on purpose — an accountant may be given the
+     read without the ability to state a period. */
+  const mayWrite = can(session.auth!, "erp:finance:write");
+  const errors = actionErrors(t);
+  const s = financeStrings(t);
+  const periodTypes = PERIOD_TYPES.map((value) => ({
+    value,
+    label: t(`erp.period.${value}`),
+  }));
+
   return (
     <ConsoleShell session={session} productId="erp">
       <h1 className="text-xl font-semibold">{t("erp.finance.title")}</h1>
       <p className="mt-1 text-sm text-muted-foreground">{t("erp.finance.appendOnly")}</p>
+
+      {/* Saving a period is offered. Editing or deleting a saved one is not,
+          and never will be: no such route exists, because the older row IS the
+          record of what the business looked like when that calculation was
+          made. */}
+      {mayWrite && <RecordSavePanel errors={errors} s={s} periodTypes={periodTypes} />}
 
       <DataTable
         testId="erp-finance-table"
@@ -134,6 +161,9 @@ export default async function ErpFinanceScreen() {
       />
 
       <h2 className="mt-8 text-sm font-medium">{t("erp.finance.charges")}</h2>
+
+      {mayWrite && <ChargeAddPanel errors={errors} s={s} />}
+
       <DataTable
         testId="erp-charges-table"
         empty={t("common.empty")}
@@ -157,6 +187,21 @@ export default async function ErpFinanceScreen() {
               <span className="text-muted-foreground">{formatDate(c.date, locale)}</span>
             ),
           },
+          // Deletable, unlike the records above, and the asymmetry is the
+          // schema's: a saved P&L is a statement somebody made, a van repair
+          // typed in wrong is data entry.
+          ...(mayWrite
+            ? [
+                {
+                  id: "actions",
+                  header: "",
+                  align: "end" as const,
+                  cell: (c: (typeof charges)[number]) => (
+                    <ChargeRemove chargeId={String(c.id)} errors={errors} s={s} />
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
     </ConsoleShell>

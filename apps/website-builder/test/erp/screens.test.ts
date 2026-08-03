@@ -810,3 +810,289 @@ describe('stock moves by a delta and a reason, and the screen says so', () => {
     );
   });
 });
+
+/* -----------------------------------------------------------------------------
+ * Phase 6.3d — carriers, the books, the team, and the ERP's own settings
+ *
+ * The last four write surfaces, and the three most careful ones on the product.
+ * Each has something the screen must NOT offer, and each of those absences is
+ * asserted here rather than trusted:
+ *
+ *   - a carrier's real key, anywhere on the page;
+ *   - an edit or delete on a saved financial record;
+ *   - suspending yourself or the owner;
+ *   - a control for a setting whose type has no editor.
+ * -------------------------------------------------------------------------- */
+
+describe('carriers can be configured without their keys reaching the page', () => {
+  let carrierId = '';
+  const secret = `sk-live-${Date.now()}`;
+
+  before(async () => {
+    if (skip) return;
+    carrierId = (await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Write Carrier', code: `wc${uid()}`, adapter: 'mock',
+      apiKey: secret, secretKey: `${secret}-2`,
+    })).body.data.id as string;
+  });
+
+  test('a manager gets the create panel and per-row controls', async () => {
+    const r = await html('/console/erp/carriers', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-carrier-create"/);
+    assert.match(r.body, /data-testid="carrier-keys-toggle"/);
+    assert.match(r.body, /data-testid="carrier-mappings-toggle"/);
+    // Deactivate, not delete: shipments reference their carrier and the
+    // relation is SetNull, so deleting would orphan historical parcels.
+    assert.match(r.body, /data-testid="carrier-deactivate"/);
+    assert.ok(!/data-testid="carrier-delete"/.test(r.body));
+  });
+
+  test('and no credential reaches the page, with the controls on it', async () => {
+    // The 6.2 guarantee, re-asserted now that the screen has a form whose
+    // fields are FOR credentials. The mask is four bullets; the key is not
+    // selected at all.
+    const r = await html('/console/erp/carriers', acme.manager.token);
+    assert.ok(!r.body.includes(secret), 'the API key reached the page');
+    assert.ok(!r.body.includes(`${secret}-2`), 'the secret key reached the page');
+    assert.match(r.body, /data-configured="true"/, 'but it says one exists');
+  });
+
+  test('a saved key survives a round trip through the form', async () => {
+    // The form sends only what was typed — the mask and a blank are both "leave
+    // it" — and `preserveSecrets` drops the mask on the server. Either alone
+    // would do; this asserts the outcome rather than the mechanism.
+    const before = await acme.manager.api('GET', `/api/erp/carriers/${carrierId}`);
+    assert.equal(before.body.data._hasCredentials, true);
+
+    // What the form posts when somebody opens it, changes nothing, and saves.
+    await acme.manager.api('PUT', `/api/erp/carriers/${carrierId}`, { name: 'Renamed Carrier' });
+
+    const after = await acme.manager.api('GET', `/api/erp/carriers/${carrierId}`);
+    assert.equal(after.body.data.name, 'Renamed Carrier');
+    assert.equal(after.body.data._hasCredentials, true, 'the stored key was destroyed');
+  });
+
+  test('the mapping picker offers CRM statuses and nothing else', async () => {
+    await acme.manager.api('POST', `/api/erp/carriers/${carrierId}/status-mappings`, {
+      originalStatus: 'LIVRE AU CLIENT', crmStatus: 'delivered',
+    });
+
+    const r = await html('/console/erp/carriers', acme.manager.token, 'en');
+    assert.match(r.body, /data-mapping="LIVRE AU CLIENT"/, 'the taught wording is shown');
+    // A select, not a free-text box: the CRM side has a fixed vocabulary and a
+    // typed value would map a carrier's wording onto a status nothing
+    // downstream understands.
+    assert.match(r.body, /id="map-crm-/);
+    for (const crm of ['delivered', 'returned', 'in_transit']) {
+      assert.match(r.body, new RegExp(`<option value="${crm}"`), `no option for ${crm}`);
+    }
+  });
+
+  test('an agent gets no carrier controls, and the API refuses them', async () => {
+    // `erp:shipments:write` gates the whole carrier surface — including GET —
+    // so an agent does not even reach the screen.
+    assert.equal((await page('/console/erp/carriers', acme.agent.token)).status, 404);
+    assert.equal(
+      (await acme.agent.api('POST', '/api/erp/carriers', { name: 'x', code: `x${uid()}` })).status,
+      403,
+    );
+  });
+});
+
+describe('the books can be written, and a saved record still cannot be', () => {
+  test('a manager gets the record and charge panels', async () => {
+    const r = await html('/console/erp/finance', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-record-panel"/);
+    assert.match(r.body, /data-testid="erp-charge-panel"/);
+  });
+
+  test('net profit and margin have no input, because the server derives them', async () => {
+    // A contract test posts `netProfit: 999999` and expects 37000 back. A box
+    // for it would be a field whose value the server throws away.
+    const r = await html('/console/erp/finance', acme.manager.token);
+    assert.match(r.body, /id="fin-revenue"/);
+    assert.match(r.body, /id="fin-productCosts"/);
+    assert.ok(!/id="fin-netProfit"/.test(r.body), 'net profit is not an input');
+    assert.ok(!/id="fin-margin"/.test(r.body), 'nor is margin');
+  });
+
+  test('money is never a number input on this screen either', async () => {
+    const r = await html('/console/erp/finance', acme.manager.token);
+    for (const id of ['fin-revenue', 'charge-amount']) {
+      const tag = r.body.match(new RegExp(`<input[^>]*id="${id}"[^>]*>`))?.[0] ?? '';
+      assert.notEqual(tag, '', `no control found for ${id}`);
+      assert.ok(!/type="number"/.test(tag), `${id} rendered as ${tag}`);
+      assert.match(tag, /inputmode="decimal"/i);
+    }
+  });
+
+  test('a saved record offers no edit and no delete; a charge offers a delete', async () => {
+    const day = Date.UTC(2026, 6, 1);
+    const saved = await acme.manager.api('POST', '/api/erp/financial-records', {
+      periodType: 'month', startDate: day, endDate: day + 86_400_000,
+      revenue: 50000, productCosts: 13000,
+    });
+    assert.equal(saved.status, 201);
+
+    const charge = await acme.manager.api('POST', '/api/erp/unexpected-charges', {
+      label: 'Van repair', amount: 4500,
+    });
+    assert.equal(charge.status, 201);
+
+    const r = await html('/console/erp/finance', acme.manager.token);
+    assert.match(r.body, /data-testid="erp-finance-table"/);
+    // The asymmetry the schema encodes: a P&L is a statement somebody made, a
+    // van repair typed in wrong is data entry.
+    assert.match(r.body, /data-testid="charge-remove"/);
+    assert.ok(!/data-record-delete|data-record-edit/.test(r.body), 'a record must not be editable');
+  });
+
+  test('an agent reaches neither the screen nor the routes', async () => {
+    // erp:finance:read is SENSITIVE (D-05.1) — the company's P&L.
+    assert.equal((await page('/console/erp/finance', acme.agent.token)).status, 404);
+    assert.equal(
+      (await acme.agent.api('POST', '/api/erp/unexpected-charges', {
+        label: 'nope', amount: 1,
+      })).status,
+      403,
+    );
+  });
+});
+
+describe('the team can be configured, within what the API allows', () => {
+  test('a manager gets the edit panel and a suspend control for others', async () => {
+    const r = await html('/console/erp/agents', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="agent-edit-toggle"/);
+    assert.match(
+      r.body,
+      new RegExp(`data-testid="agent-suspend"[^>]*data-user-id="${acme.agent.userId}"`),
+      'no suspend control for a colleague',
+    );
+  });
+
+  test('but no control to suspend themselves', async () => {
+    // The API answers 422 CANNOT_SUSPEND_SELF: suspending yourself ends the
+    // session doing the suspending and leaves nobody able to undo it. Keeping
+    // the control off the screen is what stops anybody meeting that refusal.
+    const r = await html('/console/erp/agents', acme.manager.token);
+    const own = new RegExp(
+      `data-testid="agent-suspend"[^>]*data-user-id="${acme.manager.userId}"`,
+    );
+    assert.ok(!own.test(r.body), 'a manager was offered a control to suspend themselves');
+
+    const refused = await acme.manager.api(
+      'POST', `/api/erp/agents/${acme.manager.userId}/suspend`,
+    );
+    assert.equal(refused.status, 422);
+    assert.equal(refused.body.error.code, 'CANNOT_SUSPEND_SELF');
+  });
+
+  test('the job roles offered are exactly the ones the API accepts', async () => {
+    const r = await html('/console/erp/agents', acme.manager.token);
+    for (const role of ['confirmation', 'followup', 'both']) {
+      assert.match(r.body, new RegExp(`<option value="${role}"`), `no option for ${role}`);
+    }
+    // The JOB, not the privilege — the ERP kept them separate so a follow-up
+    // agent could also be a manager, and PATCH deliberately cannot set a
+    // platform role.
+    for (const notARole of ['OWNER', 'ADMIN', 'MEMBER']) {
+      assert.ok(
+        !new RegExp(`<option value="${notARole}"`).test(r.body),
+        `the platform role ${notARole} was offered as a job role`,
+      );
+    }
+  });
+
+  test('pay rates round-trip through the panel', async () => {
+    const r = await acme.manager.api('PATCH', `/api/erp/agents/${acme.agent.userId}`, {
+      jobRole: 'followup', baseSalaryMonthly: '42000', payPerConfirmedOrder: '55',
+    });
+    assert.equal(r.status, 200);
+
+    const screen = await html('/console/erp/agents', acme.manager.token);
+    const input = screen.body.match(
+      new RegExp(`<input[^>]*id="agent-baseSalaryMonthly-${acme.agent.userId}"[^>]*>`),
+    )?.[0] ?? '';
+    assert.match(input, /value="42000"/, `the panel shows ${input}`);
+    assert.ok(!screen.body.includes('passwordHash'), 'still no password material (SEC-02)');
+  });
+
+  test('an agent cannot reach the screen at all', async () => {
+    // erp:agents:manage is SENSITIVE — no role grants it implicitly.
+    assert.equal((await page('/console/erp/agents', acme.agent.token)).status, 404);
+  });
+});
+
+describe('the ERP has an automation screen, which is not a second Settings', () => {
+  test('the product does not ship a nav item the platform owns', async () => {
+    // `packages/product-registry` refuses `id: 'settings'` outright: a tenant
+    // with N products must still see ONE Settings, owned by the shell. The
+    // rename to "automation" is not a workaround — every key on the screen is a
+    // rule the ERP applies by itself, which is what it should have been called.
+    const r = await html('/console/erp', acme.manager.token);
+    assert.match(r.body, /data-nav="automation"/);
+    assert.ok(!/data-nav="settings"/.test(r.body), 'a product must not own Settings');
+    // And the shell's own Settings link is still there, once.
+    assert.equal((r.body.match(/href="\/console\/settings"/g) ?? []).length, 1);
+  });
+
+  test('a manager gets a control for every setting that has one', async () => {
+    const r = await html('/console/erp/automation', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-settings-form"/);
+    assert.match(r.body, /data-testid="product-switcher"/, 'inside the console shell');
+
+    // The five booleans, a number, and the one enum — read from the schema the
+    // route validates against, so a setting added later gets a control without
+    // anyone editing the screen.
+    for (const key of [
+      'autoAssign', 'autoCreateShipment', 'autoReassign', 'autoSuspend',
+      'followupAutoAssign', 'minCallSeconds', 'workHoursStart', 'workHoursEnd',
+      'reservationMode',
+    ]) {
+      assert.match(r.body, new RegExp(`data-setting="${key}"`), `no control for ${key}`);
+    }
+  });
+
+  test('the structured settings have no control, by type not by name', async () => {
+    // `defaultCarrierByChannel` is a map and `fixedCosts` a list; each needs an
+    // editor of its own, and a JSON textarea would accept anything the server's
+    // `typeof value === "object"` check allows.
+    const r = await html('/console/erp/automation', acme.manager.token);
+    assert.ok(!/data-setting="defaultCarrierByChannel"/.test(r.body));
+    assert.ok(!/data-setting="fixedCosts"/.test(r.body));
+  });
+
+  test('the reservation picker offers exactly the accepted values', async () => {
+    const r = await html('/console/erp/automation', acme.manager.token);
+    for (const mode of ['immediate', 'on_confirm', 'none']) {
+      assert.match(r.body, new RegExp(`<option value="${mode}"`), `no option for ${mode}`);
+    }
+    assert.equal(
+      (await acme.manager.api('PUT', '/api/erp/settings', { reservationMode: 'nonsense' })).status,
+      422,
+      'and a value it does not offer is refused',
+    );
+  });
+
+  test('a stored value is what the form shows', async () => {
+    assert.equal(
+      (await acme.manager.api('PUT', '/api/erp/settings', { minCallSeconds: 55 })).status,
+      200,
+    );
+    const r = await html('/console/erp/automation', acme.manager.token);
+    const input = r.body.match(/<input[^>]*id="set-minCallSeconds"[^>]*>/)?.[0] ?? '';
+    assert.match(input, /value="55"/, `the form shows ${input}`);
+    // The route's own bounds, on the control.
+    assert.match(input, /max="3600"/);
+  });
+
+  test('an agent gets neither the link nor the page', async () => {
+    const asAgent = await html('/console/erp', acme.agent.token);
+    assert.ok(!/data-nav="automation"/.test(asAgent.body), 'no link to a screen that would 404');
+    assert.equal((await page('/console/erp/automation', acme.agent.token)).status, 404);
+  });
+});

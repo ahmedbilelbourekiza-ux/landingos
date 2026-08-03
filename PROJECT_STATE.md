@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 3 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.3c: parcel, catalogue, stockroom*
+**Branch:** `master` · **Last commit:** *Phase 6.3d: carriers, books, team, automation*
 **Working tree:** clean, all work committed.
 
 ---
@@ -70,20 +70,22 @@ enumerates products — it reads a registry.
 
 ## Where we are
 
-**Phase 5 is complete; Phase 6.3c is done.** The ERP's backend runs entirely on
-the platform (235 contract tests), **every item in its navigation leads to a real
-screen** — eleven of them — and the order book, the catalogue and the stockroom
-can now be *worked*, not only read.
+**Phase 5 is complete. PHASE 6.3 IS COMPLETE.** The ERP's backend runs entirely
+on the platform (235 contract tests), **every item in its navigation leads to a
+real screen** — twelve of them — and **every mutation the ERP's SPA can perform
+now has a control on the platform.**
 
-**Phase 6.3 is the write surfaces, in four slices.** 6.3a landed the agent's
-working loop (start a call, log its result, add a note, classify an order as
-fake); 6.3b landed editing an order, reassigning it, and bulk status/assign/
-delete; 6.3c landed the parcel, creating and archiving products, and stock
-corrections and restocking. Still with no control: **carriers, finance, agents
-and settings** — which is why `apps/erp` cannot be retired yet.
+Phase 6.3 landed in four slices: 6.3a the agent's working loop (start a call, log
+its result, add a note, classify an order as fake); 6.3b editing an order,
+reassigning it, and bulk status/assign/delete; 6.3c the parcel, products and the
+stockroom; 6.3d carriers, the books, the team and the automation rules.
 
-**Exact stopping point:** committed and verified. The next task is **6.3d —
-carriers, finance, agents, and a settings screen**.
+**What `apps/erp` still uniquely serves is the AGENT PWA** (`agent.html`, 1,261
+lines). Nothing a manager does needs it any more. That app is 6.4, and it is the
+last thing standing between here and deleting `apps/erp`.
+
+**Exact stopping point:** committed and verified. The next task is **6.4 — the
+agent PWA, then retiring `apps/erp`**.
 
 ### How a write surface is built here (6.3)
 
@@ -97,14 +99,32 @@ Three decisions, made in 6.3a and binding on the rest:
 - **D-06.2.** A control is rendered only where the API would accept it, decided
   with the same function the route checks (`can`, `mayTouchOrder`,
   `seesWholeBook`) and with **the permission that route names** — the ERP write
-  surface spans five (`erp:orders:write`, `erp:shipments:write`,
-  `erp:products:write`, `erp:inventory:write`, plus `seesWholeBook` for
-  reassignment), and one blanket "may write" flag would be wrong for four of
+  surface spans seven (`erp:orders:write`, `erp:shipments:write`,
+  `erp:products:write`, `erp:inventory:write`, `erp:finance:write`,
+  `erp:agents:manage`, `erp:settings:write`, plus `seesWholeBook` for
+  reassignment), and one blanket "may write" flag would be wrong for most of
   them. Equally: never withhold a control the API *does* accept — logging a
   result with no call-start is allowed and flagged, so the button stays. Absence
   is stated on the page, not silent.
 - **D-06.3.** No optimistic UI. On success the router refreshes and the server
-  component re-renders from the database; the control is busy until then.
+  component re-renders from the database; the control is busy until then. A form
+  a write can change is **keyed on the server's values**, so a refresh remounts
+  it on what was stored.
+- **D-06.4.** A collapsible panel renders its contents always and toggles
+  `hidden`. Mounting on click means the offered vocabulary only exists after
+  JavaScript runs — unassertable by a contract test and unreadable to assistive
+  tech until somebody clicks.
+
+Two rules that decide what a screen may offer at all:
+
+- **A screen reading the database directly must apply the permission its API
+  equivalent applies.** 6.3d found the carriers page rendering for an agent who
+  could not call a single carrier route, because it bypassed the API. A nav item
+  is a hint; the URL is typeable.
+- **A product must never ship a nav item the platform owns** — `settings`,
+  `profile`, `billing`, `team`, `notifications`. `packages/product-registry`
+  asserts it. When the ERP's rules screen collided, the name was the defect: it
+  became **Automation**, which is what those keys actually are.
 
 Client components take **translated strings and vocabularies as props** and hold
 neither. Two modules carry no directive and are imported from both sides —
@@ -194,6 +214,7 @@ stream and inbound carrier webhooks).
 | 6.3a | The screens start writing — the call surface, 39/39 |
 | 6.3b | Editing, reassigning, and the list's bulk actions, 50/50 |
 | 6.3c | The parcel, the catalogue and the stockroom, 59/59 |
+| 6.3d | Carriers, books, team, automation — **Phase 6.3 complete**, 80/80 |
 
 ### Remaining roadmap
 
@@ -205,11 +226,11 @@ stream and inbound carrier webhooks).
 
 ### Next recommended task
 
-See `NEXT_STEPS.md`. In short: **finish Phase 6.3 — the remaining write
-surfaces** (6.3b–d), then the agent PWA, then delete `apps/erp`. The foundation
-in `apps/website-builder/src/lib/erp/` is in place, the write primitive is in
-`src/components/console/api-action.tsx`, and the contract each slice must satisfy
-is already written in `apps/website-builder/test/erp/`.
+See `NEXT_STEPS.md`. In short: **Phase 6.4 — the agent PWA, then delete
+`apps/erp`.** Phase 6.3 is done: the write primitive is in
+`src/components/console/api-action.tsx`, five worked examples are in
+`src/components/console/erp/`, and every one of the ERP's manager-facing
+mutations has a control with a contract test on it.
 
 ---
 
@@ -434,6 +455,11 @@ would encode a contract nobody has designed.
 4,949-line vanilla SPA and a 1,261-line agent PWA. Completely untouched and
 still runnable standalone. It is the subject of Phases 5 and 6.
 
+As of 6.3d the **manager console it serves is fully superseded** — every screen
+and every mutation exists on the platform with a contract test on it. What has
+no replacement is `agent.html`, the confirmation agent's phone app. That is 6.4,
+and it is the only thing left before this directory can be deleted.
+
 **Nothing else.** The legacy dashboard, legacy storefront, legacy JWT, legacy
 middleware and the pre-tenant Prisma client were all deleted in `82dacc9`.
 
@@ -564,13 +590,13 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 294 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 315 | all pass against a running server |
 | `packages/auth` | 32 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **835** | green per suite |
+| **Total** | **856** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

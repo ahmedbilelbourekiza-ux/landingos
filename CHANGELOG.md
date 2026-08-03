@@ -12,6 +12,122 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.3d Carriers, the books, the team and automation — Phase 6.3 is complete
+
+The last four write surfaces. `screens.test.ts` goes 59 → **80/80**, and every
+mutation the ERP's SPA can perform now has a control on the platform.
+
+#### The name was the defect
+
+The new screen was going to be `/console/erp/settings`. The product registry's
+own test refused it before a line of it shipped:
+
+> *A tenant with N products must still see ONE Settings, owned by the shell. A
+> product that ships its own is the first step to N of them.*
+
+That assertion is right, and the fix was not to work around it. Every key on the
+page is a rule the ERP applies **by itself** — assign, confirm, reassign,
+suspend, reserve, poll — so the screen is `/console/erp/automation` and the nav
+item is "Automation". The stored rows are still `ProductSetting` and the route is
+still `PUT /api/erp/settings`; only the thing a person sees was misnamed. A new
+test asserts the shell's Settings link still appears exactly once.
+
+#### A gap the tests found in shipped code
+
+`erp:shipments:write` gates **every** carrier route, including the `GET` — the
+whole surface is manager-only, because a carrier record is delivery
+configuration. The nav has always hidden the item without it. The **page never
+checked**, and it reads the database directly rather than through the API, so an
+agent who typed the URL got every carrier's name, code, adapter and whether it
+held credentials. Now gated in the page, 404 not 403, exactly as 6.2 did for
+clients, finance and agents.
+
+#### The keys still never reach the page — with a credential form on it
+
+The carriers screen has never selected a credential and does not start now. What
+it renders where one exists is the **mask**, four bullet characters, and two
+independent things stop the form destroying a stored key: the component never
+*sends* the mask or a blank, and `preserveSecrets` drops the mask server-side.
+Either alone would do; both, because the failure is silent — nothing errors until
+the next shipment fails to book.
+
+`CARRIER_SECRET_MASK` moved into a directive-free module so the two sides
+provably agree on it. Two copies of four bullets is two things that can quietly
+stop matching, and the consequence of that is a real key overwritten with a
+placeholder.
+
+What is deliberately **not** offered is a way to clear a credential to empty. The
+API accepts `null` for it, but a blank box is indistinguishable from "I did not
+touch this". Deactivating the carrier is the control that means "stop using it".
+
+#### Hidden, not unmounted
+
+The collapsible panels render their contents always and toggle `hidden`. That is
+not a test accommodation — mounting on click means the offered vocabulary only
+exists after JavaScript runs, which makes "the offered set equals what the API
+accepts" unassertable and leaves the options unreadable to assistive tech until
+somebody clicks. Two tests failed on exactly this and were right to.
+
+#### What each screen refuses to offer
+
+- **A saved P&L has no edit and no delete**, because no such route exists: the
+  older row *is* the record of what the business looked like when that
+  calculation was made. A one-off charge is deletable. Both asserted.
+- **Net profit and margin have no input.** The route derives them and ignores
+  what the request claims — a contract test posts `999999` and expects `37000`.
+  A box for either would be a field whose value the server throws away.
+- **No control to suspend yourself, or the owner.** The API answers 422 to both;
+  keeping the controls off the screen is what stops anyone meeting the refusal.
+- **The platform role is not a job role.** The picker offers `confirmation`,
+  `followup`, `both` and a test asserts `OWNER`/`ADMIN`/`MEMBER` are absent —
+  `PATCH /agents/[id]` deliberately cannot set a platform role, because routing
+  that through a product would let every product grant privileges in every other.
+- **Structured settings have no control, decided by TYPE not by name.**
+  `defaultCarrierByChannel` and `fixedCosts` need editors of their own; filtering
+  on the declared type means one added later is excluded automatically instead of
+  silently rendering as a checkbox.
+
+#### One schema, one vocabulary
+
+`SETTINGS_SCHEMA` and `PERIOD_TYPES` are now exported from the modules the routes
+validate against, so the screens build their controls from them. A form with its
+own list of fields is a second vocabulary that goes stale the moment a setting is
+added — and the way that shows up is a control nobody can find rather than an
+error anybody sees.
+
+#### i18n
+
+68 more keys across all three catalogues — the four write surfaces, 15 setting
+labels, the job roles, the period types and the seven weekday abbreviations
+(Sunday first, because that is what `getDay()` returns and what the config
+stores).
+
+#### Files
+`apps/website-builder/src/components/console/erp/{carrier,finance,agent}-write.tsx`,
+`settings-form.tsx`, `src/components/console/setting-field.ts` (all new),
+`src/lib/erp/carrier-mask.ts` (new), `src/lib/erp/{carriers,settings}.ts`,
+`src/lib/console/erp-strings.ts`,
+`src/app/console/erp/{carriers,finance,agents}/page.tsx`,
+`src/app/console/erp/automation/page.tsx` (new),
+`src/app/api/erp/financial-records/route.ts`,
+`packages/product-registry/src/manifests.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json`, `test/erp/screens.test.ts`.
+
+#### Migration
+None.
+
+#### Risk
+**Phase 6.3 is complete.** Every mutation the ERP's SPA performs has a control on
+the platform, so `apps/erp` is no longer the only way to do anything a manager
+does. What it still uniquely serves is the **agent PWA** (`agent.html`, 1,261
+lines) — that is 6.4, and it is the last thing standing between here and deleting
+`apps/erp`.
+
+**Verified live:** screens 80/80 · access 62/62 · catalog 31/31 · delivery 20/20 ·
+console-shell 13/13 · product-registry 36/36 · i18n 18/18.
+
+---
+
 ### 6.3c The parcel, the catalogue and the stockroom
 
 Three more surfaces. `screens.test.ts` goes 50 → **59/59**.

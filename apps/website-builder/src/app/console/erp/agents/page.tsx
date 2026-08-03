@@ -5,9 +5,12 @@ import { withTenant } from "@landingos/db";
 import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { actionErrors } from "@/lib/console/action-errors";
+import { agentStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
-import { readAllAgentConfigs } from "@/lib/erp/agents";
+import { AgentRowActions } from "@/components/console/erp/agent-write";
+import { readAllAgentConfigs, JOB_ROLES } from "@/lib/erp/agents";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +52,14 @@ export default async function ErpAgentsScreen() {
 
   const currency = session.tenant!.currency;
   const money = (v: string) => formatMoney(v, locale, currency);
+
+  /* Phase 6.3d. Reaching this screen already required `erp:agents:manage`,
+     which is the same permission every write route here checks — so unlike the
+     other screens there is no narrower gate to apply, and the controls exist
+     for everyone who can see the page. */
+  const errors = actionErrors(t);
+  const s = agentStrings(t);
+  const jobRoles = JOB_ROLES.map((value) => ({ value, label: t(`erp.jobRole.${value}`) }));
 
   return (
     <ConsoleShell session={session} productId="erp">
@@ -124,6 +135,38 @@ export default async function ErpAgentsScreen() {
                 <span className="text-muted-foreground tabular-nums" dir="ltr">
                   {days.length ? days.join(", ") : "—"}
                 </span>
+              );
+            },
+          },
+          {
+            id: "actions",
+            header: "",
+            align: "end" as const,
+            cell: (m) => {
+              const config = configs.get(m.userId);
+              return (
+                <AgentRowActions
+                  // Keyed on what the server holds, so a save that changed a
+                  // value remounts the form on the stored answer rather than
+                  // leaving it showing what was typed.
+                  key={`${m.jobRole ?? ""}/${m.suspended}/${(config?.weeklyDaysOff ?? []).join(",")}`}
+                  userId={m.userId}
+                  suspended={Boolean(m.suspended)}
+                  jobRole={m.jobRole ?? ""}
+                  pay={{
+                    baseSalaryMonthly: config?.baseSalaryMonthly ?? "0",
+                    payPerConfirmedOrder: config?.payPerConfirmedOrder ?? "0",
+                    payPerDeliveredOrder: config?.payPerDeliveredOrder ?? "0",
+                  }}
+                  daysOff={config?.weeklyDaysOff ?? []}
+                  jobRoles={jobRoles}
+                  // Both refusals the API makes are unreachable from here,
+                  // because neither control is rendered.
+                  isSelf={m.userId === session.user.id}
+                  isOwner={m.role === "OWNER"}
+                  errors={errors}
+                  s={s}
+                />
               );
             },
           },

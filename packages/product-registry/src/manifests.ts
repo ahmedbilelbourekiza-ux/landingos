@@ -83,6 +83,14 @@ export const erp: ProductManifest = {
     { id: 'finance', titleKey: 'erp.nav.finance', path: 'finance', icon: 'line-chart', permission: 'erp:finance:read' },
     { id: 'agents', titleKey: 'erp.nav.agents', path: 'agents', icon: 'user-cog', permission: 'erp:agents:manage' },
     { id: 'ai', titleKey: 'erp.nav.ai', path: 'ai', icon: 'sparkles', permission: 'erp:ai:use' },
+    // Phase 6.3d. NOT called "settings", and the registry's own test is why:
+    // a tenant with N products must still see ONE Settings, owned by the shell,
+    // and a product shipping its own is the first step to N of them. The name
+    // was the problem rather than the screen — every one of these is a rule the
+    // ERP applies on its own (assign, confirm, reassign, suspend, reserve, poll),
+    // so "automation" is what it actually is. The stored keys are still
+    // ProductSetting rows and the route is still PUT /api/erp/settings.
+    { id: 'automation', titleKey: 'erp.nav.automation', path: 'automation', icon: 'settings', permission: 'erp:settings:write' },
   ],
   status: 'stable',
 };

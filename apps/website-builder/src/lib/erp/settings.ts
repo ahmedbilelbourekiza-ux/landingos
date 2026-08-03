@@ -56,14 +56,20 @@ export const DEFAULT_SETTINGS = {
 
 export type ErpSettings = { [K in keyof typeof DEFAULT_SETTINGS]: (typeof DEFAULT_SETTINGS)[K] } & Record<string, unknown>;
 
-type Spec =
+export type Spec =
   | { type: "boolean" }
   | { type: "number"; min?: number; max?: number }
   | { type: "enum"; values: readonly string[] }
   | { type: "object" }
   | { type: "array" };
 
-const SCHEMA: Record<string, Spec> = {
+/**
+ * Exported so the settings SCREEN builds its controls from the same table this
+ * route validates against (Phase 6.3d). A form with its own list of fields is a
+ * second vocabulary: it goes stale the moment a setting is added, and the way
+ * that shows up is a control nobody can find rather than an error anybody sees.
+ */
+export const SETTINGS_SCHEMA: Record<string, Spec> = {
   autoAssign: { type: "boolean" },
   autoCreateShipment: { type: "boolean" },
   autoReassign: { type: "boolean" },
@@ -99,7 +105,7 @@ export function validateSettings(body: unknown): Validation {
     // not a typo, and naming it back in an error message is free reconnaissance.
     if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
 
-    const spec = SCHEMA[key];
+    const spec = SETTINGS_SCHEMA[key];
     if (!spec) {
       errors.push(`unknown setting "${key}"`);
       continue;
