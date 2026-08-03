@@ -4,6 +4,7 @@ import type { Prisma, TenantDb } from "@landingos/db";
 
 import { getAdapter, TERMINAL, type TrackingEvent } from "./carriers";
 import { syncClientFromOrder } from "./clients";
+import { raiseFollowupTask } from "./followup";
 
 /* =============================================================================
  * Shipments, and the settlement that BUG-02 was about.
@@ -167,6 +168,22 @@ export async function ingestEvents(
       where: { id: shipment.orderId },
       data: { deliveryStatus: latest },
     });
+
+    // Phase 6.5a — the follow-up module's producer, on the ONE choke point every
+    // carrier update passes through: this function serves both the poll and the
+    // inbound webhook, so attaching here means neither path can raise a task the
+    // other does not.
+    //
+    // Only on a TRANSITION, which is stricter than the ERP was and deliberately
+    // so. The ERP raised from any report and relied on "one open task per order"
+    // to dedupe, which re-raised after an agent had resolved one whenever the
+    // carrier replayed its history. Entering a problem state is the event worth
+    // ringing somebody about; being told again that the parcel is still in that
+    // state is not.
+    const trigger = events.length ? events[events.length - 1] : null;
+    if (trigger) {
+      await raiseFollowupTask(db, tenantId, shipment.orderId, trigger);
+    }
   }
 
   await settleOutcome(db, tenantId, shipment.orderId, shipment.id);

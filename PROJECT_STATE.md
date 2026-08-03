@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 3 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.4c: resolving a follow-up task*
+**Branch:** `master` · **Last commit:** *Phase 6.5a: the follow-up producer*
 **Working tree:** clean, all work committed.
 
 ---
@@ -85,18 +85,19 @@ serve.** `/console/erp/queue` is the tap-to-dial working screen: the scoped
 queue, the call loop, notes, filters, the parcel line, and the follow-up panel.
 
 6.4c added the one route the agent PWA had that the platform lacked — resolving
-a follow-up task — and **that port exposed two Phase 5 gaps that do block
-retirement**: nothing on the platform *raises* a follow-up task, and nothing
-runs on a schedule at all (M-15). Both are described under *What still prevents
-retiring `apps/erp`*.
+a follow-up task — and that port exposed two Phase 5 gaps. **6.5a closed the
+first**: carrier events raise tasks again, on the `ingestEvents` choke point both
+the poll and the webhook pass through.
+
+**One blocker left: nothing runs on a schedule (M-15).** A raised task is never
+escalated to `overdue`, orders are never flagged overdue, `missedOrders` never
+moves, auto-reassign and auto-suspend never fire, and carriers are never polled.
 
 Notifications/Web Push (M-16) and the AI assistant (a deliberate 501) remain
 unported and unfaked.
 
-**Exact stopping point:** committed and verified. The next task is **the
-follow-up producer** — porting `onDeliveryStatus` onto the carrier-ingest path
-in `src/lib/erp/shipments.ts` — and then **M-15**, the worker that escalates and
-sweeps.
+**Exact stopping point:** committed and verified. The next task is **M-15 — the
+worker**.
 
 ### How a write surface is built here (6.3)
 
@@ -229,6 +230,7 @@ stream and inbound carrier webhooks).
 | 6.4a | The confirmation agent's queue — tap to dial, 90/90 |
 | 6.4b | Filters, the parcel line and the follow-up panel, 95/95 |
 | 6.4c | Resolving a follow-up task — and the two gaps it exposed, 96/96 |
+| 6.5a | The follow-up producer — carrier events raise tasks, 26/26 |
 
 ### Remaining roadmap
 
@@ -486,7 +488,8 @@ the ones this section listed before 6.4c.
 | Resolve a follow-up task | **Ported in 6.4c** — `POST /api/erp/followup/tasks/[id]/resolve`, 7 contract tests | No |
 | Agent login screen, stored server URL | Nothing to port to — the session is a cookie on this origin | No |
 | AI assistant | `ai/chat`, `ai/chat/stream`, `ai/insights/deep` answer **501 by design**. Gated first, so the authorization contract is complete. | No |
-| **Raising a follow-up task** | **Nothing on the platform creates one.** `onDeliveryStatus` in `apps/erp/lib/followup.js` raises a `call_customer` task when a carrier reports a status in `CALL_REQUIRED_CRM_STATUSES`. `src/lib/erp/shipments.ts` ingests carrier events, settles `deliveryOutcome`, and contains **zero** references to follow-up. The module is a table, two reads and a resolve — with no way for a task to exist. | **YES** |
+| Raising a follow-up task | **Ported in 6.5a** — `raiseFollowupTask` on the `ingestEvents` choke point, 6 contract tests | No |
+| **Auto-assigning a follow-up agent** | `assignFollowup` in the ERP workload-balances a follow-up agent on confirmation, behind `followupAutoAssign`. Not ported. Tasks are raised unassigned instead, which anybody may pick up. | **No** — graceful, but a stated behaviour difference |
 | **Anything on a schedule** | **M-15.** The platform runs **no** `setInterval`, cron or worker. The ERP's jobs loop does four things nothing here does: escalate an open follow-up task to `overdue`, flag an order overdue, auto-reassign / auto-suspend against `missedOrders`, and poll carriers for tracking. `services/` exists and is empty. | **YES** |
 | **Notifications and Web Push** | **M-16.** The table moved to `platform.prisma` in 3.2; the transport — SSE, per-account read watermark, replay on reconnect, Web Push — has no equivalent. `notifications.test.js` (~20 tests) is still deferred against it. | **Judgement call.** Nothing an agent invokes, but ERP agents rely on being told about new orders; retiring first means they poll by refreshing. |
 | Service worker, installability, offline shell | Not built. The queue is a console screen. | **Judgement call.** Affects how agents launch it, not what it can do. |
@@ -638,13 +641,13 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 339 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 345 | all pass against a running server |
 | `packages/auth` | 32 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **880** | green per suite |
+| **Total** | **886** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

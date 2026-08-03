@@ -38,8 +38,8 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **339/339** across the nine files: access 63 · orders 38 ·
-validation 29 · listing 25 · catalog 31 · delivery 20 · integrations 29 ·
+Expect **345/345** across the nine files: access 63 · orders 38 ·
+validation 29 · listing 25 · catalog 31 · delivery 26 · integrations 29 ·
 order-split 8 · screens 96.
 
 ---
@@ -164,23 +164,22 @@ is `open | done | overdue`, so it was showing nothing.
 Building the resolver exposed two **Phase 5 porting gaps**. Neither is visible
 to a contract test over HTTP, because both are code that runs *between* routes.
 
-### (1) Nothing raises a follow-up task
+### (1) DONE in 6.5a — carrier events raise tasks
 
-`onDeliveryStatus` (`apps/erp/lib/followup.js:102`) creates a `call_customer`
-task when a carrier reports a state needing a person, with a countdown from
-`followupReminderMinutes`, and refreshes the existing open task rather than
-creating a duplicate. **`src/lib/erp/shipments.ts` has zero references to
-follow-up** — so on the platform a task can be listed, counted and resolved, and
-can never come into existence.
+`raiseFollowupTask` in `src/lib/erp/followup.ts`, attached to `ingestEvents` —
+the one choke point both the tracking poll and the inbound webhook pass through.
+Fires only on a status TRANSITION, which is stricter than the ERP: replayed
+history no longer re-raises a task an agent has resolved. Both halves of
+`statusRequiresCall` ported (the CRM status list and the keyword fallback over
+the carrier's own wording). Six contract tests in `delivery.test.ts`.
 
-Port it onto the carrier-ingest path, beside where `deliveryOutcome` settles.
-Contract test first, in `delivery.test.ts` — its subject is already "carrier
-event → what changes downstream", and this is one more thing that changes.
-Carry across `statusRequiresCall`'s two-part rule (the CRM status list **and**
-the keyword fallback over the carrier's original wording), because a carrier's
-own phrasing is often the only signal.
+**Still not ported, and stated rather than hidden:** `assignFollowup` — the
+ERP's workload-balanced auto-assignment of a follow-up agent on confirmation,
+behind the `followupAutoAssign` setting. Tasks are raised unassigned instead,
+which `loadOwnedFollowupTask` treats as work anybody may pick up. Graceful, but
+it is a behaviour difference.
 
-### (2) Nothing runs on a schedule — M-15
+### (2) THE REMAINING BLOCKER — nothing runs on a schedule (M-15)
 
 The platform has **no** `setInterval`, cron or worker. The ERP's jobs loop does
 four things nothing here does:

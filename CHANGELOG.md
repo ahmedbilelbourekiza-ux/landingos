@@ -12,6 +12,70 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.5a The follow-up producer — carrier events raise tasks again
+
+The half of the follow-up module Phase 5 never carried across. `delivery.test.ts`
+goes 20 → **26/26**, and the module has a producer for the first time on the
+platform: until now it could list, count and resolve tasks that nothing created.
+
+#### One choke point, and only on a transition
+
+`ingestEvents` serves both the tracking poll and the inbound carrier webhook, so
+attaching there means neither path can raise a task the other does not.
+
+It fires **only when the status actually changes**, which is stricter than the
+ERP and deliberately so. The ERP raised from any report and relied on "one open
+task per order" to dedupe — which re-raised after an agent had resolved one,
+every time a carrier replayed its history, and carriers replay constantly.
+Entering a problem state is the event worth ringing somebody about; being told
+again that the parcel is still in it is not.
+
+#### The rule is two-part because the mapped status is not the signal
+
+`refused` and `returned` always require a call. Everything else is caught by
+**the carrier's own wording**: Algerian carriers write "Client absent",
+"Adresse erronée", "Reporté par le client" and map all of them onto whatever
+their API calls "in progress", so the mapped status says nothing useful and the
+original text says everything. Ported verbatim in behaviour, and both halves are
+asserted — one test drives a CRM status, another drives wording that maps to
+nothing in particular.
+
+A test also drives an ordinary movement and asserts **nothing** is raised. A
+queue that fills up with parcels moving normally is a queue nobody reads.
+
+#### What the task carries
+
+The countdown is the tenant's `followupReminderMinutes` — the setting the
+automation screen edits. The reason keeps what the carrier said, because that is
+what tells an agent why they are ringing. Assignment is the order's
+`followupUserId`, and unassigned is fine: `loadOwnedFollowupTask` already treats
+an unowned task as work anybody may pick up.
+
+#### A gap the fixture found
+
+`POST /api/erp/orders` accepts `agentUserId` and **not** `followupUserId` — a
+follow-up agent is set by reassignment through `PATCH`, where `buildPatch` makes
+both manager-only. That is consistent, but it means the ERP's `assignFollowup`
+(workload-balanced auto-assignment of a follow-up agent on confirmation, behind
+the `followupAutoAssign` setting) is **still not ported**. The degradation is
+graceful — tasks are raised unassigned and anybody may take them — and it is
+recorded in NEXT_STEPS rather than left to be discovered.
+
+#### Files
+`apps/website-builder/src/lib/erp/followup.ts` (new),
+`src/lib/erp/shipments.ts`, `test/erp/delivery.test.ts`.
+
+#### Migration
+None.
+
+#### Risk
+Tasks are now raised and can be resolved, but **nothing escalates an unactioned
+one to `overdue`** — that is the jobs loop, M-15, and it is the next slice.
+
+**Verified live:** delivery 26/26.
+
+---
+
 ### 6.4c Resolving a follow-up task — and what the port of it exposed
 
 The route 6.4b asserted the absence of. `integrations.test.ts` goes 22 →

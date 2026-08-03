@@ -2,7 +2,7 @@ import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  skip, uid, phone, waitFor, makeErpTenant, cleanup,
+  skip, uid, phone, waitFor, makeErpTenant, cleanup, BASE, slugOf,
   contractTest as test,
 } from './helpers.ts';
 
@@ -384,5 +384,141 @@ describe('the four things that read deliveryOutcome', () => {
       'GET', `/api/erp/orders/stats?deliveryOutcome=delivered`,
     );
     assert.ok(stats.body.data.total > 0, 'delivered orders are countable, which they were not before');
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * Phase 6.5a — a carrier event raises a follow-up task
+ *
+ * The half of the follow-up module that was never ported. `onDeliveryStatus` in
+ * apps/erp/lib/followup.js raises a `call_customer` task when a carrier reports
+ * a state that needs a person — customer out, bad address, a reschedule — and
+ * without it the platform could list, count and resolve tasks that nothing
+ * created.
+ *
+ * This belongs in THIS file rather than a new one because the subject is already
+ * "a carrier said something, what changed downstream" — the same chain BUG-02 is
+ * about. A task appearing is one more thing that changes.
+ * -------------------------------------------------------------------------- */
+
+describe('a carrier reporting trouble raises a follow-up task', () => {
+  /** A parcel on a carrier with no webhook secret, so the push is accepted. */
+  const bookedParcel = async (agentUserId?: string) => {
+    const code = `fu${uid()}`;
+    await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Followup Carrier', code, adapter: 'mock',
+    });
+    const orderId = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Followup Customer', phone: phone(), carrierCode: code,
+    })).body.data.id as string;
+
+    // The follow-up agent is set by REASSIGNMENT, not at creation: `POST
+    // /orders` accepts `agentUserId` and not `followupUserId`, and `buildPatch`
+    // is where both are manager-only. Assigning through the route a manager
+    // really uses is also what proves the producer reads the stored value.
+    if (agentUserId) {
+      const assigned = await acme.manager.api('PATCH', `/api/erp/orders/${orderId}`, {
+        followupUserId: agentUserId,
+      });
+      assert.equal(assigned.status, 200);
+    }
+
+    const booked = await acme.manager.api('POST', `/api/erp/orders/${orderId}/shipment`, {});
+    assert.ok([200, 201].includes(booked.status), `booking answered ${booked.status}`);
+    return { orderId, tracking: booked.body.data.shipment.trackingNumber as string };
+  };
+
+  const push = async (tracking: string, status: string, description = '') =>
+    fetch(`${BASE}/api/erp/webhooks/${await slugOf(acme.tenantId)}/delivery`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ trackingNumber: tracking, status, description }),
+    });
+
+  const tasksFor = async (orderId: string) => {
+    const r = await acme.manager.api('GET', '/api/erp/followup/tasks');
+    return (r.body.data.items as any[]).filter((t) => t.orderId === orderId);
+  };
+
+  test('a CRM status in the call-required set raises one', async () => {
+    const { orderId, tracking } = await bookedParcel();
+    assert.deepEqual(await tasksFor(orderId), [], 'a task existed before anything happened');
+
+    // "returned" is one of the two CRM statuses that always require a call.
+    await push(tracking, 'Retour au vendeur');
+
+    await waitFor(async () => (await tasksFor(orderId)).length || null, { label: 'a follow-up task' });
+    const tasks = await tasksFor(orderId);
+
+    assert.equal(tasks.length, 1);
+    assert.equal(tasks[0].type, 'call_customer');
+    assert.equal(tasks[0].status, 'open');
+    assert.ok(tasks[0].dueAt, 'no countdown was set');
+  });
+
+  test('the carrier’s own wording is matched too, not just the mapped status', async () => {
+    // The keyword fallback is why this is a two-part rule: carriers write
+    // "Client absent" and "Adresse erronée" in their own words, and those map to
+    // nothing in particular — but they are exactly the states needing a call.
+    const { orderId, tracking } = await bookedParcel();
+    await push(tracking, 'Client absent lors de la livraison');
+
+    await waitFor(async () => (await tasksFor(orderId)).length || null, {
+      label: 'a follow-up task from the keyword rule',
+    });
+    const tasks = await tasksFor(orderId);
+    assert.equal(tasks.length, 1);
+    assert.match(String(tasks[0].reason ?? ''), /absent/i, 'the reason keeps what the carrier said');
+  });
+
+  test('an ordinary status raises nothing', async () => {
+    // The whole point is that a task means somebody must ring the customer. A
+    // parcel simply moving through the network is not that.
+    const { orderId, tracking } = await bookedParcel();
+    await push(tracking, 'En cours de transport');
+    await new Promise((r) => setTimeout(r, 400));
+    assert.deepEqual(await tasksFor(orderId), [], 'a routine movement raised a task');
+  });
+
+  test('the same problem reported twice does not raise a second task', async () => {
+    // Carriers replay. A duplicate task would mean two agents ringing the same
+    // customer about the same thing, and an escalation that never clears.
+    const { orderId, tracking } = await bookedParcel();
+    await push(tracking, 'Client absent');
+    await waitFor(async () => (await tasksFor(orderId)).length || null, { label: 'the first task' });
+
+    await push(tracking, 'Client absent');
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal((await tasksFor(orderId)).length, 1, 'the replay raised a duplicate');
+  });
+
+  test('it is assigned to the order’s follow-up agent when there is one', async () => {
+    const { orderId, tracking } = await bookedParcel(acme.agent.userId);
+    await push(tracking, 'Adresse erronée');
+
+    await waitFor(async () => (await tasksFor(orderId)).length || null, { label: 'an assigned task' });
+    const tasks = await tasksFor(orderId);
+    assert.equal(tasks[0].agentUserId, acme.agent.userId);
+
+    // And the agent it belongs to can then close it — the loop the module is for.
+    const resolved = await acme.agent.api(
+      'POST', `/api/erp/followup/tasks/${tasks[0].id}/resolve`, {},
+    );
+    assert.equal(resolved.status, 200);
+    assert.equal(resolved.body.data.status, 'done');
+  });
+
+  test('a task raised in one tenant is invisible to another', async () => {
+    const { orderId, tracking } = await bookedParcel();
+    await push(tracking, 'Client injoignable');
+    await waitFor(async () => (await tasksFor(orderId)).length || null, { label: 'the task' });
+
+    const beta = await makeErpTenant('followup-producer-beta');
+    const betaTasks = await beta.manager.api('GET', '/api/erp/followup/tasks');
+    assert.equal(
+      (betaTasks.body.data.items as any[]).filter((t) => t.orderId === orderId).length,
+      0,
+      "a neighbouring tenant could see this tenant's follow-up work",
+    );
   });
 });
