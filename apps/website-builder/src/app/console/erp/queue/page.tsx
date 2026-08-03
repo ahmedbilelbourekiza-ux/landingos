@@ -9,6 +9,7 @@ import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { QueueCard, type QueueStrings, type QueueOrder } from "@/components/console/erp/queue-card";
+import { FollowupResolve } from "@/components/console/erp/followup-resolve";
 import { scopedWhere, seesWholeBook, followupScope } from "@/lib/erp/scope";
 import {
   ACTIVE_STATUSES, TERMINAL_STATUSES, ORDER_STATUSES,
@@ -76,7 +77,11 @@ export default async function ErpQueueScreen({
    */
   const followupWithOrders = async (db: Parameters<Parameters<typeof withTenant>[1]>[0]) => {
     const tasks = await db.followupTask.findMany({
-      where: { ...followupScope(session), status: "pending" },
+      // `open | done | overdue` — the vocabulary the schema declares and the
+      // follow-up dashboard already counts. Both unfinished states are shown:
+      // an overdue task hidden from the agent's panel is precisely the one that
+      // goes unactioned.
+      where: { ...followupScope(session), status: { in: ["open", "overdue"] } },
       orderBy: [{ dueAt: "asc" }, { id: "asc" }],
       take: 20,
       select: { id: true, orderId: true, type: true, dueAt: true, reason: true },
@@ -252,15 +257,13 @@ export default async function ErpQueueScreen({
         </button>
       </form>
 
-      {/* Read-only, and it SAYS so. `POST /followup/tasks/:id/resolve` exists in
-          the ERP and has no platform route — it was never ported in Phase 5 and
-          is absent from the contract inventory. Showing a resolve button that
-          404s would be worse than showing none; inventing the route here would
-          be the one write path no contract test covers. */}
+      {/* What the carriers threw back at us. A task is raised when a shipment
+          reaches a state needing a person — customer out, bad address, a
+          reschedule — and it is closed by the agent who rings them. */}
       {followup.length > 0 && (
         <section className="mt-6 rounded-lg border border-border p-4" data-testid="erp-queue-followup">
           <h2 className="text-sm font-medium">{t("erp.nav.followUp")}</h2>
-          <p className="mt-1 text-xs text-muted-foreground">{t("erp.queue.followUpReadOnly")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("erp.queue.followUpHint")}</p>
           <ul className="mt-3 space-y-2">
             {followup.map((task) => (
               <li
@@ -282,6 +285,14 @@ export default async function ErpQueueScreen({
                     {formatDate(task.dueAt, locale)}
                   </span>
                 )}
+                <span className="ms-auto">
+                  <FollowupResolve
+                    taskId={String(task.id)}
+                    errors={errors}
+                    label={t("erp.queue.followUpResolve")}
+                    saving={t("common.saving")}
+                  />
+                </span>
               </li>
             ))}
           </ul>

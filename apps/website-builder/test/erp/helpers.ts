@@ -275,6 +275,35 @@ export async function cleanup() {
 }
 
 /**
+ * A follow-up task, inserted directly.
+ *
+ * There is no route that creates one, and that is correct: tasks are raised by
+ * the system when a carrier reports a state needing a person — customer
+ * unavailable, bad address, a reschedule — not by anybody asking. So the fixture
+ * writes one the way the delivery path does, inside the tenant binding, and the
+ * tests exercise the only thing a human does to it: resolve it.
+ */
+export async function makeFollowupTask(
+  tenantId: string,
+  input: { orderId: string; agentUserId?: string | null; type?: string; reason?: string },
+): Promise<{ id: string; status: string | null; agentUserId: string | null }> {
+  return withTenant(tenantId, (tx) =>
+    (tx as any).followupTask.create({
+      data: {
+        tenantId,
+        orderId: input.orderId,
+        type: input.type ?? 'call_customer',
+        status: 'open',
+        agentUserId: input.agentUserId ?? null,
+        reason: input.reason ?? 'customer_unavailable',
+        dueAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+      select: { id: true, status: true, agentUserId: true },
+    }),
+  );
+}
+
+/**
  * A tenant's slug.
  *
  * Needed because the inbound-webhook paths carry it (D-05.5): those requests

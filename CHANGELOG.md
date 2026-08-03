@@ -12,6 +12,96 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.4c Resolving a follow-up task — and what the port of it exposed
+
+The route 6.4b asserted the absence of. `integrations.test.ts` goes 22 →
+**29/29**, `access.test.ts` 62 → **63/63**, `screens.test.ts` 95 → **96/96**.
+
+#### What the module is for
+
+The follow-up module watches what carriers report. When a shipment reaches a
+state needing a person — the customer was out, the address is wrong, they want
+it another day — a task is raised against the order. An agent rings them, sorts
+it out, and marks it done. That last step is what landed here.
+
+#### The guard, and why it has one
+
+Resolving asserts *I contacted this customer*. It is a claim about work done —
+the same class of thing as logging a confirmed call — which is why the ERP
+guarded it, in a comment worth keeping: an agent must not close out somebody
+else's task, "whether by accident or to hide an overdue one".
+
+`loadOwnedFollowupTask` mirrors `loadOwnedOrder`: whoever sees the whole book,
+the person it is assigned to, or **anybody when it is assigned to nobody** — the
+ERP's own `task.agent && task.agent !== user` rule, and the same reasoning that
+lets an agent act on an unassigned order so work can be picked up rather than
+only handed out.
+
+**404, not the ERP's 403 `NOT_YOUR_TASK`.** Confirming the task exists and
+belongs to a colleague is itself information, and 404 is the answer
+`loadOwnedOrder` already gives to the same question. One rule that can drift
+beats two. A test asserts the task is still `open` afterwards, so the refusal is
+not cosmetic.
+
+#### It settles once, and writes no second marker
+
+A repeat press returns the task unchanged rather than moving `resolvedAt`, for
+the reason `deliveryOutcome` settles once: when a customer was contacted is a
+fact about the past.
+
+The ERP also wrote `orders.callReminderStatus = 'done'` here. This deliberately
+does not. On the platform the **task** is the source of truth — the follow-up
+dashboard counts `FollowupTask.status` and nothing reads `callReminderStatus` at
+all — so a parallel marker nothing consults would be the mirror image of BUG-02,
+and two markers for one fact are two things that come to disagree.
+
+#### A bug 6.4b shipped, found by writing this
+
+The queue's follow-up panel filtered `status: "pending"`. The vocabulary is
+**`open | done | overdue`** — what the schema declares and what the follow-up
+dashboard has always counted. The panel was showing nothing and would have gone
+on showing nothing. It now lists both unfinished states, because an *overdue*
+task hidden from the agent's panel is precisely the one that goes unactioned.
+
+#### And two gaps the port exposed, which are bigger
+
+Building the resolver made it obvious that the platform has no **producer** and
+no **escalator** for these tasks:
+
+- **Nothing raises a follow-up task.** `onDeliveryStatus` in the ERP creates one
+  when a carrier reports a status matching `CALL_REQUIRED_CRM_STATUSES`.
+  `src/lib/erp/shipments.ts` ingests carrier events and settles
+  `deliveryOutcome`, and contains **zero** references to follow-up. The module
+  on the platform is a table, two reads and now a resolve — with no way for a
+  task to come into existence.
+- **Nothing escalates one to `overdue`.** That is `escalateOverdue()` on the
+  ERP's jobs loop, and the platform runs **nothing on a timer at all** — no
+  `setInterval`, no cron, no worker. M-15.
+
+Neither is a 6.4 regression; both are Phase 5 porting gaps that only became
+visible from the far end of the feature. They are why `apps/erp` still cannot be
+retired — see PROJECT_STATE.
+
+#### Files
+`apps/website-builder/src/app/api/erp/followup/tasks/[id]/resolve/route.ts` (new),
+`src/components/console/erp/followup-resolve.tsx` (new), `src/lib/erp/guard.ts`,
+`src/app/console/erp/queue/page.tsx`,
+`packages/i18n/src/messages/{en,fr,ar}.json`,
+`test/erp/{helpers,access,integrations,screens}.test.ts`.
+
+#### Migration
+None. `FollowupTask.status` and `resolvedAt` already existed.
+
+#### Risk
+`apps/erp` **still cannot be retired**, and for a larger reason than before: the
+follow-up module has no producer on the platform, and no scheduled work runs at
+all. Both are documented with their scope in PROJECT_STATE.
+
+**Verified live:** integrations 29/29 · access 63/63 · screens 96/96 ·
+i18n 18/18.
+
+---
+
 ### 6.4b Filters, the parcel line and the follow-up panel
 
 The rest of what `agent.html` shows. `screens.test.ts` goes 90 → **95/95**.

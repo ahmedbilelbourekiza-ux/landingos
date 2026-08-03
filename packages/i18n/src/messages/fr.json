@@ -302,7 +302,8 @@
       "clear": "Plus rien à appeler",
       "open": "Ouvrir la commande",
       "allActive": "Encore à appeler",
-      "followUpReadOnly": "Clôturer un suivi n'est pas encore possible ici — utilisez l'ancienne console."
+      "followUpHint": "Créé quand un transporteur signale un problème nécessitant une personne. Clôturez une fois le client contacté.",
+      "followUpResolve": "Réglé"
     },
     "jobRole": {
       "confirmation": "Confirmation",

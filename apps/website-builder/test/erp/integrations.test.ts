@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 
 import {
-  skip, uid, BASE, makeErpTenant, cleanup, slugOf,
+  skip, uid, BASE, makeErpTenant, makeMember, makeFollowupTask, cleanup, slugOf,
   contractTest as test,
 } from './helpers.ts';
 
@@ -354,5 +354,137 @@ describe('the AI surface is gated and scoped (SEC-03)', () => {
   test('a manager keeps every permission', async () => {
     const r = await acme.manager.api('GET', '/api/erp/ai/permissions');
     assert.ok(r.body.data.permissions.includes('read_analytics'));
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * Phase 6.4c — resolving a follow-up task
+ *
+ * The follow-up module watches what carriers report. When a shipment reaches a
+ * state that needs a person — customer unavailable, a bad address, a reschedule
+ * — a task is raised. The agent rings the customer, sorts it out, and marks it
+ * done. That last step is what this covers, and it is the one thing the ERP
+ * could do that the platform could not until now.
+ *
+ * The rule the ERP wrote, and the one property worth attacking: an agent must
+ * not close out somebody else's task, "whether by accident or to hide an
+ * overdue one" (apps/erp/index.js:3508). Resolving asserts *I contacted this
+ * customer*, so it is a claim about work done, and a claim about work done is
+ * the same class of thing as logging a confirmed call — which is why the ERP
+ * guarded it and why every test below tries to get past that guard.
+ * -------------------------------------------------------------------------- */
+
+describe('a follow-up task can be resolved, by the right person', () => {
+  const orderFor = async (agentUserId?: string) =>
+    (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Followup Customer', phone: '05' + Math.floor(10000000 + Math.random() * 89999999),
+      ...(agentUserId ? { agentUserId } : {}),
+    })).body.data.id as string;
+
+  test('the agent it belongs to resolves it', async () => {
+    const orderId = await orderFor(acme.agent.userId);
+    const task = await makeFollowupTask(acme.tenantId, {
+      orderId, agentUserId: acme.agent.userId,
+    });
+
+    const r = await acme.agent.api('POST', `/api/erp/followup/tasks/${task.id}/resolve`, {});
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.status, 'done');
+    assert.ok(r.body.data.resolvedAt, 'resolvedAt was not stamped');
+  });
+
+  test('and it settles once — a second resolve does not move the timestamp', async () => {
+    // The same reasoning as `deliveryOutcome`: when something was dealt with is
+    // a fact about the past, and a stray second press must not rewrite it.
+    const orderId = await orderFor(acme.agent.userId);
+    const task = await makeFollowupTask(acme.tenantId, {
+      orderId, agentUserId: acme.agent.userId,
+    });
+
+    const first = await acme.agent.api('POST', `/api/erp/followup/tasks/${task.id}/resolve`, {});
+    assert.equal(first.status, 200);
+
+    const second = await acme.agent.api('POST', `/api/erp/followup/tasks/${task.id}/resolve`, {});
+    assert.equal(second.status, 200, 'a repeat must not error — the work really is done');
+    assert.equal(second.body.data.resolvedAt, first.body.data.resolvedAt,
+      'the second press rewrote when the customer was contacted');
+  });
+
+  test('a colleague’s task is a 404, not a 403', async () => {
+    // The ERP answered 403 NOT_YOUR_TASK. The platform answers 404 for another
+    // person's record, exactly as `loadOwnedOrder` does — confirming the task
+    // exists and belongs to someone else is itself information, and one rule
+    // that can drift beats two.
+    const orderId = await orderFor(acme.other.userId);
+    const task = await makeFollowupTask(acme.tenantId, {
+      orderId, agentUserId: acme.other.userId,
+    });
+
+    const r = await acme.agent.api('POST', `/api/erp/followup/tasks/${task.id}/resolve`, {});
+    assert.equal(r.status, 404);
+
+    // And it really is still open — the refusal is not cosmetic.
+    const still = await acme.manager.api('GET', '/api/erp/followup/tasks');
+    const found = still.body.data.items.find((t: any) => t.id === task.id);
+    assert.equal(found?.status, 'open', 'the task was resolved despite the refusal');
+  });
+
+  test('an unassigned task may be resolved by whoever picks it up', async () => {
+    // The ERP guarded on `task.agent && task.agent !== user` — so a task nobody
+    // owns is work anybody may do. Same shape as `mayTouchOrder`, which lets an
+    // agent act on an unassigned order so work can be picked up rather than only
+    // handed out.
+    const orderId = await orderFor();
+    const task = await makeFollowupTask(acme.tenantId, { orderId, agentUserId: null });
+
+    const r = await acme.agent.api('POST', `/api/erp/followup/tasks/${task.id}/resolve`, {});
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.status, 'done');
+  });
+
+  test('a manager resolves anybody’s', async () => {
+    const orderId = await orderFor(acme.other.userId);
+    const task = await makeFollowupTask(acme.tenantId, {
+      orderId, agentUserId: acme.other.userId,
+    });
+
+    const r = await acme.manager.api('POST', `/api/erp/followup/tasks/${task.id}/resolve`, {});
+    assert.equal(r.status, 200);
+  });
+
+  test('another tenant’s task id does not resolve', async () => {
+    const beta = await makeErpTenant('followup-beta');
+    const betaOrder = (await beta.manager.api('POST', '/api/erp/orders', {
+      client: 'Beta Followup', phone: '0555000111',
+    })).body.data.id as string;
+    const betaTask = await makeFollowupTask(beta.tenantId, {
+      orderId: betaOrder, agentUserId: beta.agent.userId,
+    });
+
+    // Not a permission check — the binding and row-level security mean the row
+    // is not there to be read at all.
+    const r = await acme.manager.api('POST', `/api/erp/followup/tasks/${betaTask.id}/resolve`, {});
+    assert.equal(r.status, 404);
+
+    const untouched = await beta.manager.api('GET', '/api/erp/followup/tasks');
+    assert.equal(
+      untouched.body.data.items.find((t: any) => t.id === betaTask.id)?.status,
+      'open',
+      "a neighbouring tenant's task was resolved",
+    );
+  });
+
+  test('resolving is a WRITE — reading the queue is not enough', async () => {
+    const orderId = await orderFor();
+    const task = await makeFollowupTask(acme.tenantId, { orderId, agentUserId: null });
+
+    const reader = await makeMember(acme.tenantId, { role: 'MEMBER' });
+    assert.equal((await reader.api('GET', '/api/erp/followup/tasks')).status, 200,
+      'a member reads the queue by role glob');
+    assert.equal(
+      (await reader.api('POST', `/api/erp/followup/tasks/${task.id}/resolve`, {})).status,
+      403,
+      'but resolving needs erp:orders:write',
+    );
   });
 });

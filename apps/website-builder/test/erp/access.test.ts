@@ -72,6 +72,10 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   ['GET', '/api/erp/settings'],
   ['PUT', '/api/erp/settings'],
   ['GET', '/api/erp/followup/tasks'],
+  // Phase 6.4c. A made-up id is fine here: the inventory asserts the route is
+  // CLOSED without a session, and an unauthenticated caller must never get far
+  // enough for the id to be looked up.
+  ['POST', '/api/erp/followup/tasks/nonexistent/resolve'],
   ['GET', '/api/erp/followup/dashboard'],
   ['GET', '/api/erp/financial-records'],
   ['GET', '/api/erp/unexpected-charges'],

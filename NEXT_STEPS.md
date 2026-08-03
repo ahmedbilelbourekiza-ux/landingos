@@ -38,9 +38,9 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **330/330** across the nine files: access 62 · orders 38 ·
-validation 29 · listing 25 · catalog 31 · delivery 20 · integrations 22 ·
-order-split 8 · screens 95.
+Expect **339/339** across the nine files: access 63 · orders 38 ·
+validation 29 · listing 25 · catalog 31 · delivery 20 · integrations 29 ·
+order-split 8 · screens 96.
 
 ---
 
@@ -147,33 +147,59 @@ read-only.
 - **Notifications and Web Push** — M-16 (§3). No platform transport exists.
 - **AI assistant** — `ai/chat` answers 501 by design (§5).
 
-### THE NEXT TASK — the one blocker to deleting `apps/erp`
+### Done in 6.4c — resolving a follow-up task
 
-**`POST /api/followup/tasks/:id/resolve` was never ported.** It exists in the
-ERP (`agent.html:853`), has no platform route, and does not appear in
-`access.test.ts`'s inventory — so it is a Phase 5 gap, not a 6.4 one. Until it
-lands, an agent can see follow-up work on the platform but cannot mark it done,
-and `apps/erp` is the only place that can.
+`POST /api/erp/followup/tasks/[id]/resolve`. Guarded by
+`loadOwnedFollowupTask` (whole book, own, or unassigned — the ERP's rule with
+the platform's 404), settles once, and writes no second marker. Seven contract
+tests in `integrations.test.ts`.
 
-Do it in the order this project uses — **the contract test first**, then the
-route:
+It also found that 6.4b's panel filtered `status: "pending"` when the vocabulary
+is `open | done | overdue`, so it was showing nothing.
 
-1. Add it to the route inventory in `access.test.ts`, and assert the record
-   scope: an agent resolving a colleague's task must get 404, the same answer
-   `loadOwnedOrder` gives. `hardening.test.js §7` exists because the ERP let an
-   agent widen this queue by asking.
-2. `POST /api/erp/followup/tasks/[id]/resolve`, `tenantRoute("erp:orders:write")`,
-   scoped with **`followupScope`** from `lib/erp/scope.ts` — the function the
-   `GET` and the queue screen already share. Set `status` and `resolvedAt`; the
-   columns exist.
-3. Then the queue's follow-up panel gets its button. `screens.test.ts` has a
-   test asserting the route 404s — **it will fail the moment the route exists**,
-   and its message names the panel and this file as what to update. That is
-   deliberate: the gap announces its own closure.
+---
 
-After that, deleting `apps/erp` is a decision about **M-16 (notifications) and
-installability**, not about missing functionality. Both are assessed in
-PROJECT_STATE under *What still prevents retiring `apps/erp`*.
+## 2b. THE NEXT TASK — what actually blocks deleting `apps/erp`
+
+Building the resolver exposed two **Phase 5 porting gaps**. Neither is visible
+to a contract test over HTTP, because both are code that runs *between* routes.
+
+### (1) Nothing raises a follow-up task
+
+`onDeliveryStatus` (`apps/erp/lib/followup.js:102`) creates a `call_customer`
+task when a carrier reports a state needing a person, with a countdown from
+`followupReminderMinutes`, and refreshes the existing open task rather than
+creating a duplicate. **`src/lib/erp/shipments.ts` has zero references to
+follow-up** — so on the platform a task can be listed, counted and resolved, and
+can never come into existence.
+
+Port it onto the carrier-ingest path, beside where `deliveryOutcome` settles.
+Contract test first, in `delivery.test.ts` — its subject is already "carrier
+event → what changes downstream", and this is one more thing that changes.
+Carry across `statusRequiresCall`'s two-part rule (the CRM status list **and**
+the keyword fallback over the carrier's original wording), because a carrier's
+own phrasing is often the only signal.
+
+### (2) Nothing runs on a schedule — M-15
+
+The platform has **no** `setInterval`, cron or worker. The ERP's jobs loop does
+four things nothing here does:
+
+- escalate an open follow-up task to `overdue` (`escalateOverdue`);
+- flag an order overdue past `alertMinutes`;
+- auto-reassign and auto-suspend against `missedOrders`;
+- poll carriers for tracking.
+
+`services/` exists and is empty. This is M-15, and it owes
+`overdue-sweep.test.js` (~12 tests) a home.
+
+### Then, and only then
+
+Deleting `apps/erp` becomes a decision about **M-16 (notifications/Web Push)**
+and **installability**, both judgement calls assessed in PROJECT_STATE. Note
+that `apps/erp` is the source `overdue-sweep.test.js` and `notifications.test.js`
+would be ported *from*; after deletion they are recoverable only from git
+history.
 
 Its 298 tests go with the directory. They tested the Express stack; `test/erp/`
 tests the platform. See `apps/website-builder/test/erp/PORTING.md` for what was

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { SESSION_COOKIE } from '@landingos/auth';
 
 import {
-  skip, BASE, uid, phone, makeTenant, makeMember, makeErpTenant, cleanup,
+  skip, BASE, uid, phone, makeTenant, makeMember, makeErpTenant, makeFollowupTask, cleanup,
   contractTest as test,
   type Caller,
 } from './helpers.ts';
@@ -1309,19 +1309,52 @@ describe('the agent has a queue to work', () => {
     assert.match(after.body, /data-testid="queue-delivery"/);
   });
 
-  test('the follow-up panel is read-only, and says why', async () => {
-    // `POST /followup/tasks/:id/resolve` exists in the ERP and has NO platform
-    // route — it was never ported in Phase 5 and is absent from the inventory
-    // in this file. A resolve button here would 404; showing none and saying so
-    // is the honest state, and it is what blocks deleting apps/erp.
-    const r = await html('/console/erp/queue', acme.manager.token);
-    assert.equal(r.status, 200);
-    assert.ok(!/data-testid="followup-resolve"/.test(r.body), 'offered a control with no route');
+  test('the follow-up panel offers the control the route now backs', async () => {
+    // 6.4b asserted this route's ABSENCE, so that the gap would announce its
+    // own closure. 6.4c closed it: the panel has a resolve control, and it is
+    // the same one-request-per-press shape as every other write on the queue.
+    const orderId = await newOrder({ agentUserId: acme.agent.userId });
+    const task = await makeFollowupTask(acme.tenantId, {
+      orderId, agentUserId: acme.agent.userId,
+    });
 
+    const r = await html('/console/erp/queue', acme.agent.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-queue-followup"/, 'no follow-up panel');
+    assert.match(
+      r.body,
+      new RegExp(`data-testid="followup-resolve"[^>]*data-followup-id="${task.id}"`),
+      'no resolve control for the agent’s own task',
+    );
+
+    // And pressing it is this request.
     assert.equal(
-      (await acme.manager.api('POST', '/api/erp/followup/tasks/anything/resolve', {})).status,
-      404,
-      'a resolve route now exists — the panel and NEXT_STEPS both need updating',
+      (await acme.agent.api('POST', `/api/erp/followup/tasks/${task.id}/resolve`, {})).status,
+      200,
+    );
+
+    // The panel then shows the server's answer: a done task is not outstanding.
+    const after = await html('/console/erp/queue', acme.agent.token);
+    assert.ok(
+      !new RegExp(`data-followup-id="${task.id}"`).test(after.body),
+      'a resolved task is still listed as outstanding',
+    );
+  });
+
+  test('the panel lists the states that still need a person', async () => {
+    // `open | done | overdue` is the schema's vocabulary and what the follow-up
+    // dashboard already counts. An OVERDUE task hidden from the agent's panel is
+    // precisely the one that goes unactioned, so both unfinished states show.
+    const orderId = await newOrder({ agentUserId: acme.agent.userId });
+    const task = await makeFollowupTask(acme.tenantId, {
+      orderId, agentUserId: acme.agent.userId, type: 'escalation',
+    });
+    await acme.manager.api('POST', `/api/erp/followup/tasks/${task.id}/resolve`, {});
+
+    const r = await html('/console/erp/queue', acme.agent.token);
+    assert.ok(
+      !new RegExp(`data-followup-id="${task.id}"`).test(r.body),
+      'a done task is still on the panel',
     );
   });
 
