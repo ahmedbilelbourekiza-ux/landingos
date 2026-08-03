@@ -3,6 +3,8 @@ import "server-only";
 import { can, type TenantRole } from "@landingos/auth";
 import type { Prisma, TenantDb } from "@landingos/db";
 
+import { pushToUsers } from "./push";
+
 /* =============================================================================
  * Notifications — M-16.
  *
@@ -161,6 +163,20 @@ export async function notify(
       entityId: input.entityId ?? null,
     })),
   });
+
+  // STORED FIRST, PUSHED AFTER, and the order is the point: the feed is the
+  // record and the push is a doorbell. A push that fails changes nothing about
+  // what the console shows, and a deployment with no VAPID keys is fully
+  // functional — it simply does not ring anybody's phone.
+  await pushToUsers(db, targets, {
+    title: input.title,
+    body: input.body ?? "",
+    url: "/console",
+  }).catch((error) => {
+    console.error("[notify] push failed", error);
+    return 0;
+  });
+
   return count;
 }
 
@@ -227,6 +243,48 @@ export async function listNotifications(
       ...(before !== null ? { id: { lt: before } } : {}),
     },
     orderBy: { id: "desc" },
+    take: limit,
+    select: NOTIFICATION_SELECT,
+  });
+
+  return rows.map((row) => ({
+    id: row.id.toString(),
+    product: row.product,
+    type: row.type,
+    title: row.title,
+    body: row.body,
+    targetRole: row.targetRole as string | null,
+    entity: row.entity,
+    entityId: row.entityId,
+    read: row.readAt !== null,
+    createdAt: row.createdAt.toISOString(),
+  }));
+}
+
+/**
+ * Everything newer than `afterId`, OLDEST FIRST — the live stream's query.
+ *
+ * Ascending on purpose, unlike `listNotifications`: the stream replays in the
+ * order things happened and moves its cursor to the last row it sent, so a
+ * descending page would leave the cursor at the OLDEST of the batch and resend
+ * the rest forever.
+ *
+ * Bounded, because a client reconnecting after a week must not be handed ten
+ * thousand frames in one burst. It catches up over a few ticks instead.
+ */
+export async function since(
+  db: TenantDb,
+  userId: string,
+  afterId: string,
+  limit = 50,
+): Promise<NotificationView[]> {
+  const after = afterId ? BigInt(afterId) : null;
+  const rows = await db.notification.findMany({
+    where: {
+      targetUserId: userId,
+      ...(after !== null ? { id: { gt: after } } : {}),
+    },
+    orderBy: { id: "asc" },
     take: limit,
     select: NOTIFICATION_SELECT,
   });

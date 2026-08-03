@@ -1,8 +1,12 @@
 import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { withTenant } from '@landingos/db';
+import { SESSION_COOKIE } from '@landingos/auth';
+
 import {
-  skip, uid, phone, waitFor, makeTenant, makeMember, makeErpTenant, backdateOrder, cleanup,
+  skip, BASE, uid, phone, waitFor, makeTenant, makeMember, makeErpTenant,
+  makeFollowupTask, backdateOrder, cleanup,
   contractTest as test,
 } from './helpers.ts';
 
@@ -329,7 +333,6 @@ describe('the scheduled work reports itself', () => {
       client: 'Escalate', phone: phone(),
     })).body.data.id as string;
 
-    const { makeFollowupTask } = await import('./helpers.ts');
     await makeFollowupTask(solo, {
       orderId, agentUserId: worker.userId, dueAt: new Date(Date.now() - 60_000),
     });
@@ -410,5 +413,245 @@ describe('delivery', () => {
       { label: 'a delivery notification' },
     );
     assert.ok(seen.title.includes(order.reference), 'the alert does not name the order');
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * The live transport — M-16 part 2
+ * -------------------------------------------------------------------------- */
+
+/** Open the SSE stream as a caller and collect parsed frames plus raw ids. */
+async function openStream(who: Caller, lastEventId?: string) {
+  const controller = new AbortController();
+  const events: Array<Record<string, any>> = [];
+  const ids: string[] = [];
+  const query = lastEventId ? `?lastEventId=${lastEventId}` : '';
+
+  const res = await fetch(`${BASE}/api/platform/notifications/stream${query}`, {
+    headers: { cookie: `${SESSION_COOKIE}=${who.token}` },
+    signal: controller.signal,
+  });
+  assert.equal(res.status, 200, 'the stream did not open');
+  assert.match(res.headers.get('content-type') ?? '', /text\/event-stream/);
+
+  const done = (async () => {
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    try {
+      for (;;) {
+        const { done: finished, value } = await reader.read();
+        if (finished) break;
+        buf += decoder.decode(value, { stream: true });
+        let i: number;
+        while ((i = buf.indexOf('\n\n')) !== -1) {
+          const frame = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          const lines = frame.split('\n');
+          const idLine = lines.find((l) => l.startsWith('id: '));
+          const dataLine = lines.find((l) => l.startsWith('data: '));
+          if (idLine) ids.push(idLine.slice(4));
+          if (dataLine) {
+            try { events.push(JSON.parse(dataLine.slice(6))); } catch { /* keep-alive */ }
+          }
+        }
+      }
+    } catch { /* aborted */ }
+  })();
+
+  await waitFor(() => events.some((e) => e.type === 'connected') || null, {
+    label: 'the stream to say hello',
+  });
+  return { events, ids, close: async () => { controller.abort(); await done; } };
+}
+
+describe('the live stream', () => {
+  test('it refuses an unauthenticated subscriber', async () => {
+    const r = await fetch(`${BASE}/api/platform/notifications/stream`);
+    assert.equal(r.status, 401);
+  });
+
+  test('a notification arrives live, with an id a client can reconnect from', async () => {
+    const stream = await openStream(acme.agent);
+    try {
+      const order = await newOrder({ agentUserId: acme.agent.userId });
+      const frame = await waitFor(
+        () => stream.events.find((e) => e.entityId === order.id) ?? null,
+        { label: 'a live notification frame', timeout: 25000 },
+      );
+
+      assert.equal(frame.type, 'new_order');
+      assert.ok(frame.id, 'the frame carries the stored id');
+      assert.ok(
+        stream.ids.includes(frame.id),
+        'it was sent with an SSE id: line, so Last-Event-ID works',
+      );
+      assert.notEqual(frame.replayed, true, 'a live event was flagged as a replay');
+    } finally {
+      await stream.close();
+    }
+  });
+
+  test('an agent stream never carries a manager-only alert', async () => {
+    // The same rule the feed applies, applied to the live hop — the ERP's two
+    // halves disagreed about audience precisely because they were separate code.
+    const stream = await openStream(acme.agent);
+    try {
+      const order = await newOrder({ agentUserId: acme.other.userId });
+      await acme.other.api('POST', `/api/erp/orders/${order.id}/call`, { result: 'confirmed' });
+
+      // Longer than the stream's own poll interval, so it has time to be wrong.
+      await new Promise((r) => setTimeout(r, 9000));
+      assert.ok(
+        !stream.events.some((e) => e.type === 'suspicious_call'),
+        'an agent was streamed an alert about somebody being flagged',
+      );
+      assert.ok(
+        !stream.events.some((e) => e.entityId === order.id),
+        'an agent was streamed a colleague order',
+      );
+    } finally {
+      await stream.close();
+    }
+  });
+
+  test('what was missed while disconnected is replayed, and flagged as a replay', async () => {
+    // An SSE connection drops constantly in normal use — a phone locking, a
+    // tunnel timing out, a redeploy. Everything raised in that window used to be
+    // lost from the live feed and, because nothing read the table, lost entirely.
+    const before = await feed(acme.agent, '?limit=1');
+    const lastSeen = before.items[0]?.id ?? '0';
+
+    const order = await newOrder({ agentUserId: acme.agent.userId });
+    await waitFor(
+      async () => (await feed(acme.agent, '?limit=50')).items.some((n) => n.entityId === order.id),
+      { label: 'the notification to be stored while nobody was listening' },
+    );
+
+    const stream = await openStream(acme.agent, lastSeen);
+    try {
+      const replayed = await waitFor(
+        () => stream.events.find((e) => e.entityId === order.id) ?? null,
+        { label: 'the missed notification to be replayed', timeout: 25000 },
+      );
+      assert.equal(replayed.replayed, true, 'a replayed frame was not flagged as one');
+      assert.ok(BigInt(replayed.id) > BigInt(lastSeen), 'something already seen was replayed');
+    } finally {
+      await stream.close();
+    }
+  });
+
+  test('two tabs both receive, and closing one does not kill the other', async () => {
+    // ARCH-01: the ERP held one writer per name, so a second tab evicted the
+    // first — and the close handler removed the shared entry regardless of which
+    // connection had closed, so closing either tab killed both.
+    const tab1 = await openStream(acme.agent);
+    const tab2 = await openStream(acme.agent);
+    try {
+      const first = await newOrder({ agentUserId: acme.agent.userId });
+      for (const [i, tab] of [tab1, tab2].entries()) {
+        await waitFor(() => tab.events.some((e) => e.entityId === first.id) || null, {
+          label: `tab ${i + 1} to receive it`, timeout: 25000,
+        });
+      }
+
+      await tab1.close();
+
+      const second = await newOrder({ agentUserId: acme.agent.userId });
+      await waitFor(() => tab2.events.some((e) => e.entityId === second.id) || null, {
+        label: 'the surviving tab to still receive events', timeout: 25000,
+      });
+    } finally {
+      await tab2.close();
+    }
+  });
+});
+
+describe('web push registration', () => {
+  const device = (suffix: string) => ({
+    endpoint: `https://push.example.test/${uid()}${suffix}`,
+    keys: { p256dh: 'BJxc'.repeat(11), auth: 'c2VjcmV0LWF1dGg' },
+  });
+
+  test('the public key is offered, or honestly absent', async () => {
+    // Null when the deployment has not configured VAPID, so a console can say
+    // "push is unavailable" rather than failing inside subscribe() with a
+    // browser error nobody can read.
+    const r = await acme.agent.api('GET', '/api/platform/push');
+    assert.equal(r.status, 200);
+    assert.ok(
+      r.body.data.publicKey === null || typeof r.body.data.publicKey === 'string',
+      'the key must be a string or an explicit null',
+    );
+  });
+
+  test('a device registers, and re-registering is not an error', async () => {
+    const sub = device('a');
+    const first = await acme.agent.api('POST', '/api/platform/push', { subscription: sub });
+    assert.equal(first.status, 200);
+    assert.equal(first.body.data.subscribed, true);
+
+    // A browser re-subscribes on every load. It must be an upsert, not a
+    // conflict — the endpoint is unique by construction.
+    const again = await acme.agent.api('POST', '/api/platform/push', { subscription: sub });
+    assert.equal(again.status, 200);
+  });
+
+  test('junk is refused rather than stored', async () => {
+    for (const subscription of [
+      {},
+      { endpoint: 'not-a-url', keys: { p256dh: 'x', auth: 'y' } },
+      { endpoint: 'https://push.example.test/x' },
+      { endpoint: 'http://push.example.test/x', keys: { p256dh: 'x', auth: 'y' } },
+    ]) {
+      const r = await acme.agent.api('POST', '/api/platform/push', { subscription });
+      assert.equal(r.status, 422, `stored ${JSON.stringify(subscription)}`);
+    }
+  });
+
+  test('a device can be unregistered', async () => {
+    const sub = device('b');
+    await acme.agent.api('POST', '/api/platform/push', { subscription: sub });
+    const gone = await acme.agent.api('DELETE', '/api/platform/push', { endpoint: sub.endpoint });
+    assert.equal(gone.status, 200);
+    assert.equal(gone.body.data.removed, 1);
+
+    // Removing it twice is a no-op rather than an error: an unsubscribe that
+    // races a reinstall must not 500.
+    const twice = await acme.agent.api('DELETE', '/api/platform/push', { endpoint: sub.endpoint });
+    assert.equal(twice.body.data.removed, 0);
+  });
+
+  test('a subscription is stored against the CALLER, never a user id in the body', async () => {
+    // The ERP took { agent, subscription } from the request, so anybody could
+    // register a device to receive another person's notifications.
+    const sub = device('c');
+    await acme.agent.api('POST', '/api/platform/push', {
+      subscription: sub,
+      userId: acme.manager.userId,
+      agent: acme.manager.userId,
+    });
+
+    const owner = (await withTenant(acme.tenantId, (db) =>
+      (db as any).pushSubscription.findUnique({
+        where: { endpoint: sub.endpoint },
+        select: { userId: true },
+      }),
+    )) as { userId: string } | null;
+    assert.equal(owner?.userId, acme.agent.userId, 'a body parameter chose the recipient');
+  });
+
+  test('another tenant cannot reach this tenant subscription', async () => {
+    const sub = device('d');
+    await acme.agent.api('POST', '/api/platform/push', { subscription: sub });
+
+    const beta = await makeErpTenant('notif-push-beta');
+    const attempt = await beta.manager.api('DELETE', '/api/platform/push', {
+      endpoint: sub.endpoint,
+    });
+    assert.equal(
+      attempt.body.data.removed, 0,
+      'a neighbouring tenant deleted this tenant device',
+    );
   });
 });

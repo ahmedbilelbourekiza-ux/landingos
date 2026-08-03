@@ -12,6 +12,102 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.6d M-16 (part 2) — the live transport, and a phone that rings
+
+`notifications.test.ts` goes 18 → **29/29**. M-16 is complete: storage,
+audience, badge, producers, a live stream with replay, and Web Push.
+
+#### The stream polls the database, and does not hold a transaction
+
+Two decisions, and both are about not repeating something that works on exactly
+one machine.
+
+**It does not use `tenantRoute`.** That wrapper runs its handler inside
+`withTenant`, which is an INTERACTIVE TRANSACTION — it pins a database
+connection for as long as the handler runs, and an SSE handler runs for as long
+as the tab is open. Ten agents with the console open would hold ten connections
+all day against a pool sized for millisecond requests, and the symptom would be
+"Can't reach database server" everywhere else in the product. The session is
+resolved by hand here and each poll opens its own short binding.
+
+**It polls the table rather than fanning out in process.** The ERP kept
+`channel -> Set<writer>` in module memory, and its own changelog says what that
+costs: correct on one instance, and "the fix at that point is Redis". This
+platform is explicitly built for more than one instance — that is the whole
+argument of M-15 — and an in-process fan-out would deliver a notification only to
+the agents connected to the instance that served the write. Everybody else simply
+never hears, exactly as if the event had not happened.
+
+Polling is correct on one instance and on ten, needs no new infrastructure, and
+makes replay **exact** rather than best-effort: "everything after id N" is a
+query, not a buffer that may have been evicted. The cost is one indexed query per
+connected client per interval (`NOTIFICATION_POLL_MS`, default 5s), and the
+honest upgrade path is Postgres `LISTEN`/`NOTIFY` when that stops being cheap.
+Recorded in NEXT_STEPS.
+
+#### Replay, and ARCH-01
+
+An SSE connection drops constantly in normal use — a phone locking, a tunnel
+timing out, a redeploy — and `EventSource` reconnects silently with
+`Last-Event-ID`. A test disconnects, raises a notification, reconnects from the
+last id it saw and asserts the missed one arrives **flagged as a replay** so a
+client can de-duplicate.
+
+ARCH-01 is asserted too: two tabs both receive, and closing one does not kill the
+other. The ERP held one writer per name, so a second tab evicted the first and
+the close handler removed the shared entry regardless of which connection had
+closed — closing either tab killed live updates for both. Here there is no shared
+entry to evict: each connection is its own cursor over the same table.
+
+#### Web Push
+
+`web-push` (3.6.7), the dependency the ERP already had. Stored first, pushed
+after: the feed is the record and the push is a doorbell, so a push that fails
+changes nothing about what the console shows and a deployment with no VAPID keys
+is fully functional — it simply does not ring anybody's phone.
+`GET /api/platform/push` returns `null` for the key in that case, so a console
+can say "push is unavailable" rather than failing inside `subscribe()` with a
+browser error nobody can read.
+
+**A subscription is stored against the CALLER.** The ERP's endpoint took
+`{ agent, subscription }` from the request body, so anybody could register a
+device to receive another person's notifications. A test posts a colleague's user
+id alongside a subscription and asserts the row belongs to the caller.
+
+A subscription the push service reports as 404 or 410 is deleted — the app was
+uninstalled, the profile was wiped — and any other error is logged with the row
+kept, because a push service having a bad five minutes is not a reason to
+unsubscribe a working device.
+
+**VAPID keys must be stable across deploys.** Generating a pair at boot reads as
+convenient and invalidates every stored subscription on every restart, silently:
+the browser keeps its subscription, the push service rejects the request, and
+nobody's phone rings again. They are configuration —
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`.
+
+#### Files
+`apps/website-builder/src/app/api/platform/notifications/stream/route.ts` (new),
+`src/app/api/platform/push/route.ts` (new),
+`src/lib/platform/push.ts` (new), `src/lib/platform/notifications.ts`,
+`test/erp/notifications.test.ts`, `apps/website-builder/package.json`.
+
+#### Migration
+M-16, part 2. No schema change — `PushSubscription` has existed since 3.2.
+
+#### Risk
+**Nothing receives a push yet.** The subscription is stored and the send is
+implemented, but a browser only gets one through a **service worker**, and the
+console has none — that is 6.6e, and until it lands Web Push is a registered
+device nobody rings. The SSE stream is live and needs no service worker.
+
+The stream's cost model is a poll per client. At a few dozen agents that is
+tens of short queries a minute and unremarkable; at a few thousand it is the
+thing to change first.
+
+**Verified live:** notifications 29/29.
+
+---
+
 ### 6.6c M-16 (part 1) — notifications become a platform service
 
 `notifications.test.ts` is new at **18/18**, and it is the file

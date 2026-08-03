@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 3 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.6c: M-16, part 1*
+**Branch:** `master` · **Last commit:** *Phase 6.6d: M-16, part 2*
 **Working tree:** clean, all work committed.
 
 ---
@@ -113,8 +113,9 @@ person across every product, one badge, and the audience decided ONCE at write
 time — one row per recipient — because every notification bug the audit found
 lived in interpreting a free-text audience at read time. An audience is named by
 a PERMISSION and resolved with `can()`, so it cannot drift from the rule the
-routes apply. **The live transport (SSE, Web Push) is 6.6d**; the AI assistant
-remains a deliberate 501.
+routes apply. **6.6d completed M-16**: a live SSE stream that polls the table rather than
+fanning out in process — correct on one instance and on ten — with exact replay
+from `Last-Event-ID`, and Web Push. The AI assistant remains a deliberate 501.
 
 **Exact stopping point:** committed and verified. Remaining before `apps/erp`
 can be retired with no functional regression: **stock reservation on
@@ -217,10 +218,10 @@ domain at a time.
 | every ERP screen, read and write | screens 96/96 |
 | the scheduled work (M-15), and the worker's tick both ways | jobs 16/16 |
 | assignment — new, confirmed and overdue orders | assign 25/25 |
-| notifications, as a platform service (M-16) | notifications 18/18 |
+| notifications: storage, audience, badge, the live stream, Web Push (M-16) | notifications 29/29 |
 | every surface, gated | access 63/63 |
 
-**411/411**, each file verified on its own. Running several back to back still
+**422/422**, each file verified on its own. Running several back to back still
 trips the documented Neon connection limit — judge them per file.
 
 Three routes answer **501 by design**, and are not gaps: `POST /api/erp/agents`
@@ -287,6 +288,7 @@ stream and inbound carrier webhooks).
 | 6.6a | Auto-assignment — new, confirmed and overdue orders, 25/25 |
 | 6.6b | The carrier poll — and the worker that had never run a job, 33+16 |
 | 6.6c | M-16 part 1 — notifications become a platform service, 18/18 |
+| 6.6d | M-16 part 2 — the live stream and Web Push, 29/29 |
 
 ### Remaining roadmap
 
@@ -557,7 +559,7 @@ the ones this section listed before 6.4c.
 | Auto-reassign an overdue order | **Ported in 6.6a** — behind `autoReassign`, to the least-loaded eligible agent or to the unassigned queue | No |
 | Polling carriers on a timer | **Ported in 6.6b** — `pollCarriers`, driven by `trackingPollMinutes`, guarded by `Shipment.lastPolledAt`, going through the same `ingestEvents` a webhook does | No |
 | **Reserving stock on confirmation** | `reserveOnConfirm` / `releaseOnCancel` were never ported in Phase 5. `lib/erp/inventory.ts` has the FIFO movement machinery and nothing calls it on a status change; stock moves only when somebody adjusts it by hand. Found in 6.6a while building the shared confirm path. | **Yes** — a real functional gap, not a scheduled behaviour |
-| **Notifications and Web Push** | **Storage, audience, badge and every producer ported in 6.6c** — `/api/platform/notifications`, 18 contract tests. `notifications.test.js` is discharged. The LIVE transport (SSE with replay, Web Push) is 6.6d and does not exist yet. | **Judgement call.** An agent is told, but only when they reload — retiring first means they refresh rather than being pushed to. |
+| Notifications and Web Push | **M-16 complete (6.6c + 6.6d)** — `/api/platform/notifications`, a live SSE stream with exact replay, and Web Push registration and sending. 29 contract tests. `notifications.test.js` is discharged. | No — **except** that a browser can only RECEIVE a push through a service worker, which is 6.6e. |
 | Service worker, installability, offline shell | Not built. The queue is a console screen. | **Judgement call.** Affects how agents launch it, not what it can do. |
 
 **Why these keep being invisible.** Every one of them is a Phase 5 porting gap,
@@ -692,7 +694,11 @@ npm run seed:dev     --workspace @landingos/db      # 2 tenants, 3 users
 
 `apps/website-builder/.env` — `PLATFORM_DATABASE_URL` (same as the app role
 URL; named separately so it can never be confused with another client),
-`AUTH_SECRET`, `WORKER_SECRET`, optional R2 variables.
+`AUTH_SECRET`, `WORKER_SECRET`, optional R2 variables, and — for Web Push —
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. **The VAPID pair must
+be stable across deploys**: generating one at boot silently invalidates every
+stored subscription and nobody notices until no phone rings again. Push is off,
+not broken, when they are absent.
 
 **`WORKER_SECRET` is not optional for the test suite.** `POST /api/jobs/tick`
 fails closed, so without it the contract suite can only exercise the refusal —
@@ -737,13 +743,13 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 411 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 422 | all pass against a running server |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **956** | green per suite |
+| **Total** | **967** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and
