@@ -86,6 +86,87 @@
       "settledAt": "Réglée le",
       "fake": "Marquée fausse",
       "backToList": "Retour aux commandes"
+    },
+    "clients": {
+      "title": "Clients",
+      "phone": "Téléphone",
+      "orders": "Commandes",
+      "delivered": "Livrées",
+      "spent": "Total dépensé",
+      "average": "Panier moyen",
+      "lastOrder": "Dernière commande",
+      "none": "Aucun client",
+      "imported": "Importé"
+    },
+    "products": {
+      "title": "Produits",
+      "sku": "Référence",
+      "price": "Prix",
+      "cost": "Coût",
+      "stock": "Stock",
+      "variants": "Variantes",
+      "none": "Aucun produit",
+      "archived": "Archivé"
+    },
+    "inventory": {
+      "title": "Inventaire",
+      "lowStock": "Bientôt épuisé",
+      "threshold": "Seuil",
+      "variant": "Variante",
+      "healthy": "Rien à réapprovisionner",
+      "movements": "Mouvements récents",
+      "change": "Variation",
+      "reason": "Motif",
+      "after": "Après"
+    },
+    "shipments": {
+      "title": "Expéditions",
+      "none": "Aucune expédition",
+      "updated": "Dernière mise à jour"
+    },
+    "carriers": {
+      "title": "Transporteurs",
+      "code": "Code",
+      "adapter": "Intégration",
+      "default": "Par défaut",
+      "credentials": "Identifiants définis",
+      "noCredentials": "Non configuré",
+      "none": "Aucun transporteur",
+      "inactive": "Inactif"
+    },
+    "followUp": {
+      "title": "Suivi",
+      "waiting": "En attente de suivi",
+      "inDelivery": "En livraison",
+      "needsContact": "À rappeler",
+      "problems": "Retournées",
+      "escalation": "En retard",
+      "due": "Échéance",
+      "none": "Rien à suivre"
+    },
+    "finance": {
+      "title": "Finances",
+      "period": "Période",
+      "revenue": "Chiffre d'affaires",
+      "costs": "Coûts",
+      "netProfit": "Bénéfice net",
+      "margin": "Marge",
+      "saved": "Enregistré le",
+      "none": "Aucun enregistrement",
+      "charges": "Dépenses ponctuelles",
+      "appendOnly": "Les enregistrements sont conservés, jamais modifiés"
+    },
+    "agents": {
+      "title": "Agents",
+      "member": "Membre",
+      "jobRole": "Poste",
+      "accessRole": "Accès",
+      "salary": "Salaire mensuel",
+      "perConfirmed": "Par confirmée",
+      "perDelivered": "Par livrée",
+      "suspended": "Suspendu",
+      "daysOff": "Jours de repos",
+      "none": "Aucun membre"
     }
   },
   "status": {

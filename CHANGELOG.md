@@ -12,6 +12,78 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 6 — The ERP interface
 
+### 6.2 The rest of the ERP's screens
+
+Eight more: customers, products, inventory, shipments, carriers, follow-up,
+finance, agents. Every item in the ERP's navigation now leads somewhere real,
+and `screens.test.ts` goes 13 → **31/31**.
+
+#### Gated, not merely unlinked
+
+A nav item is a hint. The URL is typeable. So the three sensitive screens —
+customers, finance, agents — check the permission in the page itself rather than
+trusting the menu to have hidden the link, and the tests type the URL as an
+agent and expect **404**:
+
+- **Customers** is every customer's name, phone number, address and lifetime
+  spend in one scrollable list — the single most sensitive screen in the
+  product, and why D-05.1 made `erp:clients:read` sensitive.
+- **Finance** is the company's P&L.
+- **Agents** needs `erp:agents:manage`, which no role grants implicitly.
+
+The nav also hides what the caller cannot open, so an agent is never offered a
+link that would 404 — but the gate is the page, not the menu.
+
+#### No screen renders a credential
+
+The carriers screen does not mask keys — it **never selects them**. A value that
+is not loaded cannot be leaked by a logger, by a spread, or by a column somebody
+adds to the table next year, and these keys book real parcels at the tenant's
+expense. What it shows instead is whether credentials *exist*, because a
+configured carrier and an unconfigured one look identical otherwise.
+
+The agents screen carries no password material at all — SEC-02's original defect
+was `GET /api/agents` returning every password in cleartext, and the select
+names its fields rather than including the user record, so a hash cannot arrive
+by accident the way it did the first time.
+
+#### What the screens say about the rules underneath
+
+- **Inventory judges low stock per VARIANT.** A shoe with 200 units is not fine
+  if 199 are size 45.
+- **The movement ledger offers no edit**, because no such route exists. Each row
+  carries where stock was and where it went.
+- **Finance says on the page** that records are kept forever and never edited —
+  a manager looking for an edit button should learn why there is not one.
+- **One-off charges are deletable and saved records are not**, which is the
+  asymmetry the schema encodes: a P&L is a statement somebody made, a van repair
+  typed in wrong is data entry.
+- **The job role is shown separately from the access role**, because the ERP
+  kept them separate so a follow-up agent could also be a manager.
+
+#### i18n
+
+65 more keys across all three catalogues — 109 ERP screen strings in total.
+Arabic and French in the operational register the staff use.
+
+#### Files
+`src/app/console/erp/{clients,products,inventory,shipments,carriers,follow-up,finance,agents}/page.tsx`,
+`packages/i18n/src/messages/{en,fr,ar}.json`, `test/erp/screens.test.ts`.
+
+#### Migration
+None.
+
+#### Risk
+The screens are READ-ONLY. Every mutation the ERP's SPA can perform — logging a
+call, adjusting stock, editing a carrier — has a route and a contract test, but
+no control on the new screens yet. `apps/erp` therefore cannot be retired: it is
+still the only way to *do* anything. That is 6.3, along with the agent PWA.
+
+**Verified live:** screens 31/31 · access 62/62 · console-shell 13/13 ·
+i18n 18/18.
+
+---
+
 ### 6.1 The ERP gets real screens
 
 `/console/erp` was served by the generic `[product]` route with an honest

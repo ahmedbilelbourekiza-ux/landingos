@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 2 August 2026
-**Branch:** `master` · **Last commit:** *Phase 6.1: the ERP gets real screens*
+**Branch:** `master` · **Last commit:** *Phase 6.2: the rest of the ERP's screens*
 **Working tree:** clean, all work committed.
 
 ---
@@ -70,14 +70,18 @@ enumerates products — it reads a registry.
 
 ## Where we are
 
-**Phase 5 is complete and Phase 6 has started.** The ERP's backend runs
-entirely on the platform (235 contract tests), and its first three screens —
-overview, order book, order detail — now render on the console shell.
+**Phase 5 is complete; Phase 6.2 is done.** The ERP's backend runs entirely on
+the platform (235 contract tests), and **every item in its navigation now leads
+to a real screen** — eleven of them, on the console shell.
 
-**Exact stopping point:** committed and verified. The next task is **Phase 6.2 —
-the remaining ERP screens**: clients, products, inventory, carriers, finance,
-agents, follow-up. `apps/erp` still serves the old SPA and can only be retired
-once those exist.
+**The screens are READ-ONLY.** Every mutation the old SPA can perform has a
+route and a contract test behind it, but no control on the new screens yet.
+That is why `apps/erp` cannot be retired: it is still the only way to *do*
+anything.
+
+**Exact stopping point:** committed and verified. The next task is **Phase 6.3 —
+the write surfaces**: logging a call, adjusting stock, editing a carrier — then
+the agent PWA, then `apps/erp` can be deleted.
 
 ### Sequencing note
 
@@ -152,6 +156,7 @@ stream and inbound carrier webhooks).
 | 5.3c | Sales channels, webhooks, AI, follow-up — the surface is complete |
 | 5.4 | The order split (M-05) — Builder→ERP in one transaction, 235/235 |
 | 6.1 | The ERP's first real screens — overview, orders, order detail |
+| 6.2 | The remaining eight screens — every nav item leads somewhere, 31/31 |
 
 ### Remaining roadmap
 
@@ -163,8 +168,8 @@ stream and inbound carrier webhooks).
 
 ### Next recommended task
 
-See `NEXT_STEPS.md`. In short: **Phase 6.2 — the rest of the ERP's screens.**
-The
+See `NEXT_STEPS.md`. In short: **Phase 6.3 — the write surfaces**, then the
+agent PWA, then delete `apps/erp`. The
 foundation in `apps/website-builder/src/lib/erp/` is in place and the contract
 each slice must satisfy is already written in `apps/website-builder/test/erp/`.
 
@@ -514,13 +519,13 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 248 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 266 | all pass against a running server |
 | `packages/auth` | 32 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **789** | green per suite |
+| **Total** | **807** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

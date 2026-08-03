@@ -86,6 +86,87 @@
       "settledAt": "تمت التسوية",
       "fake": "مصنفة كوهمية",
       "backToList": "العودة إلى الطلبات"
+    },
+    "clients": {
+      "title": "الزبائن",
+      "phone": "الهاتف",
+      "orders": "الطلبات",
+      "delivered": "تم تسليمها",
+      "spent": "إجمالي الإنفاق",
+      "average": "متوسط الطلب",
+      "lastOrder": "آخر طلب",
+      "none": "لا يوجد زبائن",
+      "imported": "مستورد"
+    },
+    "products": {
+      "title": "المنتجات",
+      "sku": "الرمز",
+      "price": "السعر",
+      "cost": "التكلفة",
+      "stock": "المخزون",
+      "variants": "المتغيرات",
+      "none": "لا توجد منتجات",
+      "archived": "مؤرشف"
+    },
+    "inventory": {
+      "title": "المخزون",
+      "lowStock": "على وشك النفاد",
+      "threshold": "الحد الأدنى",
+      "variant": "المتغير",
+      "healthy": "لا شيء على وشك النفاد",
+      "movements": "الحركات الأخيرة",
+      "change": "التغيير",
+      "reason": "السبب",
+      "after": "بعد"
+    },
+    "shipments": {
+      "title": "الشحنات",
+      "none": "لا توجد شحنات",
+      "updated": "آخر تحديث"
+    },
+    "carriers": {
+      "title": "الناقلون",
+      "code": "الرمز",
+      "adapter": "التكامل",
+      "default": "افتراضي",
+      "credentials": "بيانات الاعتماد مضبوطة",
+      "noCredentials": "غير مهيأ",
+      "none": "لا يوجد ناقلون",
+      "inactive": "غير نشط"
+    },
+    "followUp": {
+      "title": "المتابعة",
+      "waiting": "في انتظار المتابعة",
+      "inDelivery": "قيد التوصيل",
+      "needsContact": "تحتاج اتصالا",
+      "problems": "مرتجعة",
+      "escalation": "متأخرة",
+      "due": "الاستحقاق",
+      "none": "لا شيء للمتابعة"
+    },
+    "finance": {
+      "title": "المالية",
+      "period": "الفترة",
+      "revenue": "الإيرادات",
+      "costs": "التكاليف",
+      "netProfit": "الربح الصافي",
+      "margin": "الهامش",
+      "saved": "تاريخ الحفظ",
+      "none": "لا توجد سجلات",
+      "charges": "مصاريف استثنائية",
+      "appendOnly": "السجلات تحفظ دائما ولا تعدل"
+    },
+    "agents": {
+      "title": "الوكلاء",
+      "member": "عضو الفريق",
+      "jobRole": "الوظيفة",
+      "accessRole": "الصلاحية",
+      "salary": "الراتب الشهري",
+      "perConfirmed": "لكل مؤكدة",
+      "perDelivered": "لكل مسلمة",
+      "suspended": "موقوف",
+      "daysOff": "أيام الراحة",
+      "none": "لا يوجد أعضاء"
     }
   },
   "status": {

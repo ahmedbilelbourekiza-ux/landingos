@@ -1,0 +1,164 @@
+import { notFound } from "next/navigation";
+
+import { withTenant } from "@landingos/db";
+import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
+
+import { requireProduct } from "@/lib/console/product-page";
+import { ConsoleShell } from "@/components/console/console-shell";
+import { DataTable } from "@/components/console/data-table";
+import { seesWholeBook } from "@/lib/erp/scope";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * Saved profit-and-loss records, and one-off expenses.
+ *
+ * Gated on the same permission the API uses — this is the company's P&L, and
+ * D-05.1 made it a permission no role grants implicitly. Checked here rather
+ * than trusting the nav to have hidden the link: a nav item is a hint, the URL
+ * is typeable.
+ *
+ * RECORDS ARE INSERT-ONLY, and the screen offers no edit or delete because no
+ * such route exists. Saving a period twice inserts a second row; the older one
+ * stays forever as a record of what the business looked like at the time each
+ * calculation was made. A manager who recalculates March in June wants both
+ * answers, because the difference is usually a returned parcel worth explaining
+ * — so the list is ordered newest-first WITHIN a period rather than deduped.
+ *
+ * One-off charges ARE deletable, and that asymmetry is deliberate: a saved P&L
+ * is a statement somebody made, a van repair typed in wrong is data entry.
+ */
+export default async function ErpFinanceScreen() {
+  const { session, locale: raw, t } = await requireProduct("erp", "/console/erp/finance");
+  const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
+
+  if (!seesWholeBook(session)) notFound();
+
+  const { records, charges } = await withTenant(session.auth!.tenantId, async (db) => ({
+    records: await db.financialRecord.findMany({
+      orderBy: [{ startDate: "desc" }, { createdAt: "desc" }],
+      take: 50,
+      select: {
+        id: true, periodType: true, startDate: true, endDate: true,
+        revenue: true, productCosts: true, shippingCosts: true,
+        advertisingCosts: true, fixedExpenses: true, unexpectedExpenses: true,
+        netProfit: true, margin: true, createdAt: true,
+      },
+    }),
+    charges: await db.unexpectedCharge.findMany({
+      orderBy: { date: "desc" },
+      take: 25,
+      select: { id: true, label: true, amount: true, date: true },
+    }),
+  }));
+
+  const currency = session.tenant!.currency;
+  const money = (v: { toString(): string }) => formatMoney(v.toString(), locale, currency);
+
+  return (
+    <ConsoleShell session={session} productId="erp">
+      <h1 className="text-xl font-semibold">{t("erp.finance.title")}</h1>
+      <p className="mt-1 text-sm text-muted-foreground">{t("erp.finance.appendOnly")}</p>
+
+      <DataTable
+        testId="erp-finance-table"
+        empty={t("erp.finance.none")}
+        rows={records}
+        rowKey={(r) => r.id}
+        rowAttrs={(r) => ({ "data-record-id": r.id })}
+        columns={[
+          {
+            id: "period",
+            header: t("erp.finance.period"),
+            cell: (r) => (
+              <>
+                <span className="font-medium">{r.periodType}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {formatDate(r.startDate, locale)} → {formatDate(r.endDate, locale)}
+                </span>
+              </>
+            ),
+          },
+          {
+            id: "revenue",
+            header: t("erp.finance.revenue"),
+            numeric: true,
+            align: "end",
+            cell: (r) => money(r.revenue),
+          },
+          {
+            id: "costs",
+            header: t("erp.finance.costs"),
+            numeric: true,
+            align: "end",
+            cell: (r) => (
+              <span className="text-muted-foreground">
+                {money(
+                  r.productCosts
+                    .plus(r.shippingCosts)
+                    .plus(r.advertisingCosts)
+                    .plus(r.fixedExpenses)
+                    .plus(r.unexpectedExpenses),
+                )}
+              </span>
+            ),
+          },
+          {
+            id: "net",
+            header: t("erp.finance.netProfit"),
+            numeric: true,
+            align: "end",
+            // Derived by the server when the record was saved, never taken from
+            // whoever typed the form. Rendered as stored.
+            cell: (r) => <span className="font-medium">{money(r.netProfit)}</span>,
+          },
+          {
+            id: "margin",
+            header: t("erp.finance.margin"),
+            numeric: true,
+            align: "end",
+            cell: (r) => (
+              <span className="text-muted-foreground" dir="ltr">
+                {r.margin.toFixed(1)}%
+              </span>
+            ),
+          },
+          {
+            id: "saved",
+            header: t("erp.finance.saved"),
+            cell: (r) => (
+              <span className="text-muted-foreground">{formatDate(r.createdAt, locale)}</span>
+            ),
+          },
+        ]}
+      />
+
+      <h2 className="mt-8 text-sm font-medium">{t("erp.finance.charges")}</h2>
+      <DataTable
+        testId="erp-charges-table"
+        empty={t("common.empty")}
+        rows={charges}
+        rowKey={(c) => String(c.id)}
+        columns={[
+          { id: "label", header: t("erp.finance.charges"), cell: (c) => c.label },
+          {
+            id: "amount",
+            header: t("erp.orders.total"),
+            numeric: true,
+            align: "end",
+            cell: (c) => money(c.amount),
+          },
+          {
+            id: "date",
+            header: t("erp.orders.placed"),
+            // The day it HAPPENED, not the day it was typed in — a repair
+            // entered a week late belongs in the week it happened.
+            cell: (c) => (
+              <span className="text-muted-foreground">{formatDate(c.date, locale)}</span>
+            ),
+          },
+        ]}
+      />
+    </ConsoleShell>
+  );
+}

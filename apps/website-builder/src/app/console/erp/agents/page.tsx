@@ -1,0 +1,134 @@
+import { notFound } from "next/navigation";
+
+import { can } from "@landingos/auth";
+import { withTenant } from "@landingos/db";
+import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
+
+import { requireProduct } from "@/lib/console/product-page";
+import { ConsoleShell } from "@/components/console/console-shell";
+import { DataTable } from "@/components/console/data-table";
+import { readAllAgentConfigs } from "@/lib/erp/agents";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * The staff roster and what each person is paid.
+ *
+ * SEC-02 LIVES HERE. `GET /api/agents` once returned every password in
+ * cleartext and the agent PWA compared it in the browser. The select below
+ * names the fields it wants rather than including the user record, so a hash
+ * cannot arrive by accident the next time a column is added — which is exactly
+ * how it arrived the first time.
+ *
+ * This is a VIEW over platform memberships, not a staff table. The ERP's
+ * `agents` became User + Membership in M-02, and the pay configuration lives in
+ * ProductSetting (D-05.4) because the platform must never learn what an ERP
+ * payroll rate is.
+ *
+ * Adding a person is not on this screen and has no button, because it is a
+ * platform action — the API answers 501 and says so.
+ */
+export default async function ErpAgentsScreen() {
+  const { session, locale: raw, t } = await requireProduct("erp", "/console/erp/agents");
+  const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
+
+  // `erp:agents:manage` is SENSITIVE: no role grants it implicitly, so this is
+  // OWNER, ADMIN, or somebody granted it by name.
+  if (!session.auth || !can(session.auth, "erp:agents:manage")) notFound();
+
+  const { members, configs } = await withTenant(session.auth.tenantId, async (db) => ({
+    members: await db.membership.findMany({
+      orderBy: { createdAt: "asc" },
+      select: {
+        userId: true, role: true, jobRole: true, suspended: true, createdAt: true,
+        user: { select: { email: true, name: true } },
+      },
+    }),
+    configs: await readAllAgentConfigs(db),
+  }));
+
+  const currency = session.tenant!.currency;
+  const money = (v: string) => formatMoney(v, locale, currency);
+
+  return (
+    <ConsoleShell session={session} productId="erp">
+      <h1 className="text-xl font-semibold">{t("erp.agents.title")}</h1>
+
+      <DataTable
+        testId="erp-agents-table"
+        empty={t("erp.agents.none")}
+        rows={members}
+        rowKey={(m) => m.userId}
+        rowAttrs={(m) => ({ "data-user-id": m.userId })}
+        columns={[
+          {
+            id: "member",
+            header: t("erp.agents.member"),
+            cell: (m) => (
+              <>
+                <span className="font-medium">{m.user.name || m.user.email}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground" dir="ltr">
+                  {m.user.email}
+                </span>
+                {m.suspended && (
+                  <span
+                    data-testid="agent-suspended"
+                    className="mt-1 inline-block rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
+                  >
+                    {t("erp.agents.suspended")}
+                  </span>
+                )}
+              </>
+            ),
+          },
+          {
+            id: "job",
+            header: t("erp.agents.jobRole"),
+            // The JOB, not the privilege. The ERP kept them separate so a
+            // follow-up agent could also be a manager, and collapsing them
+            // here would undo that.
+            cell: (m) => <span className="text-muted-foreground">{m.jobRole ?? "—"}</span>,
+          },
+          {
+            id: "access",
+            header: t("erp.agents.accessRole"),
+            cell: (m) => <span className="text-muted-foreground">{m.role}</span>,
+          },
+          {
+            id: "salary",
+            header: t("erp.agents.salary"),
+            numeric: true,
+            align: "end",
+            cell: (m) => money(configs.get(m.userId)?.baseSalaryMonthly ?? "0"),
+          },
+          {
+            id: "confirmed",
+            header: t("erp.agents.perConfirmed"),
+            numeric: true,
+            align: "end",
+            cell: (m) => money(configs.get(m.userId)?.payPerConfirmedOrder ?? "0"),
+          },
+          {
+            id: "delivered",
+            header: t("erp.agents.perDelivered"),
+            numeric: true,
+            align: "end",
+            cell: (m) => money(configs.get(m.userId)?.payPerDeliveredOrder ?? "0"),
+          },
+          {
+            id: "days-off",
+            header: t("erp.agents.daysOff"),
+            cell: (m) => {
+              const days = configs.get(m.userId)?.weeklyDaysOff ?? [];
+              return (
+                <span className="text-muted-foreground tabular-nums" dir="ltr">
+                  {days.length ? days.join(", ") : "—"}
+                </span>
+              );
+            },
+          },
+        ]}
+      />
+    </ConsoleShell>
+  );
+}

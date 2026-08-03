@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { SESSION_COOKIE } from '@landingos/auth';
 
 import {
-  skip, BASE, phone, makeTenant, makeMember, makeErpTenant, cleanup,
+  skip, BASE, uid, phone, makeTenant, makeMember, makeErpTenant, cleanup,
   contractTest as test,
   type Caller,
 } from './helpers.ts';
@@ -190,5 +190,117 @@ describe('the screens enforce what the API enforces', () => {
 
     const r = await page(`/console/erp/orders/${betaOrder}`, acme.manager.token);
     assert.equal(r.status, 404);
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * Phase 6.2 — the rest of the ERP's screens
+ * -------------------------------------------------------------------------- */
+
+describe("every screen in the ERP's navigation renders", () => {
+  const SCREENS = [
+    ['clients', '/console/erp/clients', 'erp-clients-table'],
+    ['products', '/console/erp/products', 'erp-products-table'],
+    ['inventory', '/console/erp/inventory', 'erp-low-stock-table'],
+    ['shipments', '/console/erp/shipments', 'erp-shipments-table'],
+    ['carriers', '/console/erp/carriers', 'erp-carriers-table'],
+    ['follow-up', '/console/erp/follow-up', 'erp-followup-table'],
+    ['finance', '/console/erp/finance', 'erp-finance-table'],
+    ['agents', '/console/erp/agents', 'erp-agents-table'],
+  ] as const;
+
+  for (const [id, path, testId] of SCREENS) {
+    test(`${id} renders inside the shell`, async () => {
+      const r = await html(path, acme.manager.token);
+      assert.equal(r.status, 200, path);
+      assert.match(r.body, new RegExp(`data-testid="${testId}"`));
+      assert.match(r.body, /data-testid="product-switcher"/, 'inside the console shell');
+    });
+  }
+
+  test('each screen marks exactly its own nav item as current', async () => {
+    // The Phase 4.4 bug, checked across the whole product rather than on one
+    // page: a prefix match lights up the index everywhere and aria-current
+    // stops meaning anything.
+    for (const [, path] of SCREENS) {
+      const r = await html(path, acme.manager.token);
+      const current = (r.body.match(/aria-current="page"/g) ?? []).length;
+      assert.equal(current, 1, `${path} had ${current} current nav items`);
+    }
+  });
+});
+
+describe('the sensitive screens are gated, not merely unlinked', () => {
+  // A nav item is a hint; the URL is typeable. Each of these checks the page
+  // itself refuses, rather than trusting the menu to have hidden the link.
+  const SENSITIVE = [
+    ['clients', '/console/erp/clients'],
+    ['finance', '/console/erp/finance'],
+    ['agents', '/console/erp/agents'],
+  ] as const;
+
+  for (const [id, path] of SENSITIVE) {
+    test(`an agent typing the ${id} URL gets 404`, async () => {
+      const r = await page(path, acme.agent.token);
+      assert.equal(r.status, 404, path);
+    });
+  }
+
+  test('and a manager reaches all three', async () => {
+    for (const [, path] of SENSITIVE) {
+      assert.equal((await page(path, acme.manager.token)).status, 200, path);
+    }
+  });
+
+  test('the ERP nav hides what the caller cannot open', async () => {
+    const r = await html('/console/erp', acme.agent.token);
+    assert.ok(!/data-nav="clients"/.test(r.body), 'no link to a screen that would 404');
+    assert.ok(!/data-nav="finance"/.test(r.body));
+    assert.ok(!/data-nav="agents"/.test(r.body));
+    assert.match(r.body, /data-nav="orders"/, 'but their own work is there');
+  });
+});
+
+describe('no screen renders a credential', () => {
+  test('the carriers screen shows THAT a key exists, never the key', async () => {
+    const secret = `sk-carrier-${Date.now()}`;
+    await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Screen Carrier', code: `sc${uid()}`, adapter: 'mock',
+      apiKey: secret, secretKey: `${secret}-2`,
+    });
+
+    const r = await html('/console/erp/carriers', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.ok(!r.body.includes(secret), 'the API key must not reach the page');
+    assert.ok(!r.body.includes(`${secret}-2`), 'nor the secret key');
+    // What a person actually needs to know: a configured carrier and an
+    // unconfigured one look identical otherwise.
+    assert.match(r.body, /data-configured="true"/);
+  });
+
+  test('the agents screen carries no password material (SEC-02)', async () => {
+    const r = await html('/console/erp/agents', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.ok(!r.body.includes('passwordHash'), 'not even the field name');
+    assert.ok(!/\$argon2|scrypt\$|\$2[aby]\$/.test(r.body), 'and no hash of any generation');
+  });
+});
+
+describe('money and figures render correctly', () => {
+  test('a Decimal reaches the page as a formatted string, not a float', async () => {
+    // 37 numeric columns and zero double precision (M-06). The last place that
+    // guarantee can be lost is the one place a person reads it.
+    const r = await html('/console/erp/orders', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.ok(!/4900\.0000000001/.test(r.body), 'no binary-float artefact');
+    assert.match(r.body, /tabular-nums/, 'figures line up down the column');
+  });
+
+  test('the finance screen states that records are never edited', async () => {
+    // The append-only rule, said on the screen rather than only in the schema —
+    // a manager looking for an edit button should learn why there is not one.
+    const r = await html('/console/erp/finance', acme.manager.token);
+    assert.match(r.body, /data-testid="erp-finance-table"/);
+    assert.ok(!/>\s*Delete\s*</.test(r.body), 'no delete control for a saved record');
   });
 });

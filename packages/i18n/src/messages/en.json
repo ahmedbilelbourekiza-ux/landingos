@@ -86,6 +86,87 @@
       "settledAt": "Settled",
       "fake": "Marked fake",
       "backToList": "Back to orders"
+    },
+    "clients": {
+      "title": "Customers",
+      "phone": "Phone",
+      "orders": "Orders",
+      "delivered": "Delivered",
+      "spent": "Lifetime spend",
+      "average": "Average order",
+      "lastOrder": "Last order",
+      "none": "No customers yet",
+      "imported": "Imported"
+    },
+    "products": {
+      "title": "Products",
+      "sku": "SKU",
+      "price": "Price",
+      "cost": "Cost",
+      "stock": "Stock",
+      "variants": "Variants",
+      "none": "No products yet",
+      "archived": "Archived"
+    },
+    "inventory": {
+      "title": "Inventory",
+      "lowStock": "Running low",
+      "threshold": "Threshold",
+      "variant": "Variant",
+      "healthy": "Nothing is running low",
+      "movements": "Recent movements",
+      "change": "Change",
+      "reason": "Reason",
+      "after": "After"
+    },
+    "shipments": {
+      "title": "Shipments",
+      "none": "Nothing shipped yet",
+      "updated": "Last update"
+    },
+    "carriers": {
+      "title": "Carriers",
+      "code": "Code",
+      "adapter": "Integration",
+      "default": "Default",
+      "credentials": "Credentials set",
+      "noCredentials": "Not configured",
+      "none": "No carriers yet",
+      "inactive": "Inactive"
+    },
+    "followUp": {
+      "title": "Follow-up",
+      "waiting": "Awaiting follow-up",
+      "inDelivery": "Out for delivery",
+      "needsContact": "Needs a call",
+      "problems": "Returned",
+      "escalation": "Overdue",
+      "due": "Due",
+      "none": "Nothing to follow up"
+    },
+    "finance": {
+      "title": "Finance",
+      "period": "Period",
+      "revenue": "Revenue",
+      "costs": "Costs",
+      "netProfit": "Net profit",
+      "margin": "Margin",
+      "saved": "Saved",
+      "none": "No records saved yet",
+      "charges": "One-off expenses",
+      "appendOnly": "Records are kept forever, never edited"
+    },
+    "agents": {
+      "title": "Agents",
+      "member": "Team member",
+      "jobRole": "Job",
+      "accessRole": "Access",
+      "salary": "Monthly salary",
+      "perConfirmed": "Per confirmed",
+      "perDelivered": "Per delivered",
+      "suspended": "Suspended",
+      "daysOff": "Days off",
+      "none": "Nobody on the team yet"
     }
   },
   "status": {
