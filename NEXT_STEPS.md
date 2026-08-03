@@ -1,7 +1,7 @@
 # Next Steps
 
-**Phase 5 is complete. Phases 6.1–6.5 are complete. Phase 6.6 is in progress.**
-Immediate tasks to continue from the Phase 6.6a commit. Full context is in
+**Phase 5 and Phase 6 are complete. Phase 7 is next — see §7.**
+Immediate tasks to continue from the Phase 6.6f commit. Full context is in
 `PROJECT_STATE.md` — read its "Read this first" section before starting.
 
 ---
@@ -269,7 +269,18 @@ The three things still true, and **none is caused by deleting it**:
    construction rather than by omission.
 3. **The AI assistant answers 501 by design** (§5).
 
-### If you delete it
+### DECISION: not yet — it stays as the reference implementation
+
+Taken after the 6.6f reassessment. Nothing depends on it and nothing imports from
+it; it is kept because **four end-to-end reads of that directory during this port
+each found something the platform was missing**, and Phases 7 and 8 will read it
+again — billing and team management touch `agents`, `sessions` and the settings
+surface, and hardening needs its rate limiter and `CSRF_ORIGIN` check as worked
+examples.
+
+**Re-assess after Phase 7, Phase 8 and production readiness are complete.**
+
+### The checklist for when that moment comes
 
 One commit that touches nothing else, so the diff is a pure removal and a revert
 is one command. Then:
@@ -285,6 +296,89 @@ That directory has been read end to end four times during this port — 6.4a for
 the agent PWA, 6.5a for the follow-up producer, 6.6a for assignment, 6.6f for the
 in-process timers — and **each read found something the platform was missing**.
 Weigh that before the last working copy goes behind a `git show`.
+
+## 7. NEXT — Phase 7, the SaaS layer
+
+**Phase 6 is complete.** Every ERP behaviour is on the platform (6.6f), and
+`apps/erp` is kept as the reference implementation until Phase 7, Phase 8 and
+production readiness are done — see §2c.
+
+Phase 7 is what turns the platform from *a thing two seeded tenants use* into a
+product somebody can buy. Three pieces, in this order, and the order is the
+argument:
+
+### 7.1 — Team management. Do this first.
+
+**It is the one the platform has already promised.** `POST /api/erp/agents`
+answers **501** with "Team members are invited from company settings, not from a
+product" — and that screen does not exist. Every ERP agent today was created by
+`seed:dev` or by a test fixture. The agents screen can set somebody's pay rate
+and cannot add them.
+
+What exists: `Invitation` (token, role, expiry, `acceptedAt`, `revokedAt`,
+one outstanding per address per tenant), `Membership`, `TenantRole`, and
+`platform:team:*` already listed in `SENSITIVE` so no role reaches it implicitly.
+
+What is missing: every route and every screen.
+
+- `GET/POST /api/platform/team/invitations` — invite by email and role.
+- `POST /api/platform/team/invitations/[id]/revoke`.
+- `GET /api/platform/team/members`, `PATCH .../[userId]` (role),
+  `POST .../[userId]/{suspend,reactivate}`, `DELETE .../[userId]`.
+- `GET/POST /console/join/[token]` — accept, **before a session exists**. This is
+  the interesting one: the token is globally unique precisely because it is
+  followed from an email link with no tenant bound, exactly like a session token.
+- `/console/settings/team`.
+
+**The rules to get right, and each needs a test that violates it:**
+
+- **The owner cannot be removed, demoted or suspended** — by anyone, including
+  themselves. `Tenant` has exactly one, and the ERP's "last manager" protection
+  is the same rule one generation earlier.
+- **Nobody may raise somebody above their own role**, and nobody may promote
+  themselves. Otherwise `platform:team:write` is a route to OWNER.
+- **Suspension takes effect on the next request** — that is the whole reason
+  M-09 chose server-side sessions, and `destroySessionsForUser` already exists.
+- **An invitation is not an account.** Accepting one creates a `Membership`; the
+  `User` may already exist (one person, many companies — the seeded consultant is
+  exactly this case and must keep working).
+- **An expired, revoked or already-accepted token is refused identically.** A
+  different answer per case is an oracle for which addresses are invited.
+- **The email is not proof of anything.** Sending it is out of scope until a
+  transport exists; the route returns the link and says so, the way the AI
+  surface answers 501 rather than pretending.
+
+### 7.2 — Billing
+
+`Subscription` holds `status` and an `entitlements` string set, and every gate in
+the platform already reads it — `can()`, the worker's tick, `hasProduct`. So the
+domain is done and what is missing is the *management*: a screen showing what a
+tenant has, and a way to change it.
+
+Deliberately NOT a payment integration in the first slice. The valuable half is
+**changing entitlements and watching access follow**, which is already testable:
+drop `product.erp` and every ERP route 403s, the scheduled work skips the tenant,
+and the nav item disappears. A Stripe webhook is a second slice on top.
+
+### 7.3 — Self-serve signup
+
+Create a tenant, its OWNER, and a TRIALING subscription in one transaction. The
+slug is the hard part and it is already recorded as **R-08**: `Tenant.slug` is a
+public-namespace unique that appears in every storefront URL, so it needs a
+reserved-word list (`api`, `console`, `login`, `admin`, `_next`, …) or a customer
+can claim a path the platform routes on.
+
+### What Phase 7 must not do
+
+- Do not give a product a way to create accounts. That is M-02, and the 501 on
+  `POST /api/erp/agents` exists to state it.
+- Do not put a team or billing nav item inside a product. The registry refuses
+  it, and the reason is that a tenant with N products must still see ONE of each.
+- Do not weaken `SENSITIVE`. `platform:team:*` and `platform:billing:*` are on it
+  so that MANAGER — who runs a call centre day to day — does not by default get
+  to decide who works there or what the company pays for.
+
+---
 
 ## 3. The migrations Phase 5 left, with what they owe
 

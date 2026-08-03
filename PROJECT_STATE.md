@@ -296,19 +296,26 @@ stream and inbound carrier webhooks).
 
 | Phase | Scope |
 |---|---|
-| 6 | ERP interface — rebuild ~6,200 lines of vanilla SPA + agent PWA in React |
-| 7 | SaaS layer — company/team management, billing, self-serve signup, notifications |
+| 7 | SaaS layer — team management, billing, self-serve signup. **Next.** See NEXT_STEPS §7. |
 | 8 | Hardening — adversarial isolation review, load testing, backup/restore, runbooks |
 
-### Next recommended task
+### Next recommended task — Phase 7.1, team management
 
-See `NEXT_STEPS.md`. In short: **finish 6.6 — the carrier tracking poll, M-16
-notifications, PWA installability — and port stock reservation on confirm, which
-is the one thing that would be a functional regression if `apps/erp` were deleted
-today.** The eligibility rule any of them needs is already written
-(`src/lib/erp/assign.ts`), the job machinery exists (`src/lib/erp/jobs.ts` plus
-`services/worker`), and `onOrderConfirmed` in `src/lib/erp/confirm.ts` is where
-the stock movement belongs.
+**Phase 6 is complete.** Every ERP behaviour is on the platform; the full
+reassessment, and the decision to keep `apps/erp` as the reference
+implementation until Phase 7, Phase 8 and production readiness are done, are
+below under *What still prevents retiring `apps/erp`*.
+
+Phase 7.1 is **team management**, and it is first because the platform has
+already promised it. `POST /api/erp/agents` answers **501** with "Team members
+are invited from company settings, not from a product" — and that screen does
+not exist. Every agent today was created by `seed:dev` or by a test fixture: the
+agents screen can set somebody's pay rate and cannot add them.
+
+`Invitation`, `Membership` and `platform:team:*` — already in `SENSITIVE`, so no
+role reaches it implicitly — all exist. Every route and every screen is missing.
+NEXT_STEPS §7.1 lists them, and the seven rules each of which needs a test that
+violates it.
 
 ---
 
@@ -611,8 +618,24 @@ agent PWA, 6.5a for the follow-up producer, 6.6a for assignment, 6.6f for the
 in-process timers — and each read found something. That is worth weighing before
 the last copy goes behind a `git show`.
 
-**Recommended:** delete it as one commit that touches nothing else, so the diff
-is a pure removal and a revert is one command.
+**DECISION, taken after the 6.6f reassessment: `apps/erp` STAYS, for now.**
+
+It is kept deliberately as the **reference implementation**, not because anything
+depends on it. The reasoning is the last paragraph above: four separate end-to-end
+reads of that directory during this port each turned up something the platform was
+missing, and Phases 7 and 8 will read it again — billing and team management touch
+`agents`, `sessions` and the settings surface, and hardening needs its rate
+limiter and its `CSRF_ORIGIN` check as worked examples.
+
+**Re-assess after Phase 7, Phase 8 and production readiness are complete.** At
+that point the platform will have been exercised against every question the ERP
+can answer, and the directory will have stopped being useful — which is the right
+moment to delete it, not before.
+
+Nothing in the platform reads it, imports from it, or needs it running. It costs
+one workspace entry, `better-sqlite3` in `allowScripts`, and 298 tests in the
+aggregate count. The deletion checklist is in NEXT_STEPS §2c for whenever that
+moment comes.
 
 **Nothing else.** The legacy dashboard, legacy storefront, legacy JWT, legacy
 middleware and the pre-tenant Prisma client were all deleted in `82dacc9`.
