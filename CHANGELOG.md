@@ -12,6 +12,93 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 7 — The SaaS layer
 
+### 7.1b (measurement) — the join flow, measured and designed
+
+[GLM-5.2]
+Commit: `1aab962` (baseline; no code in this entry — design only)
+Authoring model: GLM-5.2
+Date: 4 August 2026
+Summary: Measured the codebase and the live database for the invitation-acceptance
+slice, verified the load-bearing RLS claim from 7.1a, and locked the design. Stopped at
+the safe boundary before writing any code. Working tree clean.
+
+**What this entry is, and is not.** It records the measurement and the design decisions
+so the next session implements from a locked plan and Opus can audit the reasoning. It
+contains **no code change** — the working tree at `1aab962` is unchanged by this entry.
+The implementation entry will follow under the same `7.1b` heading when the code lands.
+
+#### The decisive measurement (run against the live Neon database)
+
+`Invitation` has exactly one RLS policy:
+
+```
+policy: tenant_isolation
+using:    ("tenantId" = current_setting('app.tenant_id', true))
+with_check: ("tenantId" = current_setting('app.tenant_id', true))
+cmd: *   (FOR ALL)
+rls_enabled: true, rls_forced: true
+```
+
+There is **no token-based policy**. Therefore an unbound
+`asPlatform().invitation.findUnique({ where: { token } })` — which the join flow would
+naively write — returns **zero rows, silently**, the way RLS always denies. This is the
+exact failure the 7.1a changelog warned about ("`asPlatform()` does not bypass RLS"),
+now confirmed by query rather than by inference.
+
+#### The fix is the `Membership` `_self` pattern, applied to `Invitation`
+
+A second, narrower `FOR SELECT` policy keyed on the token, plus a `withInvitationToken`
+binding in `packages/db`. Postgres ORs permissive policies, so binding
+`app.invitation_token` opens exactly the one row whose token was presented and nothing
+else — the same property `withUser` gives `Membership`. Verified safe to add: `preflight`,
+`apply-rls`'s audit, and `isolation.test.ts` all key off the literal name
+`tenant_isolation`, so a separately-named `tenant_isolation_token` policy leaves their
+counts untouched.
+
+#### The one real design question, resolved
+
+*Must the accepter be signed in as the invited address?* **No.** The 32-byte token is
+the claim; the invitation carries a role, not an identity (7.1a's own reasoning).
+Requiring a matching session would force creating a `User` for an invitee who has none —
+that is 7.3 self-serve signup, and half-building it here is forbidden by the slice's own
+rules. So the join flow trusts the token, attaches the membership to an existing `User`
+matched by email, and refuses with a stated `ACCOUNT_REQUIRED` code when no such user
+exists rather than silently creating one.
+
+#### Refusals are identical across the oracle surface
+
+Expired, revoked, soft-deleted-tenant and unknown tokens all answer **404
+`INVITATION_NOT_FOUND`** — distinguishing them would let an attacker probe which
+addresses have been invited. `ALREADY_ACCEPTED`, `ACCOUNT_REQUIRED` and `ALREADY_MEMBER`
+are different because the caller has already proved they hold the token, so answering
+precisely opens no oracle. Full vocabulary and the predicted file list are in
+NEXT_STEPS §7.1b.
+
+#### Files
+None modified. Measurement only, against:
+`packages/db/scripts/apply-rls.ts`, `packages/db/src/tenant-client.ts`,
+`packages/db/src/index.ts`, `packages/db/prisma/schema/platform.prisma`,
+`packages/auth/src/{rbac,session,password,index}.ts`,
+`apps/website-builder/src/lib/api/route.ts`, `src/lib/console/session.ts`,
+`src/lib/platform/team.ts`, `src/app/api/platform/team/**`,
+`src/app/console/{layout,page,login/page,actions}.tsx`,
+`apps/website-builder/test/platform/team.test.ts`, `apps/website-builder/test/erp/helpers.ts`,
+plus a direct `pg_policy` query against the live database.
+
+#### Migration
+None in this entry. The implementation will add one `FOR SELECT` policy on `Invitation`
+via `npm run rls` (DDL, not a Prisma migration).
+
+#### Risk
+None introduced — no code changed. The risk the implementation must hold against is
+recorded above: the refusal vocabulary must stay uniform across the oracle surface, and
+the route must not use `tenantRoute`.
+
+**Verified:** live `pg_policy` query on `Invitation`; clean working tree at `1aab962`.
+**Not verified:** anything requiring the implementation (none exists yet).
+
+---
+
 ### 7.1a The platform learns to have a team
 
 `test/platform/team.test.ts` — a new suite, **39/39**. The first slice of Phase 7,

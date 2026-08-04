@@ -327,6 +327,59 @@ hands back is a 404 today. That is 7.1b, and one finding from 7.1a shapes it:
 
 After that, 7.1c is `/console/settings/team`. NEXT_STEPS §7.1 has both.
 
+### Next recommended task — Phase 7.1b, measured (GLM-5.2)
+
+**Verification status of this measurement (GLM-5.2, commit `1aab962`):** measured
+against the live Neon database and the committed source, not inferred. Working tree
+clean. No code written yet — this is the design end of the slice, stopped at the safe
+boundary before implementation.
+
+**Decisive live finding.** `Invitation` has exactly one RLS policy — `tenant_isolation`
+(`FOR ALL`, `USING` + `WITH CHECK` on `"tenantId" = current_setting('app.tenant_id')`),
+`ENABLE` + `FORCE` both on. **There is no token-based policy.** Therefore
+`asPlatform().invitation.findUnique({ where: { token } })` returns zero rows silently
+(RLS denies by returning nothing), which is the exact failure the 7.1a changelog warned
+about. The fix is the pattern `Membership` demonstrates:
+
+- a second, **narrower** policy on `Invitation` — `tenant_isolation_token`,
+  `FOR SELECT USING ("token" = current_setting('app.invitation_token', true))`;
+- a `withInvitationToken(token, work)` binding in `packages/db/src/tenant-client.ts`,
+  alongside `withUser`, binding `app.invitation_token` via `SET LOCAL`;
+- the policy's `CREATE` added to `packages/db/scripts/apply-rls.ts` beside the
+  `Membership` `_self` block, so it survives `npm run rls` and is idempotent;
+- the binding exported from `packages/db/src/index.ts`.
+
+**Safe to add — verified:** `preflight.ts`, `apply-rls.ts`'s audit, and
+`isolation.test.ts` all key off the literal policy name `tenant_isolation`, so a
+separately-named `FOR SELECT` policy will not affect their counts. Postgres ORs
+permissive policies, so token-resolution opens exactly one row and nothing else, the
+same property `withUser` gives for `Membership`.
+
+**The resolved design question (the one real one in this slice).** *Must the accepter be
+signed in as the invited address?* — **No.** Possession of the 32-byte token IS the
+claim, exactly as the 7.1a changelog already reasoned ("the invitation carries a role,
+not an identity"). Forcing a signed-in session that matches the email would (a) require
+creating a `User` for an invitee who has none, which is 7.3 self-serve signup and must
+not be half-built, and (b) offer no real security gain over the unguessable token. So:
+
+- **GET `/console/join/[token]`** renders for a signed-out visitor, shows who is
+  inviting, to which company, in what role. It resolves the invitation via
+  `withInvitationToken` (NOT `asPlatform`), so a bad/expired/revoked token is refused
+  **identically** — see NEXT_STEPS §7.1b for the refusal vocabulary.
+- **POST `/console/join/[token]`** accepts. It creates a `Membership` only. If the
+  invited address already has a `User`, the membership is attached to it (one person,
+  many companies — the seeded consultant's case). If no `User` holds the address, the
+  slice **refuses with a stated code** and does not create one — that is 7.3.
+- The route **must not use `tenantRoute`** (it requires a session + active tenant and
+  binds `withTenant`). It is a server component page (`page.tsx`) like
+  `/console/login`, optionally reading `getConsoleSession()` to show a "signed in as X"
+  banner but never requiring it.
+
+**Idempotence, restated from 7.1a:** accepting twice produces one membership, guarded
+by `acceptedAt` (precedence `accepted > revoked > expired > open`, from
+`invitationState`). A token for a soft-deleted tenant is refused like every other bad
+token — the tenant read goes through the same binding and returns nothing.
+
 ### Decisions taken in Phase 7
 
 - **D-07.1.** `OWNER` is not a role the team API hands out. A tenant has exactly

@@ -391,6 +391,85 @@ checks for 403 passes against a route that refused for the wrong reason.
   same shape as every job in `jobs.ts`.
 - **A token for a soft-deleted tenant is refused**, like every other bad token.
 
+### 7.1b — measured and designed (GLM-5.2, commit `1aab962`)
+
+**Status: design complete, no code written.** Stopped at the safe boundary after
+measurement so the next session implements from a locked design. Everything below was
+verified against the live database or the committed source, not inferred. Working tree
+clean at the stop.
+
+**The one real design question is RESOLVED — the accepter need NOT be signed in as the
+invited address.** Possession of the 32-byte token is the claim (7.1a already reasoned
+this: "the invitation carries a role, not an identity"). Requiring a matching signed-in
+session would force creating a `User` for an invitee who has none — that is 7.3
+self-serve signup, and this slice must not half-build it. So the join flow treats the
+token as the claim and creates a `Membership` only.
+
+**The RLS fix is the first thing to land, and it is verified-necessary.** Measured live:
+`Invitation` carries exactly one policy (`tenant_isolation`, `FORCE`d), so an unbound
+`asPlatform().invitation.findUnique({ where: { token } })` returns **zero rows silently**.
+Apply the `Membership` `_self` pattern:
+
+1. `packages/db/scripts/apply-rls.ts` — add a `tenant_isolation_token` block beside the
+   `Membership` `_self` block: `FOR SELECT USING ("token" = current_setting('app.invitation_token', true))`.
+2. `packages/db/src/tenant-client.ts` — add `INVITATION_SETTING = 'app.invitation_token'`
+   and `withInvitationToken(token, work)`, shaped exactly like `withUser`.
+3. `packages/db/src/index.ts` — export `withInvitationToken`.
+4. `npm run rls --workspace @landingos/db` then re-run the preflight.
+
+**The route is a page, not a `tenantRoute`.** `tenantRoute` requires a session + active
+tenant and binds `withTenant` — all three are false for a signed-out invitee. Mirror
+`/console/login/page.tsx`: a `page.tsx` under `/console/join/[token]/` that renders GET
+for everyone and handles POST (a server action or a same-file handler). It may read
+`getConsoleSession()` for a "signed in as X" banner but must never require it.
+
+**The refusal vocabulary (every non-open state refuses IDENTICALLY, to avoid an oracle):**
+
+| Condition | Status | Code |
+|---|---|---|
+| token resolves to no row (unknown / revoked / expired / wrong-tenant-via-deleted-tenant) | 404 | `INVITATION_NOT_FOUND` |
+| invitation already `accepted` | 409 | `ALREADY_ACCEPTED` |
+| the invited address has no `User` (7.3 owns creating one) | 409 | `ACCOUNT_REQUIRED` |
+| the accepting user is already a member of this tenant | 409 | `ALREADY_MEMBER` |
+
+Note the deliberate collapse: **expired, revoked, soft-deleted-tenant, and unknown token
+all answer the same 404**, because distinguishing them turns the endpoint into an oracle
+for which addresses have been invited. `accepted` and the two membership states are
+different because the caller already proved they hold the token, so no oracle is opened.
+
+**Idempotence:** accepting twice yields exactly one membership, guarded by `acceptedAt`
+(precedence `accepted > revoked > expired > open`, from `invitationState` in `team.ts`).
+The membership insert is the final write; `acceptedAt` is set in the same
+`withInvitationToken` transaction, so a double-submit or a `PATCH`/POST race settles once.
+
+**Acceptance writes (all inside the one `withInvitationToken` transaction the GET already
+opened — OR a fresh one on POST, but never `asPlatform` for the writes):**
+- `membership.create({ data: { tenantId: invitation.tenantId, userId, role: invitation.role } })`
+  — `role` is trusted from the row (it passed `assignableRoleError` at issue time); never
+  re-validate against an actor ceiling, there is no actor.
+- `invitation.update({ where: { id }, data: { acceptedAt: new Date() } })` — only if null.
+- `auditEvent.create({ ..., product: PLATFORM_PRODUCT, entity: "invitation", entityId, action: "accept", payload: { email } })` — never the token.
+- Do **not** destroy/create sessions here. The invitee's session (if any) is their own;
+  landing them in the new tenant is `switchTenant`'s job and is a separate concern.
+
+**Files this slice will touch (predicted, for the audit trail):**
+- `packages/db/src/tenant-client.ts` (+ export), `packages/db/src/index.ts`,
+  `packages/db/scripts/apply-rls.ts` — the RLS binding + policy (the load-bearing change).
+- `apps/website-builder/src/lib/platform/team.ts` — add `acceptInvitation(db, token, ...)` if
+  the logic deserves a named helper (the reads/writes are small; a helper keeps the route thin).
+- `apps/website-builder/src/app/console/join/[token]/page.tsx` (new) — GET + POST.
+- `apps/website-builder/test/platform/team.test.ts` — new `describe` block for acceptance,
+  following the existing fixture pattern (`invite()` then POST to `/console/join/[token]`).
+- `packages/i18n/src/messages/{en,fr,ar}.json` — a `join` category (every string is a key).
+- No `apps/erp` change. No schema migration (the policy is DDL applied by `npm run rls`).
+
+**Verification the next session must run, in order:**
+1. `npm run rls --workspace @landingos/db` then `npm run preflight --workspace @landingos/db` (9 checks).
+2. `npm test --workspace @landingos/db` (29) — confirms the policy change broke nothing.
+3. Stop node → `npm run builder:build` → `npm run builder:start` (Windows DLL lock + port race).
+4. `ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/platform/team.test.ts"` — expect 39 → ~48+.
+5. Re-run a neighbouring suite (`test/erp/access.test.ts`, 63) to confirm no regression.
+
 ### 7.1c — then the screen.
 
 `/console/settings/team`, gated on `platform:team:read`, with the write controls
