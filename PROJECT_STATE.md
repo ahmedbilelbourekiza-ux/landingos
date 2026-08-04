@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 4 August 2026
-**Branch:** `master` · **Last commit:** *Phase 7.1b: accepting an invitation*
+**Branch:** `master` · **Last commit:** *Phase 7.1c: the team screen*
 **Working tree:** clean, all work committed.
 
 ---
@@ -124,12 +124,15 @@ retiring `apps/erp`*.
 **Phase 7 has started. 7.1a landed the team API** — six routes under
 `/api/platform/team/*`, 39 contract tests, purely additive. **7.1b landed the join
 flow** — `/console/join/[token]` plus `POST /api/platform/invitations/[token]/accept`,
-47 contract tests, and the `withInvitationToken` RLS binding that makes a token
-resolvable before any tenant is bound. The next slice is **7.1c, the team screen**;
-see *Next recommended task* below.
+47 contract tests, and the `withInvitationToken` RLS binding. **7.1c landed the team
+screen** — `/console/settings/team`, gated on `platform:team:read`, write controls
+that call the routes directly (D-06.1) and render only where the API accepts them
+(D-06.2). **Phase 7.1 (team management) is complete.** The next slice is **7.2,
+billing**; see *Next recommended task* below.
 
-**Exact stopping point:** committed and verified. Nothing is half-built: 7.1b is a
-complete, tested slice. The invitation link is no longer a 404.
+**Exact stopping point:** committed and verified. Nothing is half-built: 7.1c is a
+complete, tested slice. The team screen renders for ADMIN, hides from MEMBER,
+and offers no control the API would refuse.
 
 ### The assignment rule (6.6a)
 
@@ -302,28 +305,57 @@ stream and inbound carrier webhooks).
 | 6.6f | Stock moves on confirm/cancel — the last gap, 40/40 |
 | 7.1a | The team API — invitations, members, roles, suspension, removal, 39/39 |
 | 7.1b | Accepting an invitation — the join page, the accept API, `withInvitationToken` RLS, 47/47 |
+| 7.1c | The team screen — `/console/settings/team`, D-06.2 control visibility, **Phase 7.1 complete**, 56/56 |
 
 ### Remaining roadmap
 
 | Phase | Scope |
 |---|---|
-| 7 | SaaS layer — team management (**in progress**), billing, self-serve signup. See NEXT_STEPS §7. |
+| 7 | SaaS layer — team management (**complete**), billing, self-serve signup. See NEXT_STEPS §7. |
 | 8 | Hardening — adversarial isolation review, load testing, backup/restore, runbooks |
 
-### Next recommended task — Phase 7.1c, the team screen
+### Next recommended task — Phase 7.2, billing
 
-**7.1a landed the team API** (issue/revoke invitations, members, roles, suspend,
-remove) and **7.1b landed the join flow** — `/console/join/[token]` renders for a
-signed-out visitor and `POST /api/platform/invitations/[token]/accept` creates the
-membership. The invitation link is no longer a 404. 47 contract tests cover both
-slices in `test/platform/team.test.ts`.
+**Phase 7.1 is complete.** Three slices: 7.1a the team API (39 tests), 7.1b the
+join flow (47 tests, `withInvitationToken` RLS), 7.1c the team screen (56 tests,
+D-06.2 control visibility). A company can now invite, accept, list, change roles,
+suspend and remove — all on the platform, all contract-tested, no surface that
+`apps/erp` owns.
 
-**The next slice is 7.1c: `/console/settings/team`.** Gated on
-`platform:team:read`, with the write controls rendered only where the API would
-accept them (D-06.2) and calling the routes directly (D-06.1). The vocabulary
-comes from `assignableRoles` on the members response, already served for exactly
-this reason. Add the section to `/console/settings/page.tsx`, which filters by
-permission and so hides it from a MANAGER by itself. See NEXT_STEPS §7.1c.
+**The next slice is 7.2: billing.** `Subscription` holds `status` and an
+`entitlements` string set, and every gate in the platform already reads it —
+`can()`, the worker's tick, `hasProduct`. The domain is done; what is missing is
+the *management*: a screen showing what a tenant has, and a way to change it.
+Deliberately NOT a payment integration in the first slice — the valuable half is
+**changing entitlements and watching access follow**, which is already testable
+(drop `product.erp` and every ERP route 403s, the scheduled work skips the
+tenant, and the nav item disappears). See NEXT_STEPS §7.2.
+
+### Phase 7.1c — landed (GLM-5.2)
+
+`/console/settings/team` renders the company's people and its outstanding
+invitations, with write controls calling the routes 7.1a built (D-06.1) and
+rendered only where the API accepts them (D-06.2). Gated on `platform:team:read`
+(SENSITIVE — a MANAGER gets 404). The write surface is gated again on
+`platform:team:write`, so a reader sees the list with no controls.
+
+**Every refusal the API makes is unreachable from the screen**, because the
+control that would trip it is not rendered: the owner row has no
+suspend/remove/role-change (`OWNER_IMMUTABLE`); the actor's own row has none
+(`SELF_TARGET`); a member above the actor's ceiling has no role-change
+(`ROLE_ABOVE_SELF` — `grantableRoles` is strictly ceiling-filtered, empty when
+the member ranks above the actor); an accepted invitation has no revoke
+(`ALREADY_ACCEPTED`). These are computed server-side and passed to the client,
+which holds no permission logic.
+
+**Two bugs the tests caught:** the first build rendered the role-change control
+for an above-ceiling member (the list included the member's current role "so the
+select shows it selected" — wrong, that's still a control the API refuses). The
+second gated revoke on `invitation.path`, but the list carries no token so the
+button never rendered. Both fixed; see CHANGELOG §7.1c.
+
+**Verified live:** team 56/56 · access 63/63 · screens 96/96 · console-shell
+13/13 · i18n 18/18 · auth 36/36 · product-registry 36/36 · db 29/29. Build clean.
 
 ### Phase 7.1b — landed (GLM-5.2)
 
@@ -908,13 +940,13 @@ fail without it, so check the counts, not just the exit code.
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
 | `apps/website-builder` — ERP contract | 435 | all pass against a running server |
-| `apps/website-builder` — platform contract | 47 | team management + invitation acceptance (7.1a, 7.1b), against a running server |
+| `apps/website-builder` — platform contract | 56 | team management + invitation acceptance + team screen (7.1a, 7.1b, 7.1c), against a running server |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1027** | green per suite |
+| **Total** | **1036** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

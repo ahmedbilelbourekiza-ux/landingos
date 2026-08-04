@@ -824,3 +824,132 @@ describe('accepting an invitation', () => {
   });
 });
 
+/* -----------------------------------------------------------------------------
+ * The team screen — Phase 7.1c.
+ *
+ * `/console/settings/team`, gated on `platform:team:read`. These assert on the
+ * rendered HTML because a screen can be wrong in ways an API cannot: the data is
+ * correct and the page shows a control the route would refuse, or the
+ * permission gate exists in the route and not in the render. D-06.2 is the rule
+ * under test — a control is rendered ONLY where the API would accept it.
+ * -------------------------------------------------------------------------- */
+
+async function teamPage(token: string) {
+  const res = await fetch(`${BASE}/console/settings/team`, {
+    redirect: 'manual',
+    headers: { cookie: `${SESSION_COOKIE}=${token}` },
+  });
+  return { status: res.status, text: await res.text() };
+}
+
+describe('the team screen', () => {
+  contractTest('a signed-out visitor is sent to sign in, not to the team page', async () => {
+    const res = await fetch(`${BASE}/console/settings/team`, { redirect: 'manual' });
+    // requireConsoleSession redirects to /console/login — a 3xx, not 200.
+    assert.ok(res.status >= 300 && res.status < 400, `expected a redirect, got ${res.status}`);
+  });
+
+  contractTest('a MEMBER does not reach the team page — 404, not 403', async () => {
+    // `platform:team:read` is SENSITIVE; a MEMBER holds no glob that reaches it.
+    const tenantId = await makeTenant('team-screen-member');
+    const member = await makeMember(tenantId, { role: 'MEMBER' });
+    const { status } = await teamPage(member.token);
+    assert.equal(status, 404);
+  });
+
+  contractTest('an ADMIN sees the members, and the write surface is present', async () => {
+    const { admin } = await makeTeam('team-screen-admin');
+    const { status, text } = await teamPage(admin.token);
+    assert.equal(status, 200);
+    assert.match(text, /data-testid="team-members"/);
+    // The invite panel is the write surface; an ADMIN can write.
+    assert.match(text, /data-testid="team-invite-panel"/);
+    // Every member of the seeded team is listed.
+    assert.match(text, /data-user-id=/);
+  });
+
+  contractTest('a reader (read granted, no write) sees the list but no controls', async () => {
+    const tenantId = await makeTenant('team-screen-reader');
+    const reader = await makeMember(tenantId, {
+      role: 'MEMBER',
+      permissions: ['platform:team:read'],
+    });
+    const { status, text } = await teamPage(reader.token);
+    assert.equal(status, 200);
+    assert.match(text, /data-testid="team-members"/);
+    // No write surface — the invite panel and every action button are absent,
+    // because the API would refuse them. This is D-06.2 read-only.
+    assert.doesNotMatch(text, /data-testid="team-invite-panel"/);
+    assert.doesNotMatch(text, /data-testid="team-suspend"/);
+    assert.doesNotMatch(text, /data-testid="team-remove"/);
+  });
+
+  contractTest('the owner row has no suspend or remove control — OWNER_IMMUTABLE', async () => {
+    const { admin, owner } = await makeTeam('team-screen-owner');
+    const { text } = await teamPage(admin.token);
+    // The owner is listed...
+    assert.match(text, new RegExp(`data-user-id="${owner.userId}"`));
+    // ...but neither control is offered for them, because the API answers 409
+    // OWNER_IMMUTABLE to both. The control that would trip the refusal is absent.
+    const ownerBlock = text.split(`data-user-id="${owner.userId}"`)[1]?.split('data-user-id=')[0] ?? '';
+    assert.doesNotMatch(ownerBlock, /data-testid="team-suspend"/, 'no suspend on owner');
+    assert.doesNotMatch(ownerBlock, /data-testid="team-remove"/, 'no remove on owner');
+  });
+
+  contractTest('the actor’s own row has no self-targeting control — SELF_TARGET', async () => {
+    const { admin } = await makeTeam('team-screen-self');
+    const { text } = await teamPage(admin.token);
+    const selfBlock = text.split(`data-user-id="${admin.userId}"`)[1]?.split('data-user-id=')[0] ?? '';
+    assert.doesNotMatch(selfBlock, /data-testid="team-suspend"/, 'no self-suspend');
+    assert.doesNotMatch(selfBlock, /data-testid="team-remove"/, 'no self-remove');
+    assert.doesNotMatch(selfBlock, /data-testid="team-role-toggle"/, 'no self-promotion');
+  });
+
+  contractTest('a MANAGER granted team:write still cannot see an ADMIN-promote control', async () => {
+    // ROLE_ABOVE_SELF is unreachable: the role select for a member above the
+    // actor's ceiling offers no role higher than the actor holds.
+    const tenantId = await makeTenant('team-screen-ceiling');
+    const [manager, target] = await Promise.all([
+      makeMember(tenantId, {
+        role: 'MANAGER',
+        permissions: ['platform:team:read', 'platform:team:write'],
+      }),
+      makeMember(tenantId, { role: 'ADMIN' }),
+    ]);
+    const { text } = await teamPage(manager.token);
+    const targetBlock = text.split(`data-user-id="${target.userId}"`)[1]?.split('data-user-id=')[0] ?? '';
+    // An ADMIN is above a MANAGER, so the role-change control is absent
+    // entirely (grantableRoles is empty for a member above the actor).
+    assert.doesNotMatch(targetBlock, /data-testid="team-role-toggle"/, 'no promote-an-ADMIN control for a MANAGER');
+  });
+
+  contractTest('an open invitation is listed; its token is not in the page', async () => {
+    const { admin } = await makeTeam('team-screen-invite');
+    const created = await invite(admin, newEmail(), 'VIEWER');
+    const { text } = await teamPage(admin.token);
+    assert.match(text, /data-testid="team-invitations"/);
+    // The list never carries the token (D-07.3) — not under any attribute.
+    assert.ok(!text.includes(created.body.data.token), 'the token must not appear in the rendered page');
+    // And an open invitation can be revoked.
+    assert.match(text, /data-testid="team-revoke"/);
+  });
+
+  contractTest('the settings index links to team only for someone who can read it', async () => {
+    const tenantId = await makeTenant('team-screen-index');
+    const admin = await makeMember(tenantId, { role: 'ADMIN' });
+    const member = await makeMember(tenantId, { role: 'MEMBER' });
+
+    const adminIndex = await fetch(`${BASE}/console/settings`, {
+      headers: { cookie: `${SESSION_COOKIE}=${admin.token}` },
+    });
+    const adminText = await adminIndex.text();
+    assert.match(adminText, /data-section="team"/, 'ADMIN sees the team link');
+
+    const memberIndex = await fetch(`${BASE}/console/settings`, {
+      headers: { cookie: `${SESSION_COOKIE}=${member.token}` },
+    });
+    const memberText = await memberIndex.text();
+    assert.doesNotMatch(memberText, /data-section="team"/, 'MEMBER does not see the team link');
+  });
+});
+

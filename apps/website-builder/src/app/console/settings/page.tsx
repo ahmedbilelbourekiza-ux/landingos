@@ -49,6 +49,14 @@ export default async function SettingsIndex() {
       description: "Outgoing webhooks and Meta pixels.",
       visible: !!auth && can(auth, "platform:integrations:read"),
     },
+    {
+      href: "/console/settings/team",
+      title: "Team",
+      description: "Invite people, change roles, and manage access.",
+      // `platform:team:read` is SENSITIVE — a MANAGER running the day does not
+      // decide who works here, so the link is absent for them by itself.
+      visible: !!auth && can(auth, "platform:team:read"),
+    },
   ].filter((s) => s.visible);
 
   return (

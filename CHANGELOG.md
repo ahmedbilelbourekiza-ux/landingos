@@ -12,6 +12,85 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 7 — The SaaS layer
 
+### 7.1c The team screen — Phase 7.1 is complete
+
+[GLM-5.2]
+Commit: `1104281`
+Authoring model: GLM-5.2
+Date: 4 August 2026
+Summary: `/console/settings/team` renders the company's people and its outstanding
+invitations, with write controls that call the existing `/api/platform/team/*`
+routes directly. `test/platform/team.test.ts` goes 47 → **56/56** — nine new
+tests for the screen, each asserting D-06.2 (a control is rendered only where
+the API would accept it). **Phase 7.1 (team management) is complete.**
+
+#### The screen, and what it cannot let you do
+
+Gated on `platform:team:read` (SENSITIVE — a MANAGER running the call centre
+does not see the page at all; 404, not 403). The write surface is gated again on
+`platform:team:write`, so a reader (read granted by name, no write) sees the
+list with no controls — the same shape as the ERP's carriers page for an agent
+who holds no carrier route.
+
+The controls call the routes 7.1a built — invite, revoke, change role, suspend,
+reactivate, remove — and add NO write path of their own (D-06.1). Every refusal
+the API makes is unreachable from the screen, because the control that would
+trip it is not rendered (D-06.2):
+
+- **The owner row has no suspend, remove or role-change control** — `OWNER_IMMUTABLE`.
+- **The actor's own row has none of those either** — `SELF_TARGET`.
+- **A member above the actor's ceiling has no role-change control** — the
+  `grantableRoles` list is empty, because every option would trip
+  `ROLE_ABOVE_SELF`. A MANAGER cannot promote an ADMIN; the select that would
+  offer it is absent, not merely empty.
+- **An accepted invitation has no revoke control** — the membership is the thing
+  now (`ALREADY_ACCEPTED`).
+
+These are computed server-side (`isSelf`, `isOwner`, ceiling-filtered
+`grantableRoles`) and passed to the client, which holds no permission logic of
+its own — the same shape as every write control in the ERP.
+
+#### Two bugs the tests caught before the slice shipped
+
+The first build had the role-change control rendering for a member above the
+actor's ceiling, because `grantableRoles` included the member's *current* role
+"so the select shows it as selected". That is wrong: a select whose only option
+is the no-op is still a control the API refuses for every other choice, and
+offering it is offering a promotion. The list is now strictly ceiling-filtered,
+and a member above the actor gets an empty list and no control at all.
+
+The second: the revoke button was gated on `invitation.path`, but the list
+carries no token (D-07.3) so `path` is undefined for every row and the button
+never rendered. Revoke now keys off `state === "open"` alone — which is the
+actual rule, since an accepted invitation is the one state that refuses.
+
+#### Files
+`apps/website-builder/src/app/console/settings/team/page.tsx` (new),
+`apps/website-builder/src/components/console/platform/team-screen.tsx` (new),
+`apps/website-builder/src/lib/console/platform-strings.ts` (new — `teamStrings`),
+`apps/website-builder/src/app/console/settings/page.tsx` (the team section,
+visible only to `platform:team:read`),
+`apps/website-builder/test/platform/team.test.ts` (9 new screen tests + helpers),
+`packages/i18n/src/messages/{en,fr,ar}.json` (the `team` category, 38 keys).
+
+#### Migration
+None. No schema change, no RLS change — the screen reads through the same
+`withTenant` binding every other console page uses.
+
+#### Risk
+**The role-change control needs JavaScript** (D-06.1's stated cost), and the
+screen offers no control the API does not accept — verified by tests that assert
+the *absence* of the suspend/remove/role-toggle on the owner row, the self row,
+and an above-ceiling member. A reader sees the list with no controls at all.
+
+**Verified live:** team 56/56 · access 63/63 · screens 96/96 · console-shell
+13/13 · i18n 18/18 · auth 36/36 · product-registry 36/36 · db 29/29. Build clean
+(`✓ Compiled successfully`). Two intermediate runs tripped the documented Neon
+`P1001` connection flake (the first run after `builder:start`); both were green
+on re-run and are the known limitation, not a regression.
+
+---
+
 ### 7.1b Accepting an invitation — the link stops being a 404
 
 [GLM-5.2]

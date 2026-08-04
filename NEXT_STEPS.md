@@ -1,9 +1,9 @@
 # Next Steps
 
 **Phase 5 and Phase 6 are complete. Phase 7 has started — see §7.**
-**7.1a (team API) and 7.1b (invitation acceptance) are DONE.**
-**THE NEXT TASK IS 7.1c: the team screen. See §7.1c.**
-Immediate tasks to continue from the Phase 7.1b commit. Full context is in
+**7.1 (team management: API + acceptance + screen) is COMPLETE.**
+**THE NEXT TASK IS 7.2: billing. See §7.2.**
+Immediate tasks to continue from the Phase 7.1c commit. Full context is in
 `PROJECT_STATE.md` — read its "Read this first" section before starting.
 
 ---
@@ -44,8 +44,8 @@ Expect **435/435** across the TWELVE files: access 63 · orders 38 ·
 validation 29 · listing 25 · catalog 40 · delivery 33 · integrations 29 ·
 order-split 8 · screens 96 · jobs 16 · assign 25 · notifications 33.
 
-The platform contract suite lives beside it and runs the same way — **47/47**
-(team management 7.1a + invitation acceptance 7.1b):
+The platform contract suite lives beside it and runs the same way — **56/56**
+(team management 7.1a + invitation acceptance 7.1b + team screen 7.1c):
 
 ```bash
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/platform/team.test.ts"
@@ -317,8 +317,9 @@ Weigh that before the last working copy goes behind a `git show`.
 `apps/erp` is kept as the reference implementation until Phase 7, Phase 8 and
 production readiness are done — see §2c.
 
-**7.1a is done** (the team API) and **7.1b is done** (invitation acceptance).
-**7.1c is the next task** — the team screen, below.
+**7.1a is done** (the team API), **7.1b is done** (invitation acceptance) and
+**7.1c is done** (the team screen). **Phase 7.1 is complete.**
+**7.2 is the next task** — billing, below.
 
 Phase 7 is what turns the platform from *a thing two seeded tenants use* into a
 product somebody can buy. Three pieces, in this order, and the order is the
@@ -507,14 +508,32 @@ opened — OR a fresh one on POST, but never `asPlatform` for the writes):**
 4. `ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/platform/team.test.ts"` — expect 39 → ~48+.
 5. Re-run a neighbouring suite (`test/erp/access.test.ts`, 63) to confirm no regression.
 
-### 7.1c — then the screen.
+### 7.1c — DONE (GLM-5.2)
 
-`/console/settings/team`, gated on `platform:team:read`, with the write controls
-rendered only where the API would accept them (D-06.2) and calling the routes
-directly (D-06.1). The vocabulary comes from `assignableRoles` on the members
-response, which is already served for exactly this reason. Add the section to
-`/console/settings/page.tsx`, which filters by permission and so will hide it
-from a MANAGER by itself.
+**Implemented and verified.** `test/platform/team.test.ts` 47 → **56/56** — nine
+new screen tests. `/console/settings/team` renders the company's people and its
+outstanding invitations, gated on `platform:team:read` (a MANAGER gets 404).
+
+**D-06.2 enforced:** every refusal the API makes is unreachable from the screen,
+because the control that would trip it is not rendered — the owner row has no
+suspend/remove/role-change (`OWNER_IMMUTABLE`), the actor's own row has none
+(`SELF_TARGET`), a member above the actor's ceiling has no role-change
+(`ROLE_ABOVE_SELF`, via strictly ceiling-filtered `grantableRoles`), and an
+accepted invitation has no revoke (`ALREADY_ACCEPTED`). The write surface is
+gated again on `platform:team:write`, so a reader sees the list with no controls.
+
+**The controls call the routes 7.1a built** (D-06.1) — invite, revoke, change
+role, suspend, reactivate, remove — and add no write path of their own.
+
+**Two bugs the tests caught:** (1) the role-change control rendered for an
+above-ceiling member because `grantableRoles` included the member's current role
+— fixed to strictly ceiling-filter, empty list = no control; (2) revoke was
+gated on `invitation.path` which the list never carries — fixed to key off
+`state === "open"`. See CHANGELOG §7.1c.
+
+**Verified live:** team 56/56 · access 63/63 · screens 96/96 · console-shell
+13/13 · i18n 18/18 · auth 36/36 · product-registry 36/36 · db 29/29. Build clean.
+**Phase 7.1 (team management) is complete.**
 
 ### 7.2 — Billing
 
