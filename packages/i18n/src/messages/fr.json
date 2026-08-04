@@ -394,5 +394,24 @@
       "noCarrier": "Aucun transporteur n'est défini sur cette commande, il n'y a donc rien à expédier.",
       "internal": "Une erreur est survenue. Rien n'a été enregistré."
     }
+  },
+  "join": {
+    "title": "Rejoindre un espace de travail",
+    "invitedBy": "{tenant} a invité {email} à rejoindre en tant que {role}.",
+    "role": {
+      "ADMIN": "Administrateur",
+      "MANAGER": "Gestionnaire",
+      "MEMBER": "Membre",
+      "VIEWER": "Lecteur"
+    },
+    "accept": "Accepter l'invitation",
+    "accepted": "Vous avez rejoint {tenant}.",
+    "goToConsole": "Aller à la console",
+    "signedInAs": "Vous êtes connecté en tant que {email}.",
+    "signInInstead": "Connectez-vous en tant que {email} pour accepter.",
+    "notFound": "Cette invitation n'est plus disponible. Elle a peut-être expiré, été révoquée ou déjà acceptée.",
+    "alreadyAccepted": "Cette invitation a déjà été acceptée.",
+    "accountRequired": "Aucun compte n'existe encore pour cette adresse. Inscrivez-vous d'abord, puis ouvrez ce lien.",
+    "alreadyMember": "Vous êtes déjà membre de cette entreprise."
   }
 }

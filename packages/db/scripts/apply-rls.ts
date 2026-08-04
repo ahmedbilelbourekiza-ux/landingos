@@ -126,6 +126,33 @@ async function main() {
   `);
   console.log('Membership: added self-visibility policy for session resolution');
 
+  /* Invitation needs a second, narrower policy — the same shape as Membership's
+   * _self, for a different circularity.
+   *
+   * An invitation link is followed BEFORE any session exists, so it must be
+   * resolved by its token rather than by the tenant it belongs to. But
+   * Invitation is tenant-scoped, and the tenant cannot be bound before the row
+   * that names it has been read — and binding the inviting tenant would also be
+   * wrong, because the accepter is not yet a member of it and must not see any
+   * other invitation that tenant has issued.
+   *
+   * Exempting the table from RLS would solve that by giving up, and would let
+   * any query enumerate every outstanding invitation on the platform. Instead
+   * this adds "or the token matches" alongside the tenant policy, opening
+   * EXACTLY the one row whose token was presented and nothing else.
+   * withInvitationToken() in @landingos/db binds app.invitation_token and is
+   * the only thing that opens it. Read-only by construction: FOR SELECT, so a
+   * holder of a token can read the invitation it names but cannot INSERT,
+   * UPDATE or DELETE through this policy — the tenant policy's WITH CHECK
+   * still governs every write. */
+  await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS ${POLICY}_token ON "Invitation"`);
+  await prisma.$executeRawUnsafe(`
+    CREATE POLICY ${POLICY}_token ON "Invitation"
+      FOR SELECT
+      USING ("token" = current_setting('app.invitation_token', true))
+  `);
+  console.log('Invitation: added token-resolution policy for join flow');
+
   console.log(`policies applied to ${applied} tables (USING + WITH CHECK, FORCE enabled)`);
   console.log('not scoped, by design: ' + unscoped.join(', '));
 

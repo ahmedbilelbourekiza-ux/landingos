@@ -1,8 +1,9 @@
 # Next Steps
 
 **Phase 5 and Phase 6 are complete. Phase 7 has started — see §7.**
-**THE NEXT TASK IS 7.1b: accepting an invitation. See §7.1b.**
-Immediate tasks to continue from the Phase 7.1a commit. Full context is in
+**7.1a (team API) and 7.1b (invitation acceptance) are DONE.**
+**THE NEXT TASK IS 7.1c: the team screen. See §7.1c.**
+Immediate tasks to continue from the Phase 7.1b commit. Full context is in
 `PROJECT_STATE.md` — read its "Read this first" section before starting.
 
 ---
@@ -43,7 +44,8 @@ Expect **435/435** across the TWELVE files: access 63 · orders 38 ·
 validation 29 · listing 25 · catalog 40 · delivery 33 · integrations 29 ·
 order-split 8 · screens 96 · jobs 16 · assign 25 · notifications 33.
 
-The platform contract suite lives beside it and runs the same way — **39/39**:
+The platform contract suite lives beside it and runs the same way — **47/47**
+(team management 7.1a + invitation acceptance 7.1b):
 
 ```bash
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/platform/team.test.ts"
@@ -315,7 +317,8 @@ Weigh that before the last working copy goes behind a `git show`.
 `apps/erp` is kept as the reference implementation until Phase 7, Phase 8 and
 production readiness are done — see §2c.
 
-**7.1a is done** (the team API). **7.1b is the next task**, below.
+**7.1a is done** (the team API) and **7.1b is done** (invitation acceptance).
+**7.1c is the next task** — the team screen, below.
 
 Phase 7 is what turns the platform from *a thing two seeded tenants use* into a
 product somebody can buy. Three pieces, in this order, and the order is the
@@ -390,6 +393,40 @@ checks for 403 passes against a route that refused for the wrong reason.
 - **Accepting twice creates one membership.** Idempotent by `acceptedAt`, the
   same shape as every job in `jobs.ts`.
 - **A token for a soft-deleted tenant is refused**, like every other bad token.
+
+### 7.1b — DONE (GLM-5.2)
+
+**Implemented and verified.** `test/platform/team.test.ts` 39 → **47/47**. The
+invitation link (`/console/join/[token]`) now resolves: a GET renders the preview
+for a signed-out visitor, and `POST /api/platform/invitations/[token]/accept`
+creates the membership. Every rule above has a test that violates it.
+
+**What landed:**
+- A second RLS policy on `Invitation` (`tenant_isolation_token`, `FOR SELECT` on
+  the token) plus `withInvitationToken(token, work)` in `packages/db` — the
+  `Membership` `_self` pattern applied to a token. Verified live: resolves exactly
+  one row, wrong token → nothing, unbound → nothing.
+- `POST /api/platform/invitations/[token]/accept` — a plain route, NOT
+  `tenantRoute` (the accepter has no session/tenant). A server action was tried
+  first and rejected: server actions are not HTTP-addressable, so they cannot be
+  contract-tested over `fetch` (every other write surface is an API route — D-06.1).
+- The page renders GET for everyone and its accept button calls the route via a
+  small client component (`components/console/join-form.tsx`).
+- The one design question, resolved: the accepter need NOT be signed in as the
+  invited address. The token is the claim. No `User` is created (that is 7.3);
+  an address with no account is refused `ACCOUNT_REQUIRED`.
+- Refusals uniform across the oracle surface: unknown / expired / revoked /
+  deleted-tenant → `404 INVITATION_NOT_FOUND`; `ALREADY_ACCEPTED`,
+  `ACCOUNT_REQUIRED`, `ALREADY_MEMBER` distinct.
+- Idempotent by `acceptedAt`; membership + acceptedAt + audit in one transaction.
+- Acceptance does NOT switch the active tenant (D-07.4) — the seeded-consultant
+  test asserts both memberships survive and the original session still resolves.
+
+**Verified live:** team 47/47 · access 63/63 · website-builder 102/102 · i18n
+18/18 · auth 36/36 · product-registry 36/36 · db 29/29 · preflight 9/9. Build
+clean. End-to-end invite → GET → POST → membership-in-DB driven manually. Full
+reasoning in CHANGELOG §7.1b; the measurement that locked the design is preserved
+below.
 
 ### 7.1b — measured and designed (GLM-5.2, commit `1aab962`)
 

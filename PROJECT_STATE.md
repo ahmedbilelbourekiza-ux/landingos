@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 4 August 2026
-**Branch:** `master` · **Last commit:** *Phase 7.1a: the platform learns to have a team*
+**Branch:** `master` · **Last commit:** *Phase 7.1b: accepting an invitation*
 **Working tree:** clean, all work committed.
 
 ---
@@ -122,11 +122,14 @@ is kept deliberately as the reference implementation — see *What still prevent
 retiring `apps/erp`*.
 
 **Phase 7 has started. 7.1a landed the team API** — six routes under
-`/api/platform/team/*`, 39 contract tests, purely additive. The next slice is
-**7.1b, accepting an invitation**; see *Next recommended task* below.
+`/api/platform/team/*`, 39 contract tests, purely additive. **7.1b landed the join
+flow** — `/console/join/[token]` plus `POST /api/platform/invitations/[token]/accept`,
+47 contract tests, and the `withInvitationToken` RLS binding that makes a token
+resolvable before any tenant is bound. The next slice is **7.1c, the team screen**;
+see *Next recommended task* below.
 
-**Exact stopping point:** committed and verified. Nothing is half-built: 7.1a is
-a complete, tested slice, and the join flow it does not include was never started.
+**Exact stopping point:** committed and verified. Nothing is half-built: 7.1b is a
+complete, tested slice. The invitation link is no longer a 404.
 
 ### The assignment rule (6.6a)
 
@@ -298,6 +301,7 @@ stream and inbound carrier webhooks).
 | 6.6e | The console installs, and can receive a push, 33/33 |
 | 6.6f | Stock moves on confirm/cancel — the last gap, 40/40 |
 | 7.1a | The team API — invitations, members, roles, suspension, removal, 39/39 |
+| 7.1b | Accepting an invitation — the join page, the accept API, `withInvitationToken` RLS, 47/47 |
 
 ### Remaining roadmap
 
@@ -306,26 +310,55 @@ stream and inbound carrier webhooks).
 | 7 | SaaS layer — team management (**in progress**), billing, self-serve signup. See NEXT_STEPS §7. |
 | 8 | Hardening — adversarial isolation review, load testing, backup/restore, runbooks |
 
-### Next recommended task — Phase 7.1b, accepting an invitation
+### Next recommended task — Phase 7.1c, the team screen
 
-**7.1a landed the team API.** Six routes under `/api/platform/team/*` — issue and
-revoke invitations, list members, change a role, suspend, reactivate, remove —
-with 39 contract tests in `test/platform/team.test.ts`. The 501 on
-`POST /api/erp/agents` now names a surface that exists.
+**7.1a landed the team API** (issue/revoke invitations, members, roles, suspend,
+remove) and **7.1b landed the join flow** — `/console/join/[token]` renders for a
+signed-out visitor and `POST /api/platform/invitations/[token]/accept` creates the
+membership. The invitation link is no longer a 404. 47 contract tests cover both
+slices in `test/platform/team.test.ts`.
 
-**What it does not yet do: an invitation cannot be accepted.**
-`GET/POST /console/join/[token]` does not exist, so the link the invite route
-hands back is a 404 today. That is 7.1b, and one finding from 7.1a shapes it:
+**The next slice is 7.1c: `/console/settings/team`.** Gated on
+`platform:team:read`, with the write controls rendered only where the API would
+accept them (D-06.2) and calling the routes directly (D-06.1). The vocabulary
+comes from `assignableRoles` on the members response, already served for exactly
+this reason. Add the section to `/console/settings/page.tsx`, which filters by
+permission and so hides it from a MANAGER by itself. See NEXT_STEPS §7.1c.
 
-> **`asPlatform()` does not bypass RLS.** The app role is not the database owner,
-> so an unbound read of `Invitation` — which is tenant-scoped — returns zero rows,
-> silently, the way RLS always denies. The join flow resolves a token *before* any
-> tenant is bound, so it needs the pattern `Membership` already demonstrates: a
-> second, narrower policy (`FOR SELECT USING token = current_setting(...)`) plus a
-> `withInvitationToken` binding in `packages/db`, opening exactly the row whose
-> token was presented.
+### Phase 7.1b — landed (GLM-5.2)
 
-After that, 7.1c is `/console/settings/team`. NEXT_STEPS §7.1 has both.
+The load-bearing change was RLS: a second, narrower `FOR SELECT` policy on
+`Invitation` (`tenant_isolation_token`) plus a `withInvitationToken(token, work)`
+binding in `packages/db` — the `Membership` `_self` pattern applied to a token.
+The join flow resolves a token *before* any tenant is bound, and an unbound
+`asPlatform().invitation.findUnique({ where: { token } })` returns zero rows
+silently (RLS denies by returning nothing). The binding opens exactly the one row
+whose token was presented and nothing else. Verified live before anything was
+built on it.
+
+**One design question, resolved:** the accepter need NOT be signed in as the
+invited address — the 32-byte token is the claim. This slice does NOT create a
+`User` for an address that has none (that is 7.3 self-serve signup); it refuses
+with `ACCOUNT_REQUIRED` instead. Accepting creates a `Membership` only.
+
+**Refusals are uniform across the oracle surface:** unknown / expired / revoked /
+deleted-tenant tokens all answer `404 INVITATION_NOT_FOUND`, because
+distinguishing them turns the endpoint into an oracle for which addresses have
+been invited. `ALREADY_ACCEPTED`, `ACCOUNT_REQUIRED` and `ALREADY_MEMBER` are
+distinct (the caller already holds the token).
+
+**The acceptance endpoint is an API route, not a server action.** A server action
+was tried first and failed: Next.js server actions are dispatched through a
+`Next-Action` header and are not HTTP-addressable, so they cannot be
+contract-tested over `fetch`. `POST /api/platform/invitations/[token]/accept` is
+a plain route (not `tenantRoute`) — the same shape as every other write surface
+(D-06.1). The page's accept button calls it via a small client component.
+
+**Verified live:** team 47/47 · access 63/63 · website-builder 102/102 · i18n
+18/18 · auth 36/36 · product-registry 36/36 · db 29/29 · preflight 9/9. Build
+clean. Full reasoning in CHANGELOG §7.1b.
+
+### Next recommended task — Phase 7.1b, measured (GLM-5.2)
 
 ### Next recommended task — Phase 7.1b, measured (GLM-5.2)
 
@@ -875,13 +908,13 @@ fail without it, so check the counts, not just the exit code.
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
 | `apps/website-builder` — ERP contract | 435 | all pass against a running server |
-| `apps/website-builder` — platform contract | 39 | team management (7.1a), against a running server |
+| `apps/website-builder` — platform contract | 47 | team management + invitation acceptance (7.1a, 7.1b), against a running server |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1019** | green per suite |
+| **Total** | **1027** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

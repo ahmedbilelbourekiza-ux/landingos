@@ -35,6 +35,8 @@ import { PrismaClient } from '../prisma/client/index.js';
 const TENANT_SETTING = 'app.tenant_id';
 /** Bound by withUser, read by Membership's self-visibility policy. */
 const USER_SETTING = 'app.user_id';
+/** Bound by withInvitationToken, read by Invitation's token-resolution policy. */
+const INVITATION_SETTING = 'app.invitation_token';
 
 /**
  * Interactive-transaction budget.
@@ -165,6 +167,41 @@ export async function withUser<T>(
   }
   return client().$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`SELECT set_config($1, $2, true)`, USER_SETTING, userId);
+    return work(tx as unknown as TenantDb);
+  }, TX_OPTIONS);
+}
+
+/**
+ * Run work bound to one INVITATION TOKEN rather than one tenant.
+ *
+ * Exists for exactly one problem: accepting an invitation. The link is followed
+ * before any session exists, so the invitation must be resolved by its token
+ * rather than by the tenant it belongs to — and binding the inviting tenant would
+ * be wrong, because the accepter is not yet a member and must not see any other
+ * invitation that tenant has issued.
+ *
+ * Invitation therefore carries a SECOND policy, the same shape as Membership's
+ * `_self`: a row is visible within its own tenant, OR when the token presented
+ * matches the row's token. Postgres ORs permissive policies, so binding a token
+ * opens exactly the one invitation whose token was presented and nothing else.
+ *
+ * Read-only by construction: the token policy is `FOR SELECT`, so work done here
+ * can READ the invitation but cannot write through this binding. Acceptance writes
+ * go through `withTenant` once the tenant is known (the token resolution reveals
+ * it), where the tenant policy's `WITH CHECK` governs the insert.
+ *
+ * Do not reach for this to sidestep a tenant binding. It grants a strictly
+ * narrower view than withTenant, not a wider one.
+ */
+export async function withInvitationToken<T>(
+  token: string,
+  work: (db: TenantDb) => Promise<T>,
+): Promise<T> {
+  if (!token || typeof token !== 'string') {
+    throw new TenantContextError('withInvitationToken requires a token');
+  }
+  return client().$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`SELECT set_config($1, $2, true)`, INVITATION_SETTING, token);
     return work(tx as unknown as TenantDb);
   }, TX_OPTIONS);
 }

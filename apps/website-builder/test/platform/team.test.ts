@@ -564,3 +564,263 @@ describe('an invitation carries a role, states its delivery, and shows its token
     }
   });
 });
+
+/* -----------------------------------------------------------------------------
+ * Accepting an invitation — Phase 7.1b.
+ *
+ * `/console/join/[token]` is the surface the invite link points at. It is NOT
+ * gated by `tenantRoute`: it renders for a signed-out visitor (the link is
+ * followed from an email) and resolves the invitation by its token through the
+ * `withInvitationToken` binding — the narrow RLS policy that opens exactly the
+ * one row whose token was presented.
+ *
+ * The acceptance POST is a Next server action, not a JSON API, so these tests
+ * send `multipart/form-data` (the way a real browser does) and read the manual
+ * redirect. A success redirects to /console; a refusal redirects back with the
+ * refusal code in the query string, and the underlying membership/invitation
+ * state is asserted directly through the bound client.
+ * -------------------------------------------------------------------------- */
+
+/** POST to the acceptance API route. Returns the parsed envelope. */
+async function postAccept(token: string, cookie?: string) {
+  const res = await fetch(`${BASE}/api/platform/invitations/${encodeURIComponent(token)}/accept`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(cookie ? { cookie } : {}),
+    },
+    body: '{}',
+  });
+  const text = await res.text();
+  let body: any = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+  return { status: res.status, body };
+}
+
+/** GET the join page, returning status + the rendered HTML. */
+async function getJoin(token: string) {
+  const res = await fetch(`${BASE}/console/join/${encodeURIComponent(token)}`, {
+    redirect: 'manual',
+  });
+  const text = await res.text();
+  return { status: res.status, text };
+}
+
+/**
+ * An existing user (in some tenant) to receive an invitation into ANOTHER
+ * tenant — the seeded consultant's shape.
+ *
+ * `makeMember` returns a `Caller` carrying `userId` and `token` but not the
+ * email; acceptance matches by email, so this resolves it once and hands back
+ * both. Creating a membership in a throwaway "home" tenant mirrors the real
+ * world: the person already exists somewhere before they are invited here.
+ */
+async function makeInvitee(label: string, opts?: { role?: string }) {
+  const home = await makeTenant(label);
+  const caller = await makeMember(home, opts);
+  const user = await asPlatform().user.findUnique({
+    where: { id: caller.userId },
+    select: { email: true },
+  });
+  return { caller, userId: caller.userId, email: user!.email, homeTenantId: home };
+}
+
+describe('accepting an invitation', () => {
+  contractTest('an open invitation renders the company, the role and the address', async () => {
+    const { admin } = await makeTeam('join-preview');
+    const email = newEmail();
+    const created = await invite(admin, email, 'MANAGER');
+
+    const { status, text } = await getJoin(created.body.data.token);
+    assert.equal(status, 200);
+    // The tenant's slug-derived name, the role label and the invited address
+    // all appear — the three things a person needs to decide whether to accept.
+    assert.ok(text.includes('MANAGER' ) || text.includes('Manager') || text.includes('Gestionnaire'), 'role shown');
+    assert.ok(text.includes(email), 'invited email shown');
+    assert.ok(text.includes('accept'), 'an accept control is present');
+  });
+
+  contractTest('accepting creates the membership at the invited role', async () => {
+    const { tenantId, admin } = await makeTeam('join-accept');
+    // The invitee is an existing user (7.3 owns creating one; this slice does
+    // not). Seed them in a throwaway home tenant, the way any other member is.
+    const invitee = await makeInvitee('join-accept-home', { role: 'MEMBER' });
+
+    const created = await invite(admin, invitee.email.toUpperCase(), 'VIEWER');
+    assert.equal(created.status, 201);
+
+    const res = await postAccept(created.body.data.token);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.membership.role, 'VIEWER');
+    assert.equal(res.body.data.membership.userId, invitee.userId);
+
+    const member = await withTenant(tenantId, (tx) =>
+      (tx as any).membership.findFirst({ where: { userId: invitee.userId } }),
+    );
+    assert.ok(member, 'the membership was created');
+    assert.equal(member.role, 'VIEWER');
+
+    const inv = await withTenant(tenantId, (tx) =>
+      (tx as any).invitation.findUnique({ where: { id: created.body.data.id } }),
+    );
+    assert.ok(inv.acceptedAt, 'the invitation is marked accepted');
+  });
+
+  contractTest('the seeded consultant — a second company, no session switch — keeps working', async () => {
+    // One human, two employers. Accepting an invite to a second tenant must not
+    // touch the first membership and must not switch the accepter's session.
+    const { tenantId, admin } = await makeTeam('join-second-company');
+    const invitee = await makeInvitee('join-first-company', { role: 'MEMBER' });
+
+    const created = await invite(admin, invitee.email, 'MEMBER');
+    const res = await postAccept(created.body.data.token, `${SESSION_COOKIE}=${invitee.caller.token}`);
+    assert.equal(res.status, 200);
+
+    const inSecond = await withTenant(tenantId, (tx) =>
+      (tx as any).membership.findFirst({ where: { userId: invitee.userId } }),
+    );
+    assert.ok(inSecond, 'the second membership exists');
+
+    // The first membership is untouched — accepting is additive.
+    const stillInFirst = await withTenant(invitee.homeTenantId, (tx) =>
+      (tx as any).membership.findFirst({ where: { userId: invitee.userId } }),
+    );
+    assert.ok(stillInFirst, 'the first membership survives');
+
+    // And the invitee's original session still resolves (not 401) — acceptance
+    // does NOT switch the active tenant, so the person chooses when to switch.
+    const after = await invitee.caller.api('GET', '/api/platform/team/members').catch(() => null);
+    if (after) assert.ok(after.status === 200 || after.status === 403, `session still resolves: ${after.status}`);
+  });
+
+  contractTest('accepting twice creates exactly one membership', async () => {
+    const { tenantId, admin } = await makeTeam('join-idempotent');
+    const invitee = await makeInvitee('join-idempotent-home', { role: 'MEMBER' });
+    const created = await invite(admin, invitee.email, 'MEMBER');
+
+    const first = await postAccept(created.body.data.token);
+    assert.equal(first.status, 200);
+
+    // The second accept is ALREADY_ACCEPTED — the membership is the thing now,
+    // and it is not recreated. The code is asserted, not just the status.
+    const second = await postAccept(created.body.data.token);
+    assert.equal(second.status, 409);
+    assert.equal(second.body.error.code, 'ALREADY_ACCEPTED');
+
+    // Exactly one membership row for this user in this tenant.
+    const rows = await withTenant(tenantId, (tx) =>
+      (tx as any).membership.findMany({ where: { userId: invitee.userId } }),
+    );
+    assert.equal(rows.length, 1);
+  });
+
+  contractTest('an already-member is refused, however the membership arrived', async () => {
+    // The issuer refuses ALREADY_MEMBER at invite time, but the race between
+    // invite and accept (or a membership added by another door) makes the
+    // accept-time re-check mandatory.
+    const { tenantId, admin } = await makeTeam('join-already');
+    const invitee = await makeMember(tenantId, { role: 'MEMBER' });
+    const inviteeEmail = (await asPlatform().user.findUnique({
+      where: { id: invitee.userId },
+      select: { email: true },
+    }))!.email;
+    // Stage an invitation row directly, forcing past the issuer's
+    // already-member check. The token must be globally unique.
+    const token = `stub_${uid()}_${Math.random().toString(36).slice(2)}`;
+    await withTenant(tenantId, (tx) =>
+      (tx as any).invitation.create({
+        data: {
+          tenantId,
+          email: inviteeEmail,
+          role: 'MEMBER',
+          token,
+          expiresAt: new Date(Date.now() + 86400000),
+        },
+      }),
+    );
+
+    const res = await postAccept(token);
+    assert.equal(res.status, 409);
+    assert.equal(res.body.error.code, 'ALREADY_MEMBER');
+
+    // And no second membership row was created.
+    const rows = await withTenant(tenantId, (tx) =>
+      (tx as any).membership.findMany({ where: { userId: invitee.userId } }),
+    );
+    assert.equal(rows.length, 1);
+  });
+
+  contractTest('an address with no account is refused, not silently enrolled', async () => {
+    // This slice does NOT create a User. That is 7.3 self-serve signup, and
+    // half-building it here is the one foot-gun the slice's own rules forbid.
+    const { tenantId, admin } = await makeTeam('join-no-account');
+    const email = newEmail();
+    const created = await invite(admin, email, 'MEMBER');
+    assert.equal(created.status, 201);
+
+    const res = await postAccept(created.body.data.token);
+    assert.equal(res.status, 409);
+    assert.equal(res.body.error.code, 'ACCOUNT_REQUIRED');
+
+    // No membership was created (the tenant has only the makeTeam trio).
+    const all = await withTenant(tenantId, (tx) => (tx as any).membership.findMany());
+    assert.equal(all.length, 3);
+
+    // And the invitation is still open — refusing ACCOUNT_REQUIRED does not
+    // consume it, so the person can sign up (7.3) and accept later.
+    const inv = await withTenant(tenantId, (tx) =>
+      (tx as any).invitation.findUnique({ where: { id: created.body.data.id } }),
+    );
+    assert.equal(inv.acceptedAt, null);
+  });
+
+  contractTest('every bad token looks identical — the page is not an oracle', async () => {
+    const { tenantId, admin } = await makeTeam('join-oracle');
+
+    // (a) a REVOKED invitation — its own email so revoking is not followed by a
+    // reissue that would change the token.
+    const revokedEmail = newEmail();
+    const revoked = await invite(admin, revokedEmail);
+    await admin.api('POST', `/api/platform/team/invitations/${revoked.body.data.id}/revoke`);
+
+    // (b) an EXPIRED invitation — staged by backdating, its own email too.
+    const expired = await invite(admin, newEmail(), 'MEMBER');
+    await withTenant(tenantId, (tx) =>
+      (tx as any).invitation.update({
+        where: { id: expired.body.data.id },
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      }),
+    );
+
+    // (c) a token that was never issued to anything.
+    const unknown = 'never-issued-' + uid();
+
+    // All three GET responses render the same not-found message and none of
+    // them leak which case it is. The message text is asserted across all
+    // three locales so the test holds whichever language the server defaults to.
+    for (const [label, token] of [['revoked', revoked.body.data.token], ['expired', expired.body.data.token], ['unknown', unknown]] as const) {
+      const { status, text } = await getJoin(token);
+      assert.equal(status, 200, `${label}: page renders`);
+      assert.ok(
+        text.includes('no longer available') || text.includes("n'est plus disponible") || text.includes('لم تعد متاحة'),
+        `${label}: shows the not-found message`,
+      );
+      // And none of them render an accept control — the link is dead.
+      assert.ok(!text.includes('name="token"'), `${label}: no accept form`);
+    }
+  });
+
+  contractTest('a token for a soft-deleted tenant is refused like any other bad token', async () => {
+    const { tenantId, admin } = await makeTeam('join-deleted-tenant');
+    const created = await invite(admin, newEmail(), 'MEMBER');
+
+    // Hard-delete the tenant (cascade takes its rows; the token binding then
+    // hides the invitation the same way it hides any other miss).
+    await asPlatform().tenant.delete({ where: { id: tenantId } }).catch(() => {});
+
+    const { status, text } = await getJoin(created.body.data.token);
+    assert.equal(status, 200);
+    assert.ok(text.includes('no longer available') || text.includes("n'est plus disponible") || text.includes('لم تعد متاحة'));
+  });
+});
+

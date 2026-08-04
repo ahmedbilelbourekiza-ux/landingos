@@ -394,5 +394,24 @@
       "noCarrier": "No carrier is set on this order, so there is nothing to book with.",
       "internal": "Something went wrong. Nothing was saved."
     }
+  },
+  "join": {
+    "title": "Join a workspace",
+    "invitedBy": "{tenant} has invited {email} to join as {role}.",
+    "role": {
+      "ADMIN": "Administrator",
+      "MANAGER": "Manager",
+      "MEMBER": "Member",
+      "VIEWER": "Viewer"
+    },
+    "accept": "Accept invitation",
+    "accepted": "You have joined {tenant}.",
+    "goToConsole": "Go to console",
+    "signedInAs": "You are signed in as {email}.",
+    "signInInstead": "Sign in as {email} to accept.",
+    "notFound": "That invitation is no longer available. It may have expired, been revoked, or been accepted already.",
+    "alreadyAccepted": "That invitation has already been accepted.",
+    "accountRequired": "No account exists for that address yet. Sign up first, then open this link.",
+    "alreadyMember": "You are already a member of this company."
   }
 }

@@ -3,7 +3,12 @@ import "server-only";
 import crypto from "node:crypto";
 
 import { ROLES, type TenantRole } from "@landingos/auth";
-import type { TenantDb } from "@landingos/db";
+import {
+  asPlatform,
+  withTenant,
+  withInvitationToken,
+  type TenantDb,
+} from "@landingos/db";
 
 /* =============================================================================
  * Team management — Phase 7.1.
@@ -282,3 +287,306 @@ export async function listInvitations(db: TenantDb): Promise<TeamInvitation[]> {
 
 /** Where an invitation is accepted. Built in one place so the email and the screen agree. */
 export const joinPath = (token: string) => `/console/join/${token}`;
+
+/* =============================================================================
+ * Accepting an invitation — Phase 7.1b.
+ *
+ * 7.1a issues links that lead to a 404; this is the surface that closes that.
+ * Two operations, both resolving a token BEFORE any tenant is bound, which is
+ * the part that is not obvious and which the RLS layer was extended for:
+ *
+ *   - `previewInvitation(token)` — the GET side. Shows who is inviting, to which
+ *     company, in what role. Renders for a signed-out visitor.
+ *   - `acceptInvitation(token)` — the POST side. Creates a Membership only.
+ *
+ * Every non-open state refuses IDENTICALLY. A different answer per case turns
+ * the endpoint into an oracle for which addresses have been invited and which
+ * have joined, so unknown / expired / revoked / wrong-tenant-via-deleted-tenant
+ * are all `INVITATION_NOT_FOUND`. `ALREADY_ACCEPTED`, `ACCOUNT_REQUIRED` and
+ * `ALREADY_MEMBER` are distinct because by the time they apply the caller has
+ * already proved they hold the token, so answering precisely opens no oracle.
+ *
+ * THE ADDRESS IS NOT PROOF OF IDENTITY. Whoever follows the link is whoever
+ * received it; the invitation carries a role, not an identity. That is why the
+ * token is 32 random bytes. This slice does NOT create a `User` for an address
+ * that has none — that is self-serve signup (7.3), and half-building it here
+ * would be the one foot-gun the slice's own rules forbid. An address with no
+ * account is refused with `ACCOUNT_REQUIRED` rather than silently enrolled.
+ * ========================================================================== */
+
+/**
+ * What an open invitation shows to the person holding its link.
+ *
+ * The inviting tenant's name is read through `withInvitationToken` and the
+ * row's `tenantId` relation — never through `asPlatform`, because `Invitation`
+ * is RLS-scoped and an unbound read returns nothing (the failure 7.1a warned
+ * about, now fixed by the `tenant_isolation_token` policy).
+ */
+export interface InvitationPreview {
+  readonly email: string;
+  readonly role: TenantRole;
+  readonly tenantName: string;
+  readonly invitedAt: Date;
+  readonly expiresAt: Date;
+}
+
+/**
+ * Resolve a token to a preview, or refuse.
+ *
+ * `asPlatform()` does not bypass RLS, so resolution goes through
+ * `withInvitationToken`, which opens exactly the one row whose token matches
+ * and nothing else. A token that is unknown, expired, revoked, or points at a
+ * soft-deleted tenant all surface here as `null` (no row, or the tenant relation
+ * filtered out) and are answered identically downstream — see `previewOrRefuse`.
+ */
+async function findInvitationByToken<T>(
+  token: string,
+  work: (row: NonNullable<Awaited<ReturnType<TenantDb["invitation"]["findFirst"]>>>) => Promise<T>,
+): Promise<T | null> {
+  return withInvitationToken(token, async (db) => {
+    const row = await db.invitation.findFirst({
+      where: { token },
+      include: { tenant: { select: { name: true, deletedAt: true } } },
+    });
+    // A soft-deleted tenant is gone from the caller's perspective. Its
+    // invitations are not actionable, and saying so distinctly would be an
+    // oracle — so it collapses into "no invitation" like every other miss.
+    if (!row || row.tenant.deletedAt) return null;
+    return work(row as any);
+  });
+}
+
+/**
+ * The GET side: preview an invitation by token, or a refusal.
+ *
+ * Returns `{ kind: "open", preview }` on the one state worth rendering a page
+ * for, and `{ kind: "refusal", refusal }` for every other. The refusal is
+ * uniform: `INVITATION_NOT_FOUND` covers unknown, expired, revoked and
+ * deleted-tenant alike, because each of those answers a different question to
+ * somebody probing which addresses have been invited.
+ */
+export async function previewOrRefuse(
+  token: string,
+): Promise<
+  | { kind: "open"; preview: InvitationPreview }
+  | { kind: "refusal"; refusal: TeamRefusal }
+> {
+  const found = await findInvitationByToken(token, async (row) => ({
+    state: invitationState(row),
+    row,
+  }));
+  if (!found || found.state !== "open") {
+    return {
+      kind: "refusal",
+      refusal: {
+        status: 404,
+        code: "INVITATION_NOT_FOUND",
+        message: "That invitation is no longer available.",
+      },
+    };
+  }
+  const { row } = found;
+  return {
+    kind: "open",
+    preview: {
+      email: row.email,
+      role: row.role as TenantRole,
+      tenantName: row.tenant.name,
+      invitedAt: row.createdAt,
+      expiresAt: row.expiresAt,
+    },
+  };
+}
+
+/**
+ * The POST side: accept an invitation by token, or refuse.
+ *
+ * Acceptance creates a `Membership` and nothing else. The `User` must already
+ * exist (matched by the invitation's email, case-insensitively — `normaliseEmail`
+ * is the same function the issuer used); an address with no account is refused
+ * with `ACCOUNT_REQUIRED`, because creating one is self-serve signup (7.3) and
+ * not this slice. The invitation's `role` is trusted from the row: it already
+ * passed `assignableRoleError` at issue time, and there is no actor here to
+ * re-check a ceiling against.
+ *
+ * Idempotent by `acceptedAt`, the same shape as every job in `jobs.ts`: a
+ * double-submit or a POST race settles once, because the second pass finds the
+ * row already accepted and returns the existing membership rather than
+ * re-inserting. The membership write happens inside `withTenant` (the token
+ * resolution revealed the tenant), where the tenant policy's `WITH CHECK`
+ * governs the insert — never through the read-only token binding.
+ */
+export async function acceptInvitation(
+  token: string,
+): Promise<
+  | { kind: "accepted"; membership: { userId: string; tenantId: string; role: TenantRole } }
+  | { kind: "refusal"; refusal: TeamRefusal }
+> {
+  const found = await findInvitationByToken(token, async (row) => ({
+    state: invitationState(row),
+    row,
+  }));
+
+  // Unknown / expired / revoked / deleted-tenant — all identical.
+  if (!found) {
+    return {
+      kind: "refusal",
+      refusal: {
+        status: 404,
+        code: "INVITATION_NOT_FOUND",
+        message: "That invitation is no longer available.",
+      },
+    };
+  }
+
+  // Accepted is distinct: the caller holds the token, so naming the real state
+  // opens no oracle, and the honest answer is that the membership already
+  // exists and is not recreated.
+  if (found.state === "accepted") {
+    return {
+      kind: "refusal",
+      refusal: {
+        status: 409,
+        code: "ALREADY_ACCEPTED",
+        message: "That invitation has already been accepted.",
+      },
+    };
+  }
+
+  // Every other non-open state (revoked, expired) collapses into NOT_FOUND.
+  if (found.state !== "open") {
+    return {
+      kind: "refusal",
+      refusal: {
+        status: 404,
+        code: "INVITATION_NOT_FOUND",
+        message: "That invitation is no longer available.",
+      },
+    };
+  }
+
+  const { row } = found;
+  const email = normaliseEmail(row.email);
+  const tenantId = row.tenantId;
+
+  return acceptInvitationInner(token, email, tenantId);
+}
+
+/**
+ * Inner half, separated so the outer function stays a readable list of guards.
+ *
+ * Reads the user by email, refuses if none exists, then writes the membership
+ * and marks the invitation accepted — the membership write inside one
+ * `withTenant` transaction so a crash between the two cannot leave an accepted
+ * invitation with no membership. The `@@unique([tenantId, userId])` constraint
+ * is the race guard: a second accepter loses to the first and surfaces as
+ * `ALREADY_MEMBER`.
+ */
+async function acceptInvitationInner(
+  token: string,
+  email: string,
+  tenantId: string,
+): Promise<
+  | { kind: "accepted"; membership: { userId: string; tenantId: string; role: TenantRole } }
+  | { kind: "refusal"; refusal: TeamRefusal }
+> {
+  // User is a global table (no tenantId, no RLS policy), so the named unscoped
+  // client is the correct one. A deleted user is treated as absent: the
+  // invitation is addressed to an address that no longer has a live account.
+  const user = await asPlatform().user.findUnique({
+    where: { email },
+    select: { id: true, deletedAt: true },
+  });
+  if (!user || user.deletedAt) {
+    return {
+      kind: "refusal",
+      refusal: {
+        status: 409,
+        code: "ACCOUNT_REQUIRED",
+        message:
+          "No account exists for that address yet. Sign up first, then open this link.",
+      },
+    };
+  }
+  const userId = user.id;
+
+  return withTenant(tenantId, async (tx) => {
+    // Already a member? The issuer checks this at invite time, but the race
+    // between invite and accept (or a membership added by another door — an
+    // admin, a prior acceptance of a reissued link) makes re-checking
+    // mandatory. `findFirst` on the bound client; the binding is the filter.
+    const existing = await tx.membership.findFirst({ where: { userId } });
+    if (existing) {
+      // Settle the invitation too, so the link stops being actionable —
+      // mirrors `revoke`'s "the membership is the thing now" stance. A
+      // no-op if it was already accepted.
+      await tx.invitation.updateMany({
+        where: { token, acceptedAt: null },
+        data: { acceptedAt: new Date() },
+      });
+      return {
+        kind: "refusal" as const,
+        refusal: {
+          status: 409,
+          code: "ALREADY_MEMBER",
+          message: "You are already a member of this company.",
+        },
+      };
+    }
+
+    // Read the role from the invitation row inside the same transaction, so
+    // a revoked-between-our-two-reads window cannot hand out a role the
+    // issuer withdrew. The token policy is read-only and the tenant policy
+    // governs this client, so this read is the issuer-tenant's own row.
+    const invitation = await tx.invitation.findFirst({ where: { token } });
+    if (!invitation || invitation.acceptedAt) {
+      // Lost the race: accepted or gone between preview and accept.
+      return {
+        kind: "refusal" as const,
+        refusal: {
+          status: 409,
+          code: "ALREADY_ACCEPTED",
+          message: "That invitation has already been accepted.",
+        },
+      };
+    }
+
+    const membership = await tx.membership.create({
+      data: {
+        tenantId,
+        userId,
+        // Trusted from the row — it cleared assignableRoleError at issue.
+        role: invitation.role as TenantRole,
+      },
+      select: { userId: true, tenantId: true, role: true },
+    });
+
+    await tx.invitation.update({
+      where: { id: invitation.id },
+      data: { acceptedAt: new Date() },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        tenantId,
+        userId,
+        product: PLATFORM_PRODUCT,
+        entity: "invitation",
+        entityId: invitation.id,
+        action: "accept",
+        // The address and the fact of acceptance, never the token. An audit
+        // table is append-only and readable by everyone who can read it.
+        payload: { email },
+      },
+    });
+
+    return {
+      kind: "accepted" as const,
+      membership: {
+        userId: membership.userId,
+        tenantId: membership.tenantId,
+        role: membership.role as TenantRole,
+      },
+    };
+  });
+}

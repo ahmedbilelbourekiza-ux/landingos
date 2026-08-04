@@ -12,6 +12,127 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 7 — The SaaS layer
 
+### 7.1b Accepting an invitation — the link stops being a 404
+
+[GLM-5.2]
+Commit: `5a74372`
+Authoring model: GLM-5.2
+Date: 4 August 2026
+Summary: The invitation link the team API issues (`/console/join/[token]`) now
+resolves. `test/platform/team.test.ts` goes 39 → **47/47** — eight new tests for
+the acceptance surface, each violating a documented rule. The load-bearing change
+is a second RLS policy on `Invitation`, the `Membership` `_self` pattern applied to
+a token rather than a user id.
+
+#### The RLS layer — `withInvitationToken` and the token policy
+
+`Invitation` is tenant-scoped, and the join flow resolves a token BEFORE any
+tenant is bound — so an unbound `asPlatform().invitation.findUnique({ where: {
+token } })` returns zero rows silently, the way RLS always denies. That is the
+exact failure the 7.1a measurement verified by a direct `pg_policy` query, and it
+is closed the way `Membership`'s circularity is closed for session resolution: a
+second, narrower `FOR SELECT` policy (`tenant_isolation_token`, `USING ("token" =
+current_setting('app.invitation_token', true))`) plus a `withInvitationToken(token,
+work)` binding in `packages/db`. Postgres ORs permissive policies, so binding a
+token opens exactly the one row whose token was presented and nothing else.
+
+Verified live before anything was built on it: the binding resolves the one row
+for a correct token, returns nothing for a wrong token, and `asPlatform()` still
+returns nothing. Safe to add — `preflight`, `apply-rls`'s audit and
+`isolation.test.ts` all key off the literal policy name `tenant_isolation`, so a
+separately-named `FOR SELECT` policy leaves their counts untouched (confirmed:
+db 29/29, preflight 9/9).
+
+#### The acceptance endpoint is an API route, not a server action
+
+A server action was the first shape tried and it failed in a way worth recording:
+Next.js server actions are dispatched through a `Next-Action` header the server
+embeds in the rendered form, so they are **not HTTP-addressable** and cannot be
+contract-tested over `fetch` — a raw POST answers *"Failed to find Server Action"*.
+Every other write surface on this platform is an API route with contract tests in
+front of it (D-06.1), and acceptance is now the same: `POST /api/platform/
+invitations/[token]/accept`, a plain route handler (NOT `tenantRoute` — the
+accepter has no session and no active tenant) that calls `acceptInvitation` and
+returns the standard envelope. The page renders GET for everyone and its accept
+button calls the route via a small client component (`join-form.tsx`).
+
+#### The design question, resolved and enforced
+
+*Must the accepter be signed in as the invited address?* **No** — the 32-byte
+token is the claim. Creating a `User` for an invitee who has none is self-serve
+signup (7.3), and this slice refuses with `ACCOUNT_REQUIRED` rather than
+half-building it. Accepting creates a `Membership` only, matched to an existing
+`User` by the invitation's email.
+
+#### Refusals are uniform across the oracle surface
+
+Every non-open token — unknown, expired, revoked, and soft-deleted-tenant —
+answers identically, because distinguishing them turns the endpoint into an
+oracle for which addresses have been invited. `ALREADY_ACCEPTED`,
+`ACCOUNT_REQUIRED` and `ALREADY_MEMBER` are distinct: by the time they apply the
+caller holds the token, so answering precisely opens no oracle. A test exercises
+all three indistinguishable cases and asserts they render the same message and
+no accept control.
+
+| Condition | Status | Code |
+|---|---|---|
+| unknown / expired / revoked / deleted-tenant | 404 | `INVITATION_NOT_FOUND` |
+| already accepted | 409 | `ALREADY_ACCEPTED` |
+| invited address has no `User` (7.3 owns creating one) | 409 | `ACCOUNT_REQUIRED` |
+| accepter already a member of this tenant | 409 | `ALREADY_MEMBER` |
+
+#### Idempotent by `acceptedAt`, and the membership writes are atomic
+
+Accepting twice yields one membership: the second pass finds the row already
+accepted and returns `ALREADY_ACCEPTED`. The membership insert, the
+`acceptedAt` write and the audit event all happen inside one `withTenant`
+transaction, so a crash between them cannot leave an accepted invitation with no
+membership. Acceptance does NOT switch the accepter's active tenant (D-07.4:
+landing is the person's operation), which the seeded-consultant test asserts —
+the first membership survives and the original session still resolves.
+
+#### Files
+`packages/db/scripts/apply-rls.ts` (the `tenant_isolation_token` policy block),
+`packages/db/src/tenant-client.ts` (`withInvitationToken` + `INVITATION_SETTING`),
+`packages/db/src/index.ts` (export),
+`apps/website-builder/src/lib/platform/team.ts` (`previewOrRefuse`,
+`acceptInvitation`, `acceptInvitationInner`, `findInvitationByToken`,
+`InvitationPreview`),
+`apps/website-builder/src/app/api/platform/invitations/[token]/accept/route.ts` (new),
+`apps/website-builder/src/app/console/join/[token]/page.tsx` (new),
+`apps/website-builder/src/components/console/join-form.tsx` (new),
+`apps/website-builder/test/platform/team.test.ts` (8 new tests + helpers),
+`packages/i18n/src/messages/{en,fr,ar}.json` (the `join` category).
+
+#### Migration
+No Prisma migration. One `FOR SELECT` RLS policy on `Invitation`, applied by
+`npm run rls --workspace @landingos/db` (DDL, idempotent). RLS audit unchanged:
+47/47 across all four checks; preflight 9/9.
+
+#### Risk
+**The acceptance endpoint is reachable by anyone holding a token, signed-out.**
+That is the design — the token IS the claim — and it is why the token is 32
+random bytes and expires after seven days. A deployment that delivers these
+links over an untrusted channel is delivering membership of a company; the
+invite route already states `delivery: "none"` for exactly this reason.
+
+**Acceptance does not create accounts.** An invited address with no `User` is
+refused with `ACCOUNT_REQUIRED`; the recovery path is the person signing up
+(7.3) and then opening the link. Stated in the refusal message, not simulated.
+
+**Verified live:** team 47/47 (twice) · access 63/63 · console-shell 13/13 ·
+builder-api 22/22 · builder-sections 45/45 · storefront 22/22 (website-builder
+102/102) · i18n 18/18 · auth 36/36 · product-registry 36/36 · db 29/29 ·
+preflight 9/9. Build clean (`✓ Compiled successfully`). End-to-end invite →
+GET page → POST accept → membership-in-DB driven manually against the running
+server at role MANAGER. The storefront run tripped the documented Neon `P1001`
+flake in its `after` hook; all 22 of its tests passed.
+
+**Not verified:** nothing is deployed; whether a real browser offers the accept
+prompt over HTTPS is untested by construction.
+
+---
+
 ### 7.1b (measurement) — the join flow, measured and designed
 
 [GLM-5.2]

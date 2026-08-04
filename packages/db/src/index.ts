@@ -1,5 +1,6 @@
 export {
   withUser,
+  withInvitationToken,
   withTenant,
   forTenant,
   asPlatform,
