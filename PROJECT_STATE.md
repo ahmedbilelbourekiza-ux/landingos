@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
-**Last updated:** 4 August 2026
-**Branch:** `master` · **Last commit:** *Phase 7.2: billing*
+**Last updated:** 6 August 2026
+**Branch:** `master` · **Last commit:** *Phase 7.3: self-serve signup*
 **Working tree:** clean, all work committed.
 
 ---
@@ -128,12 +128,14 @@ flow** — `/console/join/[token]` plus `POST /api/platform/invitations/[token]/
 screen** — `/console/settings/team`. **Phase 7.1 (team management) is complete.**
 **7.2 landed billing** — `GET/PUT /api/platform/billing/*` plus
 `/console/settings/billing`, 19 contract tests, proving "change entitlements and
-watch access follow". The next slice is **7.3, self-serve signup**; see *Next
-recommended task* below.
+watch access follow". **7.3 landed self-serve signup** — `POST /api/platform/signup`
+plus `/console/signup`, 10 contract tests, closing R-08 (the reserved-slug list
+enforced at creation). **Phase 7 (the SaaS layer) is complete.** The next phase
+is **8, hardening**; see *Next recommended task* below.
 
-**Exact stopping point:** committed and verified. Nothing is half-built: 7.2 is a
-complete, tested slice. Dropping `product.erp` 403s every ERP route on the next
-request.
+**Exact stopping point:** committed and verified. Nothing is half-built: 7.3 is a
+complete, tested slice. A signed-out visitor can create a tenant, become its
+owner, and land in their console.
 
 ### The assignment rule (6.6a)
 
@@ -308,27 +310,48 @@ stream and inbound carrier webhooks).
 | 7.1b | Accepting an invitation — the join page, the accept API, `withInvitationToken` RLS, 47/47 |
 | 7.1c | The team screen — `/console/settings/team`, D-06.2 control visibility, **Phase 7.1 complete**, 56/56 |
 | 7.2 | Billing — entitlement management; drop `product.erp` and ERP 403s on the next request, 19/19 |
+| 7.3 | Self-serve signup — `POST /api/platform/signup`, R-08 reserved-slug at creation, **Phase 7 complete**, 10/10 |
 
 ### Remaining roadmap
 
 | Phase | Scope |
 |---|---|
-| 7 | SaaS layer — team management (**complete**), billing (**7.2 complete**), self-serve signup. See NEXT_STEPS §7. |
+| 7 | SaaS layer — team management (**complete**), billing (**complete**), self-serve signup (**complete**). See NEXT_STEPS §7. |
 | 8 | Hardening — adversarial isolation review, load testing, backup/restore, runbooks |
 
-### Next recommended task — Phase 7.3, self-serve signup
+### Next recommended task — Phase 8, hardening
 
-**Phase 7.1 (team management) is complete** (7.1a API, 7.1b acceptance, 7.1c
-screen) and **7.2 (billing) is complete.** A company can now invite people,
-accept invitations, manage roles, and change its own entitlements — watching
-access follow on the next request.
+**Phase 7 (the SaaS layer) is complete.** Four slices: 7.1 team management
+(API + acceptance + screen, 56 tests), 7.2 billing (entitlement management,
+19 tests), 7.3 self-serve signup (10 tests), plus a demo tenant. A customer can
+now sign up, invite a team, manage roles, change entitlements, and accept
+invitations — all on the platform, all contract-tested.
 
-**The next slice is 7.3: self-serve signup.** Create a tenant, its OWNER, and a
-TRIALING subscription in one transaction. The slug is the hard part and is
-already recorded as **R-08**: `Tenant.slug` is a public-namespace unique that
-appears in every storefront URL, so it needs a reserved-word list (`api`,
-`console`, `login`, `admin`, `_next`, …) or a customer can claim a path the
-platform routes on. See NEXT_STEPS §7.3.
+**Phase 8 is hardening** — adversarial isolation review, load testing,
+backup/restore, runbooks. Two platform guarantees from the ERP still need an
+owner (NEXT_STEPS §4): cross-origin state-change refusal (`CSRF_ORIGIN`) and
+rate limiting (login throttling + an API backstop). Both were real and tested in
+the ERP and left the product suite in 5.1 because neither belongs in one.
+
+### Phase 7.3 — landed (GLM-5.2)
+
+Self-serve signup — `POST /api/platform/signup` + `/console/signup`. The first
+PUBLIC, unauthenticated write path. `test/platform/signup.test.ts` is new at
+10/10. A signed-out visitor creates a tenant, becomes its OWNER, and lands in
+their console with a TRIALING subscription (both products).
+
+**R-08 closed:** the reserved-slug list (`isReservedSlug`) already guarded the
+storefront read path; this slice enforces it at CREATION — the half the schema
+comment promised but no route implemented. A reserved slug (`api`, `console`,
+`login`, …) is refused with `RESERVED_SLUG` before `tenant.create`.
+
+**Four writes, two binding contexts:** Tenant + User via `asPlatform()` (no
+RLS), Membership + Subscription via `withTenant(newTenantId)` (RLS-scoped, one
+transaction). The new owner lands signed in (session cookie set, like login).
+
+**Verified live:** signup 10/10 · team 56/56 · billing 19/19 · access 63/63 ·
+console-shell 13/13 · i18n 18/18. Build clean. End-to-end: POST → 201, cookie
+works, storefront live.
 
 ### Phase 7.2 — landed (GLM-5.2)
 
@@ -961,13 +984,13 @@ fail without it, so check the counts, not just the exit code.
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
 | `apps/website-builder` — ERP contract | 435 | all pass against a running server |
-| `apps/website-builder` — platform contract | 75 | team (7.1a/b/c) + billing (7.2), against a running server |
+| `apps/website-builder` — platform contract | 85 | team (7.1) + billing (7.2) + signup (7.3), against a running server |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1055** | green per suite |
+| **Total** | **1065** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

@@ -477,5 +477,23 @@
       "PAST_DUE": "En retard",
       "CANCELED": "Annulé"
     }
+  },
+  "signup": {
+    "title": "Créez votre espace",
+    "subtitle": "Démarrez votre essai gratuit. Aucune carte requise.",
+    "companyName": "Nom de l'entreprise",
+    "slug": "Adresse web",
+    "slugHint": "Votre boutique sera à landingos.app/{slug}",
+    "name": "Votre nom",
+    "email": "Email",
+    "password": "Mot de passe",
+    "submit": "Créer l'espace",
+    "haveAccount": "Vous avez déjà un compte ?",
+    "signIn": "Se connecter",
+    "reservedSlug": "Cette adresse web est réservée. Choisissez-en une autre.",
+    "slugTaken": "Cette adresse web est déjà prise.",
+    "emailTaken": "Un compte avec cet email existe déjà.",
+    "invalidSlug": "L'adresse web doit être en lettres minuscules, chiffres et tirets.",
+    "created": "Bienvenue ! Votre espace est prêt."
   }
 }

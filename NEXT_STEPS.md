@@ -1,9 +1,8 @@
 # Next Steps
 
-**Phase 5 and Phase 6 are complete. Phase 7 has started — see §7.**
-**7.1 (team management) and 7.2 (billing) are COMPLETE.**
-**THE NEXT TASK IS 7.3: self-serve signup. See §7.3.**
-Immediate tasks to continue from the Phase 7.2 commit. Full context is in
+**Phase 5 and Phase 6 are complete. Phase 7 (the SaaS layer) is COMPLETE.**
+**THE NEXT PHASE IS 8: hardening. See §8 (below, to be written).**
+Immediate tasks to continue from the Phase 7.3 commit. Full context is in
 `PROJECT_STATE.md` — read its "Read this first" section before starting.
 
 ---
@@ -318,8 +317,9 @@ Weigh that before the last working copy goes behind a `git show`.
 production readiness are done — see §2c.
 
 **7.1a is done** (the team API), **7.1b is done** (invitation acceptance),
-**7.1c is done** (the team screen) and **7.2 is done** (billing).
-**7.3 is the next task** — self-serve signup, below.
+**7.1c is done** (the team screen), **7.2 is done** (billing) and **7.3 is done**
+(self-serve signup). **Phase 7 (the SaaS layer) is complete.**
+**Phase 8 (hardening) is next** — see §4 for the two guarantees still owed.
 
 Phase 7 is what turns the platform from *a thing two seeded tenants use* into a
 product somebody can buy. Three pieces, in this order, and the order is the
@@ -552,6 +552,35 @@ webhook is a second slice that writes the same row.
 
 **Verified live:** billing 19/19 · team 56/56 · access 63/63 · console-shell
 13/13 · i18n 18/18. Build clean. Full reasoning in CHANGELOG §7.2.
+
+### 7.3 — DONE (GLM-5.2)
+
+**Implemented and verified.** `test/platform/signup.test.ts` is new at **10/10**.
+`POST /api/platform/signup` + `/console/signup`. **Phase 7 (the SaaS layer) is
+complete.**
+
+**R-08 closed:** the reserved-slug list (`isReservedSlug` in `resolve-tenant.ts`)
+already guarded the storefront read path; this slice enforces it at CREATION.
+Signup imports `isReservedSlug` and refuses with `RESERVED_SLUG` before
+`tenant.create`.
+
+**Four writes, two binding contexts:** Tenant + User via `asPlatform()` (no RLS),
+Membership + Subscription via `withTenant(newTenantId)` (RLS-scoped, one
+transaction). The new owner lands signed in — the route sets a session cookie
+with `activeTenantId` = the new tenant, like login. Both products on trial.
+
+**Refusal vocabulary:** reserved slug → `RESERVED_SLUG`; bad shape →
+`INVALID_INPUT`; slug taken → `SLUG_TAKEN` (409, not 404 — this is a public
+create); email taken → `EMAIL_TAKEN`; weak password → `INVALID_INPUT`. The
+404-not-403 rule does not apply: telling a signup a slug is taken is necessary.
+
+**Verified live:** signup 10/10 · team 56/56 · billing 19/19 · access 63/63 ·
+console-shell 13/13 · i18n 18/18. Build clean. End-to-end: POST → 201, cookie
+works (team = 1), storefront at `/{slug}` → 200. Full reasoning in CHANGELOG §7.3.
+
+---
+
+### 7.3 (measurement) — the locked design, preserved for the audit
 
 ### 7.3 — Self-serve signup (measured by GLM-5.2, ready to implement)
 

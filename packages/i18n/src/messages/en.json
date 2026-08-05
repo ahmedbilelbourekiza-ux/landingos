@@ -477,5 +477,23 @@
       "PAST_DUE": "Past due",
       "CANCELED": "Canceled"
     }
+  },
+  "signup": {
+    "title": "Create your workspace",
+    "subtitle": "Start your free trial. No card required.",
+    "companyName": "Company name",
+    "slug": "Web address",
+    "slugHint": "Your store will be at landingos.app/{slug}",
+    "name": "Your name",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Create workspace",
+    "haveAccount": "Already have an account?",
+    "signIn": "Sign in",
+    "reservedSlug": "That web address is reserved. Choose another.",
+    "slugTaken": "That web address is already taken.",
+    "emailTaken": "An account with that email already exists.",
+    "invalidSlug": "The web address must be lowercase letters, digits and hyphens.",
+    "created": "Welcome! Your workspace is ready."
   }
 }

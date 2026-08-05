@@ -12,6 +12,93 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 7 — The SaaS layer
 
+### 7.3 Self-serve signup — the first public write path
+
+[GLM-5.2]
+Commit: `9a17d1d570f38176b0c456e753dea6e1bb9cf612`
+Authoring model: GLM-5.2
+Date: 6 August 2026
+Summary: `POST /api/platform/signup` + `/console/signup`. A signed-out visitor can
+now create a tenant, become its OWNER, and land in their console — signed in,
+with a TRIALING subscription holding both products. `test/platform/signup.test.ts`
+is new at **10/10**. **Phase 7.3 is complete; Phase 7 (the SaaS layer) is
+complete.**
+
+#### R-08 closed — the reserved-word list is enforced at creation
+
+`Tenant.slug` is a public-namespace unique that appears in every storefront URL,
+so a customer claiming `api` or `console` would shadow the platform for everyone.
+A reserved-word list (`RESERVED_TENANT_SLUGS` + `isReservedSlug`) already guarded
+the storefront READ path; this slice enforces it at CREATION — the half the
+schema comment promised but no route implemented, because no creation route
+existed. Signup imports `isReservedSlug` and refuses with `RESERVED_SLUG` before
+`tenant.create`. A test exercises `api`, `console`, `login`, `signup`, `uploads`.
+
+#### Four writes, two binding contexts
+
+The four rows live in two RLS worlds: `Tenant` and `User` are platform-side (no
+tenantId, no policy), so they are written through `asPlatform()`; `Membership`
+and `Subscription` are tenant-scoped (RLS), so they are written through
+`withTenant(newTenantId)` inside one transaction. The second half is atomic with
+respect to itself; if it fails the tenant+user are orphaned (acceptable for a
+first slice, rare in practice — the only failure is a concurrent slug collision
+the unique constraint catches at the first `tenant.create`).
+
+#### The refusal vocabulary
+
+| Condition | Status | Code |
+|---|---|---|
+| reserved slug (R-08) | 422 | `RESERVED_SLUG` |
+| not kebab-case / wrong length | 422 | `INVALID_INPUT` |
+| slug already taken | 409 | `SLUG_TAKEN` |
+| email already registered | 409 | `EMAIL_TAKEN` |
+| weak/missing password or field | 422 | `INVALID_INPUT` |
+
+The 404-not-403 rule does NOT apply here: this is a public CREATE, and telling a
+signup that a slug or email is taken is necessary, not an oracle. One account per
+email — the consultant case is one person in many companies via Membership, not
+many accounts.
+
+#### The new owner lands signed in
+
+The route creates a session with `activeTenantId` = the new tenant and sets the
+cookie — the same shape login uses. The caller's next request opens the console
+straight into the company they just created. A signed-in visitor is not blocked:
+they can sign up a second company (the new session replaces the old cookie).
+
+#### Design decision: both products on trial
+
+A fresh tenant starts with BOTH products on trial
+(`['product.website-builder', 'product.erp']`). A trial that shows an empty
+console teaches nothing, and the billing screen (7.2) lets the owner turn them
+off. `Subscription.status` is left as the schema default `TRIALING` — NOT set to
+`ACTIVE` the way the dev seed does.
+
+#### Files
+`apps/website-builder/src/lib/platform/signup.ts` (new),
+`src/app/api/platform/signup/route.ts` (new),
+`src/app/console/signup/page.tsx` (new),
+`src/components/console/signup-form.tsx` (new),
+`test/platform/signup.test.ts` (new),
+`packages/i18n/src/messages/{en,fr,ar}.json` (the `signup` category).
+
+#### Migration
+None. `Tenant`, `User`, `Membership`, `Subscription` all existed; this slice is
+the first route that creates them together.
+
+#### Risk
+**The signup endpoint is reachable by anyone, signed-out.** That is the design.
+The slug is validated (kebab-case, reserved-checked, unique), the email is
+unique, and the password has a floor. A deployment that exposes this endpoint
+accepts that anybody can create a tenant — which is what "self-serve signup"
+means.
+
+**Verified live:** signup 10/10 · team 56/56 · billing 19/19 · access 63/63 ·
+console-shell 13/13 · i18n 18/18. Build clean. End-to-end: POST signup → 201,
+session cookie works (team members = 1), storefront at `/{slug}` → 200.
+
+---
+
 ### Demo tenant — a fully working tenant for manual evaluation
 
 [GLM-5.2]
