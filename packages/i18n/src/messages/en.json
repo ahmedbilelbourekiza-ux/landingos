@@ -455,5 +455,27 @@
       "revoked": "Revoked",
       "expired": "Expired"
     }
+  },
+  "billing": {
+    "title": "Billing",
+    "description": "The products this company has access to.",
+    "sectionTitle": "Billing",
+    "sectionDescription": "Choose which products this company can use.",
+    "plan": "Plan",
+    "status": "Status",
+    "entitlements": "Products",
+    "product": "Product",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "enable": "Enable",
+    "disable": "Disable",
+    "save": "Save",
+    "saving": "Saving…",
+    "statuses": {
+      "TRIALING": "Trial",
+      "ACTIVE": "Active",
+      "PAST_DUE": "Past due",
+      "CANCELED": "Canceled"
+    }
   }
 }

@@ -455,5 +455,27 @@
       "revoked": "Révoquée",
       "expired": "Expirée"
     }
+  },
+  "billing": {
+    "title": "Facturation",
+    "description": "Les produits auxquels cette entreprise a accès.",
+    "sectionTitle": "Facturation",
+    "sectionDescription": "Choisissez les produits que cette entreprise peut utiliser.",
+    "plan": "Plan",
+    "status": "Statut",
+    "entitlements": "Produits",
+    "product": "Produit",
+    "enabled": "Activé",
+    "disabled": "Désactivé",
+    "enable": "Activer",
+    "disable": "Désactiver",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "statuses": {
+      "TRIALING": "Essai",
+      "ACTIVE": "Actif",
+      "PAST_DUE": "En retard",
+      "CANCELED": "Annulé"
+    }
   }
 }

@@ -1,9 +1,9 @@
 # Next Steps
 
 **Phase 5 and Phase 6 are complete. Phase 7 has started — see §7.**
-**7.1 (team management: API + acceptance + screen) is COMPLETE.**
-**THE NEXT TASK IS 7.2: billing. See §7.2.**
-Immediate tasks to continue from the Phase 7.1c commit. Full context is in
+**7.1 (team management) and 7.2 (billing) are COMPLETE.**
+**THE NEXT TASK IS 7.3: self-serve signup. See §7.3.**
+Immediate tasks to continue from the Phase 7.2 commit. Full context is in
 `PROJECT_STATE.md` — read its "Read this first" section before starting.
 
 ---
@@ -317,9 +317,9 @@ Weigh that before the last working copy goes behind a `git show`.
 `apps/erp` is kept as the reference implementation until Phase 7, Phase 8 and
 production readiness are done — see §2c.
 
-**7.1a is done** (the team API), **7.1b is done** (invitation acceptance) and
-**7.1c is done** (the team screen). **Phase 7.1 is complete.**
-**7.2 is the next task** — billing, below.
+**7.1a is done** (the team API), **7.1b is done** (invitation acceptance),
+**7.1c is done** (the team screen) and **7.2 is done** (billing).
+**7.3 is the next task** — self-serve signup, below.
 
 Phase 7 is what turns the platform from *a thing two seeded tenants use* into a
 product somebody can buy. Three pieces, in this order, and the order is the
@@ -535,17 +535,23 @@ gated on `invitation.path` which the list never carries — fixed to key off
 13/13 · i18n 18/18 · auth 36/36 · product-registry 36/36 · db 29/29. Build clean.
 **Phase 7.1 (team management) is complete.**
 
-### 7.2 — Billing
+### 7.2 — DONE (GLM-5.2)
 
-`Subscription` holds `status` and an `entitlements` string set, and every gate in
-the platform already reads it — `can()`, the worker's tick, `hasProduct`. So the
-domain is done and what is missing is the *management*: a screen showing what a
-tenant has, and a way to change it.
+**Implemented and verified.** `test/platform/billing.test.ts` is new at **19/19**
+(14 API + 5 screen). `GET /api/platform/billing` and `PUT /api/platform/billing/
+entitlements`, plus `/console/settings/billing`.
 
-Deliberately NOT a payment integration in the first slice. The valuable half is
-**changing entitlements and watching access follow**, which is already testable:
-drop `product.erp` and every ERP route 403s, the scheduled work skips the tenant,
-and the nav item disappears. A Stripe webhook is a second slice on top.
+**The load-bearing test passes:** drop `product.erp` and every ERP route 403s on
+the very next request — same session, no re-login — because `resolveSession`
+re-reads `Subscription` every call. Add it back and access returns just as fast.
+
+**Unknown entitlements are refused** (validated against the registry's catalog),
+not silently stored. **SENSITIVE and not entitlement-gated** — a lapsed
+subscription still manages its own billing. **No payment provider** — a Stripe
+webhook is a second slice that writes the same row.
+
+**Verified live:** billing 19/19 · team 56/56 · access 63/63 · console-shell
+13/13 · i18n 18/18. Build clean. Full reasoning in CHANGELOG §7.2.
 
 ### 7.3 — Self-serve signup
 

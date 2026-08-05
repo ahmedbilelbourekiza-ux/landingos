@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 4 August 2026
-**Branch:** `master` · **Last commit:** *Phase 7.1c: the team screen*
+**Branch:** `master` · **Last commit:** *Phase 7.2: billing*
 **Working tree:** clean, all work committed.
 
 ---
@@ -125,14 +125,15 @@ retiring `apps/erp`*.
 `/api/platform/team/*`, 39 contract tests, purely additive. **7.1b landed the join
 flow** — `/console/join/[token]` plus `POST /api/platform/invitations/[token]/accept`,
 47 contract tests, and the `withInvitationToken` RLS binding. **7.1c landed the team
-screen** — `/console/settings/team`, gated on `platform:team:read`, write controls
-that call the routes directly (D-06.1) and render only where the API accepts them
-(D-06.2). **Phase 7.1 (team management) is complete.** The next slice is **7.2,
-billing**; see *Next recommended task* below.
+screen** — `/console/settings/team`. **Phase 7.1 (team management) is complete.**
+**7.2 landed billing** — `GET/PUT /api/platform/billing/*` plus
+`/console/settings/billing`, 19 contract tests, proving "change entitlements and
+watch access follow". The next slice is **7.3, self-serve signup**; see *Next
+recommended task* below.
 
-**Exact stopping point:** committed and verified. Nothing is half-built: 7.1c is a
-complete, tested slice. The team screen renders for ADMIN, hides from MEMBER,
-and offers no control the API would refuse.
+**Exact stopping point:** committed and verified. Nothing is half-built: 7.2 is a
+complete, tested slice. Dropping `product.erp` 403s every ERP route on the next
+request.
 
 ### The assignment rule (6.6a)
 
@@ -306,30 +307,49 @@ stream and inbound carrier webhooks).
 | 7.1a | The team API — invitations, members, roles, suspension, removal, 39/39 |
 | 7.1b | Accepting an invitation — the join page, the accept API, `withInvitationToken` RLS, 47/47 |
 | 7.1c | The team screen — `/console/settings/team`, D-06.2 control visibility, **Phase 7.1 complete**, 56/56 |
+| 7.2 | Billing — entitlement management; drop `product.erp` and ERP 403s on the next request, 19/19 |
 
 ### Remaining roadmap
 
 | Phase | Scope |
 |---|---|
-| 7 | SaaS layer — team management (**complete**), billing, self-serve signup. See NEXT_STEPS §7. |
+| 7 | SaaS layer — team management (**complete**), billing (**7.2 complete**), self-serve signup. See NEXT_STEPS §7. |
 | 8 | Hardening — adversarial isolation review, load testing, backup/restore, runbooks |
 
-### Next recommended task — Phase 7.2, billing
+### Next recommended task — Phase 7.3, self-serve signup
 
-**Phase 7.1 is complete.** Three slices: 7.1a the team API (39 tests), 7.1b the
-join flow (47 tests, `withInvitationToken` RLS), 7.1c the team screen (56 tests,
-D-06.2 control visibility). A company can now invite, accept, list, change roles,
-suspend and remove — all on the platform, all contract-tested, no surface that
-`apps/erp` owns.
+**Phase 7.1 (team management) is complete** (7.1a API, 7.1b acceptance, 7.1c
+screen) and **7.2 (billing) is complete.** A company can now invite people,
+accept invitations, manage roles, and change its own entitlements — watching
+access follow on the next request.
 
-**The next slice is 7.2: billing.** `Subscription` holds `status` and an
-`entitlements` string set, and every gate in the platform already reads it —
-`can()`, the worker's tick, `hasProduct`. The domain is done; what is missing is
-the *management*: a screen showing what a tenant has, and a way to change it.
-Deliberately NOT a payment integration in the first slice — the valuable half is
-**changing entitlements and watching access follow**, which is already testable
-(drop `product.erp` and every ERP route 403s, the scheduled work skips the
-tenant, and the nav item disappears). See NEXT_STEPS §7.2.
+**The next slice is 7.3: self-serve signup.** Create a tenant, its OWNER, and a
+TRIALING subscription in one transaction. The slug is the hard part and is
+already recorded as **R-08**: `Tenant.slug` is a public-namespace unique that
+appears in every storefront URL, so it needs a reserved-word list (`api`,
+`console`, `login`, `admin`, `_next`, …) or a customer can claim a path the
+platform routes on. See NEXT_STEPS §7.3.
+
+### Phase 7.2 — landed (GLM-5.2)
+
+Billing management — `GET /api/platform/billing`, `PUT /api/platform/billing/
+entitlements`, and `/console/settings/billing`. `test/platform/billing.test.ts`
+is new at 19/19. The domain was already done (`Subscription` + every gate reading
+it fresh); this is the management half.
+
+**The load-bearing test:** drop `product.erp` and every ERP route 403s on the
+very next request — same session, no re-login, because `resolveSession` re-reads
+the subscription every call. Add it back and access returns just as fast. This
+is the whole value of the slice, verified live.
+
+**Unknown entitlements are refused** (validated against the registry), not
+silently stored. **SENSITIVE and not entitlement-gated** — a company whose
+subscription lapsed still manages its own billing (otherwise a bounced invoice
+removes the ability to fix it). **No payment provider** — a Stripe webhook is a
+second slice that writes the same row.
+
+**Verified live:** billing 19/19 · team 56/56 · access 63/63 · console-shell
+13/13 · i18n 18/18. Build clean.
 
 ### Phase 7.1c — landed (GLM-5.2)
 
@@ -940,13 +960,13 @@ fail without it, so check the counts, not just the exit code.
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
 | `apps/website-builder` — ERP contract | 435 | all pass against a running server |
-| `apps/website-builder` — platform contract | 56 | team management + invitation acceptance + team screen (7.1a, 7.1b, 7.1c), against a running server |
+| `apps/website-builder` — platform contract | 75 | team (7.1a/b/c) + billing (7.2), against a running server |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1036** | green per suite |
+| **Total** | **1055** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

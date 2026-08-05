@@ -57,6 +57,14 @@ export default async function SettingsIndex() {
       // decide who works here, so the link is absent for them by itself.
       visible: !!auth && can(auth, "platform:team:read"),
     },
+    {
+      href: "/console/settings/billing",
+      title: "Billing",
+      description: "Choose which products this company can use.",
+      // `platform:billing:read` is SENSITIVE — a MANAGER does not decide what
+      // the company pays for.
+      visible: !!auth && can(auth, "platform:billing:read"),
+    },
   ].filter((s) => s.visible);
 
   return (

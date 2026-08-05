@@ -1,4 +1,5 @@
 import type { TeamStrings } from "@/components/console/platform/team-screen";
+import type { BillingStrings } from "@/components/console/platform/billing-screen";
 
 /* =============================================================================
  * The platform's write-control labels, resolved once per screen.
@@ -31,5 +32,21 @@ export function teamStrings(t: (key: string) => string): TeamStrings {
     copyLink: t("team.copyLink"),
     linkCopied: t("team.linkCopied"),
     invitationLink: t("team.invitationLink"),
+  };
+}
+
+export function billingStrings(
+  t: (key: string) => string,
+  names: Readonly<Record<string, string>>,
+): BillingStrings {
+  return {
+    saving: t("billing.saving"),
+    save: t("billing.save"),
+    product: t("billing.product"),
+    enabled: t("billing.enabled"),
+    disabled: t("billing.disabled"),
+    enable: t("billing.enable"),
+    disable: t("billing.disable"),
+    names,
   };
 }

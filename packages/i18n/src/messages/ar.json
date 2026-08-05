@@ -455,5 +455,27 @@
       "revoked": "ملغاة",
       "expired": "منتهية"
     }
+  },
+  "billing": {
+    "title": "الفوترة",
+    "description": "المنتجات التي يمكن لهذه الشركة الوصول إليها.",
+    "sectionTitle": "الفوترة",
+    "sectionDescription": "اختيار المنتجات التي يمكن لهذه الشركة استخدامها.",
+    "plan": "الخطة",
+    "status": "الحالة",
+    "entitlements": "المنتجات",
+    "product": "المنتج",
+    "enabled": "مُفعَّل",
+    "disabled": "غير مُفعَّل",
+    "enable": "تفعيل",
+    "disable": "إيقاف",
+    "save": "حفظ",
+    "saving": "جارٍ الحفظ…",
+    "statuses": {
+      "TRIALING": "تجريبي",
+      "ACTIVE": "نشط",
+      "PAST_DUE": "متأخر",
+      "CANCELED": "ملغى"
+    }
   }
 }

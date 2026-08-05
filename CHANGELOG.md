@@ -12,6 +12,97 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 7 — The SaaS layer
 
+### 7.2 Billing — change entitlements and watch access follow
+
+[GLM-5.2]
+Commit: `96f10e956b87e734f37c9c6864cce0e78acc4295`
+Authoring model: GLM-5.2
+Date: 4 August 2026
+Summary: A billing management surface — `GET /api/platform/billing` and `PUT
+/api/platform/billing/entitlements`, plus `/console/settings/billing`. `test/
+platform/billing.test.ts` is new at **19/19** (14 API + 5 screen). Deliberately
+NOT a payment integration; the first slice is entitlement management only, and
+the load-bearing test proves the property the slice exists for: **drop
+`product.erp` and every ERP route 403s on the very next request.**
+
+#### The domain was already done — this is the management half
+
+`Subscription` holds `status` and `entitlements`, and every gate in the platform
+already reads them fresh on every call: `can()` (via `resolveSession`, which
+re-reads the subscription on every HTTP request), the worker's tick (`hasProduct`
+inside `withTenant`), `assign` (`entitlementsOf`), and `notifications`
+(`recipients`). So a write to `Subscription.entitlements` takes effect
+immediately — no cache to bust, no session to re-issue, no event bus. This slice
+is the UI over that row.
+
+#### The load-bearing test
+
+`drop product.erp and every ERP route 403s immediately`: an agent who could list
+orders a moment ago is refused the moment the entitlement leaves the
+subscription. The SAME session, on the very next request, is refused — the
+entitlement gate in `can()` reads the fresh subscription, `productOf("erp:…")`
+resolves to a product the tenant no longer holds, and the route 403s. And the
+converse: add it back and access returns just as fast. This is the whole value
+of the slice, verified live.
+
+#### Unknown entitlements are refused, not silently stored
+
+The set is validated against the registry's known product entitlements
+(`productRegistry.list().map(p => p.entitlement)`). A typo or an invented key is
+refused with `INVALID_INPUT`, because silently storing a key that nothing reads
+hides the mistake. `seats.max:10` (from the schema's example comment) is refused
+too — it is not a product entitlement the registry knows.
+
+#### SENSITIVE, and not entitlement-gated
+
+`platform:billing:*` is on the SENSITIVE list (no role glob reaches it; OWNER
+and ADMIN hold it through `*`, a MANAGER does not decide what the company pays
+for). Like the team surface it is NOT entitlement-gated (`productOf("platform:…")`
+is null) — a company whose subscription lapsed still manages its own billing,
+otherwise a bounced invoice removes the ability to fix the bounced invoice. A
+test deletes the subscription row entirely and the read still works, reporting
+empty entitlements.
+
+#### The screen
+
+`/console/settings/billing`, gated on `platform:billing:read` (a MEMBER gets
+404). Shows the subscription status and a toggle per product; the toggles call
+`PUT /api/platform/billing/entitlements` (D-06.1). A reader (read granted, no
+write) sees the catalog with no toggles (D-06.2). The settings index links to it
+only for someone who can read it.
+
+#### Files
+`apps/website-builder/src/lib/platform/billing.ts` (new),
+`src/app/api/platform/billing/route.ts` (new),
+`src/app/api/platform/billing/entitlements/route.ts` (new),
+`src/app/console/settings/billing/page.tsx` (new),
+`src/components/console/platform/billing-screen.tsx` (new),
+`src/app/console/settings/page.tsx` (the billing section),
+`src/lib/console/platform-strings.ts` (`billingStrings`),
+`test/platform/billing.test.ts` (new),
+`packages/i18n/src/messages/{en,fr,ar}.json` (the `billing` category).
+
+#### Migration
+None. `Subscription` and its fields all existed; this slice writes the row every
+gate already reads.
+
+#### Risk
+**A billing admin can lock the company out of a product.** Dropping
+`product.erp` takes effect on the next request, including for the admin
+themselves — but `platform:billing:*` is not entitlement-gated, so the billing
+screen itself stays reachable and the change is reversible. That is the design:
+the ability to turn a product off must not depend on the product being on.
+
+**No payment provider.** This slice changes entitlements by hand. A Stripe
+webhook is a second slice that writes the SAME row this one does; nothing here
+will need to change when it lands.
+
+**Verified live:** billing 19/19 · team 56/56 · access 63/63 · console-shell
+13/13 · i18n 18/18. Build clean (`✓ Compiled successfully`). One intermediate
+run tripped the documented Neon `P1001` connection flake; green on re-run.
+
+---
+
 ### 7.1c The team screen — Phase 7.1 is complete
 
 [GLM-5.2]
