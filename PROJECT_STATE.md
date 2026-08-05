@@ -901,6 +901,7 @@ npm run push         --workspace @landingos/db      # apply the schema
 npm run rls          --workspace @landingos/db      # apply RLS policies
 npm run seed:reference --workspace @landingos/db    # 58 wilayas, 537 baladias
 npm run seed:dev     --workspace @landingos/db      # 2 tenants, 3 users
+npm run seed:demo    --workspace @landingos/db      # 1 demo tenant, full ERP dataset (see DEMO.md)
 ```
 
 ### Env files (all gitignored)

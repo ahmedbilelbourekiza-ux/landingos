@@ -12,6 +12,49 @@ touched, any **migration**, and any **risk**.
 
 ## Phase 7 — The SaaS layer
 
+### Demo tenant — a fully working tenant for manual evaluation
+
+[GLM-5.2]
+Commit: `55fd590c7008e6d8fea1d6a4cfe1ad89724abb84`
+Authoring model: GLM-5.2
+Date: 5 August 2026
+Summary: `npm run seed:demo --workspace @landingos/db` provisions one tenant
+("demo") with an owner, a manager, two agents, a catalogue, inventory, six
+orders in different states, a carrier with shipments and tracking events, a
+follow-up task, notifications, a P&L record and the ERP automation settings.
+Deterministic and idempotent. See **DEMO.md** for credentials, URLs and how to
+recreate.
+
+The seed writes platform rows (Tenant, User, Membership, Subscription,
+ProductSetting) through `asPlatform()` and ERP domain rows (CatalogProduct,
+StockLot, InventoryMovement, FulfillmentOrder, Client, Carrier, Shipment,
+ShipmentEvent, FollowupTask, Notification, FinancialRecord,
+TenantDeliveryPrice) through `withTenant(tenant.id)` — the same split every
+request uses, because ERP tables are RLS-scoped and the platform is not.
+
+Idempotent by delete-cascade-then-recreate: the script deletes any existing
+`demo` tenant (the cascade wipes every scoped table) and rebuilds it, so
+re-running never produces duplicates and never touches `seed:dev` tenants.
+
+#### Files
+`packages/db/scripts/seed-demo.ts` (new), `packages/db/package.json`
+(`seed:demo` script), `DEMO.md` (new — credentials, URLs, recreate).
+
+#### Migration
+None. No schema change.
+
+#### Risk
+**The demo password is `devpassword123`.** A deployment that runs the demo seed
+on a reachable database has created known-credential accounts. The seed is a
+development tool, like `seed:dev`; it must not run against production.
+
+**Verified live:** seed succeeds and is idempotent (run twice, no duplicates).
+Build clean; server starts on :3000. Storefront `/demo` → 200. Console login →
+200. Signed in as `owner@demo.test`: ERP orders (6), catalogue (4), team (4),
+billing (200) all reachable through the API.
+
+---
+
 ### 7.2 Billing — change entitlements and watch access follow
 
 [GLM-5.2]
