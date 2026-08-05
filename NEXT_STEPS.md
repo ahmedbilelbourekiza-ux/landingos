@@ -553,13 +553,70 @@ webhook is a second slice that writes the same row.
 **Verified live:** billing 19/19 · team 56/56 · access 63/63 · console-shell
 13/13 · i18n 18/18. Build clean. Full reasoning in CHANGELOG §7.2.
 
-### 7.3 — Self-serve signup
+### 7.3 — Self-serve signup (measured by GLM-5.2, ready to implement)
 
 Create a tenant, its OWNER, and a TRIALING subscription in one transaction. The
 slug is the hard part and it is already recorded as **R-08**: `Tenant.slug` is a
 public-namespace unique that appears in every storefront URL, so it needs a
 reserved-word list (`api`, `console`, `login`, `admin`, `_next`, …) or a customer
 can claim a path the platform routes on.
+
+**Measurement (GLM-5.2, commit `fdc9d85`) — no code written, design locked.** This
+slice is the first PUBLIC, UNAUTHENTICATED write path on the platform (every prior
+write is session-gated). It creates four rows across two binding contexts, so it
+is heavier than 7.1/7.2 and was deliberately deferred to a fresh session rather
+than started at the tail of the 7.2 run.
+
+**R-08 is half-done — the create half is what this slice adds.** The reserved-word
+list ALREADY EXISTS and guards the read path: `RESERVED_TENANT_SLUGS` +
+`isReservedSlug(slug)` in `apps/website-builder/src/lib/storefront/resolve-tenant.ts`.
+The storefront resolver refuses a reserved slug (returns null → 404). But
+`isReservedSlug` has **no caller in any creation path** — `grep` returns 3 hits, all
+in that one file. The schema comment on `Tenant.slug` says "additionally checked
+against a reserved-word list at creation"; the "at creation" half is unimplemented
+because no creation route exists yet. **Signup must import `isReservedSlug` and
+refuse before `tenant.create`.**
+
+**The four writes, and which binding each needs:**
+
+| Write | Client | Why |
+|---|---|---|
+| `Tenant.create({ slug, name })` | `asPlatform()` | `Tenant` has no `tenantId`, no RLS |
+| `User.create({ email, name, passwordHash })` | `asPlatform()` | `User` is global identity |
+| `Membership.create({ tenantId, userId, role: "OWNER" })` | `withTenant(tenant.id)` | RLS-scoped; the tenant must be bound |
+| `Subscription.create({ tenantId, ... })` | `withTenant(tenant.id)` | RLS-scoped; default `status: TRIALING` (the schema default — do NOT set ACTIVE like the seed does) |
+
+The `Tenant` + `User` creates are platform-side; then `withTenant(newTenantId,
+tx => { membership.create; subscription.create })` does the two RLS-scoped writes
+inside one transaction. If the second half fails, the tenant+user are orphaned —
+acceptable for a first slice (cleanup is Phase 8), but worth a comment.
+
+**The proven shapes (copy from the test harness, not the seed):**
+- `makeTenant` in `test/erp/helpers.ts` — minimal: `asPlatform().tenant.create({ data: { slug, name } })`, then `withTenant(id, tx => tx.subscription.create({ data: { tenantId, status, entitlements } }))`. Leave `status` unset for TRIALING.
+- `makeMember` — `user.create`, then `membership.create` inside `withTenant`, then `createSession(userId, tenantId)`.
+- Slug shape: kebab-case lowercase, matching `/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/` (same as the registry's `ID_PATTERN`). `tenantBySlug` lowercases before lookup, so lowercase on store.
+
+**Refusal vocabulary (each needs a test):**
+- reserved slug → 422 `RESERVED_SLUG` (use `isReservedSlug`)
+- slug not kebab-case / too short / too long → 422 `INVALID_INPUT`
+- slug already taken (`Tenant.slug @unique`) → 409 `SLUG_TAKEN` (the 404-not-403 rule does NOT apply here: this is a public create, and telling a signup that a slug is taken is necessary, not an oracle)
+- email already registered → 409 `EMAIL_TAKEN` (one account per email; the consultant case is one person in many companies via Membership, not many accounts)
+- weak/missing password → 422 `INVALID_INPUT`
+
+**Route shape:** `POST /api/platform/signup` (NOT `/console/signup` — it is public,
+pre-session, like `/console/login`). Returns the join-link shape: create a session,
+set the cookie, redirect to `/console`. Mirror the login page's server-action shape
+OR a plain route handler. The page is `/console/signup` (gated to signed-OUT
+visitors — redirect to `/console` if already signed in, the way login does).
+
+**Entitlements on signup:** a fresh tenant starts with BOTH products on trial
+(`['product.website-builder', 'product.erp']`) OR none — a design decision worth
+recording. The spec says TRIALING subscription; the trial's entitlements are the
+question. Recommend: both products, since a trial that shows an empty console
+teaches nothing, and the billing screen (7.2) lets the owner turn them off.
+
+**Do NOT:** create accounts from a product surface (M-02 — the 501 on
+`POST /api/erp/agents` exists to state it). Signup is a platform action.
 
 ### What Phase 7 must not do
 
