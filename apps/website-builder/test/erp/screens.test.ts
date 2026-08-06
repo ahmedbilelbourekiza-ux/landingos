@@ -719,6 +719,135 @@ describe('the parcel can be booked from the order it belongs to', () => {
 });
 
 /* -----------------------------------------------------------------------------
+ * LP.4 — an order can be taken over the phone
+ *
+ * `POST /api/erp/orders` has been contract-tested since Phase 5.2 and until now
+ * nothing called it from the console, so a manager with a customer on the line
+ * had no way to enter the order. The interesting assertions here are the two
+ * about the CONTROL SURFACE matching the route: every box names a key the route
+ * parses, and the one field the route refuses from an agent has no box for one.
+ * -------------------------------------------------------------------------- */
+
+describe('an order can be created from the console', () => {
+  test('a manager gets the panel, with every field the route parses', async () => {
+    const r = await html('/console/erp/orders', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-order-create"/);
+    assert.match(r.body, /data-testid="order-create-submit"/);
+
+    // Each of these is a key `CreateOrder` reads. A box for anything else would
+    // be a field somebody fills in that quietly does nothing.
+    for (const name of [
+      'client', 'phone', 'wilaya', 'commune', 'city',
+      'product', 'productVariant', 'quantity', 'price',
+      'status', 'carrierCode', 'note',
+    ]) {
+      assert.match(r.body, new RegExp(`id="new-order-${name}"`), `${name} must have a box`);
+    }
+  });
+
+  test('the two fields the route does NOT accept have no box', async () => {
+    const r = await html('/console/erp/orders', acme.manager.token);
+    // `deliveryMethod` is 'COD' everywhere with no vocabulary to build options
+    // from; `source` is set by the system, because an order claiming to have
+    // come from Shopify when it did not corrupts every channel report.
+    assert.ok(!/id="new-order-deliveryMethod"/.test(r.body));
+    assert.ok(!/id="new-order-source"/.test(r.body));
+  });
+
+  test('assignment is offered to a manager and withheld from an agent', async () => {
+    // D-06.2, and the route is the reason: `agentUserId` from somebody who does
+    // not see the whole book answers 403 FORBIDDEN_FIELD, so a control for it
+    // would be one the API refuses.
+    const asManager = await html('/console/erp/orders', acme.manager.token);
+    assert.match(asManager.body, /id="new-order-agentUserId"/);
+
+    const asAgent = await html('/console/erp/orders', acme.agent.token);
+    assert.ok(!/id="new-order-agentUserId"/.test(asAgent.body));
+    // But the panel itself is there: the route accepts an order from an agent,
+    // and withholding a control the API accepts is the other half of D-06.2.
+    assert.match(asAgent.body, /data-testid="erp-order-create"/);
+  });
+
+  test('the refusal the panel prevents is still enforced by the route', async () => {
+    // The disabled button is a courtesy. The rule lives on the server, and a
+    // test that only checked the button would pass against a route that had
+    // stopped enforcing it.
+    const r = await acme.manager.api('POST', '/api/erp/orders', { product: 'No contact' });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'INVALID_INPUT');
+  });
+
+  test('an agent naming an assignee is refused, loudly', async () => {
+    // Refused rather than dropped: silently ignoring it would let an agent
+    // believe they had assigned work that nobody was given.
+    const r = await acme.agent.api('POST', '/api/erp/orders', {
+      client: 'Mine now', phone: phone(), agentUserId: acme.other.userId,
+    });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.error.code, 'FORBIDDEN_FIELD');
+  });
+
+  test('a reader gets no panel at all', async () => {
+    // `erp:orders:write` is what the route checks and what decides the panel.
+    const reader = await makeMember(acme.tenantId, { role: 'VIEWER' });
+    const r = await html('/console/erp/orders', reader.token);
+    if (r.status === 200) {
+      assert.ok(!/data-testid="erp-order-create"/.test(r.body));
+    }
+    assert.equal(
+      (await reader.api('POST', '/api/erp/orders', { client: 'Nope' })).status, 403,
+      'and the route refuses them too',
+    );
+  });
+
+  test('the carrier list offers the tenant’s own codes, not free text', async () => {
+    // `createShipment` looks the code up and falls back to the DEFAULT when it
+    // matches nothing, so a typed code books the wrong carrier and says so
+    // nowhere. The options are the tenant's active carriers.
+    const code = `oc${uid()}`;
+    await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Offered Carrier', code, adapter: 'mock',
+    });
+
+    const r = await html('/console/erp/orders', acme.manager.token);
+    assert.match(r.body, /id="new-order-carrierCode"/);
+    assert.ok(r.body.includes(`value="${code}"`), 'the tenant’s carrier is an option');
+    assert.ok(!/name="carrierCode"[^>]*type="text"/.test(r.body), 'and it is not a text box');
+  });
+
+  test('another tenant’s carriers are not offered', async () => {
+    const beta = await makeErpTenant('order-create-beta');
+    const theirs = `bt${uid()}`;
+    await beta.manager.api('POST', '/api/erp/carriers', {
+      name: 'Theirs', code: theirs, adapter: 'mock',
+    });
+    const r = await html('/console/erp/orders', acme.manager.token);
+    assert.ok(!r.body.includes(theirs), 'the binding scopes the select like everything else');
+  });
+
+  test('a created order appears in the list, from the database', async () => {
+    // D-06.3 end to end: no optimistic row. The order is on the screen because
+    // it is stored, which is also what proves the panel calls the real route
+    // rather than a second write path.
+    const name = `Phone order ${uid()}`;
+    const created = await acme.manager.api('POST', '/api/erp/orders', {
+      client: name, phone: phone(), product: 'Widget', quantity: '2', price: '3500',
+      wilaya: 'Alger', status: 'pending',
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    assert.equal(created.body.data.source, 'manual', 'the system sets the source');
+    assert.equal(String(created.body.data.price), '3500');
+    assert.equal(created.body.data.quantity, 2);
+
+    const r = await html(
+      `/console/erp/orders?search=${encodeURIComponent(name)}`, acme.manager.token,
+    );
+    assert.ok(r.body.includes(name), 'and it is on the screen');
+  });
+});
+
+/* -----------------------------------------------------------------------------
  * LP.3 — the lists are navigable
  *
  * Every ERP screen was a hard-capped first-N read with no next, no page number

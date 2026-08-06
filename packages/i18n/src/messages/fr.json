@@ -270,7 +270,11 @@
       "day3": "Mer",
       "day4": "Jeu",
       "day5": "Ven",
-      "day6": "Sam"
+      "day6": "Sam",
+      "newOrder": "Nouvelle commande",
+      "createOrder": "Créer la commande",
+      "orderHint": "Pour une commande prise par téléphone. Un nom ou un numéro suffit pour commencer ; le reste peut être complété plus tard.",
+      "defaultCarrier": "Utiliser le transporteur par défaut"
     },
     "settings": {
       "title": "Règles d'automatisation",

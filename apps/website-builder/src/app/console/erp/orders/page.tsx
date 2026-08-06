@@ -13,7 +13,8 @@ import { FilterBar } from "@/components/console/filter-bar";
 import { Pager } from "@/components/console/pager";
 import type { FilterField } from "@/components/console/filter-field";
 import { OrderBulkBar, type BulkStrings } from "@/components/console/erp/order-bulk";
-import { filterStrings, pagerStrings } from "@/lib/console/erp-strings";
+import { OrderCreatePanel } from "@/components/console/erp/order-create";
+import { filterStrings, pagerStrings, orderCreateStrings } from "@/lib/console/erp-strings";
 import { scopedWhere, seesWholeBook } from "@/lib/erp/scope";
 import {
   orderFilters, orderSort, orderFilterFields,
@@ -69,7 +70,7 @@ export default async function ErpOrdersScreen({
   const page = Math.max(1, Number(params.get("page")) || 1);
   const where = scopedWhere(session, orderFilters(params));
 
-  const { orders, total, members } = await withTenant(session.auth!.tenantId, async (db) => {
+  const { orders, total, members, carriers } = await withTenant(session.auth!.tenantId, async (db) => {
     const total = await db.fulfillmentOrder.count({ where });
     const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     const safePage = Math.min(page, pages);
@@ -90,6 +91,15 @@ export default async function ErpOrdersScreen({
           select: { userId: true, user: { select: { name: true, email: true } } },
         })
       : [],
+    // The tenant's own carriers, so the new-order panel offers codes that
+    // resolve. `createShipment` looks the code up and silently falls back to
+    // the default when it matches nothing, which is how a typed code books the
+    // wrong carrier and says so nowhere.
+    carriers: await db.carrier.findMany({
+      where: { active: true },
+      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+      select: { code: true, name: true },
+    }),
     };
   });
 
@@ -99,6 +109,11 @@ export default async function ErpOrdersScreen({
   // what decides whether the bar exists at all — a MEMBER reads the book by
   // role glob and cannot change a row in it.
   const mayWrite = can(session.auth!, "erp:orders:write");
+
+  const statusChoices = ORDER_STATUSES.map((value) => ({
+    value,
+    label: t(resolveStatus("confirmation", value).labelKey),
+  }));
 
   const bulkStrings: BulkStrings = {
     saving: t("common.saving"),
@@ -234,10 +249,7 @@ export default async function ErpOrdersScreen({
      can see. */
   const fields: readonly FilterField[] = orderFilterFields({
     t,
-    statuses: ORDER_STATUSES.map((value) => ({
-      value,
-      label: t(resolveStatus("confirmation", value).labelKey),
-    })),
+    statuses: statusChoices,
     members: managesBook
       ? members.map((m) => ({ value: m.userId, label: m.user.name || m.user.email }))
       : undefined,
@@ -257,6 +269,25 @@ export default async function ErpOrdersScreen({
     <ConsoleShell session={session} productId="erp">
       <h1 className="text-xl font-semibold">{t("erp.orders.title")}</h1>
 
+      {/* `erp:orders:write` is what POST /api/erp/orders checks, so it is what
+          decides whether the panel exists (D-06.2). An agent may take an order
+          too — the route accepts one from them; only naming the assignee is a
+          manager's call, which is why `members` is conditional and the panel is
+          not. */}
+      {mayWrite && (
+        <OrderCreatePanel
+          errors={actionErrors(t)}
+          s={orderCreateStrings(t)}
+          statuses={statusChoices}
+          members={
+            managesBook
+              ? members.map((m) => ({ value: m.userId, label: m.user.name || m.user.email }))
+              : undefined
+          }
+          carriers={carriers.map((c) => ({ value: c.code ?? "", label: c.name ?? c.code ?? "" }))}
+        />
+      )}
+
       <FilterBar
         basePath="/console/erp/orders"
         params={params}
@@ -269,10 +300,7 @@ export default async function ErpOrdersScreen({
         <OrderBulkBar
           errors={actionErrors(t)}
           s={bulkStrings}
-          statuses={ORDER_STATUSES.map((value) => ({
-            value,
-            label: t(resolveStatus("confirmation", value).labelKey),
-          }))}
+          statuses={statusChoices}
           members={members.map((m) => ({
             value: m.userId,
             label: m.user.name || m.user.email,

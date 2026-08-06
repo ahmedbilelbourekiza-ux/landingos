@@ -89,14 +89,14 @@ production blocker in its own right.
 
 ## 1. Scoreboard
 
-**115 features compared** (101 in the first pass, 14 added by the second).
+**117 features compared** (101 in the first pass, 14 added by the second, 2 surfaced while implementing LP.4).
 
 | Class | Count | Share |
 |---|---|---|
-| ✅ IDENTICAL | 52 | 45% |
+| ✅ IDENTICAL | 52 | 44% |
 | 🔵 IMPROVED | 6 | 5% |
-| 🟡 PARTIAL | 18 | 16% |
-| 🔴 MISSING | 39 | 34% |
+| 🟡 PARTIAL | 20 | 17% |
+| 🔴 MISSING | 39 | 33% |
 
 **Verdict: the platform cannot replace the legacy CRM in production today.**
 
@@ -112,7 +112,7 @@ into an operator's working day.
 | **No pagination, anywhere** | Every screen shows the first 50–100 rows and there is no way to reach row 101. Found in the second pass. |
 | **No product editing** | *(Fixed in LP.1.)* |
 | **No export** | Orders reach carriers by Excel file in the legacy system (ZR / Ecom / Ecotrac formats). There is no CSV or XLSX anywhere on the platform. Confirmed orders cannot leave. |
-| **Cannot create an order** | A phone order cannot be entered into the console at all. Found in the second pass. |
+| ~~Cannot create an order~~ | *(Fixed in LP.4.)* |
 | **No notification surface** | The whole M-16 transport exists with no consumer. An operator is never told anything. Found in the second pass. |
 | **No client management** | The registry is a read-only list. No detail view, no correction, no import — although `Client.importedTotalOrders` / `importedSource` / `importedAt` exist in the schema, unused. |
 
@@ -658,7 +658,7 @@ control**; status mappings can be added but never removed.
 
 ---
 
-## 3b. Second-pass findings — the fourteen the route inventory could not see
+## 3b. Second-pass findings — the sixteen the route inventory could not see
 
 Each of these has no missing endpoint behind it, which is why counting routes
 missed all of them.
@@ -678,6 +678,8 @@ missed all of them.
 | **N11** | **Payroll report** | modal from the agents screen | `/api/erp/agents/payroll` exists; **nothing renders it** | 🔴 |
 | **N12** | **Audit-log view** | investigation modal per order | `/api/erp/orders/[id]/audit` exists; the detail screen does not render it | 🔴 |
 | **N13** | **Offline app shell** | service worker precaches the agent shell; network-first with cache fallback, so a dropped 3G connection does not blank the screen | **deliberately none** — see §6.4, where that decision is re-opened | 🔴 |
+| **N15** | **Price breakdown at order entry** | the new-order modal captures unit price, discount and shipping and DERIVES the total (`calcTotal()`), so a manually-entered order carries the same breakdown a storefront order does | `CreateOrder` accepts a flat `price` only. The four breakdown columns exist and are `MANAGER_WRITABLE` — reachable by a `PATCH` immediately after, never at creation | 🟡 |
+| **N16** | **Create/edit authorization agree on a field** | one rule per field | `price` and `carrierCode` are manager-only in `buildPatch` and **ungated in `CreateOrder`** — an agent may set a price on a new order and may not change it a second later. One of the two is wrong; deciding which is a authorization change, not a UI one | 🟡 |
 | **N14** | **Live follow-up countdown** | ticks every 15s in place, and re-sorts the moment a task goes overdue | a formatted due date, static | 🟡 |
 
 **Not present in either system, so not a gap:** global keyboard shortcuts, and

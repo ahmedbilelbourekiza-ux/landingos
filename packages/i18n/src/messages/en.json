@@ -270,7 +270,11 @@
       "day3": "Wed",
       "day4": "Thu",
       "day5": "Fri",
-      "day6": "Sat"
+      "day6": "Sat",
+      "newOrder": "New order",
+      "createOrder": "Create the order",
+      "orderHint": "For an order taken by phone. A name or a number is enough to start; the rest can be filled in later.",
+      "defaultCarrier": "Use the default carrier"
     },
     "settings": {
       "title": "Automation rules",

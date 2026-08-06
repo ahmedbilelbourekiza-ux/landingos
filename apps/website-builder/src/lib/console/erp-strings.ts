@@ -4,6 +4,7 @@ import type { FinanceStrings } from "@/components/console/erp/finance-write";
 import type { AgentStrings } from "@/components/console/erp/agent-write";
 import type { PagerStrings } from "@/components/console/pager";
 import type { FilterStrings } from "@/components/console/filter-bar";
+import type { OrderCreateStrings } from "@/components/console/erp/order-create";
 
 /* =============================================================================
  * The ERP's write-control labels, resolved once per screen.
@@ -149,5 +150,37 @@ export function filterStrings(t: (key: string) => string): FilterStrings {
     apply: t("erp.filters.apply"),
     clear: t("erp.filters.clear"),
     any: t("erp.filters.any"),
+  };
+}
+
+/**
+ * The new-order panel's labels — LP.4.
+ *
+ * Every one of these already existed: an order's fields are named on the list
+ * and on the detail screen, and naming them a third time is how two spellings
+ * of "Commune" end up in the same product.
+ */
+export function orderCreateStrings(t: (key: string) => string): OrderCreateStrings {
+  return {
+    saving: t("common.saving"),
+    cancel: t("common.cancel"),
+    newOrder: t("erp.write.newOrder"),
+    createOrder: t("erp.write.createOrder"),
+    hint: t("erp.write.orderHint"),
+    customer: t("erp.orders.customer"),
+    phone: t("erp.clients.phone"),
+    wilaya: t("erp.orders.wilaya"),
+    commune: t("erp.orders.commune"),
+    city: t("erp.orders.city"),
+    product: t("erp.orders.product"),
+    variant: t("erp.orders.variant"),
+    quantity: t("erp.orders.quantity"),
+    price: t("erp.orders.total"),
+    status: t("erp.orders.status"),
+    agent: t("erp.orders.agent"),
+    unassigned: t("erp.orders.unassigned"),
+    carrier: t("erp.carriers.title"),
+    defaultCarrier: t("erp.write.defaultCarrier"),
+    note: t("erp.order.note"),
   };
 }

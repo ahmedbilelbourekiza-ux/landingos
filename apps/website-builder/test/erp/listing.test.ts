@@ -42,7 +42,7 @@ before(async () => {
   // way in that RLS would not see, and a direct insert would have to name the
   // tenant itself — which is the one thing no test in this suite does.
   for (let i = 1; i <= TOTAL; i++) {
-    await acme.manager.api('POST', '/api/erp/orders', {
+    const created = await acme.manager.api('POST', '/api/erp/orders', {
       client: i % 10 === 0 ? 'Findable Customer' : `Client ${i}`,
       phone: '0555' + String(100000 + i),
       wilaya: i % 2 ? 'Alger' : 'Oran',
@@ -51,6 +51,14 @@ before(async () => {
       agentUserId: i % 3 === 0 ? acme.agent.userId : (i % 3 === 1 ? acme.other.userId : undefined),
       status: i % 4 === 0 ? 'confirmed' : 'pending',
     });
+    // Checked, because 120 unchecked writes is 120 chances to build the wrong
+    // fixture. One transient P1001 during setup used to surface much later as
+    // `total >= 120` failing, which reads as a paging bug and is not one — the
+    // suite's own principle, applied to its scaffolding.
+    assert.equal(
+      created.status, 201,
+      `fixture order ${i} of ${TOTAL} was not created: ${JSON.stringify(created.body)}`,
+    );
   }
 
   // One order in the other tenant, to prove the totals below are not merely

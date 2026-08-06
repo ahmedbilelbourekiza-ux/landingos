@@ -108,31 +108,51 @@ total, not a cursor** — reversing this project's own earlier proposal, because
 cursor cannot answer "page 3 of 27" and the API's `pagination()` helper is
 already `page`/`pageSize`.
 
-### THE NEXT SLICE — LP.4, creating an order from the console
+**LP.4 — an order can be taken over the phone (N6).** `OrderCreatePanel` on
+`/console/erp/orders`, over exactly the vocabulary `CreateOrder` parses.
+`carrierCode` is a select over the tenant's active carriers, because
+`createShipment` falls back to the DEFAULT when a code matches nothing — a typed
+code books the wrong carrier and says so nowhere. `agentUserId` is offered only
+to somebody who sees the whole book; the panel itself is not withheld from an
+agent, because the route accepts an order from one. screens 112 → **121**.
 
-**The smallest remaining production blocker.** `POST /api/erp/orders` is
-contract-tested, validated, wired to `syncClientFromOrder` and to
-`autoAssignOnCreate` — and no control calls it, so a manager taking an order over
-the phone cannot enter it. The legacy CRM opens a modal from the main screen.
+**Two findings recorded rather than fixed** (PROJECT_STATE, and N15/N16 in
+LEGACY_PARITY §3b): the create route takes a flat `price` where the legacy
+captured unit price / discount / shipping and derived the total; and `price` and
+`carrierCode` are manager-only on EDIT and ungated on CREATE, so an agent may set
+a price and then not change it. Both are decisions, not form changes.
 
-- A panel on `/console/erp/orders`, the shape `ProductCreatePanel` already
-  demonstrates: rendered only where `can(session, "erp:orders:write")` (D-06.2),
-  calling the route (D-06.1), no optimistic UI (D-06.3), collapsible via `hidden`
-  rather than unmounted (D-06.4).
-- **Take the field vocabulary from the route's own zod schema**, not from a
-  fresh list. The create route validates a specific set and `buildPatch`
-  normalises the phone; a form with its own idea of the fields is the second
-  vocabulary LP.3 just finished removing elsewhere.
-- **Money is `inputmode="decimal"`, never `type="number"`** — these are `Decimal`
-  columns (M-06).
-- `wilaya`/`commune` are free text on the ERP side today. The platform has
-  `Wilaya`/`Baladia` reference tables the storefront already uses; wiring them
-  here is tempting and is **not** this slice — it changes what the column means
-  and belongs with the client-detail work (LP roadmap Tier 2).
-- Watch the side effects: creating an order can auto-assign an agent and, on a
-  tenant with `autoCreateShipment`, book a parcel. Both already have tests; the
-  new one to write is that the control's success path leaves the list showing the
-  new row (`router.refresh()`), which is what D-06.3 buys.
+### THE NEXT SLICE — LP.5, the real ZR Express adapter
+
+**The last large Tier 1 blocker, and the highest-risk slice in the roadmap.**
+Read `apps/erp/lib/providers/zr.js` end to end first — 479 lines, and the
+territory rule is the part that is not obvious:
+
+- ZR identifies wilaya and commune by its OWN UUIDs, not the standard 1–58
+  Algerian wilaya numbers. Rather than maintain a 1,585-row map, `createShipment`
+  resolves them at booking time via `POST /territories/search`: exactly one
+  wilaya-level territory by name, then a commune-level one whose `parentId` is
+  that wilaya's id.
+- If either step fails it **throws with a readable message** rather than booking
+  a parcel to the wrong address, and the ERP's caller turns that into a
+  `shipment_failed` notification so the order shows the reason. Port that half
+  too — a silent failure here is the defect LP.2 just removed.
+- Auth is `X-Tenant` (the tenant UUID, in `secretKey`) plus `X-Api-Key`
+  (`apiKey`); the base URL is `apiUrl`. Webhooks arrive in a Svix envelope
+  (`svix-id`, `svix-timestamp`, `svix-signature`) as `{ eventType, occurredAt,
+  data }`.
+- The status map is 20 entries, English and French, feeding `mapStatus`.
+
+**The transaction limit is what will bite** (§2b(4)): the carrier call happens
+inside the transaction `withTenant` opened, whose timeout is 15s. `mock` is
+synchronous so this has never mattered; a real HTTP client makes it the normal
+case. **Do the HTTP outside the transaction and ingest inside it** — that shape
+change belongs in this slice, not after it.
+
+Registering the adapter in `ADAPTERS` makes it selectable everywhere at once:
+`listAdapters` drives the carriers dropdown, `isKnownAdapter` drives the
+configuration gate (LP.2), and the "integration unavailable" badge disappears
+from any row already naming `zr`.
 
 ### The order of work (LEGACY_PARITY.md §4)
 
@@ -140,8 +160,8 @@ the phone cannot enter it. The legacy CRM opens a modal from the main screen.
 operator productivity → business value → architectural dependencies → risk.
 
 **Tier 1 — blockers:** product editing **[DONE LP.1]** · adapter refusal
-**[DONE LP.2]** · pagination + filters + search **[DONE LP.3]** ·
-**(4) create an order** · (5) the real ZR adapter · (6) order export.
+**[DONE LP.2]** · pagination + filters + search **[DONE LP.3]** · create an
+order **[DONE LP.4]** · **(5) the real ZR adapter** · (6) order export.
 **Tier 2 — operator productivity:** (7) the notification provider · (8) inline
 row actions + list density · (9) bulk actions completed · (10) client
 detail/edit/export · (11) sound + desktop notification preferences · (12) agent
@@ -197,9 +217,9 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **479/479** across the TWELVE files: access 65 · orders 38 ·
+Expect **488/488** across the TWELVE files: access 65 · orders 38 ·
 validation 29 · listing 30 · catalog 55 · delivery 39 · integrations 29 ·
-order-split 8 · screens 112 · jobs 16 · assign 25 · notifications 33.
+order-split 8 · screens 121 · jobs 16 · assign 25 · notifications 33.
 
 The platform contract suite lives beside it and runs the same way — **56/56**
 (team management 7.1a + invitation acceptance 7.1b + team screen 7.1c):

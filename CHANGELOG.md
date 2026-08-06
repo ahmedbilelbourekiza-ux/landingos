@@ -12,6 +12,104 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.4 An order can be taken over the phone
+
+[Opus 5]
+Date: 6 August 2026
+Summary: `OrderCreatePanel` on `/console/erp/orders`. screens **112 → 121**.
+Restores N6, the last of the small Tier 1 blockers. Two new findings recorded
+rather than silently fixed — see below.
+
+#### What was wrong
+
+`POST /api/erp/orders` has been contract-tested since Phase 5.2. It normalises
+the number, creates the customer record, runs `autoAssignOnCreate` and raises a
+notification — and **nothing called it from the console**. A manager with a
+customer on the line had no way to enter the order. The legacy CRM opens this
+modal from its main screen.
+
+The second-pass review found it only because it stopped counting routes and
+started counting workflows: on a route inventory, "create an order" looked
+complete.
+
+#### The field list is the route's
+
+Every box names a key `CreateOrder` parses; none names a key it ignores, and a
+test asserts both directions. A form with its own idea of the fields is the
+second vocabulary LP.3 spent a slice removing — it goes stale silently, and it
+shows up as a box somebody fills in that quietly does nothing.
+
+**Two fields the route accepts and the panel deliberately does not offer**, each
+stated on the component rather than silently missing:
+
+- `deliveryMethod` — `'COD'` everywhere with no vocabulary to build options
+  from. A free-text box would write values nothing downstream understands. The
+  rule NEXT_STEPS §1 already records.
+- `source` — set by the system to `"manual"`. An order claiming to have arrived
+  from Shopify when it did not corrupts every channel report downstream.
+
+**`carrierCode` is a select over the tenant's active carriers, not a text box.**
+`createShipment` looks the code up and falls back to the DEFAULT carrier when it
+matches nothing — so a typed code books the wrong carrier and says so nowhere.
+Empty means "use the default", which is what the ERP did.
+
+**`agentUserId` is offered only to somebody who sees the whole book** (D-06.2):
+the route answers `403 FORBIDDEN_FIELD` for anybody else, so a control for it
+would be one the API refuses. Absent, not disabled — a disabled select still
+says "you nearly could". The panel itself is NOT withheld from an agent, because
+the route accepts an order from one, and withholding a control the API accepts
+is the other half of the same rule.
+
+#### Two findings this slice surfaced, recorded not fixed
+
+**N15 — the price breakdown is lost at entry.** The legacy modal captures unit
+price, discount and shipping and DERIVES the total, so a manually-entered order
+carries the same breakdown a storefront order does. `CreateOrder` accepts a flat
+`price`. The four columns exist and are `MANAGER_WRITABLE`, so they are
+reachable by a `PATCH` a second later but never at creation. Widening the create
+route means deciding whether it derives the total or trusts it — a real design
+question, and a separate slice.
+
+**N16 — create and edit disagree about who may set a price.** `price` and
+`carrierCode` are `MANAGER_WRITABLE` in `buildPatch` (an agent cannot change
+them) and **ungated in `CreateOrder`** (an agent can set them on a new order).
+One of the two is wrong. The panel follows the ROUTE, per D-06.2 — deciding
+which rule is right is an authorization change and deserves its own review, not
+a quiet edit inside a UI slice.
+
+#### A test fixture repaired
+
+`listing.test.ts` creates 120 orders through the API and never checked that any
+of them succeeded, so one transient `P1001` during setup surfaced much later as
+`total >= 120` failing — which reads as a paging bug and is not one. The fixture
+now asserts each create and names the one that failed. Same principle the suite
+already applies to its assertions, applied to its scaffolding.
+
+#### Files
+`src/components/console/erp/order-create.tsx` (new),
+`src/app/console/erp/orders/page.tsx` (the panel, plus the carrier query and one
+shared `statusChoices` where the status list had been built twice),
+`src/lib/console/erp-strings.ts` (`orderCreateStrings`),
+`test/erp/{screens,listing}.test.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (four keys under `erp.write`).
+
+#### Migration
+None. No route, schema or authorization changed — this slice is a caller for a
+route that already existed.
+
+#### Risk
+**A create surface is reachable by anybody holding `erp:orders:write`**, which
+is what the route has always allowed and what an agent needs to take a phone
+order. The disabled submit mirrors the route's "a name or a number" rule as a
+courtesy; the rule itself is still enforced on the server, and a test drives the
+refusal directly so it cannot rot into a client-side-only check.
+
+**Verified live:** screens 112 → 121/121 · listing 30/30 · orders 38/38 ·
+access 65/65 · catalog 55/55 · delivery 39/39 · validation 29/29 ·
+console-shell 13/13 · i18n 18/18. Build clean.
+
+---
+
 ### LP.3 The lists become navigable — pagination, filters and search
 
 [Opus 5]
