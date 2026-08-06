@@ -149,7 +149,12 @@
       "none": "No carriers yet",
       "inactive": "Inactive",
       "webhookUrl": "Inbound webhook",
-      "webhookHint": "Give this address to the carrier so it can push delivery updates."
+      "webhookHint": "Give this address to the carrier so it can push delivery updates.",
+      "test": "Test",
+      "sync": "Sync now",
+      "logs": "Log",
+      "noLogs": "Nothing has passed between you and this carrier yet.",
+      "lastSync": "Last sync"
     },
     "followUp": {
       "title": "Follow-up",

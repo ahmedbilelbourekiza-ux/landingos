@@ -86,9 +86,11 @@ notification surface, closed with **LP.7**, which is where Tier 2 opened.
 - ~~**`/console/erp/ai` is a live 404**~~ **CLOSED — LP.17.** The screen exists,
   and `test/erp/ai.test.ts` now asserts the general form: every nav item the
   MANIFEST declares must answer 200, so the next one cannot be added.
-- **`IntegrationLog` has zero callers** — the model was migrated and nothing
-  reads or writes it. `Carrier.lastTestAt`/`lastSyncAt`/`lastTestOk` are rendered
-  by the carriers screen and written by nothing.
+- ~~**`IntegrationLog` has zero callers**~~ **CLOSED — LP.14.** It has a writer
+  (`lib/erp/integration-log.ts`, redacting credentials by key at any depth) and a
+  reader (`GET /carriers/[id]/logs` + a panel). `lastTestAt`/`lastTestOk` are
+  written by `POST /carriers/[id]/test` and `lastSyncAt` by
+  `POST /carriers/[id]/sync`.
 
 ### Done so far
 
@@ -302,7 +304,7 @@ row actions + list density · (9) bulk actions completed · (10) client
 detail/edit/export · (11) sound + desktop notification preferences · (12) agent
 alerts, missed-counter reset, manager password reset, payroll report, audit view.
 **Tier 3 — business value:** (13) analytics **[DONE LP.13]** ·
-(14) carrier test/sync/logs ·
+(14) carrier test/sync/logs **[DONE LP.14]** ·
 (15) sales-channel screen · (16) profit calculator **[DONE LP.16]** ·
 (17) AI screen **[DONE LP.17]** ·
 (18) product fields + variant editor · (19) CSV import · (20) channel webhooks ·

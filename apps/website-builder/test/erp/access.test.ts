@@ -76,6 +76,14 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   ['PATCH', '/api/erp/products/nonexistent'],
   ['GET', '/api/erp/inventory/low-stock'],
   ['GET', '/api/erp/carriers'],
+  // LP.14. Testing an integration, asking a carrier for everything at
+  // once, and reading what has passed between the two — the three
+  // surfaces R3 was missing, all of which touch somebody else's server
+  // or the diagnostic record of having done so.
+  ['POST', '/api/erp/carriers/nonexistent/test'],
+  ['POST', '/api/erp/carriers/nonexistent/sync'],
+  ['GET', '/api/erp/carriers/nonexistent/logs'],
+  ['DELETE', '/api/erp/carriers/nonexistent/status-mappings'],
   ['GET', '/api/erp/sales-channels'],
   ['GET', '/api/erp/agents'],
   ['GET', '/api/erp/agents/payroll'],

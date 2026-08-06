@@ -1529,3 +1529,216 @@ describe('an unmapped carrier status is read the way the ERP read it', () => {
     assert.ok(moved);
   });
 });
+
+/* -----------------------------------------------------------------------------
+ * LP.14 — the integration log gets its first writer, and R3 closes
+ *
+ * `IntegrationLog` was migrated in Phase 3.2 with its indexes and its comment
+ * and had **no reader and no writer**. `Carrier.lastTestAt`, `lastTestOk` and
+ * `lastSyncAt` were RENDERED BY THE CARRIERS SCREEN and written by nothing, so
+ * every carrier showed "never tested" forever — and an operator configuring a
+ * real integration had no way to find out whether the key worked except by
+ * confirming a real order and watching for a parcel.
+ * -------------------------------------------------------------------------- */
+
+describe('an integration can be tested, and the attempt is recorded', () => {
+  let testable = '';
+
+  test('a test writes the two columns the screen has always rendered', async () => {
+    const created = await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Testable Carrier', code: `tc${uid()}`, adapter: 'mock',
+      apiUrl: 'https://carrier.example.test', apiEnabled: true,
+    });
+    testable = created.body.data.id;
+
+    const before = (await acme.manager.api('GET', '/api/erp/carriers')).body.data.items
+      .find((c: { id: string }) => c.id === testable);
+    assert.equal(before.lastTestAt, null, 'the fixture must start untested');
+
+    const r = await acme.manager.api('POST', `/api/erp/carriers/${testable}/test`, {});
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.ok, true);
+
+    const after = (await acme.manager.api('GET', '/api/erp/carriers')).body.data.items
+      .find((c: { id: string }) => c.id === testable);
+    assert.ok(after.lastTestAt, 'lastTestAt is still not written');
+    assert.equal(after.lastTestOk, true);
+  });
+
+  test('an adapter with no live test SAYS SO rather than reporting a plain pass', async () => {
+    // A green tick meaning "we did not look" is the same defect as the
+    // fabricated tracking numbers D-LP.2 removed — on the screen an operator
+    // checks BEFORE trusting the integration.
+    const r = await acme.manager.api('POST', `/api/erp/carriers/${testable}/test`, {});
+    assert.equal(r.body.data.structural, true);
+    assert.match(String(r.body.data.message), /nothing was contacted/i);
+  });
+
+  test('the attempt is in the integration log, and no credential is', async () => {
+    const r = await acme.manager.api('GET', `/api/erp/carriers/${testable}/logs`);
+    assert.equal(r.status, 200);
+    assert.ok(r.body.data.items.length >= 2, 'both tests should be recorded');
+
+    const entry = r.body.data.items[0];
+    assert.equal(entry.event, 'test_connection');
+    assert.equal(entry.result, 'success');
+    assert.equal(entry.request.url, 'https://carrier.example.test');
+
+    // The rule the whole module exists to enforce: the URL and the answer are
+    // what make the log useful; the key is what would make it worth stealing.
+    const raw = JSON.stringify(r.body.data);
+    assert.ok(!raw.includes('apiKey'), 'a credential key reached the log');
+  });
+
+  test('a carrier configured with an unregistered adapter is refused, not "tested"', async () => {
+    const rogue = await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Rogue', code: `rg${uid()}`, adapter: 'mock',
+    });
+    await setCarrierAdapter(acme.tenantId, rogue.body.data.id, 'not-a-real-adapter');
+
+    const r = await acme.manager.api('POST', `/api/erp/carriers/${rogue.body.data.id}/test`, {});
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'UNKNOWN_ADAPTER');
+  });
+
+  test('a nonexistent carrier is a 404 on all three surfaces', async () => {
+    for (const [method, path] of [
+      ['POST', '/api/erp/carriers/nope/test'],
+      ['POST', '/api/erp/carriers/nope/sync'],
+      ['GET', '/api/erp/carriers/nope/logs'],
+    ] as const) {
+      // A GET may not carry a body — `fetch` refuses outright — so the body is
+      // sent only where the method takes one.
+      const body = method === 'GET' ? undefined : {};
+      assert.equal((await acme.manager.api(method, path, body)).status, 404, `${method} ${path}`);
+    }
+  });
+
+  test('an agent cannot test, sync or read the log', async () => {
+    for (const [method, path] of [
+      ['POST', `/api/erp/carriers/${testable}/test`],
+      ['POST', `/api/erp/carriers/${testable}/sync`],
+      ['GET', `/api/erp/carriers/${testable}/logs`],
+    ] as const) {
+      const body = method === 'GET' ? undefined : {};
+      assert.equal((await acme.agent.api(method, path, body)).status, 403, `${method} ${path}`);
+    }
+  });
+});
+
+describe('a carrier can be asked about everything in its hands at once', () => {
+  test('a sync refreshes the open parcels and records what it did', async () => {
+    // A parcel left in transit is what the sync has to move.
+    const created = await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Sync Me', phone: phone(), price: 3300, carrierCode,
+    });
+    await acme.manager.api('POST', `/api/erp/orders/${created.body.data.id}/shipment`, {});
+
+    const carriers = (await acme.manager.api('GET', '/api/erp/carriers')).body.data.items;
+    const mock = carriers.find((c: { code: string }) => c.code === carrierCode);
+
+    const r = await acme.manager.api('POST', `/api/erp/carriers/${mock.id}/sync`, {});
+    assert.equal(r.status, 200);
+    assert.ok(r.body.data.asked >= 1, 'the sync found nothing to ask about');
+    assert.equal(typeof r.body.data.syncedAt, 'string');
+
+    const after = (await acme.manager.api('GET', '/api/erp/carriers')).body.data.items
+      .find((c: { id: string }) => c.id === mock.id);
+    assert.ok(after.lastSyncAt, 'lastSyncAt is still not written');
+
+    const logs = await acme.manager.api('GET', `/api/erp/carriers/${mock.id}/logs`);
+    assert.ok(
+      logs.body.data.items.some((l: { event: string }) => l.event === 'manual_sync'),
+      'the sync left no record',
+    );
+  });
+
+  test('a carrier that cannot be polled is refused by NAME, not answered with zero', async () => {
+    // ZR publishes no tracking endpoint at all — every update arrives on its
+    // webhook. "0 parcels updated" would be indistinguishable from "nothing has
+    // moved", which is the LP.2 distinction.
+    const zrCarrier = await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'ZR Sync', code: `zs${uid()}`, adapter: 'zr', apiEnabled: true,
+    });
+    const r = await acme.manager.api('POST', `/api/erp/carriers/${zrCarrier.body.data.id}/sync`, {});
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'CARRIER_CANNOT_BE_POLLED');
+  });
+
+  test('a carrier whose API is switched off is refused by name too', async () => {
+    const off = await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Disabled', code: `df${uid()}`, adapter: 'mock', apiEnabled: false,
+    });
+    const r = await acme.manager.api('POST', `/api/erp/carriers/${off.body.data.id}/sync`, {});
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'API_DISABLED');
+  });
+});
+
+describe('a wrong status mapping is no longer permanent', () => {
+  const carrierRow = async () =>
+    (await acme.manager.api('GET', '/api/erp/carriers')).body.data.items
+      .find((c: { code: string }) => c.code === carrierCode);
+
+  test('one can be added and then removed', async () => {
+    const carrier = await carrierRow();
+
+    const added = await acme.manager.api(
+      'POST', `/api/erp/carriers/${carrier.id}/status-mappings`,
+      { originalStatus: 'Colis remis au client', crmStatus: 'delivered' },
+    );
+    assert.equal(added.status, 201);
+
+    const removed = await acme.manager.api(
+      'DELETE', `/api/erp/carriers/${carrier.id}/status-mappings`,
+      { originalStatus: 'Colis remis au client' },
+    );
+    assert.equal(removed.status, 200);
+    assert.equal(removed.body.data.removed, 1);
+
+    const left = await acme.manager.api('GET', `/api/erp/carriers/${carrier.id}/status-mappings`);
+    assert.ok(
+      !left.body.data.items.some(
+        (m: { originalStatus: string }) => m.originalStatus === 'Colis remis au client',
+      ),
+      'the mapping survived its own removal',
+    );
+  });
+
+  test('removing one that is not there is a 200 with zero, not a 404', async () => {
+    // The caller's intent — "this mapping should not exist" — is satisfied
+    // either way. Same reasoning as revoking an invitation.
+    const carrier = await carrierRow();
+    const r = await acme.manager.api(
+      'DELETE', `/api/erp/carriers/${carrier.id}/status-mappings`,
+      { originalStatus: 'never existed' },
+    );
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.removed, 0);
+  });
+
+  test('an empty originalStatus is refused rather than deleting everything', async () => {
+    const carrier = await carrierRow();
+    const r = await acme.manager.api(
+      'DELETE', `/api/erp/carriers/${carrier.id}/status-mappings`, {},
+    );
+    assert.equal(r.status, 422);
+  });
+});
+
+describe('the carriers screen offers what the routes accept', () => {
+  test('test and log controls are there; sync is offered only where it works', async () => {
+    const res = await fetch(`${BASE}/console/erp/carriers`, {
+      headers: { cookie: `landingos_session=${acme.manager.token}; locale=en` },
+    });
+    const body = await res.text();
+    assert.equal(res.status, 200);
+    assert.match(body, /data-testid="carrier-test"/);
+    assert.match(body, /data-testid="carrier-logs-toggle"/);
+    assert.match(body, /data-testid="carrier-logs-panel"/, 'the panel must exist hidden, not unmounted');
+    // The mock adapter can be polled, so at least one sync control is offered.
+    assert.match(body, /data-testid="carrier-sync"/);
+    // And the removal control R20 was missing.
+    assert.match(body, /data-testid="carrier-mappings-panel"/);
+  });
+});

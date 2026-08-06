@@ -459,6 +459,38 @@ export const zr: CarrierAdapter = {
   // "ask the carrier" says which of the two it is (the LP.2 distinction).
   canPoll: false,
 
+  /**
+   * A cheap authenticated READ — LP.14.
+   *
+   * `POST /territories/search` is the smallest call that proves both halves of
+   * the credentials: `X-Api-Key` and `X-Tenant` are both required by it, and a
+   * wrong either answers 401/403 rather than an empty list. It is also the call
+   * every booking already makes first, so a test that passes here means the
+   * next booking gets at least as far as the address.
+   *
+   * It must never be `createShipment`. A test that books a parcel to find out
+   * whether booking works sends a real courier to a real address.
+   */
+  async testConnection(cfg: CarrierConfig): Promise<{ ok: boolean; message: string }> {
+    if (!cfg.apiKey || !cfg.secretKey) {
+      return {
+        ok: false,
+        message: "ZR Express needs both an API key and a tenant id (the secret-key field).",
+      };
+    }
+    try {
+      const found = await searchTerritories(cfg, "Alger");
+      return {
+        ok: true,
+        message: `ZR Express answered — ${found.length} territories matched a sample lookup.`,
+      };
+    } catch (error) {
+      // The adapter's own three-way distinction survives: an operator is told
+      // whether to fix the credentials, the URL, or wait and retry.
+      return { ok: false, message: error instanceof Error ? error.message : String(error) };
+    }
+  },
+
   async createShipment(request: BookingRequest, cfg: CarrierConfig): Promise<BookingResult> {
     if (!cfg.apiKey || !cfg.secretKey) {
       throw new CarrierError(

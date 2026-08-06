@@ -12,6 +12,125 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.14 Carriers — the integration log gets its first writer
+
+[Opus 5]
+Date: 6 August 2026
+Summary: `POST /carriers/[id]/test`, `POST /carriers/[id]/sync`,
+`GET /carriers/[id]/logs` and `DELETE /carriers/[id]/status-mappings`, with the
+controls for all four on the carriers screen. delivery 64 → **77**, access
+78 → **82**. Closes **R3** and the second half of **R20**.
+
+#### Three columns rendered by a screen and written by nothing
+
+`Carrier.lastTestAt`, `lastTestOk` and `lastSyncAt` are on the schema, are
+**rendered by `/console/erp/carriers`**, and had no writer anywhere. Every
+carrier showed "never tested" forever — so an operator configuring a real ZR
+Express integration had no way to find out whether the key worked except by
+confirming a real order and watching for a parcel that might not appear.
+
+And **`IntegrationLog` had no reader and no writer at all.** It was migrated in
+Phase 3.2 with its indexes and its comment and never used. Without it the only
+evidence of a failing integration is a parcel that did not book, and the only
+diagnosis available to an operator is "try again".
+
+#### `testConnection` is optional, and its absence is meaningful
+
+The adapter contract gains an optional `testConnection`. ZR implements it as
+`POST /territories/search` — the smallest call that proves BOTH halves of the
+credentials, since `X-Api-Key` and `X-Tenant` are each required by it, and it is
+the call every booking already makes first.
+
+**It must be a READ.** A test that books a parcel to find out whether booking
+works sends a real courier to a real address.
+
+An adapter with nothing to ask falls back to a STRUCTURAL check **that says so in
+its own message and returns `structural: true`**. Reporting a plain success would
+be a green tick meaning "we did not look", on the screen an operator checks
+BEFORE trusting the integration — the same class of lie as the fabricated
+tracking numbers D-LP.2 removed.
+
+#### No credential ever reaches the log
+
+`lib/erp/integration-log.ts` is the only writer, and it redacts by KEY at any
+depth rather than trusting each caller: the API key, the secret key, the webhook
+secret, `Authorization`, `X-Api-Key` and `X-Tenant`. What is kept is what makes
+the log useful — the URL, the adapter, the HTTP outcome, the carrier's own
+refusal message. It is append-only like every other ledger here, and it
+**never throws**: a logger that can fail the operation it is describing turns a
+carrier hiccup into a 500.
+
+#### D-LP.5.1 applies to both new calls, and to the sync most sharply
+
+A test is one round trip and a sync is up to 25. Both run through
+`afterCommit` — **plan in a transaction, call in none, record in a transaction**
+— and the sync composes `refreshShipmentForOrder`, which is the exact function
+the manual "ask the carrier" button uses. One ingest path, so a synced parcel
+raises follow-up tasks and settles its outcome exactly as a pushed one does;
+reimplementing the loop would have been a second ingest path and the half nobody
+tested.
+
+**`SYNC_BATCH = 25`**, the poll's own bound, and `capped: true` is in the
+response — "25" looks like "all of them" to somebody with 200 open parcels.
+Settled parcels are not asked about again: their outcome is permanent by design.
+
+**A carrier that cannot be polled is refused by NAME.** ZR declares
+`canPoll: false` because it publishes no tracking endpoint at all. Answering
+"0 parcels updated" would be indistinguishable from "nothing has moved", which
+is the LP.2 distinction, and the screen does not render the control (D-06.2).
+
+#### R20's second half: a wrong status mapping was permanent
+
+`POST` upserts, so a mapping could be CORRECTED — but one that should never have
+existed could not be removed, and it went on translating a carrier's wording
+into a CRM status on every event that arrived. `DELETE` is keyed on
+`originalStatus` (the natural key the upsert already uses), is idempotent —
+removing one that is not there is `removed: 0`, not a 404 — and **touches no
+history**: `ShipmentEvent` keeps the carrier's original wording on every row, so
+this changes what happens next and never rewrites what a parcel was recorded as
+doing.
+
+#### One robustness change that is not part of the feature
+
+`ConsoleShell`'s unread-count read is now wrapped: a failure logs and renders
+zero rather than 500-ing the page. LP.7 added one extra bound read to every
+console render, the free-tier database's connection ceiling already surfaces as
+**a 500 from a screen** rather than a test error (PROJECT_STATE, known
+limitations), and a badge is not worth a page over.
+
+#### Files
+
+New: `src/lib/erp/integration-log.ts`,
+`src/app/api/erp/carriers/[id]/{test,sync,logs}/route.ts`.
+
+Changed: `src/lib/erp/carrier-contract.ts` (`testConnection`),
+`src/lib/erp/carrier-zr.ts`,
+`src/app/api/erp/carriers/[id]/status-mappings/route.ts` (`DELETE`),
+`src/components/console/erp/carrier-write.tsx`,
+`src/app/console/erp/carriers/page.tsx`,
+`src/components/console/console-shell.tsx`,
+`src/lib/console/erp-strings.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (+5 keys each),
+`test/erp/{delivery,access}.test.ts`.
+
+#### Migration
+
+None. No schema change — every column and the whole `IntegrationLog` table
+already existed and gain their first writer.
+
+#### Risk
+
+**Low.** Four additive routes, all `erp:shipments:write`. The only change to
+existing behaviour is the shell's badge read becoming non-fatal, which strictly
+reduces the ways a console page can fail.
+
+#### Verified
+
+build clean · delivery 77/77 · access 82/82 · screens 130/130 ·
+notifications 41/41 · finance 38/38 · i18n 18/18.
+
+---
+
 ### LP.17 The AI screen — a nav item that led to a 404
 
 [Opus 5]

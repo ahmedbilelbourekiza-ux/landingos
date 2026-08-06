@@ -59,6 +59,10 @@ export interface CarrierStrings {
   readonly meansStatus: string;
   readonly addMapping: string;
   readonly noMappings: string;
+  readonly test: string;
+  readonly sync: string;
+  readonly logs: string;
+  readonly noLogs: string;
 }
 
 /* -----------------------------------------------------------------------------
@@ -197,11 +201,20 @@ export interface StatusMapping {
   readonly crmStatus: string;
 }
 
+export interface IntegrationLogRow {
+  readonly id: string;
+  readonly event: string;
+  readonly result: string | null;
+  readonly message: string | null;
+  readonly ts: string;
+}
+
 export function CarrierRowActions({
   carrierId,
   isDefault,
   active,
   hasCredentials,
+  canPoll,
   webhookUrl,
   mappings,
   crmStatuses,
@@ -213,6 +226,8 @@ export function CarrierRowActions({
   readonly active: boolean;
   /** Whether any credential is stored. NOT the credential. */
   readonly hasCredentials: boolean;
+  /** Whether this carrier's adapter can be ASKED where a parcel is (LP.14). */
+  readonly canPoll: boolean;
   /** Where this tenant's carriers push delivery updates. Not a secret. */
   readonly webhookUrl: string;
   readonly mappings: readonly StatusMapping[];
@@ -221,7 +236,7 @@ export function CarrierRowActions({
   readonly s: CarrierStrings;
 }) {
   const { run, pending, error } = useApiAction(errors);
-  const [panel, setPanel] = useState<"none" | "keys" | "mappings">("none");
+  const [panel, setPanel] = useState<"none" | "keys" | "mappings" | "logs">("none");
 
   // The mask where a key exists, empty where none does — which is the
   // distinction `_hasCredentials` was added to the API to make, because an
@@ -238,8 +253,23 @@ export function CarrierRowActions({
   const changed = (value: string) =>
     value && value !== CARRIER_SECRET_MASK ? value : undefined;
 
-  const toggle = (next: "keys" | "mappings") =>
+  const [logs, setLogs] = useState<IntegrationLogRow[] | null>(null);
+
+  const toggle = (next: "keys" | "mappings" | "logs") => {
     setPanel((p) => (p === next ? "none" : next));
+    // Fetched on OPEN rather than rendered with the page: an integration log is
+    // diagnostic, it is read rarely, and loading one per carrier row would put
+    // N queries behind every visit to this screen.
+    if (next === "logs" && panel !== "logs" && logs === null) void loadLogs();
+  };
+
+  const loadLogs = async () => {
+    const res = await fetch(`/api/erp/carriers/${carrierId}/logs?limit=50`, {
+      credentials: "same-origin",
+    });
+    const envelope = await res.json().catch(() => null);
+    setLogs(res.ok && envelope?.success ? (envelope.data.items as IntegrationLogRow[]) : []);
+  };
 
   return (
     <div className="flex flex-col items-end gap-2">
@@ -293,6 +323,47 @@ export function CarrierRowActions({
           aria-expanded={panel === "mappings"}
         >
           {s.mappings}
+        </ActionButton>
+
+        {/* LP.14. `lastTestAt`/`lastTestOk`/`lastSyncAt` were rendered by this
+            screen and written by NOTHING, so every carrier read "never tested"
+            forever. An operator configuring ZR Express had no way to find out
+            whether the key worked except by confirming a real order and
+            watching for a parcel. */}
+        <ActionButton
+          data-testid="carrier-test"
+          data-carrier-id={carrierId}
+          pending={pending}
+          pendingLabel={s.saving}
+          onClick={() => void run("POST", `/api/erp/carriers/${carrierId}/test`, {})}
+        >
+          {s.test}
+        </ActionButton>
+
+        {/* Offered only where the adapter can actually be ASKED. ZR publishes
+            no tracking endpoint at all — every update arrives on its webhook —
+            and the route refuses by name, so the control that would trip it is
+            not rendered (D-06.2). */}
+        {canPoll && (
+          <ActionButton
+            data-testid="carrier-sync"
+            data-carrier-id={carrierId}
+            pending={pending}
+            pendingLabel={s.saving}
+            onClick={() => void run("POST", `/api/erp/carriers/${carrierId}/sync`, {})}
+          >
+            {s.sync}
+          </ActionButton>
+        )}
+
+        <ActionButton
+          data-testid="carrier-logs-toggle"
+          pending={false}
+          pendingLabel={s.saving}
+          onClick={() => toggle("logs")}
+          aria-expanded={panel === "logs"}
+        >
+          {s.logs}
         </ActionButton>
       </div>
 
@@ -383,6 +454,24 @@ export function CarrierRowActions({
                   </span>
                   <span aria-hidden>→</span>
                   <span>{crmStatuses.find((c) => c.value === m.crmStatus)?.label ?? m.crmStatus}</span>
+                  {/* LP.14, R20's second half. A WRONG mapping was permanent —
+                      `POST` upserts, so it could be corrected, but one that
+                      should never have existed went on translating a carrier's
+                      wording on every event that arrived. History is untouched:
+                      `ShipmentEvent` keeps the original wording on every row. */}
+                  <button
+                    type="button"
+                    data-testid="carrier-mapping-remove"
+                    data-mapping-original={m.originalStatus}
+                    className="ms-auto rounded border border-input px-1.5"
+                    onClick={() =>
+                      void run("DELETE", `/api/erp/carriers/${carrierId}/status-mappings`, {
+                        originalStatus: m.originalStatus,
+                      })
+                    }
+                  >
+                    ×
+                  </button>
                 </li>
               ))}
             </ul>
@@ -430,6 +519,36 @@ export function CarrierRowActions({
           >
             {s.addMapping}
           </ActionButton>
+      </div>
+
+      {/* The integration log. `IntegrationLog` was migrated in Phase 3.2 with
+          its indexes and had NO READER AND NO WRITER — so the only evidence of
+          a failing integration was a parcel that did not book, and the only
+          diagnosis available was "try again". Hidden rather than unmounted, like
+          the panels above. No credential ever reaches the table; see `redact`. */}
+      <div
+        hidden={panel !== "logs"}
+        className="w-full max-w-md space-y-2 rounded-md border border-border p-3 text-start"
+        data-testid="carrier-logs-panel"
+      >
+        {logs === null ? (
+          <p className="text-xs text-muted-foreground">{s.saving}</p>
+        ) : logs.length === 0 ? (
+          <p className="text-xs text-muted-foreground" data-testid="carrier-logs-empty">
+            {s.noLogs}
+          </p>
+        ) : (
+          <ul className="space-y-1 text-xs">
+            {logs.map((row) => (
+              <li key={row.id} data-log-event={row.event} className="flex flex-col">
+                <span className="font-mono text-muted-foreground" dir="ltr">
+                  {row.ts} · {row.event} · {row.result}
+                </span>
+                {row.message && <span>{row.message}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <ActionError message={error} />

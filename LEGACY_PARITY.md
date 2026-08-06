@@ -897,7 +897,7 @@ from complete** — order export (R4) is all that remains in it.
 | # | Slice | Restores | Size | |
 |---|---|---|---|---|
 | ~~13~~ | ~~Analytics screen + headline rates~~ | R6, K1 | M | **DONE — LP.13.** Seven breakdowns, the headline rates, and the dashboard's reaction-time figures. Also closes **N18** and **N20**. |
-| **14** | Carrier test / sync / integration logs — `IntegrationLog`'s first caller | R3, R20 | M | R20's default-carrier half is **closed by LP.16b** (editor + resolver); the status-mapping delete remains. |
+| ~~14~~ | ~~Carrier test / sync / integration logs~~ | R3, R20 | M | **DONE — LP.14.** `IntegrationLog` gets its first writer AND reader, `lastTestAt`/`lastTestOk`/`lastSyncAt` get theirs, and the status-mapping delete lands — so R20 is closed whole (its default-carrier half went in LP.16b). |
 | **15** | Sales-channel screen + platform adapter registry | R8 | M | |
 | ~~16~~ | ~~Profit/loss calculator + record versions + period aggregation~~ | R9 | L | **DONE — LP.16.** All four steps (§7.4): 16a `sales-summary`, 16b proration + the structured-settings editors, 16c `versions`/`aggregate`, 16d the screen. Also closes **N23** and the write half of **R20**. |
 | ~~17~~ | ~~AI screen + provider/agent CRUD~~ | R10 | M | **DONE — LP.17.** The 404 is closed and the manifest is now asserted whole: every declared nav item must answer 200. Chat stays a stated 501; provider `/test` is deferred to slice 27 with its reason on the screen. |

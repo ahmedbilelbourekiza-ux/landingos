@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.17: the AI screen*
+**Branch:** `master` · **Last commit:** *LP.14: carriers — test, sync, logs*
 **Working tree:** clean, all work committed.
 
 ---
@@ -61,6 +61,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.7** the notification provider (bell, badge, panel, toast, live refresh) | N2, N3, L1, L2 | **DONE** — notifications 33→41, orders 38→40 |
 | **LP.13** analytics + the dashboard's reaction-time figures | R6, K1, N18, N20 | **DONE** — analytics 19 (new), access 72→73 |
 | **LP.17** the AI screen (a live 404) + provider/agent CRUD | R10 | **DONE** — ai 20 (new), access 73→78 |
+| **LP.14** carrier test / sync / integration logs, mapping delete | R3, R20 (rest) | **DONE** — delivery 64→77, access 78→82 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -450,7 +451,7 @@ domain at a time.
 |---|---|
 | orders (+ stats, bulk, 6 per-order routes), clients, settings, audit | orders 38/38 · validation 29/29 · listing 30/30 |
 | products (incl. **editing**, LP.1 and the **normalised sales-summary match**, LP.16a), inventory, stock lots (incl. stock on confirm/cancel), agents, payroll (incl. `periodType`, LP.16b) | catalog 55/55 |
-| carriers (incl. **adapter refusal** LP.2 and the **real ZR Express adapter** LP.5), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 61/61 |
+| carriers (incl. **adapter refusal** LP.2, the **real ZR Express adapter** LP.5, and **test / sync / the integration log** LP.14), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 77/77 |
 | sales channels, inbound webhooks, AI, follow-up | integrations 29/29 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
 | every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4, the **ZR configuration surface** LP.5, the **export panel** LP.6) | screens 130/130 |
@@ -461,9 +462,9 @@ domain at a time.
 | the P&L department — proration, fixed costs, versions, roll-up, the calculator screen (LP.16) | finance 38/38 + calc 20/20 |
 | the confirmation rate and six other breakdowns, plus the dashboard's reaction-time figures (LP.13) | analytics 19/19 |
 | the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
-| every surface, gated | access 78/78 |
+| every surface, gated | access 82/82 |
 
-**647/647** across SIXTEEN contract files, each verified on its own, plus
+**664/664** across SIXTEEN contract files, each verified on its own, plus
 **20/20** in `test/calc.test.ts` — the one PURE suite, which needs no server at
 all. Running several contract files back to back still trips the documented Neon
 connection limit; judge them per file.
@@ -618,6 +619,36 @@ closing half of §7 P3 and all of R20.
 
 **Confirmed as NOT gaps, twice now:** neither system has keyboard shortcuts,
 context menus, or a chart of any kind.
+
+### LP.14 — carriers: three columns nobody wrote, and a log nobody read
+
+`Carrier.lastTestAt`, `lastTestOk` and `lastSyncAt` are **rendered by the
+carriers screen** and had no writer anywhere, so every carrier read "never
+tested" forever. `IntegrationLog` was migrated with its indexes in Phase 3.2 and
+had **no reader and no writer at all** — so the only evidence of a failing
+integration was a parcel that did not book.
+
+`testConnection` joins the adapter contract as OPTIONAL, and its absence is
+meaningful: an adapter with nothing to ask falls back to a structural check that
+**says so** and returns `structural: true`, because a green tick meaning "we did
+not look" is the same lie as D-LP.2's fabricated tracking numbers. ZR implements
+it as `POST /territories/search` — the smallest call proving BOTH halves of the
+credentials. **It must be a READ**: a test that books a parcel to find out
+whether booking works sends a real courier to a real address.
+
+`lib/erp/integration-log.ts` is the only writer and **redacts by key at any
+depth** rather than trusting callers; it is append-only and never throws, because
+a logger that can fail the operation it describes turns a hiccup into a 500.
+
+**D-LP.5.1 applies to both new calls.** A test is one round trip; a sync is up to
+25, bounded by `SYNC_BATCH` and reporting `capped`. The sync composes
+`refreshShipmentForOrder` — the same function the manual refresh uses — so there
+is still exactly one ingest path. A carrier that cannot be polled is refused by
+NAME (ZR publishes no tracking endpoint), and the control is not rendered.
+
+**R20's second half:** a wrong status mapping was permanent. `DELETE` is keyed on
+`originalStatus`, is idempotent, and touches no history — `ShipmentEvent` keeps
+the carrier's own wording on every row.
 
 ### LP.17 — the AI screen, and a nav item that answered 404
 

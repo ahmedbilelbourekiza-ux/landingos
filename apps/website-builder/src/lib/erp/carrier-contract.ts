@@ -125,6 +125,22 @@ export interface CarrierAdapter {
 
   /** How this carrier signs. Absent means the platform's default HMAC check. */
   verifyWebhook?(raw: string, headers: Headers, secret: string): SignatureVerdict;
+
+  /**
+   * Ask the carrier whether these credentials work — LP.14.
+   *
+   * OPTIONAL, and its absence is meaningful rather than a gap. An adapter that
+   * cannot make a cheap authenticated read has nothing to test, and the route
+   * falls back to a STRUCTURAL check that says so in its own message. The one
+   * thing neither may do is report success without having contacted anything:
+   * a green tick that means "we did not look" is the same defect as the
+   * fabricated tracking numbers D-LP.2 removed, on the screen an operator
+   * checks BEFORE trusting the integration.
+   *
+   * It must be a READ. A test that books a parcel to find out whether booking
+   * works is a real courier at a real address.
+   */
+  testConnection?(cfg: CarrierConfig): Promise<{ ok: boolean; message: string }>;
 }
 
 /**

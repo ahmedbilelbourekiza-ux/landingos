@@ -53,9 +53,20 @@ export async function ConsoleShell({
 
      Skipped entirely without an active tenant: `Notification` is RLS-scoped and
      there is nothing to bind. A person still choosing a company has no feed. */
-  const unread = session.auth
-    ? await withTenant(session.auth.tenantId, (db) => unreadCount(db, session.user.id))
-    : 0;
+  /* AND IT NEVER FAILS THE PAGE. This is one extra bound read on every console
+     render — the shell has no access to the page's own binding, so it opens its
+     own — and a badge is not worth a 500 over. A database blip already surfaces
+     here as a 500 from a screen rather than as a test error (see PROJECT_STATE's
+     known limitations), and adding a second chance to hit it without a fallback
+     would make every console page strictly more fragile than before LP.7. */
+  let unread = 0;
+  if (session.auth) {
+    try {
+      unread = await withTenant(session.auth.tenantId, (db) => unreadCount(db, session.user.id));
+    } catch (error) {
+      console.error("[console] could not read the unread count", error);
+    }
+  }
 
   /* Product id → translated name, resolved HERE so the provider holds no
      registry and no catalogue. A notification is cross-product by construction

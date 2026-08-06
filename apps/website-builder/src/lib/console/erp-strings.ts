@@ -88,6 +88,10 @@ export function carrierStrings(t: (key: string) => string): CarrierStrings {
     meansStatus: t("erp.write.meansStatus"),
     addMapping: t("erp.write.addMapping"),
     noMappings: t("erp.write.noMappings"),
+    test: t("erp.carriers.test"),
+    sync: t("erp.carriers.sync"),
+    logs: t("erp.carriers.logs"),
+    noLogs: t("erp.carriers.noLogs"),
   };
 }
 

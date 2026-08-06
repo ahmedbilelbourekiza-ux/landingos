@@ -149,7 +149,12 @@
       "none": "Aucun transporteur",
       "inactive": "Inactif",
       "webhookUrl": "Webhook entrant",
-      "webhookHint": "Communiquez cette adresse au transporteur pour qu’il envoie les mises à jour."
+      "webhookHint": "Communiquez cette adresse au transporteur pour qu’il envoie les mises à jour.",
+      "test": "Tester",
+      "sync": "Synchroniser",
+      "logs": "Journal",
+      "noLogs": "Rien n’a encore transité entre vous et ce livreur.",
+      "lastSync": "Dernière synchro"
     },
     "followUp": {
       "title": "Suivi",

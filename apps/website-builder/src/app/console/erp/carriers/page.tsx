@@ -11,7 +11,7 @@ import { carrierStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
 import { CarrierCreatePanel, CarrierRowActions } from "@/components/console/erp/carrier-write";
-import { listAdapters, isKnownAdapter } from "@/lib/erp/carriers";
+import { listAdapters, isKnownAdapter, getAdapter } from "@/lib/erp/carriers";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +37,7 @@ export default async function ErpCarriersScreen() {
       select: {
         id: true, name: true, code: true, adapter: true,
         isDefault: true, active: true, apiEnabled: true,
-        lastTestAt: true, lastTestOk: true,
+        lastTestAt: true, lastTestOk: true, lastSyncAt: true,
         // Booleans derived in SQL rather than the values themselves.
         apiKey: false, secretKey: false, webhookSecret: false,
         _count: { select: { shipments: true, statusMappings: true } },
@@ -200,9 +200,20 @@ export default async function ErpCarriersScreen() {
           {
             id: "tested",
             header: t("erp.shipments.updated"),
+            // LP.14. Both columns were on the schema, rendered here, and written
+            // by NOTHING — so every carrier read "never tested" forever. The
+            // outcome is shown beside the date, because a test that ran and
+            // failed is a different fact from one that never ran.
             cell: (c) => (
-              <span className="text-muted-foreground">
-                {c.lastTestAt ? formatDate(c.lastTestAt, locale) : "—"}
+              <span className="text-muted-foreground" data-tested={String(c.lastTestOk)}>
+                {c.lastTestAt
+                  ? `${formatDate(c.lastTestAt, locale)} ${c.lastTestOk ? "✓" : "✕"}`
+                  : "—"}
+                {c.lastSyncAt && (
+                  <span className="mt-0.5 block text-xs">
+                    {t("erp.carriers.lastSync")}: {formatDate(c.lastSyncAt, locale)}
+                  </span>
+                )}
               </span>
             ),
           },
@@ -214,12 +225,16 @@ export default async function ErpCarriersScreen() {
               <CarrierRowActions
                 // Keyed on what the server holds, so a save remounts the panel
                 // on the stored answer rather than on what was typed.
-                key={`${c.isDefault}/${c.active}/${configured.has(c.id)}`}
+                key={`${c.isDefault}/${c.active}/${configured.has(c.id)}/${String(c.lastTestAt)}`}
                 carrierId={c.id}
                 isDefault={Boolean(c.isDefault)}
                 active={c.active !== false}
                 // Whether, never what. The value is still not selected.
                 hasCredentials={configured.has(c.id)}
+                // Whether the carrier can be ASKED, from the adapter registry —
+                // so the sync control is offered exactly where the route would
+                // accept it (D-06.2). ZR declares `canPoll: false`.
+                canPoll={Boolean(getAdapter(c.adapter)?.canPoll)}
                 webhookUrl={webhookUrl}
                 mappings={mappings.get(c.id) ?? []}
                 crmStatuses={crmStatuses}
