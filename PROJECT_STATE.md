@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.11: the bell learns to make a noise*
+**Branch:** `master` · **Last commit:** *LP.15: a storefront can finally be connected*
 **Working tree:** clean, all work committed.
 
 ---
@@ -16,14 +16,13 @@ anything else.
 **Second pass, 6 August 2026 (from `9d1f887`): 115 features compared —
 52 identical · 6 improved · 18 partial · 39 missing.**
 
-**As of 7 August 2026, TIERS 1 AND 2 ARE COMPLETE and FIFTEEN of the twenty-seven
-roadmap slices have landed** — LP.1–LP.14, LP.16, LP.17 (all but 15, 18–22).
+**As of 7 August 2026, TIERS 1 AND 2 ARE COMPLETE and SIXTEEN of the twenty-seven
+roadmap slices have landed** — LP.1–LP.17 (all but 18–22).
 Every production blocker §0b named is closed, as is every "computed, stored and
 shown nowhere" defect the three passes found.
 
 **TIER 2 IS COMPLETE** — 7, 8, 9, 10, 11 and 12 are all in.
-**Tier 3 is a third done: 13, 14, 16 and 17 are in; 15, 18, 19, 20, 21 and 22
-are not.** Parity is reached at the end of Tier 3, so **six roadmap slices
+**Tier 3: 13, 14, 15, 16 and 17 are in; 18, 19, 20, 21 and 22 are not.** Parity is reached at the end of Tier 3, so **five roadmap slices
 remain** — the full list is in `LEGACY_PARITY.md` §4 and every one still carries
 its own detail card in §3.
 
@@ -77,6 +76,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.9** bulk classify / assignFollowup / createShipments / sendToDelivery | R7, half of R13 | **DONE** — orders 40→58, screens 148→152 |
 | **LP.10** client detail / correction / export / eight filters | R5 (3 of 4) | **DONE** — registry 21 (new), access 84→87 |
 | **LP.11** six sound signatures, per-family toggles, desktop notifications | N4, N5 | **DONE — TIER 2 COMPLETE** — notifications 41→48 |
+| **LP.15** sales-channel screen, adapter registry, test, logs, per-platform parsing | R8 | **DONE** — integrations 29→47, access 87→90 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -468,7 +468,7 @@ domain at a time.
 | the customer registry — one record, its history, its correction and its file (LP.10) | registry 21/21 |
 | products (incl. **editing**, LP.1 and the **normalised sales-summary match**, LP.16a), inventory, stock lots (incl. stock on confirm/cancel), agents, payroll (incl. `periodType`, LP.16b) | catalog 55/55 |
 | carriers (incl. **adapter refusal** LP.2, the **real ZR Express adapter** LP.5, and **test / sync / the integration log** LP.14), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 77/77 |
-| sales channels, inbound webhooks, AI, follow-up | integrations 29/29 |
+| sales channels (incl. the **screen, the adapter registry, test / logs and per-platform parsing**, LP.15), inbound webhooks, AI, follow-up | integrations 47/47 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
 | every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4, the **ZR configuration surface** LP.5, the **export panel** LP.6, the accountability surface LP.12, the **inline row actions + density** LP.8 and the **completed bulk bar** LP.9) | screens 152/152 |
 | the order book as a file — ZR / Ecom / Ecotrac / report (LP.6) | export 31/31 |
@@ -478,9 +478,9 @@ domain at a time.
 | the P&L department — proration, fixed costs, versions, roll-up, the calculator screen (LP.16) | finance 38/38 + calc 20/20 |
 | the confirmation rate and six other breakdowns, plus the dashboard's reaction-time figures (LP.13) | analytics 19/19 |
 | the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
-| every surface, gated | access 87/87 |
+| every surface, gated | access 90/90 |
 
-**743/743** across SEVENTEEN ERP contract files, each verified on its own, plus
+**764/764** across SEVENTEEN ERP contract files, each verified on its own, plus
 **91/91** platform contract (team 62 · billing 19 · signup 10) and **20/20** in
 `test/calc.test.ts` — the one PURE suite, which needs no server at all. Running
 several contract files back to back still trips the documented Neon connection
@@ -811,6 +811,40 @@ trains people to click Block, and a blocked permission can never be re-requested
 the `server-only` module that the client components import, and the whole build
 failed. Directive-free module for anything both sides need — the `edit-field.ts`
 rule, now with a second worked example.
+
+### LP.15 — a storefront can finally be connected
+
+**R8.** The channel API has had full CRUD since Phase 5.3c and there was no
+screen and no nav item — a tenant could not connect a Shopify store through the
+console at all, and the webhook URL generated on create was never shown again by
+anything. That string is the single most valuable thing this screen produces,
+and it is rendered in FULL: a URL truncated with an ellipsis and then copied is a
+URL that silently does not work.
+
+**The catalogue and the registry are two different lists.** `PLATFORMS` is what a
+tenant may choose (the legacy's nine); `ADAPTERS` is what this deployment can do
+(two). Both facts are published per entry and the screen marks the difference.
+
+**The fallback exists here and does not for carriers**, and the reason is
+concrete: a carrier adapter can INVENT a tracking number (D-LP.2), a channel
+adapter cannot invent anything. Refusing the seven unregistered platforms would
+mean a tenant on JustSell cannot connect a store. So a structural test says
+`structural: true` and states that nothing was contacted.
+
+**The defect a test caught: a registered adapter's `null` is an answer.** The
+first build fell back to the generic parser when an adapter returned null, so a
+Shopify `products/update` topic became an order with no customer and no total.
+D-LP.2's rule in a new place — a registered integration's refusal must be
+honoured, never routed around.
+
+**Per-platform parsing.** One generic parser reads Shopify tolerably and
+LightFunnels not at all: the order is wrapped in `{ node: … }` and the items are
+`items`. Both LightFunnels rules are ported verbatim, including the
+checkout-stage stub that fires with only an id and must create nothing.
+
+**`IntegrationLog`'s `salesChannel` half gets its writer** — `test_connection`,
+`auth_error`, `webhook_rejected`, `webhook_unparsed`, `webhook_received`. It is
+the only place an operator can find out why an order never arrived.
 
 ### LP.14 — carriers: three columns nobody wrote, and a log nobody read
 
@@ -1675,7 +1709,7 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 743 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 764 | all pass against a running server |
 | `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
 | `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
@@ -1683,7 +1717,7 @@ fail without it, so check the counts, not just the exit code.
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1399** | green per suite |
+| **Total** | **1420** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

@@ -16,6 +16,7 @@ import type { RowActionStrings } from "@/components/console/erp/order-row-action
 import type { ClientEditStrings } from "@/components/console/erp/client-write";
 import type { ClientExportStrings } from "@/components/console/erp/client-export";
 import type { NotifyPrefStrings } from "@/components/console/notify-preferences";
+import type { ChannelStrings } from "@/components/console/erp/channel-write";
 
 /* =============================================================================
  * The ERP's write-control labels, resolved once per screen.
@@ -465,5 +466,36 @@ export function notifyPrefStrings(t: (key: string) => string): NotifyPrefStrings
       delivery: t("notifications.familyDelivery"),
       followup: t("notifications.familyFollowup"),
     },
+  };
+}
+
+
+/** The sales-channel screen's labels — LP.15. */
+export function channelStrings(t: (key: string) => string): ChannelStrings {
+  return {
+    saving: t("common.saving"),
+    newChannel: t("erp.channels.newChannel"),
+    name: t("erp.channels.title"),
+    platform: t("erp.orders.source"),
+    brand: t("erp.orders.brand"),
+    apiUrl: t("erp.write.apiUrl"),
+    apiKey: t("erp.write.apiKey"),
+    apiSecret: t("erp.write.secretKey"),
+    webhookSecret: t("erp.write.webhookSecret"),
+    webhookUrl: t("erp.channels.webhookUrl"),
+    webhookHint: t("erp.channels.webhookHint"),
+    create: t("erp.write.create"),
+    save: t("common.save"),
+    cancel: t("common.cancel"),
+    test: t("erp.carriers.test"),
+    testing: t("erp.channels.testing"),
+    logs: t("erp.channels.logs"),
+    hideLogs: t("erp.channels.hideLogs"),
+    noLogs: t("erp.channels.noLogs"),
+    deactivate: t("erp.write.deactivate"),
+    activate: t("erp.write.activate"),
+    maskKeeps: t("erp.write.maskKeeps"),
+    noAdapter: t("erp.channels.noAdapter"),
+    structural: t("erp.channels.structural"),
   };
 }

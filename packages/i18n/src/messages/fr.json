@@ -36,7 +36,8 @@
       "automation": "Automatisation",
       "ai": "Assistant IA",
       "calculator": "Calculateur",
-      "analytics": "Analyses"
+      "analytics": "Analyses",
+      "channels": "Canaux de vente"
     },
     "overview": {
       "title": "Aperçu",
@@ -185,7 +186,24 @@
       "sync": "Synchroniser",
       "logs": "Journal",
       "noLogs": "Rien n’a encore transité entre vous et ce livreur.",
-      "lastSync": "Dernière synchro"
+      "lastSync": "Dernière synchro",
+      "lastTest": "Dernier test",
+      "neverTested": "Jamais testé"
+    },
+    "channels": {
+      "title": "Canaux de vente",
+      "none": "Aucun canal de vente",
+      "webhookUrl": "URL du webhook",
+      "credentials": "Identifiants",
+      "ordersReceived": "Commandes reçues",
+      "newChannel": "Connecter une boutique",
+      "noAdapter": "pas d'intégration active",
+      "structural": "Configuration vérifiée ; aucun contact établi.",
+      "webhookHint": "Collez l'URL du webhook dans la plateforme de la boutique. Chaque réception — acceptée, rejetée ou non reconnue — est enregistrée dans le journal de ce canal.",
+      "logs": "Journal",
+      "hideLogs": "Masquer le journal",
+      "noLogs": "Rien d'enregistré pour l'instant.",
+      "testing": "Test en cours…"
     },
     "followUp": {
       "title": "Suivi",

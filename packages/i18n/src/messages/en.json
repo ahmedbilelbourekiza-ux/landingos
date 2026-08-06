@@ -36,7 +36,8 @@
       "automation": "Automation",
       "ai": "AI assistant",
       "calculator": "Calculator",
-      "analytics": "Analytics"
+      "analytics": "Analytics",
+      "channels": "Sales channels"
     },
     "overview": {
       "title": "Overview",
@@ -185,7 +186,24 @@
       "sync": "Sync now",
       "logs": "Log",
       "noLogs": "Nothing has passed between you and this carrier yet.",
-      "lastSync": "Last sync"
+      "lastSync": "Last sync",
+      "lastTest": "Last test",
+      "neverTested": "Never tested"
+    },
+    "channels": {
+      "title": "Sales channels",
+      "none": "No sales channels yet",
+      "webhookUrl": "Webhook URL",
+      "credentials": "Credentials",
+      "ordersReceived": "Orders received",
+      "newChannel": "Connect a storefront",
+      "noAdapter": "no live integration",
+      "structural": "Configuration checked; nothing was contacted.",
+      "webhookHint": "Paste the webhook URL into the storefront platform. Every inbound delivery — accepted, rejected or unrecognised — is recorded in this channel's log.",
+      "logs": "Log",
+      "hideLogs": "Hide log",
+      "noLogs": "Nothing recorded yet.",
+      "testing": "Testing…"
     },
     "followUp": {
       "title": "Follow-up",

@@ -12,6 +12,125 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.15 A storefront can finally be connected
+
+[Opus 5]
+Date: 7 August 2026
+Summary: R8 — the sales-channel screen, the adapter registry, the connection
+test, the integration log, and per-platform payload parsing. integrations
+29 → **47**, access 87 → **90**.
+
+#### R8 — full CRUD since Phase 5.3c, and nothing reached it
+
+The channel API has existed since Phase 5.3c with contract tests in front of it,
+and there was **no screen and no nav item**. A tenant could not connect a Shopify
+store through the console at all — and the webhook URL, generated once on create,
+was never shown again by anything, so even a channel created by hand through the
+API was unusable. The single most valuable thing this screen produces is that
+string.
+
+#### The catalogue and the registry are two different lists
+
+`PLATFORMS` is what a tenant may CHOOSE — the legacy's nine. `ADAPTERS` is what
+this deployment can actually DO — Shopify and LightFunnels. `GET
+/api/erp/sales-channels/adapters` publishes both facts per entry, and the screen
+marks a platform with no live integration on its row and in the create form's
+dropdown.
+
+**Why the fallback exists here and does not for carriers.** D-LP.2 made an
+unregistered CARRIER adapter refuse outright, because booking through a fallback
+fabricated a tracking number and polling it then settled a delivery outcome for a
+parcel that never existed. A channel adapter cannot invent anything: its two jobs
+are checking credentials and reading a payload the platform PUSHED. Refusing the
+seven unregistered platforms would mean a tenant on JustSell cannot connect a
+store at all. So the fallback exists **and says so** — `structural: true` and a
+message stating nothing was contacted, which is the same honesty LP.14 gave the
+carrier test.
+
+#### The defect a test caught: a registered adapter's `null` is an answer
+
+The first build wrote `adapter?.parseOrder?.(…) ?? parseOrder(body)`. A Shopify
+`products/update` topic — which the adapter correctly refuses — **fell through to
+the generic parser**, which turned `{id, title}` into an order with no customer
+and no total. LightFunnels' checkout stub would have done the same, which is the
+exact empty-"Client / 0 DA"-row defect the legacy's comment warns about.
+
+It is D-LP.2's rule in a new place: **a registered integration's refusal must be
+honoured, never routed around.** The generic parser now applies only where there
+is no adapter at all.
+
+#### Per-platform parsing, and the two things the legacy learned the hard way
+
+Shopify puts the total in `total_price` and the items in `line_items`;
+LightFunnels wraps the order in `{ node: … }` and calls them `items`. One generic
+parser reads Shopify tolerably and LightFunnels **not at all** — a tenant on
+LightFunnels received orders with no product and no total.
+
+Both LightFunnels rules are ported verbatim because they were discovered against
+a live integration and cannot be re-derived from documentation: the envelope is
+`node`, and **a checkout-stage stub fires with only an id** (prefixed `ch_`) the
+instant a customer lands on the checkout page. Its id never matches the real
+order's later, so there is nothing to update — no phone means no order.
+
+#### The log, and what an operator can now find out
+
+`IntegrationLog`'s `salesChannel` half had no writer. Four events land now:
+`test_connection` / `auth_error` from the test, and `webhook_rejected` /
+`webhook_unparsed` / `webhook_received` from the inbound path. That is the only
+place an operator can find out WHY an order never arrived — a signature that did
+not verify, a payload no adapter recognised, an access token the platform
+rejected. The alternative diagnosis is "orders stopped", reported three days
+later.
+
+**A rejected webhook is still acknowledged with 200** (the platform would
+otherwise disable the endpoint) **and now also recorded.** The payload is
+deliberately still not logged: it is customer data of unknown provenance, and the
+whole reason we are there is that we cannot say who sent it.
+
+#### The screen
+
+No credential is SELECTED — not masked afterwards, not loaded. That is the
+carriers screen's rule and it applies with more force here: `webhookSecret` is
+what proves an inbound payload came from the platform, so anyone holding it can
+forge orders into a tenant's book. What is shown is whether credentials exist.
+
+The webhook URL is **never truncated**. A URL shortened with an ellipsis and then
+copied is a URL that silently does not work, and this one is pasted into somebody
+else's admin panel.
+
+Each row shows **how many orders have actually arrived through that channel**,
+which is the question somebody opens this screen to answer.
+
+Gated on `erp:settings:write` — what every channel route checks — **on the page**,
+because it reads the database directly. 6.3d found exactly this hole on the
+carriers page: a nav item is a hint, the URL is typeable.
+
+#### Files
+
+- `apps/website-builder/src/lib/erp/channel-contract.ts` — new
+- `apps/website-builder/src/lib/erp/channel-adapters.ts` — new
+- `apps/website-builder/src/app/api/erp/sales-channels/adapters/route.ts` — new
+- `apps/website-builder/src/app/api/erp/sales-channels/[id]/test/route.ts` — new
+- `apps/website-builder/src/app/api/erp/sales-channels/[id]/logs/route.ts` — new
+- `apps/website-builder/src/app/console/erp/sales-channels/page.tsx` — new
+- `apps/website-builder/src/components/console/erp/channel-write.tsx` — new
+- `apps/website-builder/src/lib/erp/webhook-route.ts` — adapter parsing + logging
+- `packages/product-registry/src/manifests.ts` — the `sales-channels` nav item
+- `packages/i18n/src/messages/{ar,en,fr}.json` — `erp.channels.*` + 3 keys
+- `apps/website-builder/test/erp/integrations.test.ts` — 18 new tests
+- `apps/website-builder/test/erp/access.test.ts` — 3 new surfaces
+
+**Migration:** none.
+
+**Risk:** medium, and it is the inbound path. `webhook-route.ts` now parses
+through an adapter where a registered one exists, so a tenant on Shopify or
+LightFunnels gets a different (correct) reading of the same payload. Existing
+channels on the other seven platforms are unchanged — they still go through
+`parseOrder`. Two tests drive real Shopify and LightFunnels payloads end to end
+and assert the resulting order.
+
+---
+
 ### LP.11 The bell learns to make a noise — **TIER 2 IS COMPLETE**
 
 [Opus 5]

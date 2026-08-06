@@ -2,6 +2,8 @@ import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 
+import { SESSION_COOKIE } from '@landingos/auth';
+
 import {
   skip, uid, BASE, makeErpTenant, makeMember, makeFollowupTask, cleanup, slugOf,
   contractTest as test,
@@ -486,5 +488,334 @@ describe('a follow-up task can be resolved, by the right person', () => {
       403,
       'but resolving needs erp:orders:write',
     );
+  });
+});
+
+
+/** A rendered console page — LP.15's screen assertions need HTML. */
+const screen = async (path: string, token: string) => {
+  const res = await fetch(BASE + path, {
+    redirect: 'manual',
+    headers: { cookie: `${SESSION_COOKIE}=${token}` },
+  });
+  return { status: res.status, body: await res.text() };
+};
+
+/* =============================================================================
+ * LP.15 / R8 — the sales-channel screen and the adapter registry
+ *
+ * The channel API has had full CRUD since Phase 5.3c and there was no screen, no
+ * nav item, no adapter list, no connection test, no log, and one generic
+ * `parseOrder`. A tenant could not connect a Shopify store through the console
+ * at all, and the webhook URL — generated once on create — was never shown again
+ * by anything.
+ * ========================================================================== */
+
+describe('the platform registry says what this deployment can really do (R8)', () => {
+  test('every offered platform is listed, and says whether it is real', async () => {
+    const r = await acme.manager.api('GET', '/api/erp/sales-channels/adapters');
+    assert.equal(r.status, 200);
+    const keys = r.body.data.items.map((p: { key: string }) => p.key);
+    // The legacy publishes nine.
+    for (const key of ['shopify', 'lightfunnels', 'justsell', 'woocommerce', 'custom']) {
+      assert.ok(keys.includes(key), `${key} must be offered`);
+    }
+
+    const shopify = r.body.data.items.find((p: { key: string }) => p.key === 'shopify');
+    assert.equal(shopify.registered, true, 'shopify has a live adapter');
+    const justsell = r.body.data.items.find((p: { key: string }) => p.key === 'justsell');
+    assert.equal(
+      justsell.registered, false,
+      'a platform with no adapter must SAY so rather than imply a live integration',
+    );
+  });
+
+  test('the list is gated like the rest of the channel surface', async () => {
+    assert.equal((await acme.agent.api('GET', '/api/erp/sales-channels/adapters')).status, 403);
+  });
+});
+
+describe('a storefront connection can be tested (R8)', () => {
+  test('a platform with no adapter reports STRUCTURALLY and says so', async () => {
+    // Seven of the nine offered platforms have no adapter, and refusing them
+    // would mean a tenant on JustSell cannot connect a store at all — the
+    // opposite of what D-LP.2 protects. What must not happen is a green tick
+    // meaning "we did not look".
+    const created = await acme.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Structural Store', platform: 'justsell', webhookSecret: 'shh',
+    });
+    assert.equal(created.status, 201);
+
+    const r = await acme.manager.api(
+      'POST', `/api/erp/sales-channels/${created.body.data.id}/test`, {},
+    );
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.data.structural, true);
+    assert.equal(r.body.data.ok, true, 'a webhook secret alone is enough configuration');
+    assert.match(r.body.data.message, /nothing was contacted/i);
+    assert.equal(r.body.data.registered, false);
+  });
+
+  test('a channel with no configuration at all fails the structural check', async () => {
+    const created = await acme.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Empty Store', platform: 'custom',
+    });
+    const r = await acme.manager.api(
+      'POST', `/api/erp/sales-channels/${created.body.data.id}/test`, {},
+    );
+    assert.equal(r.body.data.ok, false);
+    assert.equal(r.body.data.structural, true);
+  });
+
+  test('a real adapter is asked, and its refusal is reported honestly', async () => {
+    // A Shopify channel with a bogus domain. The point is that the platform was
+    // CONTACTED (or the attempt was made) rather than assumed working —
+    // `structural` must be false whatever the outcome.
+    const created = await acme.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Shopify Store', platform: 'shopify',
+      apiUrl: 'https://127.0.0.1:9', apiKey: 'shpat_nonsense',
+    });
+    const r = await acme.manager.api(
+      'POST', `/api/erp/sales-channels/${created.body.data.id}/test`, {},
+    );
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.data.structural, false, 'a registered adapter must not answer structurally');
+    assert.equal(r.body.data.ok, false);
+    assert.equal(r.body.data.registered, true);
+  });
+
+  test('a test writes lastTestAt, which had no writer at all', async () => {
+    const created = await acme.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Timestamp Store', platform: 'custom', webhookSecret: 'x',
+    });
+    const before = await acme.manager.api('GET', `/api/erp/sales-channels/${created.body.data.id}`);
+    assert.ok(!before.body.data.lastTestAt, 'never tested to begin with');
+
+    await acme.manager.api('POST', `/api/erp/sales-channels/${created.body.data.id}/test`, {});
+    const after = await acme.manager.api('GET', `/api/erp/sales-channels/${created.body.data.id}`);
+    assert.ok(after.body.data.lastTestAt, 'lastTestAt is rendered by the screen and had no writer');
+  });
+
+  test('another tenant’s channel is a 404', async () => {
+    const beta = await makeErpTenant(`ch-beta-${uid()}`);
+    const theirs = (await beta.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Beta Store', platform: 'custom',
+    })).body.data.id;
+    assert.equal(
+      (await acme.manager.api('POST', `/api/erp/sales-channels/${theirs}/test`, {})).status,
+      404,
+    );
+  });
+});
+
+describe('what has passed between the company and the storefront (R8)', () => {
+  test('a test writes a log row, and the log is readable', async () => {
+    const created = await acme.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Logged Store', platform: 'custom', webhookSecret: 'secret-value',
+    });
+    const id = created.body.data.id;
+
+    const empty = await acme.manager.api('GET', `/api/erp/sales-channels/${id}/logs`);
+    assert.equal(empty.status, 200);
+    assert.equal(empty.body.data.items.length, 0);
+
+    await acme.manager.api('POST', `/api/erp/sales-channels/${id}/test`, {});
+
+    const after = await acme.manager.api('GET', `/api/erp/sales-channels/${id}/logs`);
+    assert.ok(after.body.data.items.length > 0, 'the test wrote no log row');
+    assert.equal(after.body.data.items[0].event, 'test_connection');
+    // The whole reason `redact` exists.
+    assert.ok(
+      !JSON.stringify(after.body.data).includes('secret-value'),
+      'a credential reached the integration log',
+    );
+  });
+
+  test('an inbound webhook is recorded whether it lands or not', async () => {
+    const staged = await makeErpTenant(`chlog-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const created = await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Inbound Store', platform: 'shopify', webhookSecret: 'wh-secret',
+    });
+    const id = created.body.data.id;
+
+    // A payload with a signature that cannot verify. It must be acknowledged
+    // (200, so the platform does not disable the endpoint) AND recorded.
+    await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shopify-hmac-sha256': 'wrong' },
+      body: JSON.stringify({ id: 1, total_price: '100' }),
+    });
+
+    const logs = await staged.manager.api('GET', `/api/erp/sales-channels/${id}/logs`);
+    const events = logs.body.data.items.map((l: { event: string }) => l.event);
+    assert.ok(
+      events.includes('webhook_rejected'),
+      `a rejected webhook must be visible: ${JSON.stringify(events)}`,
+    );
+  });
+
+  test('the log is gated like the rest of the channel surface', async () => {
+    const created = await acme.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Gated Store', platform: 'custom',
+    });
+    assert.equal(
+      (await acme.agent.api('GET', `/api/erp/sales-channels/${created.body.data.id}/logs`)).status,
+      403,
+    );
+  });
+});
+
+describe('each platform’s own payload shape is read (R8)', () => {
+  test('a Shopify order lands with its product, wilaya and total', async () => {
+    const staged = await makeErpTenant(`shop-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const created = await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Shopify Inbound', platform: 'shopify',
+    });
+    const id = created.body.data.id;
+
+    // No webhook secret configured, so an unsigned payload is accepted —
+    // existing integrations predate the secret and breaking them silently loses
+    // real orders. See `verifySignature`.
+    const res = await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shopify-topic': 'orders/create' },
+      body: JSON.stringify({
+        id: 9001, name: '#1042', phone: '0555112233', total_price: '4900.00',
+        shipping_address: { name: 'Amina B', address1: 'Rue 5', province: 'Alger', city: 'Bab Ezzouar' },
+        line_items: [{ name: 'Shopify Widget', quantity: 2, price: '2450.00' }],
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const orders = await staged.manager.api('GET', '/api/erp/orders?search=Shopify%20Widget');
+    const order = orders.body.data.items[0];
+    assert.ok(order, 'the Shopify payload produced no order');
+    assert.equal(order.client, 'Amina B');
+    assert.equal(order.wilaya, 'Alger', 'Shopify calls a wilaya `province`');
+    assert.equal(order.product, 'Shopify Widget');
+    assert.equal(order.quantity, 2);
+  });
+
+  test('a LightFunnels order is read from its own `node`/`items` envelope', async () => {
+    // The generic parser reads Shopify tolerably and LightFunnels not at all:
+    // the order is wrapped in `{ node: … }` and the line items are `items`.
+    const staged = await makeErpTenant(`lf-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const created = await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'LF Inbound', platform: 'lightfunnels',
+    });
+    const id = created.body.data.id;
+
+    const res = await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        node: {
+          id: 'order_77', phone: '0555998877', total: 3500, email: 'x@y.z',
+          items: [{ title: 'LF Widget', price: 3500, quantity: 1 }],
+          shipping_address: { name: 'Karim L', province: 'Oran', city: 'Bir El Djir' },
+        },
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const orders = await staged.manager.api('GET', '/api/erp/orders?search=LF%20Widget');
+    const order = orders.body.data.items[0];
+    assert.ok(order, 'the LightFunnels envelope produced no order');
+    assert.equal(order.product, 'LF Widget');
+    assert.equal(order.wilaya, 'Oran');
+  });
+
+  test('the LightFunnels checkout stub with no phone creates NOTHING', async () => {
+    // Ported verbatim from a live integration: this event fires with only an id
+    // (prefixed `ch_`) the instant a customer lands on the checkout page, and
+    // its id never matches the real order's later. Creating from it produced an
+    // empty "Client / 0 DA" row every time.
+    const staged = await makeErpTenant(`lfstub-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const created = await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'LF Stub', platform: 'lightfunnels',
+    });
+
+    await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${created.body.data.id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ node: { id: 'ch_abc123' } }),
+    });
+
+    const orders = await staged.manager.api('GET', '/api/erp/orders');
+    assert.equal(orders.body.data.total, 0, 'a checkout stub must not become an order');
+
+    const logs = await staged.manager.api(
+      'GET', `/api/erp/sales-channels/${created.body.data.id}/logs`,
+    );
+    const events = logs.body.data.items.map((l: { event: string }) => l.event);
+    assert.ok(events.includes('webhook_unparsed'), 'and it must be visible in the log');
+  });
+
+  test('a Shopify topic that is not an order is ignored, not turned into one', async () => {
+    const staged = await makeErpTenant(`topic-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const created = await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Topic Store', platform: 'shopify',
+    });
+
+    await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${created.body.data.id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shopify-topic': 'products/update' },
+      body: JSON.stringify({ id: 555, title: 'Some Product' }),
+    });
+
+    const orders = await staged.manager.api('GET', '/api/erp/orders');
+    assert.equal(orders.body.data.total, 0, 'a product update is not an order');
+  });
+});
+
+describe('the sales-channel screen exists (R8)', () => {
+  test('it renders inside the shell, with the webhook URL in full', async () => {
+    const staged = await makeErpTenant(`chui-${uid()}`);
+    await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Visible Store', platform: 'shopify',
+    });
+
+    const r = await screen('/console/erp/sales-channels', staged.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-channels-table"/);
+    assert.match(r.body, /data-testid="product-switcher"/, 'it is inside the console shell');
+    assert.match(r.body, /data-testid="channel-webhook-url"/);
+    // The whole product of the screen: the URL somebody pastes into Shopify.
+    assert.match(r.body, /\/api\/erp\/webhooks\/[^"<]+\/channel\//);
+    assert.match(r.body, /data-testid="channel-create"/);
+  });
+
+  test('a platform with no live adapter is marked on the row', async () => {
+    const staged = await makeErpTenant(`chna-${uid()}`);
+    await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'JustSell Store', platform: 'justsell',
+    });
+    const r = await screen('/console/erp/sales-channels', staged.manager.token);
+    assert.match(r.body, /data-badge="no-adapter"/);
+  });
+
+  test('no credential reaches the page, and the screen says one exists', async () => {
+    const staged = await makeErpTenant(`chsec-${uid()}`);
+    await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Secret Store', platform: 'shopify',
+      apiKey: 'shpat_supersecret', webhookSecret: 'whsec_supersecret',
+    });
+    const r = await screen('/console/erp/sales-channels', staged.manager.token);
+    assert.doesNotMatch(r.body, /shpat_supersecret/);
+    assert.doesNotMatch(r.body, /whsec_supersecret/);
+    assert.match(r.body, /data-configured="true"/);
+  });
+
+  test('an agent typing the URL gets 404, and the nav does not offer it', async () => {
+    const r = await screen('/console/erp/sales-channels', acme.agent.token);
+    assert.equal(r.status, 404, 'a nav item is a hint; the URL is typeable');
+
+    const orders = await screen('/console/erp/orders', acme.agent.token);
+    assert.ok(!/\/console\/erp\/sales-channels/.test(orders.body), 'the nav must hide it too');
   });
 });

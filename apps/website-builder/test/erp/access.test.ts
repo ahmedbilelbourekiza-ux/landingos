@@ -90,6 +90,12 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   ['GET', '/api/erp/carriers/nonexistent/logs'],
   ['DELETE', '/api/erp/carriers/nonexistent/status-mappings'],
   ['GET', '/api/erp/sales-channels'],
+  // LP.15. The adapter registry, the connection test and the log — the three
+  // surfaces R8 was missing, two of which reach somebody else's server or the
+  // diagnostic record of having done so.
+  ['GET', '/api/erp/sales-channels/adapters'],
+  ['POST', '/api/erp/sales-channels/nonexistent/test'],
+  ['GET', '/api/erp/sales-channels/nonexistent/logs'],
   ['GET', '/api/erp/agents'],
   ['GET', '/api/erp/agents/payroll'],
   // LP.12. Forgiving an accountability counter that nothing else could lower.

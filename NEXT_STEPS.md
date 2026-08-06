@@ -223,10 +223,28 @@ was reachable any other way:
    advances `TenantSequence`. `nextReference` now heals itself from the highest
    reference already in use, counting only references it could have minted.
 
-**TIER 2 IS COMPLETE** (#7–#12). The remaining work is Tier 3: #15, #18, #19,
-#20, #21 and #22. #11
+**TIER 2 IS COMPLETE** (#7–#12) **and #15 is done.** The remaining work is Tier 3:
+#18, #19, #20, #21 and #22. #11
 (sound + desktop notification preferences on `ProductSetting`) hangs directly off
 this provider.
+
+### LP.15 — DONE. A storefront can finally be connected (R8)
+
+**Implemented and verified.** integrations 29 → **47**, access 87 → **90**.
+The screen, the adapter registry, the connection test, the log, and Shopify +
+LightFunnels payload parsing.
+
+**Two things to carry forward:**
+
+- **A registered adapter's `null` is an ANSWER.** The generic `parseOrder` is the
+  fallback for platforms with NO adapter, never a second chance after a
+  registered one declined. The first build got this wrong and a Shopify
+  `products/update` topic became an order. Anything added to
+  `channel-adapters.ts` inherits the rule.
+- **The channel fallback is deliberate and the carrier one is not.** D-LP.2
+  refuses an unregistered carrier because it can invent a tracking number; a
+  channel adapter cannot invent anything, and refusing would lock seven of nine
+  platforms out entirely. Do not "make them consistent".
 
 ### LP.11 — DONE. The bell learns to make a noise (N4, N5) — **TIER 2 COMPLETE**
 
@@ -389,7 +407,7 @@ preferences · (12) agent alerts, missed-counter reset, manager password reset,
 payroll report, audit view **[DONE LP.12]**.
 **Tier 3 — business value:** (13) analytics **[DONE LP.13]** ·
 (14) carrier test/sync/logs **[DONE LP.14]** ·
-(15) sales-channel screen · (16) profit calculator **[DONE LP.16]** ·
+(15) sales-channel screen **[DONE LP.15]** · (16) profit calculator **[DONE LP.16]** ·
 (17) AI screen **[DONE LP.17]** ·
 (18) product fields + variant editor · (19) CSV import · (20) channel webhooks ·
 (21) manual follow-up assignment · (22) Ecom adapter.

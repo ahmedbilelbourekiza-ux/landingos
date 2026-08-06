@@ -6,6 +6,8 @@ import { asPlatform, withTenant } from "@landingos/db";
 
 import { nextReference } from "./ids";
 import { verifySignature, parseOrder, ingestOrder } from "./webhooks";
+import { getChannelAdapter } from "./channel-adapters";
+import { logIntegration } from "./integration-log";
 
 /* =============================================================================
  * The wrapper every inbound channel webhook uses.
@@ -69,6 +71,21 @@ export function channelWebhook(kind: "order" | "checkout" | "contact") {
         console.warn(
           `[webhook] rejected ${kind} for channel ${channel.id}: signature ${verdict}`,
         );
+        /* LP.15 — AND RECORDED, which is the whole point of R8's log half.
+         * A run of these is somebody probing, or a secret that was rotated on
+         * one side only, and until this slice the ONLY evidence either way was
+         * "orders stopped arriving" — reported by the tenant three days later.
+         * The payload is still not logged: it is customer data of unknown
+         * provenance, and the whole reason we are here is that we cannot say
+         * who sent it. */
+        await logIntegration(db, tenant.id, {
+          entity: "salesChannel",
+          entityId: channel.id,
+          event: "webhook_rejected",
+          result: "failure",
+          message: `Signature ${verdict}.`,
+          request: { kind, platform: channel.platform },
+        });
         return NextResponse.json({ received: true });
       }
 
@@ -79,8 +96,54 @@ export function channelWebhook(kind: "order" | "checkout" | "contact") {
         return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
       }
 
-      const parsed = parseOrder(body);
-      if (!parsed) return NextResponse.json({ received: true });
+      /* LP.15 / R8 — THE PLATFORM'S OWN SHAPE FIRST, THE GENERIC ONE AFTER.
+       *
+       * Shopify puts the total in `total_price` and the items in `line_items`;
+       * LightFunnels wraps the order in `{ node: … }` and calls them `items`.
+       * One generic parser reads Shopify tolerably and LightFunnels not at all
+       * — which is how a tenant on LightFunnels received orders with no product
+       * and no total.
+       *
+       * The generic parser is the FALLBACK rather than the replacement, because
+       * seven of the nine offered platforms have no adapter and their payloads
+       * are still mostly Shopify-shaped. Refusing them would lose real orders to
+       * a missing integration.
+       *
+       * `x-shopify-topic` is passed through because Shopify sends dozens of
+       * topics down one endpoint and only some of them are orders. An adapter
+       * returning null for a topic it does not handle is not an error. */
+      const adapter = getChannelAdapter(channel.platform);
+      const topic = req.headers.get("x-shopify-topic");
+
+      /* A REGISTERED ADAPTER'S `null` IS AN ANSWER, NOT A MISS.
+       *
+       * The first build wrote `adapter?.parseOrder?.(…) ?? parseOrder(body)`,
+       * and a test caught it: a Shopify `products/update` topic — which the
+       * adapter correctly refuses — fell through to the generic parser, which
+       * happily turned `{id, title}` into an order with no customer and no
+       * total. LightFunnels' checkout stub would have done the same.
+       *
+       * It is D-LP.2's rule in a new place: a registered integration's refusal
+       * must be honoured, never routed around. The generic parser applies only
+       * where there is NO adapter at all. */
+      const parsed = adapter?.parseOrder
+        ? (adapter.parseOrder(body, topic) as ReturnType<typeof parseOrder>)
+        : parseOrder(body);
+
+      if (!parsed) {
+        await logIntegration(db, tenant.id, {
+          entity: "salesChannel",
+          entityId: channel.id,
+          event: "webhook_unparsed",
+          result: "failure",
+          // Not "failed": a Shopify `products/update` topic arriving on the
+          // order endpoint is ordinary traffic, and so is LightFunnels'
+          // checkout-stage stub with no phone number.
+          message: "The payload carried no order this adapter recognises.",
+          request: { kind, platform: channel.platform, topic },
+        });
+        return NextResponse.json({ received: true });
+      }
 
       const result = await ingestOrder(db, tenant.id, channel, parsed, () =>
         nextReference(db, tenant.id, "order"),
@@ -95,6 +158,18 @@ export function channelWebhook(kind: "order" | "checkout" | "contact") {
           data: { orderType: "abandoned" },
         });
       }
+
+      /* Recorded either way. "It arrived and we already had it" is the answer
+       * to most of the questions this log gets opened for — platforms retry,
+       * and they replay backlogs. */
+      await logIntegration(db, tenant.id, {
+        entity: "salesChannel",
+        entityId: channel.id,
+        event: "webhook_received",
+        result: "success",
+        message: result.created ? "Order created." : "Already seen; nothing written.",
+        request: { kind, platform: channel.platform, externalId: parsed.externalId },
+      });
 
       return NextResponse.json({ received: true, created: result.created });
     });

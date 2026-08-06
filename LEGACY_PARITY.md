@@ -512,14 +512,18 @@ one-at-a-time booking is the difference between a minute and an hour.
 
 ---
 
-### R8 · Sales-channel screen and channel operations — 🔴/🟡 (5 features)
+### R8 · Sales-channel screen and channel operations — ✅ DONE (LP.15)
 **Legacy:** the Stores screen manages connected storefronts; `GET /api/platforms`
 lists nine platform keys; `POST /:id/test` validates credentials;
 `GET /:id/logs` shows every inbound interaction; `shopify.js` and
 `lightfunnels.js` parse and HMAC-verify their own payloads.
-**Now:** full CRUD API, **no screen, no nav item**, no adapter registry, no test,
+**Now (LP.15):** `/console/erp/sales-channels` with a nav item,
+`GET /api/erp/sales-channels/adapters` (which publishes the CATALOGUE and the
+REGISTRY separately, so a platform with no live integration says so),
+`POST /:id/test` (structural where no adapter exists, and stating it),
+`GET /:id/logs`, and Shopify + LightFunnels payload parsing.
+**Was:** full CRUD API, no screen, no nav item, no adapter registry, no test,
 no logs, and one generic `parseOrder`.
-**Missing:** the screen, `GET adapters`, test, logs, and per-platform parsing.
 **Business impact:** **High.** A tenant cannot connect a Shopify store at all
 through the console — the API exists and nothing reaches it. The webhook URL is
 generated on create and never shown again.
@@ -907,7 +911,7 @@ from complete** — order export (R4) is all that remains in it.
 |---|---|---|---|---|
 | ~~13~~ | ~~Analytics screen + headline rates~~ | R6, K1 | M | **DONE — LP.13.** Seven breakdowns, the headline rates, and the dashboard's reaction-time figures. Also closes **N18** and **N20**. |
 | ~~14~~ | ~~Carrier test / sync / integration logs~~ | R3, R20 | M | **DONE — LP.14.** `IntegrationLog` gets its first writer AND reader, `lastTestAt`/`lastTestOk`/`lastSyncAt` get theirs, and the status-mapping delete lands — so R20 is closed whole (its default-carrier half went in LP.16b). |
-| **15** | Sales-channel screen + platform adapter registry | R8 | M | |
+| ~~15~~ | ~~Sales-channel screen + platform adapter registry~~ | R8 | M | **DONE — LP.15.** The screen, `GET adapters` (catalogue AND registry, per entry), `POST /:id/test` (structural where no adapter exists, and saying so), `GET /:id/logs`, and per-platform parsing for Shopify and LightFunnels. Found a defect while building it: a registered adapter's `null` was falling through to the generic parser, so a Shopify `products/update` became an order. |
 | ~~16~~ | ~~Profit/loss calculator + record versions + period aggregation~~ | R9 | L | **DONE — LP.16.** All four steps (§7.4): 16a `sales-summary`, 16b proration + the structured-settings editors, 16c `versions`/`aggregate`, 16d the screen. Also closes **N23** and the write half of **R20**. |
 | ~~17~~ | ~~AI screen + provider/agent CRUD~~ | R10 | M | **DONE — LP.17.** The 404 is closed and the manifest is now asserted whole: every declared nav item must answer 200. Chat stays a stated 501; provider `/test` is deferred to slice 27 with its reason on the screen. |
 | **18** | Product fields, variant editor, `niche`/`category`/`supplier` | R12 | M | |

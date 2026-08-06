@@ -89,6 +89,11 @@ export const erp: ProductManifest = {
     { id: 'inventory', titleKey: 'erp.nav.inventory', path: 'inventory', icon: 'layers', permission: 'erp:inventory:write' },
     { id: 'shipments', titleKey: 'erp.nav.shipments', path: 'shipments', icon: 'truck', permission: 'erp:shipments:write' },
     { id: 'carriers', titleKey: 'erp.nav.carriers', path: 'carriers', icon: 'route', permission: 'erp:shipments:write' },
+    // LP.15. The channel API has had full CRUD since Phase 5.3c and no
+    // nav item, so a tenant could not connect a storefront through the
+    // console at all — and the webhook URL, generated on create, was
+    // never shown again by anything.
+    { id: 'sales-channels', titleKey: 'erp.nav.channels', path: 'sales-channels', icon: 'store', permission: 'erp:settings:write' },
     { id: 'follow-up', titleKey: 'erp.nav.followUp', path: 'follow-up', icon: 'bell-ring', permission: 'erp:orders:write' },
     // LP.13. Gated on `erp:orders:read`, which every member holds — deliberately:
     // the rows are RECORD-SCOPED, so an agent gets the analytics of their own
