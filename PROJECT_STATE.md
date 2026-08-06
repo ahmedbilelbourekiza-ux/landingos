@@ -16,16 +16,16 @@ anything else.
 **Second pass, 6 August 2026 (from `9d1f887`): 115 features compared —
 52 identical · 6 improved · 18 partial · 39 missing.**
 
-**As of the LP.12 run (6 August 2026), TIER 1 AND TIER 2 ARE COMPLETE and Tier 3
-is four slices from it.** Twelve restoration slices have landed — LP.1–LP.7,
-LP.12, LP.13, LP.14, LP.16, LP.17 — closing every production blocker §0b named,
-every "computed and shown nowhere" defect the three passes found, and eleven of
-the twenty-seven roadmap slices. **What remains before parity is Tier 3's
-(15) sales-channel screen, (18) product fields + variant editor, (19) CSV import,
-(20) channel webhooks, (21) manual follow-up assignment and (22) the Ecom
-adapter**, plus Tier 2's (8) inline row actions, (9) bulk actions completed,
-(10) client detail/edit/export and (11) sound + desktop preferences. Tier 4 is
-Phase 8 work the legacy happened to also have.
+**As of 6 August 2026, TIER 1 IS COMPLETE and ELEVEN of the twenty-seven
+roadmap slices have landed** — LP.1–LP.7, LP.12, LP.13, LP.14, LP.16, LP.17.
+Every production blocker §0b named is closed, as is every "computed, stored and
+shown nowhere" defect the three passes found.
+
+**Tier 2 is HALF done: 7 and 12 are in, 8, 9, 10 and 11 are not.**
+**Tier 3 is a third done: 13, 14, 16 and 17 are in; 15, 18, 19, 20, 21 and 22
+are not.** Parity is reached at the end of Tier 3, so **ten roadmap slices
+remain** — the full list is in `LEGACY_PARITY.md` §4 and every one still carries
+its own detail card in §3.
 
 **The first pass measured APIs, not workflows, and five verdicts did not
 survive.** A feature was marked ✅ when the endpoint existed and had contract
