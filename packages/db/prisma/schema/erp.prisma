@@ -227,6 +227,26 @@ model CatalogProduct {
   costPrice    Decimal? @default(0)
   packagingCost Decimal? @default(0)
 
+  // LP.18 / R12. Three classification columns the ERP had and the port dropped.
+  //
+  // `niche` is the load-bearing one: the legacy's CLIENT filter groups by it
+  // ("everybody who has ever bought something in the skincare niche") and one
+  // analytics breakdown does too. Without the column both are uncomputable, and
+  // LP.10 had to leave a filter out of the customer registry for exactly this
+  // reason — a control over a field that does not exist matches nothing.
+  //
+  // `category` and `supplier` are plain classification. `supplier` matters at
+  // restock time: "who do we buy this from" is a question the stock screen is
+  // opened with, and the answer was living in somebody's memory.
+  //
+  // Free text rather than relations, deliberately. The ERP stored them as text,
+  // a niche list is a handful of words per tenant, and a `Supplier` table would
+  // be a migration plus RLS plus a management screen for something no route
+  // needs to join on.
+  niche    String?
+  category String?
+  supplier String?
+
   // Both were JSON-encoded TEXT: variants is [{name,image}], optionDefs the
   // option definitions the variant editor builds from.
   variants   Json?

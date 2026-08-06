@@ -208,12 +208,11 @@ export function withDerived<T extends { totalSpent: Prisma.Decimal; deliveredOrd
  * fields is a second vocabulary that goes stale the moment a filter is added,
  * and it shows up not as an error but as a capability nobody can find.
  *
- * TWO OF THE LEGACY'S ARE NOT HERE, each for a stated reason:
+ * ONE OF THE LEGACY'S IS NOT HERE: `sort` is a separate concern and stays where
+ * sorting belongs.
  *
- *   - `niche` needs `CatalogProduct.niche`, which is not a column on this
- *     platform yet (R12, roadmap slice 18). A filter over a field that does not
- *     exist is a control that matches nothing.
- *   - `sort` is a separate concern and stays where sorting belongs.
+ * `niche` WAS the other one — it needed `CatalogProduct.niche`, which LP.18
+ * added, and it is now offered like the rest.
  *
  * The legacy's `store` IS here, under the platform's own name
  * `salesChannelName`, because that is the denormalised column the channel
@@ -287,12 +286,38 @@ export async function clientHistoryPhones(
   const get = (k: string) => params.get(k)?.trim() || undefined;
   const product = get("product");
   const channel = get("salesChannelName");
-  if (!product && !channel) return null;
+  const niche = get("niche");
+  if (!product && !channel && !niche) return null;
+
+  /* LP.18 — the NICHE filter, and the join the legacy used, with its own
+   * caveat carried over verbatim because it is a real limitation rather than an
+   * implementation detail:
+   *
+   *   an order stores the product NAME, not a product id, so this matches
+   *   `orders.product = products.name`. If a product was renamed after orders
+   *   were placed, the older orders will not match its niche.
+   *
+   * It is best-effort and stated rather than silently assumed. `product-match.ts`
+   * exists for the money path (LP.16a) where an approximate match would move
+   * revenue between products; a campaign filter that misses a renamed product is
+   * a smaller wrong answer than no filter at all, which is what R12 left. */
+  let nicheNames: string[] | null = null;
+  if (niche) {
+    const products = await db.catalogProduct.findMany({
+      where: { niche },
+      select: { name: true },
+    });
+    nicheNames = products.map((p) => p.name ?? "").filter(Boolean);
+    // No product carries this niche: the filter matched nothing, which is an
+    // empty result rather than an ignored filter.
+    if (nicheNames.length === 0) return [];
+  }
 
   const rows = await db.fulfillmentOrder.findMany({
     where: {
       ...(product ? { product: { contains: product, mode: "insensitive" } } : {}),
       ...(channel ? { salesChannelName: channel } : {}),
+      ...(nicheNames ? { product: { in: nicheNames } } : {}),
       phoneNormalized: { not: null },
     },
     distinct: ["phoneNormalized"],
@@ -313,6 +338,8 @@ export function clientFilterFields(opts: {
   readonly t: (key: string) => string;
   readonly wilayas: readonly { value: string; label: string }[];
   readonly channels: readonly { value: string; label: string }[];
+  /** LP.18. The niches this tenant's catalogue actually uses. */
+  readonly niches?: readonly { value: string; label: string }[];
 }): FilterFieldSpec[] {
   const { t } = opts;
   const fields: FilterFieldSpec[] = [
@@ -326,6 +353,14 @@ export function clientFilterFields(opts: {
       label: t("erp.row.channel"),
       kind: "select",
       options: opts.channels,
+    });
+  }
+  if (opts.niches?.length) {
+    fields.push({
+      name: "niche",
+      label: t("erp.products.niche"),
+      kind: "select",
+      options: opts.niches,
     });
   }
   fields.push(

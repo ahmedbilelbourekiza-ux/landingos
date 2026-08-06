@@ -16,7 +16,13 @@ import {
   type EditableProduct,
 } from "@/components/console/erp/catalog-write";
 import { editFingerprint, type EditField } from "@/components/console/edit-field";
-import { catalogStrings, filterStrings, pagerStrings } from "@/lib/console/erp-strings";
+import {
+  VariantEditorPanel,
+  type EditableProductVariants,
+} from "@/components/console/erp/variant-editor";
+import {
+  catalogStrings, filterStrings, pagerStrings, variantEditorStrings,
+} from "@/lib/console/erp-strings";
 import { inventoryView } from "@/lib/erp/inventory";
 
 export const dynamic = "force-dynamic";
@@ -81,6 +87,8 @@ export default async function ErpProductsScreen({
         id: true, reference: true, name: true, sku: true, brand: true, description: true,
         price: true, costPrice: true, packagingCost: true,
         stock: true, threshold: true, variants: true, archived: true,
+        // LP.18 — the three classification fields and the variant vocabulary.
+        niche: true, category: true, supplier: true, optionDefs: true, image: true,
       },
     }),
     };
@@ -91,6 +99,11 @@ export default async function ErpProductsScreen({
   // Phase 6.3c. `erp:products:write` is what both the create route and the
   // archive route check, so it is what decides whether either control exists.
   const mayWrite = can(session.auth!, "erp:products:write");
+  /* LP.18. `PUT /products/[id]/variants` moves stock, so it is gated on
+     `erp:inventory:write` — the permission `/inventory/adjust` checks — rather
+     than on `erp:products:write`. Somebody who may only edit product TEXT must
+     not be able to move a level by renaming a variant (D-06.2). */
+  const mayMoveStock = can(session.auth!, "erp:inventory:write");
   const errors = actionErrors(t);
   const s: CatalogStrings = catalogStrings(t);
 
@@ -110,12 +123,52 @@ export default async function ErpProductsScreen({
       { name: "packagingCost", label: t("erp.write.packaging"), value: (p.packagingCost ?? 0).toString(), kind: "money" },
       { name: "threshold", label: t("erp.inventory.threshold"), value: String(p.threshold ?? 0), kind: "number" },
       { name: "description", label: t("erp.write.description"), value: p.description ?? "", kind: "textarea" },
+      /* LP.18 / R12 — the three classification fields the ERP had. `niche` is
+         the load-bearing one: the legacy's client filter and one analytics
+         breakdown both group by it, so until this column existed neither was
+         computable. */
+      { name: "niche", label: t("erp.products.niche"), value: p.niche ?? "", kind: "text" },
+      { name: "category", label: t("erp.products.category"), value: p.category ?? "", kind: "text" },
+      { name: "supplier", label: t("erp.products.supplier"), value: p.supplier ?? "", kind: "text" },
+      /* The product-level image. Absent before this slice because "it needs its
+         own surface" — it does not: it is a URL like any other text field, and
+         the R2 move (M-14) changes what goes IN it, not whether it can be
+         typed. What still has no control is uploading a file. */
+      { name: "image", label: t("erp.write.image"), value: p.image ?? "", kind: "text" },
     ];
     return {
       id: p.id,
       label: p.name || p.reference || p.id,
       fields,
       fingerprint: editFingerprint(fields),
+    };
+  });
+
+  /* LP.18 — the variant matrix, per product, from what the server holds.
+     `inventoryView` is the same shape `GET /products/[id]/variants` answers
+     with, so the panel and the route cannot disagree about a level. */
+  const variantEditable: readonly EditableProductVariants[] = products.map((p) => {
+    const view = inventoryView(p);
+    const defs = (Array.isArray(p.optionDefs) ? p.optionDefs : []) as {
+      name?: string; values?: string[];
+    }[];
+    return {
+      id: p.id,
+      label: p.name || p.reference || p.id,
+      variants: view.variants.map((v) => ({
+        name: v.name,
+        sku: v.sku ?? "",
+        stock: v.stock,
+        threshold: v.threshold,
+        options: (v.options ?? {}) as Record<string, string>,
+      })),
+      optionDefs: defs.map((d) => ({
+        name: String(d.name ?? ""),
+        values: Array.isArray(d.values) ? d.values.map(String) : [],
+      })),
+      // Every level and every name, so a save remounts the panel on what was
+      // stored rather than on what was typed (D-06.3).
+      fingerprint: JSON.stringify(view.variants),
     };
   });
 
@@ -148,6 +201,16 @@ export default async function ErpProductsScreen({
           way — so withholding the control here would hide a write the API
           allows (D-06.2). */}
       {mayWrite && <ProductEditPanel products={editable} errors={errors} s={s} />}
+
+      {/* LP.18 — the variant matrix. Gated on the permission the ROUTE checks,
+          which is not the one above it. */}
+      {mayMoveStock && (
+        <VariantEditorPanel
+          products={variantEditable}
+          errors={errors}
+          s={variantEditorStrings(t)}
+        />
+      )}
 
       <DataTable
         testId="erp-products-table"

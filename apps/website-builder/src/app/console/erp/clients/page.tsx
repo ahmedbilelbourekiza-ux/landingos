@@ -53,7 +53,7 @@ export default async function ErpClientsScreen({
     if (typeof v === "string") params.set(k, v);
   }
   const page = Math.max(1, Number(params.get("page")) || 1);
-  const { clients, total, wilayas, channels } = await withTenant(
+  const { clients, total, wilayas, channels, niches } = await withTenant(
     session.auth!.tenantId,
     async (db) => {
       // The order-history filters first: `product` and `salesChannelName` are
@@ -89,6 +89,13 @@ export default async function ErpClientsScreen({
           orderBy: { salesChannelName: "asc" },
           _count: { _all: true },
         }),
+        // LP.18. The niches this catalogue actually uses — never a hardcoded
+        // list, for the reason the wilayas are derived the same way.
+        niches: await db.catalogProduct.groupBy({
+          by: ["niche"],
+          orderBy: { niche: "asc" },
+          _count: { _all: true },
+        }),
       };
     },
   );
@@ -116,6 +123,10 @@ export default async function ErpClientsScreen({
             .map((value) => ({ value, label: value })),
           channels: channels
             .map((c) => String(c.salesChannelName ?? ""))
+            .filter(Boolean)
+            .map((value) => ({ value, label: value })),
+          niches: niches
+            .map((n) => String(n.niche ?? ""))
             .filter(Boolean)
             .map((value) => ({ value, label: value })),
         })}

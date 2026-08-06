@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.15: a storefront can finally be connected*
+**Branch:** `master` · **Last commit:** *LP.18: the variant matrix*
 **Working tree:** clean, all work committed.
 
 ---
@@ -16,13 +16,13 @@ anything else.
 **Second pass, 6 August 2026 (from `9d1f887`): 115 features compared —
 52 identical · 6 improved · 18 partial · 39 missing.**
 
-**As of 7 August 2026, TIERS 1 AND 2 ARE COMPLETE and SIXTEEN of the twenty-seven
-roadmap slices have landed** — LP.1–LP.17 (all but 18–22).
+**As of 7 August 2026, TIERS 1 AND 2 ARE COMPLETE and SEVENTEEN of the twenty-seven
+roadmap slices have landed** — LP.1–LP.18 (all but 19–22).
 Every production blocker §0b named is closed, as is every "computed, stored and
 shown nowhere" defect the three passes found.
 
 **TIER 2 IS COMPLETE** — 7, 8, 9, 10, 11 and 12 are all in.
-**Tier 3: 13, 14, 15, 16 and 17 are in; 18, 19, 20, 21 and 22 are not.** Parity is reached at the end of Tier 3, so **five roadmap slices
+**Tier 3: 13–18 are in; 19, 20, 21 and 22 are not.** Parity is reached at the end of Tier 3, so **four roadmap slices
 remain** — the full list is in `LEGACY_PARITY.md` §4 and every one still carries
 its own detail card in §3.
 
@@ -77,6 +77,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.10** client detail / correction / export / eight filters | R5 (3 of 4) | **DONE** — registry 21 (new), access 84→87 |
 | **LP.11** six sound signatures, per-family toggles, desktop notifications | N4, N5 | **DONE — TIER 2 COMPLETE** — notifications 41→48 |
 | **LP.15** sales-channel screen, adapter registry, test, logs, per-platform parsing | R8 | **DONE** — integrations 29→47, access 87→90 |
+| **LP.18** product fields, the variant editor, `niche`/`category`/`supplier` | R12 | **DONE** — catalog 55→66, registry 21→23, access 90→92 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -465,8 +466,8 @@ domain at a time.
 | Surface | Contract |
 |---|---|
 | orders (+ stats, **the seven bulk actions** LP.9, 6 per-order routes), clients, settings, audit | orders 58/58 · validation 29/29 · listing 30/30 |
-| the customer registry — one record, its history, its correction and its file (LP.10) | registry 21/21 |
-| products (incl. **editing**, LP.1 and the **normalised sales-summary match**, LP.16a), inventory, stock lots (incl. stock on confirm/cancel), agents, payroll (incl. `periodType`, LP.16b) | catalog 55/55 |
+| the customer registry — one record, its history, its correction and its file (LP.10), and the niche filter LP.18 unblocked | registry 23/23 |
+| products (incl. **editing**, LP.1, the **normalised sales-summary match**, LP.16a, and the **variant editor + three classification columns**, LP.18), inventory, stock lots (incl. stock on confirm/cancel), agents, payroll (incl. `periodType`, LP.16b) | catalog 66/66 |
 | carriers (incl. **adapter refusal** LP.2, the **real ZR Express adapter** LP.5, and **test / sync / the integration log** LP.14), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 77/77 |
 | sales channels (incl. the **screen, the adapter registry, test / logs and per-platform parsing**, LP.15), inbound webhooks, AI, follow-up | integrations 47/47 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
@@ -478,9 +479,9 @@ domain at a time.
 | the P&L department — proration, fixed costs, versions, roll-up, the calculator screen (LP.16) | finance 38/38 + calc 20/20 |
 | the confirmation rate and six other breakdowns, plus the dashboard's reaction-time figures (LP.13) | analytics 19/19 |
 | the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
-| every surface, gated | access 90/90 |
+| every surface, gated | access 92/92 |
 
-**764/764** across SEVENTEEN ERP contract files, each verified on its own, plus
+**779/779** across SEVENTEEN ERP contract files, each verified on its own, plus
 **91/91** platform contract (team 62 · billing 19 · signup 10) and **20/20** in
 `test/calc.test.ts` — the one PURE suite, which needs no server at all. Running
 several contract files back to back still trips the documented Neon connection
@@ -845,6 +846,36 @@ checkout-stage stub that fires with only an id and must create nothing.
 **`IntegrationLog`'s `salesChannel` half gets its writer** — `test_connection`,
 `auth_error`, `webhook_rejected`, `webhook_unparsed`, `webhook_received`. It is
 the only place an operator can find out why an order never arrived.
+
+### LP.18 — the variant matrix, and three columns the port dropped
+
+**R12.** A variant could be created once, in the product's `variants` array at
+creation, and never renamed, removed or given a threshold; its stock could only
+be moved by typing the variant name exactly right into the generic adjust
+control. `optionDefs` had a column since Phase 3.2 with **no writer anywhere**.
+
+**D-LP.18.1 — every stock difference goes through the ledger.** The route writes
+the ARRAY (names, SKUs, images, thresholds, option maps) directly and never a
+LEVEL: a `stock` on an incoming variant becomes a DELTA applied through
+`applyMovement`, which writes the level and its reason together. An unchanged
+level writes nothing — a ledger full of zero-delta rows is a ledger nobody reads.
+
+**D-LP.18.2 — removing a variant that still holds stock is refused BY NAME**, and
+the refusal lists every variant that would lose stock. The ERP dropped them
+silently and the stock went with them.
+
+**`erp:inventory:write`, not `erp:products:write`.** The route moves stock, so it
+is gated on the permission `/inventory/adjust` checks — a different gate from the
+edit panel directly above it on the same screen.
+
+**The generator keeps existing variants' stock.** A generator that replaced the
+matrix would silently zero every level it regenerated. The generated name is the
+option values joined in definition order, which is stable and is what stops a
+catalogue growing "M / Blue" and "Blue / M" as two rows.
+
+**`niche` unblocks the client filter LP.10 shipped without**, with the legacy's
+own caveat carried over rather than assumed: an order stores the product NAME, so
+a product renamed after its orders were placed will not match its niche.
 
 ### LP.14 — carriers: three columns nobody wrote, and a log nobody read
 
@@ -1299,7 +1330,7 @@ happens in server components and in the `tenantRoute` wrapper.
 
 **PostgreSQL 18.4 on Neon.** One database, one Prisma schema, three domains.
 
-- **52 tables**, 161 indexes, 8 enums
+- **52 tables**, 161 indexes, 8 enums (LP.18 added three columns to `CatalogProduct`)
 - **47 tables carry `tenantId`** and have RLS
 - **5 do not, by design:** `Tenant`, `User`, `Session` (identity — resolved
   before a tenant is known) and `Wilaya`, `Baladia` (platform reference data)
@@ -1709,7 +1740,7 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 764 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 779 | all pass against a running server |
 | `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
 | `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
@@ -1717,7 +1748,7 @@ fail without it, so check the counts, not just the exit code.
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1420** | green per suite |
+| **Total** | **1435** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

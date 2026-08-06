@@ -326,3 +326,48 @@ describe('the customer record has a screen', () => {
     assert.ok(!/data-testid="client-edit"/.test(r.body), 'a form the API refuses must not render');
   });
 });
+
+describe('the niche filter LP.10 had to leave out (LP.18)', () => {
+  test('a niche narrows the registry through the customer’s order history', async () => {
+    // R12's business case: "everybody who has ever bought something in the
+    // skincare niche" is a repeat-purchase campaign, and until `niche` was a
+    // column it was uncomputable — which is why LP.10 shipped without it and
+    // said so.
+    const staged = await makeErpTenant(`niche-${uid()}`);
+    await staged.manager.api('POST', '/api/erp/products', {
+      name: 'Serum A', price: 3000, niche: 'skincare',
+    });
+    await staged.manager.api('POST', '/api/erp/products', {
+      name: 'Shampoo B', price: 1500, niche: 'haircare',
+    });
+    await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Skin Buyer', phone: phone(), price: 3000, product: 'Serum A',
+    });
+    await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Hair Buyer', phone: phone(), price: 1500, product: 'Shampoo B',
+    });
+
+    const all = await staged.manager.api('GET', '/api/erp/clients');
+    assert.equal(all.body.data.total, 2);
+
+    const skincare = await staged.manager.api('GET', '/api/erp/clients?niche=skincare');
+    assert.equal(skincare.body.data.total, 1);
+    assert.equal(skincare.body.data.items[0].name, 'Skin Buyer');
+
+    // A niche no product carries narrows to NOTHING rather than being ignored.
+    const nobody = await staged.manager.api('GET', '/api/erp/clients?niche=nonexistent');
+    assert.equal(nobody.body.data.total, 0);
+  });
+
+  test('the control is offered once the catalogue uses a niche', async () => {
+    const staged = await makeErpTenant(`nichectl-${uid()}`);
+    const before = await html('/console/erp/clients', staged.manager.token);
+    assert.ok(!/id="filter-niche"/.test(before.body), 'no niches, no control');
+
+    await staged.manager.api('POST', '/api/erp/products', {
+      name: 'Niched', price: 100, niche: 'skincare',
+    });
+    const after = await html('/console/erp/clients', staged.manager.token);
+    assert.match(after.body, /id="filter-niche"/);
+  });
+});

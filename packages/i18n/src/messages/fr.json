@@ -152,7 +152,10 @@
       "stock": "Stock",
       "variants": "Variantes",
       "none": "Aucun produit",
-      "archived": "Archivé"
+      "archived": "Archivé",
+      "niche": "Niche",
+      "category": "Catégorie",
+      "supplier": "Fournisseur"
     },
     "inventory": {
       "title": "Inventaire",
@@ -348,7 +351,8 @@
       "autoAssign": "Automatique (le moins chargé)",
       "createShipments": "Créer les colis",
       "sendToDelivery": "Envoyer au transporteur",
-      "bookingHint": "Création de colis limitée par lot à"
+      "bookingHint": "Création de colis limitée par lot à",
+      "image": "URL de l'image"
     },
     "settings": {
       "title": "Règles d'automatisation",
@@ -558,6 +562,18 @@
         "read_shipments": "Lire les expéditions",
         "read_analytics": "Lire les analyses"
       }
+    },
+    "variants": {
+      "panel": "Variantes",
+      "hint": "Définissez les options, générez la matrice, puis fixez le stock de chaque variante. Chaque changement de stock est écrit dans le registre des mouvements avec le motif ci-dessous.",
+      "optionName": "Option",
+      "optionValues": "Valeurs (séparées par des virgules)",
+      "addOption": "Ajouter une option",
+      "generate": "Générer les variantes",
+      "generateHint": "Les variantes existantes conservent leur stock.",
+      "addVariant": "Ajouter une variante",
+      "remove": "Supprimer",
+      "noVariants": "Aucune variante — ce produit est suivi comme une seule ligne de stock."
     }
   },
   "status": {

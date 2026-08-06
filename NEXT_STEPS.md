@@ -223,10 +223,30 @@ was reachable any other way:
    advances `TenantSequence`. `nextReference` now heals itself from the highest
    reference already in use, counting only references it could have minted.
 
-**TIER 2 IS COMPLETE** (#7–#12) **and #15 is done.** The remaining work is Tier 3:
-#18, #19, #20, #21 and #22. #11
+**TIER 2 IS COMPLETE** (#7–#12) **and #15 and #18 are done.** The remaining work
+is Tier 3: #19, #20, #21 and #22. #11
 (sound + desktop notification preferences on `ProductSetting`) hangs directly off
 this provider.
+
+### LP.18 — DONE. The variant matrix (R12)
+
+**Implemented and verified.** catalog 55 → **66**, registry 21 → **23**,
+access 90 → **92**. Three columns, four form fields, and
+`PUT /products/[id]/variants`.
+
+**Three things to carry forward:**
+
+- **D-LP.18.1 is the rule, not the implementation.** Anything that ever writes a
+  variant level must go through `applyMovement`. The only route that may write
+  the variants ARRAY is this one, and it carries the stored levels over rather
+  than trusting the request.
+- **`niche` unblocked LP.10's missing filter**, and the legacy's caveat is in the
+  code: an order stores the product NAME, so a renamed product will not match.
+  Do not "fix" that by switching to `product-match.ts` — that module exists for
+  the MONEY path, where an approximate match moves revenue between products.
+- **Uploading an image file still has no control.** The field is a URL. That is
+  the honest state until M-14 moves these to R2, and it is recorded in
+  LEGACY_PARITY R12 rather than implied.
 
 ### LP.15 — DONE. A storefront can finally be connected (R8)
 
@@ -409,7 +429,8 @@ payroll report, audit view **[DONE LP.12]**.
 (14) carrier test/sync/logs **[DONE LP.14]** ·
 (15) sales-channel screen **[DONE LP.15]** · (16) profit calculator **[DONE LP.16]** ·
 (17) AI screen **[DONE LP.17]** ·
-(18) product fields + variant editor · (19) CSV import · (20) channel webhooks ·
+(18) product fields + variant editor **[DONE LP.18]** · (19) CSV import ·
+(20) channel webhooks ·
 (21) manual follow-up assignment · (22) Ecom adapter.
 **Tier 4 — hardening:** (23) rate limiting + `CSRF_ORIGIN` · (24) the offline
 shell decision · (25) board view + print · (26) status vocabularies ·

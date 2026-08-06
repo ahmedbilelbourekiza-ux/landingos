@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 
 export const PRODUCT_SELECT = {
   id: true, reference: true, name: true, sku: true, description: true, brand: true,
+  niche: true, category: true, supplier: true,
   price: true, costPrice: true, packagingCost: true,
   variants: true, optionDefs: true, image: true,
   stock: true, threshold: true, archived: true,
@@ -65,6 +66,10 @@ const CreateProduct = z.object({
   sku: z.string().trim().max(80).optional(),
   description: z.string().trim().max(5000).optional(),
   brand: z.string().trim().max(120).optional(),
+  // LP.18 / R12 — the three classification fields the ERP's create carried.
+  niche: z.string().trim().max(120).optional(),
+  category: z.string().trim().max(120).optional(),
+  supplier: z.string().trim().max(160).optional(),
   price: z.union([z.string(), z.number()]).optional(),
   costPrice: z.union([z.string(), z.number()]).optional(),
   packagingCost: z.union([z.string(), z.number()]).optional(),
@@ -95,6 +100,9 @@ export const POST = tenantRoute("erp:products:write", async ({ db, req, session 
       sku: input.sku ?? "",
       description: input.description ?? "",
       brand: input.brand ?? "",
+      niche: input.niche ?? "",
+      category: input.category ?? "",
+      supplier: input.supplier ?? "",
       price: toDecimal(input.price),
       costPrice: toDecimal(input.costPrice) ?? undefined,
       packagingCost: toDecimal(input.packagingCost) ?? undefined,

@@ -596,7 +596,7 @@ being collected and nobody can see it.
 
 ---
 
-### R12 · Product create fields, variant editor, and `niche`/`category`/`supplier` — 🔴/🟡 (3 features)
+### R12 · Product create fields, variant editor, and `niche`/`category`/`supplier` — ✅ DONE (LP.18)
 **Legacy:** create/edit carries description, image, variants (with per-variant
 stock, threshold, SKU and an option map), `optionDefs`, plus `niche`, `category`
 and `supplier`. `PUT /api/products/:id/variants` is the inventory editor's write
@@ -606,7 +606,14 @@ of them**. `optionDefs` exists in the schema and has no writer. There is no
 variant editor. `niche`, `category` and `supplier` **are not columns on
 `CatalogProduct`**, and `niche` is what the legacy client filter and one analytics
 breakdown group by.
-**Missing:** three form fields, the variant editor route + screen, three columns.
+**Now (LP.18):** the three columns exist, the form offers them plus `image`,
+`PUT /api/erp/products/[id]/variants` is the editor's write path (every stock
+difference through the ledger; a removal that would lose stock refused by name),
+and `optionDefs` gets its first writer. **What still has no control is UPLOADING
+an image file** — the field is a URL, which is the honest state until M-14 moves
+these to R2.
+**Was missing:** three form fields, the variant editor route + screen, three
+columns.
 **Business impact:** **Medium.** Multi-dimensional variants are how a clothing or
 cosmetics catalogue is modelled; without an editor a variant's stock can only be
 set through the generic adjust control by name.
@@ -914,7 +921,7 @@ from complete** — order export (R4) is all that remains in it.
 | ~~15~~ | ~~Sales-channel screen + platform adapter registry~~ | R8 | M | **DONE — LP.15.** The screen, `GET adapters` (catalogue AND registry, per entry), `POST /:id/test` (structural where no adapter exists, and saying so), `GET /:id/logs`, and per-platform parsing for Shopify and LightFunnels. Found a defect while building it: a registered adapter's `null` was falling through to the generic parser, so a Shopify `products/update` became an order. |
 | ~~16~~ | ~~Profit/loss calculator + record versions + period aggregation~~ | R9 | L | **DONE — LP.16.** All four steps (§7.4): 16a `sales-summary`, 16b proration + the structured-settings editors, 16c `versions`/`aggregate`, 16d the screen. Also closes **N23** and the write half of **R20**. |
 | ~~17~~ | ~~AI screen + provider/agent CRUD~~ | R10 | M | **DONE — LP.17.** The 404 is closed and the manifest is now asserted whole: every declared nav item must answer 200. Chat stays a stated 501; provider `/test` is deferred to slice 27 with its reason on the screen. |
-| **18** | Product fields, variant editor, `niche`/`category`/`supplier` | R12 | M | |
+| ~~18~~ | ~~Product fields, variant editor, `niche`/`category`/`supplier`~~ | R12 | M | **DONE — LP.18.** `PUT /products/[id]/variants` writes the matrix and the option definitions and moves every stock difference through `applyMovement` (D-LP.18.1); removing a variant that still holds stock is refused by name (D-LP.18.2). The three columns land, and `niche` unblocks the client filter LP.10 had to ship without. |
 | **19** | Client + order CSV import | R5 (rest), R17 | M | |
 | **20** | Channel webhooks: lead-capture, product, Shopify HMAC | R19 | M | |
 | **21** | Manual follow-up assignment · live countdown | R13, N14 | S | |

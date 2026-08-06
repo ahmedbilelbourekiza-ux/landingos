@@ -152,7 +152,10 @@
       "stock": "Stock",
       "variants": "Variants",
       "none": "No products yet",
-      "archived": "Archived"
+      "archived": "Archived",
+      "niche": "Niche",
+      "category": "Category",
+      "supplier": "Supplier"
     },
     "inventory": {
       "title": "Inventory",
@@ -348,7 +351,8 @@
       "autoAssign": "Automatic (least loaded)",
       "createShipments": "Book parcels",
       "sendToDelivery": "Send to carrier",
-      "bookingHint": "Booking is limited per run to"
+      "bookingHint": "Booking is limited per run to",
+      "image": "Image URL"
     },
     "settings": {
       "title": "Automation rules",
@@ -558,6 +562,18 @@
         "read_shipments": "Read shipments",
         "read_analytics": "Read analytics"
       }
+    },
+    "variants": {
+      "panel": "Variants",
+      "hint": "Define the options, generate the matrix, then set each variant's stock. Every stock change is written to the movement ledger with the reason below.",
+      "optionName": "Option",
+      "optionValues": "Values (comma separated)",
+      "addOption": "Add an option",
+      "generate": "Generate variants",
+      "generateHint": "Existing variants keep their stock.",
+      "addVariant": "Add a variant",
+      "remove": "Remove",
+      "noVariants": "No variants — this product is tracked as one stock line."
     }
   },
   "status": {

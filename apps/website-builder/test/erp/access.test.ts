@@ -79,6 +79,10 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   // A made-up id is fine: the inventory asserts the route is CLOSED, and an
   // unauthenticated caller must never get far enough for the id to be resolved.
   ['PATCH', '/api/erp/products/nonexistent'],
+  // LP.18. The variant editor's write path — it moves stock, so it is gated on
+  // `erp:inventory:write` rather than on `erp:products:write`.
+  ['GET', '/api/erp/products/nonexistent/variants'],
+  ['PUT', '/api/erp/products/nonexistent/variants'],
   ['GET', '/api/erp/inventory/low-stock'],
   ['GET', '/api/erp/carriers'],
   // LP.14. Testing an integration, asking a carrier for everything at

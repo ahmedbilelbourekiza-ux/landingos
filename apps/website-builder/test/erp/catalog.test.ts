@@ -2,7 +2,7 @@ import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  skip, uid, phone, makeErpTenant, cleanup,
+  skip, uid, phone, makeErpTenant, makeMember, cleanup,
   contractTest as test,
 } from './helpers.ts';
 
@@ -831,5 +831,212 @@ describe('confirming an order takes the stock', () => {
     await beta.manager.api('PATCH', `/api/erp/orders/${order.id}`, { status: 'confirmed' });
 
     assert.equal(await stockOf(product.id), 8, "a neighbouring tenant consumed this tenant's stock");
+  });
+});
+
+/* =============================================================================
+ * LP.18 / R12 — product fields, the variant editor, and three columns
+ *
+ * A variant could be created once and never renamed, removed or given a
+ * threshold; `optionDefs` had a column since Phase 3.2 with no writer anywhere;
+ * and `niche`/`category`/`supplier` were not columns at all — which is why LP.10
+ * had to leave a filter out of the customer registry.
+ *
+ * The property every test here defends is D-LP.18.1: a variant's LEVEL never
+ * changes without a movement row behind it.
+ * ========================================================================== */
+
+describe('a product carries the three classification fields (R12)', () => {
+  test('create accepts niche, category and supplier, and they come back', async () => {
+    const r = await acme.manager.api('POST', '/api/erp/products', {
+      name: `Classified ${uid()}`, price: 1000,
+      niche: 'skincare', category: 'serums', supplier: 'Atlas Cosmetics',
+    });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal(r.body.data.niche, 'skincare');
+    assert.equal(r.body.data.category, 'serums');
+    assert.equal(r.body.data.supplier, 'Atlas Cosmetics');
+  });
+
+  test('the edit route accepts them too', async () => {
+    const created = await acme.manager.api('POST', '/api/erp/products', {
+      name: `Reclassify ${uid()}`, price: 500,
+    });
+    const r = await acme.manager.api('PATCH', `/api/erp/products/${created.body.data.id}`, {
+      niche: 'haircare', supplier: 'Sahara Supply',
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.niche, 'haircare');
+    assert.equal(r.body.data.supplier, 'Sahara Supply');
+  });
+});
+
+describe('the variant editor writes the matrix and moves stock through the ledger (R12)', () => {
+  test('it sets the list, the SKUs, the thresholds and the option definitions', async () => {
+    const created = await acme.manager.api('POST', '/api/erp/products', {
+      name: `Matrix ${uid()}`, price: 2000,
+    });
+    const id = created.body.data.id;
+
+    const r = await acme.manager.api('PUT', `/api/erp/products/${id}/variants`, {
+      optionDefs: [{ name: 'Size', values: ['S', 'M'] }],
+      variants: [
+        { name: 'S', sku: 'SKU-S', stock: 5, threshold: 2, options: { Size: 'S' } },
+        { name: 'M', sku: 'SKU-M', stock: 7, threshold: 3, options: { Size: 'M' } },
+      ],
+      reason: 'opening stock',
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.data.variants.length, 2);
+    assert.equal(r.body.data.stock, 12, 'the product roll-up follows the variants');
+    assert.equal(r.body.data.optionDefs.length, 1, 'optionDefs had NO writer before this slice');
+    assert.equal(r.body.data.optionDefs[0].name, 'Size');
+
+    const s = r.body.data.variants.find((v: { name: string }) => v.name === 'S');
+    assert.equal(s.stock, 5);
+    assert.equal(s.threshold, 2);
+    assert.equal(s.sku, 'SKU-S');
+  });
+
+  test('every stock difference is a MOVEMENT, carrying the reason', async () => {
+    // D-LP.18.1. A level written as a column is a level with no movement row
+    // behind it, and the FIFO cost basis stops adding up.
+    const created = await acme.manager.api('POST', '/api/erp/products', {
+      name: `Ledgered ${uid()}`, price: 900,
+    });
+    const id = created.body.data.id;
+
+    await acme.manager.api('PUT', `/api/erp/products/${id}/variants`, {
+      variants: [{ name: 'Blue', stock: 10 }],
+      reason: 'opening stock',
+    });
+    await acme.manager.api('PUT', `/api/erp/products/${id}/variants`, {
+      variants: [{ name: 'Blue', stock: 4 }],
+      reason: 'stocktake',
+    });
+
+    const history = await acme.manager.api('GET', `/api/erp/products/${id}/inventory/history`);
+    assert.equal(history.status, 200);
+    const rows = history.body.data.items ?? history.body.data;
+    const deltas = rows.map((m: { delta: number }) => m.delta);
+    assert.ok(deltas.includes(10), `the opening stock left no movement: ${JSON.stringify(deltas)}`);
+    assert.ok(deltas.includes(-6), 'the correction left no movement');
+    const reasons = rows.map((m: { reason: string }) => m.reason);
+    assert.ok(reasons.includes('stocktake'), 'the reason must reach the ledger');
+  });
+
+  test('a variant that has not moved writes NO movement', async () => {
+    // Saving the editor after changing a SKU must not manufacture a zero
+    // movement row — a ledger full of no-ops is a ledger nobody reads.
+    const created = await acme.manager.api('POST', '/api/erp/products', {
+      name: `Untouched ${uid()}`, price: 100,
+    });
+    const id = created.body.data.id;
+    await acme.manager.api('PUT', `/api/erp/products/${id}/variants`, {
+      variants: [{ name: 'One', stock: 3 }],
+    });
+    const before = (await acme.manager.api('GET', `/api/erp/products/${id}/inventory/history`))
+      .body.data.items.length;
+
+    await acme.manager.api('PUT', `/api/erp/products/${id}/variants`, {
+      variants: [{ name: 'One', stock: 3, sku: 'CHANGED' }],
+    });
+    const after = (await acme.manager.api('GET', `/api/erp/products/${id}/inventory/history`))
+      .body.data.items.length;
+    assert.equal(after, before, 'an unchanged level wrote a movement row');
+  });
+
+  test('removing a variant that still holds stock is REFUSED BY NAME', async () => {
+    // D-LP.18.2. The ERP silently dropped it and the stock went with it: no
+    // movement row, no reason, and a cost basis that no longer adds up.
+    const created = await acme.manager.api('POST', '/api/erp/products', {
+      name: `Holding ${uid()}`, price: 100,
+    });
+    const id = created.body.data.id;
+    await acme.manager.api('PUT', `/api/erp/products/${id}/variants`, {
+      variants: [{ name: 'Keep', stock: 1 }, { name: 'Drop', stock: 4 }],
+    });
+
+    const r = await acme.manager.api('PUT', `/api/erp/products/${id}/variants`, {
+      variants: [{ name: 'Keep', stock: 1 }],
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'VARIANT_HOLDS_STOCK');
+    assert.deepEqual(r.body.error.variants, ['Drop'], 'it must name what would be lost');
+
+    // And nothing was written.
+    const view = await acme.manager.api('GET', `/api/erp/products/${id}/variants`);
+    assert.equal(view.body.data.variants.length, 2);
+  });
+
+  test('a variant at zero can be removed', async () => {
+    const created = await acme.manager.api('POST', '/api/erp/products', {
+      name: `Zeroed ${uid()}`, price: 100,
+    });
+    const id = created.body.data.id;
+    await acme.manager.api('PUT', `/api/erp/products/${id}/variants`, {
+      variants: [{ name: 'Keep', stock: 1 }, { name: 'Empty', stock: 0 }],
+    });
+    const r = await acme.manager.api('PUT', `/api/erp/products/${id}/variants`, {
+      variants: [{ name: 'Keep', stock: 1 }],
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.variants.length, 1);
+  });
+
+  test('two variants with one name are refused', async () => {
+    // `applyMovement` finds a variant BY NAME: a duplicate is a stock level
+    // with two owners.
+    const created = await acme.manager.api('POST', '/api/erp/products', {
+      name: `Dupe ${uid()}`, price: 100,
+    });
+    const r = await acme.manager.api('PUT', `/api/erp/products/${created.body.data.id}/variants`, {
+      variants: [{ name: 'Same', stock: 1 }, { name: 'Same', stock: 2 }],
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'DUPLICATE_VARIANT');
+  });
+
+  test('the product route still REFUSES variants, and now says where they live', async () => {
+    const created = await acme.manager.api('POST', '/api/erp/products', {
+      name: `Refused ${uid()}`, price: 100,
+    });
+    const r = await acme.manager.api('PATCH', `/api/erp/products/${created.body.data.id}`, {
+      variants: [{ name: 'X', stock: 99 }],
+    });
+    assert.equal(r.status, 422);
+    assert.match(r.body.error.message, /variants/);
+
+    const defs = await acme.manager.api('PATCH', `/api/erp/products/${created.body.data.id}`, {
+      optionDefs: [{ name: 'Size', values: ['S'] }],
+    });
+    assert.equal(defs.status, 422, 'optionDefs belong beside the variants they describe');
+  });
+
+  test('it needs erp:inventory:write, not erp:products:write', async () => {
+    // The route moves stock. Somebody who may only edit product TEXT must not
+    // be able to move a level by renaming a variant.
+    const staged = await makeErpTenant(`var-${uid()}`);
+    const textOnly = await makeMember(staged.tenantId, {
+      role: 'MEMBER', permissions: ['erp:products:write'],
+    });
+    const created = await staged.manager.api('POST', '/api/erp/products', {
+      name: 'Gated', price: 100,
+    });
+    const r = await textOnly.api('PUT', `/api/erp/products/${created.body.data.id}/variants`, {
+      variants: [{ name: 'X', stock: 5 }],
+    });
+    assert.equal(r.status, 403);
+  });
+
+  test('another tenant’s product is a 404', async () => {
+    const beta = await makeErpTenant(`varbeta-${uid()}`);
+    const theirs = (await beta.manager.api('POST', '/api/erp/products', {
+      name: 'Beta Product', price: 10,
+    })).body.data.id;
+    assert.equal(
+      (await acme.manager.api('PUT', `/api/erp/products/${theirs}/variants`, { variants: [] })).status,
+      404,
+    );
   });
 });

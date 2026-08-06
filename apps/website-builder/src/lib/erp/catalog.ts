@@ -46,6 +46,14 @@ const TEXT_FIELDS: ReadonlyArray<readonly [string, number]> = [
   ["description", 5000],
   ["brand", 120],
   ["image", 2000],
+  /* LP.18 / R12. The three classification fields the ERP had and the port
+   * dropped. `niche` is the load-bearing one: the legacy's CLIENT filter groups
+   * by it and so does an analytics breakdown, so without the column both are
+   * uncomputable — which is why LP.10 had to leave a filter out of the customer
+   * registry and say so. */
+  ["niche", 120],
+  ["category", 120],
+  ["supplier", 160],
 ];
 
 const MONEY_FIELDS = ["price", "costPrice", "packagingCost"] as const;
@@ -115,10 +123,31 @@ export function buildProductPatch(body: unknown): ProductPatch {
       invalid: 'stock is moved through /inventory/adjust, not by editing the product',
     };
   }
+  /* Still refused HERE, and the message now names where they ARE editable.
+   *
+   * LP.18 built that surface: `PUT /products/[id]/variants` sets the list, the
+   * per-variant thresholds and the option definitions, and moves every stock
+   * difference through `applyMovement` so a level never changes without a
+   * movement row behind it. Accepting `variants` on this route would be the
+   * one path that could — the array carries a `stock` per entry, and writing it
+   * as a column is exactly the invariant `lib/erp/inventory.ts` exists to
+   * hold. */
   if (input.variants !== undefined) {
     return {
       data: {},
-      invalid: 'variants are not editable here yet — use /inventory/adjust for levels',
+      invalid: 'variants are edited through PUT /api/erp/products/[id]/variants, which moves stock through the ledger',
+    };
+  }
+
+  /* `optionDefs` is the variant editor's own vocabulary — "Size: S, M, L" —
+   * and it has had a column since Phase 3.2 with NO WRITER anywhere. It carries
+   * no stock and no money, so unlike `variants` there is nothing here to get
+   * wrong; it is written by the variants route beside the array it describes,
+   * and refused here for the same reason: one surface owns the pair. */
+  if (input.optionDefs !== undefined) {
+    return {
+      data: {},
+      invalid: 'optionDefs are edited through PUT /api/erp/products/[id]/variants, beside the variants they describe',
     };
   }
 

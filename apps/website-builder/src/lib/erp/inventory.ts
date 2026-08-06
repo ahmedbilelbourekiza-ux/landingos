@@ -34,6 +34,11 @@ export interface Variant {
   threshold?: number | null;
   sku?: string | null;
   image?: string | null;
+  /* LP.18. Which option VALUES this variant is — `{ Size: "M", Colour: "Blue" }`
+   * — against the definitions in `CatalogProduct.optionDefs`. It is what turns a
+   * flat list of names into the matrix a clothing catalogue is actually
+   * modelled as, and it is the only reason `optionDefs` is worth storing. */
+  options?: Record<string, string> | null;
 }
 
 interface LotRow {
@@ -476,6 +481,12 @@ export function inventoryView(product: {
       stock: Number(v.stock ?? 0),
       threshold: Number(v.threshold ?? product.threshold ?? 0),
       sku: v.sku ?? null,
+      // LP.18: the editor needs both to render a row it can save back
+      // unchanged. Without them a save would blank every image and every
+      // option map on the product — a round trip that loses data is worse
+      // than no editor.
+      image: v.image ?? null,
+      options: v.options ?? {},
     })),
   };
 }

@@ -12,6 +12,128 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.18 The variant matrix, and three columns the port dropped
+
+[Opus 5]
+Date: 7 August 2026
+Summary: R12 — `niche`/`category`/`supplier`, the missing form fields, and
+`PUT /api/erp/products/[id]/variants`. It also closes the client filter LP.10
+had to ship without. catalog 55 → **66**, registry 21 → **23**, access 90 → **92**.
+
+#### R12 — a variant could be created once and never touched again
+
+The ERP's `PUT /api/products/:id/variants` is its variant editor's write path,
+and the port lost it. A variant could be created in the product's `variants`
+array at creation and then never renamed, never removed, never given a
+threshold — and its stock could only be moved through the generic adjust control
+by typing the variant name exactly right. `optionDefs` has had a column since
+Phase 3.2 with **no writer anywhere**, so the vocabulary a matrix is built from
+could not be stored at all.
+
+Multi-dimensional variants are how a clothing or cosmetics catalogue is
+modelled, which in this market is most of them.
+
+#### D-LP.18.1 — every stock difference goes through the ledger
+
+The route may write the variants ARRAY directly — names, SKUs, images,
+thresholds, option maps — because none of that is stock. It may **not** write a
+LEVEL: a `stock` on an incoming variant is turned into a DELTA against what is
+stored and applied with `applyMovement`, which writes the level and its reason in
+one transaction. That pairing is the only reason the FIFO cost basis can be
+trusted, and it is why `buildProductPatch` still refuses `variants` — the message
+now names where they live instead of saying "not yet".
+
+The ERP did the same thing: its editor called `inventory.setVariantStock` rather
+than writing the column. This is the one part of the route that is not optional.
+
+**An unchanged level writes NO movement.** Saving after correcting a SKU must not
+manufacture a zero-delta row; a ledger full of no-ops is a ledger nobody reads.
+
+#### D-LP.18.2 — removing a variant that still holds stock is refused by name
+
+The ERP silently dropped it and the stock went with it: no movement row, no
+reason, and a cost basis that no longer adds up. Zero it through
+`/inventory/adjust` first — which records WHY: damaged, miscounted, returned to
+the supplier — and then it can go. The refusal lists **every** variant that would
+lose stock, because one at a time is four requests to discover four problems.
+
+#### `erp:inventory:write`, not `erp:products:write`
+
+The route moves stock, so it is gated on the permission `/inventory/adjust`
+checks. Somebody who may only edit product TEXT must not be able to move a level
+by renaming a variant. The panel is rendered under the same gate (D-06.2), which
+is a different one from the edit panel directly above it.
+
+#### The three columns, and the filter they unblock
+
+`niche`, `category` and `supplier` are free text on `CatalogProduct`. Free text
+rather than relations, deliberately: the ERP stored them as text, a niche list is
+a handful of words per tenant, and a `Supplier` table would be a migration plus
+RLS plus a management screen for something no route joins on.
+
+**`niche` is the load-bearing one.** The legacy's CLIENT filter groups by it —
+"everybody who has ever bought something in the skincare niche" is a
+repeat-purchase campaign — and LP.10 had to ship the customer registry **without**
+that filter and say so, because a control over a column that does not exist
+matches nothing. It is offered now, and the legacy's own caveat is carried over
+verbatim rather than silently assumed: an order stores the product NAME, so a
+product renamed after its orders were placed will not match its niche. That is a
+smaller wrong answer than no filter at all, and it is stated in the code.
+
+**A niche no product carries narrows to NOTHING**, not to everything — the same
+`null`-versus-`[]` distinction LP.10 established for the history filters.
+
+#### The generator, and the one thing it must not do
+
+The matrix generator builds the cross product of the option definitions.
+**Existing variants keep their stock**: a generator that replaced the matrix
+would silently zero every level it regenerated, which is a stock loss with no
+movement row — precisely what D-LP.18.1 forbids. New combinations arrive at zero
+and take their opening stock as a movement like everything else.
+
+The generated name is the option values joined in definition order, which is
+stable: regenerating after adding a size does not rename everything. It is also
+what stops a catalogue growing "M / Blue" and "Blue / M" as two rows holding
+separate stock.
+
+#### The form fields R12 named
+
+`description` was already there. `niche`, `category`, `supplier` and `image` are
+added. The image is a text field and not an uploader — that is the honest state:
+it is a URL like any other, and M-14 (base64 → R2) changes what goes IN it rather
+than whether it can be typed. **What still has no control is uploading a file**,
+and that is recorded rather than implied.
+
+#### Files
+
+- `packages/db/prisma/schema/erp.prisma` — three columns on `CatalogProduct`
+- `apps/website-builder/src/app/api/erp/products/[id]/variants/route.ts` — new
+- `apps/website-builder/src/components/console/erp/variant-editor.tsx` — new
+- `apps/website-builder/src/lib/erp/catalog.ts` — the three fields, and
+  `optionDefs` refused with a destination
+- `apps/website-builder/src/lib/erp/inventory.ts` — `options` on `Variant`,
+  `image`/`options` in `inventoryView`
+- `apps/website-builder/src/lib/erp/clients.ts` — the `niche` filter
+- `apps/website-builder/src/app/api/erp/products/route.ts`
+- `apps/website-builder/src/app/console/erp/products/page.tsx`
+- `apps/website-builder/src/app/console/erp/clients/page.tsx`
+- `apps/website-builder/src/lib/console/erp-strings.ts`
+- `packages/i18n/src/messages/{ar,en,fr}.json` — `erp.variants.*` + 4 keys
+- `apps/website-builder/test/erp/catalog.test.ts` — 11 new tests
+- `apps/website-builder/test/erp/registry.test.ts` — 2 new tests
+- `apps/website-builder/test/erp/access.test.ts` — 2 new surfaces
+
+**Migration:** three nullable columns on `CatalogProduct`, applied with
+`prisma db push`. Additive; no backfill, and no RLS change (the policy is on the
+table, not on its columns).
+
+**Risk:** medium, and it is the ledger. The route is the second caller of
+`applyMovement` and the first that can move several variants in one request. Every
+difference is a delta with a reason; an unchanged level writes nothing; a removal
+that would lose stock is refused. All three are asserted.
+
+---
+
 ### LP.15 A storefront can finally be connected
 
 [Opus 5]

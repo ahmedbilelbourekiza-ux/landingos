@@ -17,6 +17,7 @@ import type { ClientEditStrings } from "@/components/console/erp/client-write";
 import type { ClientExportStrings } from "@/components/console/erp/client-export";
 import type { NotifyPrefStrings } from "@/components/console/notify-preferences";
 import type { ChannelStrings } from "@/components/console/erp/channel-write";
+import type { VariantEditorStrings } from "@/components/console/erp/variant-editor";
 
 /* =============================================================================
  * The ERP's write-control labels, resolved once per screen.
@@ -497,5 +498,30 @@ export function channelStrings(t: (key: string) => string): ChannelStrings {
     maskKeeps: t("erp.write.maskKeeps"),
     noAdapter: t("erp.channels.noAdapter"),
     structural: t("erp.channels.structural"),
+  };
+}
+
+
+/** The variant editor's labels — LP.18. */
+export function variantEditorStrings(t: (key: string) => string): VariantEditorStrings {
+  return {
+    saving: t("common.saving"),
+    panel: t("erp.variants.panel"),
+    hint: t("erp.variants.hint"),
+    product: t("erp.write.product"),
+    optionName: t("erp.variants.optionName"),
+    optionValues: t("erp.variants.optionValues"),
+    addOption: t("erp.variants.addOption"),
+    generate: t("erp.variants.generate"),
+    generateHint: t("erp.variants.generateHint"),
+    variant: t("erp.inventory.variant"),
+    sku: t("erp.products.sku"),
+    stock: t("erp.products.stock"),
+    threshold: t("erp.inventory.threshold"),
+    addVariant: t("erp.variants.addVariant"),
+    remove: t("erp.variants.remove"),
+    reason: t("erp.inventory.reason"),
+    save: t("common.save"),
+    noVariants: t("erp.variants.noVariants"),
   };
 }
