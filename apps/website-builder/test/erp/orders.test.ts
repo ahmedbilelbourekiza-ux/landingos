@@ -2,7 +2,7 @@ import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  skip, phone, makeErpTenant, cleanup, stampReferenceWithoutCounter,
+  skip, phone, uid, makeErpTenant, makeMember, cleanup, stampReferenceWithoutCounter,
   contractTest as test,
 } from './helpers.ts';
 
@@ -440,5 +440,285 @@ describe('order numbering survives references it did not mint', () => {
     });
     assert.equal(next.status, 201);
     assert.equal(next.body.data.reference, 'ORD-0001', 'nothing ORD-shaped existed to continue from');
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * LP.9 / R7 — the four bulk actions that were missing
+ *
+ * The legacy dispatches eight and this dispatched three. Each test below asserts
+ * one of the four restored actions does the same thing to fifty orders that its
+ * single-order route does to one — including its authorization, which is the
+ * half that had drifted: `classify` in bulk was STRICTER than
+ * `POST /orders/[id]/classify`.
+ * -------------------------------------------------------------------------- */
+
+describe('bulk classify marks orders fake exactly as the single route does', () => {
+  test('the mark, the reason and the timestamp all land', async () => {
+    const a = await newOrder({ client: 'Fake A' });
+    const b = await newOrder({ client: 'Fake B' });
+    const r = await acme.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [a, b], action: 'classify', value: 'fake', reason: 'same number twice',
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.succeeded, 2);
+
+    const one = await read(a);
+    assert.equal(one.classification, 'fake');
+    assert.equal(one.fakeReason, 'same number twice', 'a bulk flag with no reason is the disputed one');
+    assert.ok(one.fakeAt, 'and it is stamped, like the single route');
+    // LP.9 found this: the reason was written by the classify route since
+    // Phase 5 and read back by nothing at all.
+  });
+
+  test('clearing the mark clears the reason with it', async () => {
+    const id = await newOrder();
+    await acme.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'classify', value: 'fake', reason: 'x',
+    });
+    await acme.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'classify', value: '',
+    });
+    const after = await read(id);
+    assert.equal(after.classification, '');
+    assert.ok(!after.fakeReason, 'a cleared flag must not leave its reason behind');
+  });
+
+  test('an AGENT may classify their own orders in bulk — the single route lets them', async () => {
+    // The drift this slice fixed. Before LP.9 every action except `status`
+    // required `seesWholeBook`, so an agent could mark ONE of their own orders
+    // fake and not fifty. `POST /orders/[id]/classify` is `erp:orders:write`
+    // plus ownership and nothing more.
+    const mine = await newOrder({ agentUserId: acme.agent.userId });
+    const r = await acme.agent.api('POST', '/api/erp/orders/bulk', {
+      ids: [mine], action: 'classify', value: 'fake',
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.succeeded, 1);
+  });
+
+  test('and still cannot reach a colleague’s order', async () => {
+    const theirs = await newOrder({ agentUserId: acme.other.userId });
+    const r = await acme.agent.api('POST', '/api/erp/orders/bulk', {
+      ids: [theirs], action: 'classify', value: 'fake',
+    });
+    assert.equal(r.body.data.succeeded, 0, 'record scoping applies to every action');
+    assert.equal((await read(theirs)).classification, '');
+  });
+
+  test('an unknown classification is refused by name', async () => {
+    const id = await newOrder();
+    const r = await acme.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'classify', value: 'suspicious',
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'INVALID_CLASSIFICATION');
+  });
+});
+
+describe('bulk follow-up assignment (R13)', () => {
+  test('an explicit agent is honoured when they are eligible', async () => {
+    const id = await newOrder();
+    const r = await acme.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'assignFollowup', value: acme.agent.userId,
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.results[0].followupUserId, acme.agent.userId);
+    assert.equal((await read(id)).followupUserId, acme.agent.userId);
+  });
+
+  test('an empty value means AUTO, and picks somebody eligible', async () => {
+    // The legacy's `auto: !value`. It must not silently do nothing — that is
+    // the shape of BUG-03, where a toggle did nothing for the product's life.
+    const id = await newOrder();
+    const r = await acme.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'assignFollowup', value: '',
+    });
+    assert.equal(r.status, 200);
+    const chosen = r.body.data.results[0].followupUserId;
+    assert.ok(chosen, 'auto-assignment chose nobody');
+    assert.equal((await read(id)).followupUserId, chosen);
+  });
+
+  test('it OVERWRITES an existing assignee — that is the business case', async () => {
+    // `autoAssignFollowup` refuses to, because filling a gap must not overrule a
+    // decision. Moving a difficult customer to a senior agent IS the decision.
+    const id = await newOrder();
+    await acme.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'assignFollowup', value: acme.agent.userId,
+    });
+    await acme.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'assignFollowup', value: acme.other.userId,
+    });
+    assert.equal((await read(id)).followupUserId, acme.other.userId);
+  });
+
+  test('an ineligible person is refused per id rather than assigned', async () => {
+    // Somebody with no `jobRole` at all — the bookkeeper, the builder-only
+    // user, the owner (D-06.5). `eligibleAgents` excludes them, and handing
+    // work to somebody the rule would refuse produces a queue nobody can work
+    // and a missed-order counter climbing against them (D-06.6).
+    const bystander = await makeMember(acme.tenantId, { role: 'MEMBER' });
+    const id = await newOrder();
+    const r = await acme.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'assignFollowup', value: bystander.userId,
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.results[0].ok, false);
+    assert.ok(!(await read(id)).followupUserId);
+  });
+
+  test('an agent cannot assign follow-up — followupUserId is a reassignment field', async () => {
+    const id = await newOrder({ agentUserId: acme.agent.userId });
+    const r = await acme.agent.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'assignFollowup', value: acme.agent.userId,
+    });
+    assert.equal(r.status, 403);
+  });
+
+  test('the assignment leaves an audit row naming who did it', async () => {
+    const id = await newOrder();
+    await acme.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'assignFollowup', value: acme.agent.userId,
+    });
+    const audit = await acme.manager.api(
+      'GET', `/api/erp/audit?entity=order&entityId=${id}`,
+    );
+    assert.equal(audit.status, 200);
+    const actions = audit.body.data.items.map((e: { action: string }) => e.action);
+    assert.ok(actions.includes('followup_assign'), `no followup_assign row: ${JSON.stringify(actions)}`);
+  });
+});
+
+describe('bulk parcel booking (the highest-volume manager action there is)', () => {
+  test('createShipments books one parcel per order and reports the tracking number', async () => {
+    const staged = await makeErpTenant(`bulkship-${uid()}`);
+    const code = `mk${uid()}`;
+    const carrier = await staged.manager.api('POST', '/api/erp/carriers', {
+      name: 'Bulk Mock', code, adapter: 'mock', apiEnabled: true,
+    });
+    await staged.manager.api('POST', `/api/erp/carriers/${carrier.body.data.id}/default`, {});
+    // Off, so confirming does NOT book — otherwise this test would be asserting
+    // the auto-booking path rather than the bulk one.
+    await staged.manager.api('PUT', '/api/erp/settings', { autoCreateShipment: false });
+
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const created = await staged.manager.api('POST', '/api/erp/orders', {
+        client: `Bulk ${i}`, phone: phone(), price: 3000, carrierCode: code,
+        wilaya: 'Alger', commune: 'Bab Ezzouar', status: 'confirmed',
+      });
+      ids.push(created.body.data.id);
+    }
+
+    const r = await staged.manager.api('POST', '/api/erp/orders/bulk', {
+      ids, action: 'createShipments',
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.data.succeeded, 3, JSON.stringify(r.body.data.results));
+    for (const row of r.body.data.results) {
+      assert.ok(row.shipmentId, 'a booked parcel must report its id');
+    }
+
+    // And it really booked, not merely answered.
+    const one = await staged.manager.api('GET', `/api/erp/orders/${ids[0]}/shipment`);
+    assert.ok(one.body.data.shipment);
+  });
+
+  test('it is idempotent — a second run returns the same parcels, not new ones', async () => {
+    const staged = await makeErpTenant(`bulkidem-${uid()}`);
+    const code = `mk${uid()}`;
+    const carrier = await staged.manager.api('POST', '/api/erp/carriers', {
+      name: 'Idem Mock', code, adapter: 'mock', apiEnabled: true,
+    });
+    await staged.manager.api('POST', `/api/erp/carriers/${carrier.body.data.id}/default`, {});
+    await staged.manager.api('PUT', '/api/erp/settings', { autoCreateShipment: false });
+
+    const id = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Twice', phone: phone(), price: 1000, carrierCode: code, status: 'confirmed',
+    })).body.data.id;
+
+    const first = await staged.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'createShipments',
+    });
+    const second = await staged.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'createShipments',
+    });
+    assert.equal(first.body.data.results[0].shipmentId, second.body.data.results[0].shipmentId);
+  });
+
+  test('sendToDelivery stamps the carrier before booking', async () => {
+    const staged = await makeErpTenant(`bulksend-${uid()}`);
+    const code = `mk${uid()}`;
+    const carrier = await staged.manager.api('POST', '/api/erp/carriers', {
+      name: 'Send Mock', code, adapter: 'mock', apiEnabled: true,
+    });
+    assert.equal(carrier.status, 201);
+    await staged.manager.api('PUT', '/api/erp/settings', { autoCreateShipment: false });
+
+    // Deliberately created with NO carrier, which is the case this action is for.
+    const id = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Unrouted', phone: phone(), price: 2000, status: 'confirmed',
+    })).body.data.id;
+
+    const r = await staged.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'sendToDelivery', value: code,
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.data.succeeded, 1, JSON.stringify(r.body.data.results));
+    const after = (await staged.manager.api('GET', `/api/erp/orders/${id}`)).body.data;
+    assert.equal(after.carrierCode, code, 'the carrier must be stamped, not only used');
+  });
+
+  test('a booking run over the limit is refused BY NAME, not silently capped', async () => {
+    // The `EXPORT_LIMIT` rule (LP.6). A manager who ticks 200 rows, gets 50
+    // parcels and a success message has 150 orders they believe are booked.
+    const ids = Array.from({ length: 51 }, (_, i) => `stale-id-${i}`);
+    const r = await acme.manager.api('POST', '/api/erp/orders/bulk', {
+      ids, action: 'createShipments',
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'TOO_MANY_ROWS');
+    assert.equal(r.body.error.limit, 50);
+  });
+
+  test('a carrier refusal is reported per id, with its own code', async () => {
+    // "Forty-nine booked, one has a misspelled wilaya" is a one-minute fix;
+    // "one failed" is not. This order has no carrier at all.
+    const staged = await makeErpTenant(`bulkfail-${uid()}`);
+    const id = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'No Carrier', phone: phone(), price: 500, status: 'confirmed',
+    })).body.data.id;
+
+    const r = await staged.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'createShipments',
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.succeeded, 0);
+    assert.equal(r.body.data.results[0].error, 'NO_CARRIER');
+  });
+
+  test('booking needs erp:shipments:write, which is what the single route checks', async () => {
+    const staged = await makeErpTenant(`bulkperm-${uid()}`);
+    const reader = await makeMember(staged.tenantId, { role: 'MEMBER' });
+    const id = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Gated', phone: phone(), price: 500,
+    })).body.data.id;
+
+    const r = await reader.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'createShipments',
+    });
+    // A MEMBER holds neither `erp:orders:write` (the route's own gate) nor
+    // `erp:shipments:write`, so either refusal is correct — what must NOT
+    // happen is a parcel.
+    assert.ok(r.status === 403 || r.status === 404, `unexpected ${r.status}`);
+  });
+
+  test('an unknown action is refused rather than silently ignored', async () => {
+    const id = await newOrder();
+    const r = await acme.manager.api('POST', '/api/erp/orders/bulk', {
+      ids: [id], action: 'printLabels',
+    });
+    assert.equal(r.status, 422);
   });
 });

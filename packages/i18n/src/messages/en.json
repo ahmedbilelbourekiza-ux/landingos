@@ -314,7 +314,12 @@
       "webhookSecret": "Webhook secret",
       "exportSelected": "Export selected",
       "resetPassword": "Set a new password",
-      "resetPasswordHint": "Setting a password signs that person out everywhere, on every company they belong to — the credential changed, not their access to one team."
+      "resetPasswordHint": "Setting a password signs that person out everywhere, on every company they belong to — the credential changed, not their access to one team.",
+      "assignFollowup": "Assign follow-up",
+      "autoAssign": "Automatic (least loaded)",
+      "createShipments": "Book parcels",
+      "sendToDelivery": "Send to carrier",
+      "bookingHint": "Booking is limited per run to"
     },
     "settings": {
       "title": "Automation rules",

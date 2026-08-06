@@ -22,7 +22,7 @@ import {
 import { scopedWhere, seesWholeBook, mayTouchOrder } from "@/lib/erp/scope";
 import {
   orderFilters, orderSort, orderFilterFields, orderRowFacts,
-  ORDER_LIST_SELECT, ORDER_STATUSES,
+  ORDER_LIST_SELECT, ORDER_STATUSES, BULK_BOOK_LIMIT,
 } from "@/lib/erp/orders";
 import { readSettings } from "@/lib/erp/settings";
 import { exportWhere } from "@/lib/erp/export";
@@ -130,7 +130,7 @@ export default async function ErpOrdersScreen({
     members: managesBook
       ? await db.membership.findMany({
           orderBy: { createdAt: "asc" },
-          select: { userId: true, user: { select: { name: true, email: true } } },
+          select: { userId: true, jobRole: true, user: { select: { name: true, email: true } } },
         })
       : [],
     // The tenant's own carriers, so the new-order panel offers codes that
@@ -176,6 +176,16 @@ export default async function ErpOrdersScreen({
     exportSelected: t("erp.write.exportSelected"),
     outcome: t("erp.write.outcome"),
     of: t("erp.write.of"),
+    markFake: t("erp.write.markFake"),
+    clearFake: t("erp.write.clearFake"),
+    fakeReason: t("erp.write.fakeReason"),
+    followupAgent: t("erp.write.followupAgent"),
+    assignFollowup: t("erp.write.assignFollowup"),
+    autoAssign: t("erp.write.autoAssign"),
+    carrier: t("erp.row.carrier"),
+    createShipments: t("erp.write.createShipments"),
+    sendToDelivery: t("erp.write.sendToDelivery"),
+    bookingHint: t("erp.write.bookingHint"),
   };
 
   const rowStrings = rowActionStrings(t);
@@ -187,6 +197,16 @@ export default async function ErpOrdersScreen({
     value: c.code ?? "",
     label: c.name ?? c.code ?? "",
   }));
+  /* LP.9 — only people the assignment rule would actually accept.
+     `assignFollowupAgent` checks `eligibleAgents(…, "followup")`, which starts
+     from the job role; offering somebody without it produces a control whose
+     every outcome is "nobody eligible". The rest of that rule (suspended, day
+     off, holds `erp:orders:write`) is deliberately NOT reimplemented here —
+     it is the route's, it changes by the hour, and a screen that copies it
+     would be a second opinion. This narrows to the stable half. */
+  const followupOptions = members
+    .filter((m) => m.jobRole === "followup" || m.jobRole === "both")
+    .map((m) => ({ value: m.userId, label: m.user.name || m.user.email }));
 
   /** A small badge. Every row fact renders through one, so they cannot drift
    *  apart visually, and each carries a `data-badge` a test can name. */
@@ -275,7 +295,19 @@ export default async function ErpOrdersScreen({
                           : t("erp.row.typeNormal"),
                       facts.draft || facts.abandoned ? "warning" : undefined,
                     )}
-                    {facts.fake && badge("fake", t("erp.filters.fake"), "danger")}
+                    {/* LP.9 — the reason is the tooltip, like the note badge.
+                        It was written by the classify route and read by
+                        nothing at all until this slice. */}
+                    {facts.fake && (
+                      <span
+                        data-badge="fake"
+                        title={[o.fakeReason, o.fakeResponsible].filter(Boolean).join(" · ") || undefined}
+                        className="me-1 inline-block rounded-full border px-1.5 py-0.5 text-[10px] leading-none"
+                        style={toneVars("danger")}
+                      >
+                        {t("erp.filters.fake")}
+                      </span>
+                    )}
                     {facts.overdue && badge("overdue", t("erp.row.overdue"), "danger")}
                     {flagged.has(o.id) && badge("suspicious", t("erp.row.suspicious"), "danger")}
                     {/* The note itself is the tooltip, exactly as the legacy
@@ -537,6 +569,12 @@ export default async function ErpOrdersScreen({
           statuses={statusChoices}
           members={memberOptions}
           managesBook={managesBook}
+          followupMembers={followupOptions}
+          carriers={managesBook ? carrierOptions : []}
+          // `erp:shipments:write` is what `POST /orders/[id]/shipment` checks
+          // and what the bulk route checks for both booking actions (D-06.2).
+          mayBook={can(session.auth!, "erp:shipments:write")}
+          bookLimit={BULK_BOOK_LIMIT}
         >
           {table}
         </OrderBulkBar>

@@ -35,6 +35,17 @@ export interface BulkStrings {
   readonly exportSelected: string;
   readonly outcome: string;
   readonly of: string;
+  /* LP.9 / R7 — the four restored actions. */
+  readonly markFake: string;
+  readonly clearFake: string;
+  readonly fakeReason: string;
+  readonly followupAgent: string;
+  readonly assignFollowup: string;
+  readonly autoAssign: string;
+  readonly carrier: string;
+  readonly createShipments: string;
+  readonly sendToDelivery: string;
+  readonly bookingHint: string;
 }
 
 export function OrderBulkBar({
@@ -44,6 +55,19 @@ export function OrderBulkBar({
   members,
   /** True only when `seesWholeBook` is — the same predicate the route uses. */
   managesBook,
+  /** Follow-up-capable members. Empty when nobody carries the job role, in
+   *  which case the control is not offered: the route would answer
+   *  "nobody eligible" for every id. */
+  followupMembers = [],
+  /** The tenant's active carriers. Absent for a caller who may not write
+   *  `carrierCode`, which is MANAGER_WRITABLE. */
+  carriers = [],
+  /** `erp:shipments:write` — what `POST /orders/[id]/shipment` checks, and
+   *  therefore what decides whether the two booking controls exist. */
+  mayBook,
+  /** The route's own ceiling, so the control can say the number rather than
+   *  the operator discovering it as a 422. */
+  bookLimit,
   children,
 }: {
   readonly errors: ActionErrors;
@@ -51,6 +75,10 @@ export function OrderBulkBar({
   readonly statuses: readonly WriteOption[];
   readonly members: readonly WriteOption[];
   readonly managesBook: boolean;
+  readonly followupMembers?: readonly WriteOption[];
+  readonly carriers?: readonly WriteOption[];
+  readonly mayBook: boolean;
+  readonly bookLimit: number;
   readonly children: React.ReactNode;
 }) {
   const { run, pending, error } = useApiAction(errors);
@@ -58,6 +86,9 @@ export function OrderBulkBar({
   const [count, setCount] = useState(0);
   const [status, setStatus] = useState(statuses[0]?.value ?? "");
   const [assignee, setAssignee] = useState("");
+  const [followup, setFollowup] = useState("");
+  const [carrier, setCarrier] = useState("");
+  const [fakeReason, setFakeReason] = useState("");
   const [outcome, setOutcome] = useState<{ succeeded: number; processed: number } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -120,7 +151,11 @@ export function OrderBulkBar({
     }
   };
 
-  const send = async (action: "status" | "assign" | "delete", value?: string) => {
+  type BulkAction =
+    | "status" | "assign" | "delete"
+    | "classify" | "assignFollowup" | "createShipments" | "sendToDelivery";
+
+  const send = async (action: BulkAction, value?: string, extra?: Record<string, unknown>) => {
     const selected = ids();
     if (!selected.length) return;
     setOutcome(null);
@@ -128,6 +163,7 @@ export function OrderBulkBar({
       ids: selected,
       action,
       ...(value === undefined ? {} : { value }),
+      ...(extra ?? {}),
     });
     if (ok) {
       const r = data as { succeeded?: number; processed?: number };
@@ -135,6 +171,11 @@ export function OrderBulkBar({
       setCount(0);
     }
   };
+
+  /** Booking asks a carrier once per order and the route refuses above its own
+   *  ceiling by name. Saying the number here means an operator narrows the
+   *  selection instead of discovering the limit as a 422. */
+  const overBookLimit = count > bookLimit;
 
   return (
     <form
@@ -193,6 +234,42 @@ export function OrderBulkBar({
           {s.exportSelected}
         </ActionButton>
 
+        {/* LP.9 / R7 — CLASSIFY, offered to everybody the table is.
+            `POST /orders/[id]/classify` is `erp:orders:write` plus ownership and
+            nothing more, so requiring a manager here would make the bulk action
+            STRICTER than the single one: an agent could mark one of their own
+            orders fake and not fifty. The reason travels with the mark, because
+            a bulk flag with no reason is the one that gets disputed later. */}
+        <div>
+          <label htmlFor="bulk-fake-reason" className="block text-xs text-muted-foreground">
+            {s.fakeReason}
+          </label>
+          <input
+            id="bulk-fake-reason"
+            value={fakeReason}
+            onChange={(e) => setFakeReason(e.target.value)}
+            className="mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+        </div>
+        <ActionButton
+          data-testid="bulk-classify-fake"
+          pending={pending}
+          pendingLabel={s.saving}
+          disabled={count === 0}
+          onClick={() => void send("classify", "fake", { reason: fakeReason })}
+        >
+          {s.markFake}
+        </ActionButton>
+        <ActionButton
+          data-testid="bulk-classify-clear"
+          pending={pending}
+          pendingLabel={s.saving}
+          disabled={count === 0}
+          onClick={() => void send("classify", "")}
+        >
+          {s.clearFake}
+        </ActionButton>
+
         {/* Assign and delete are refused for anyone `seesWholeBook` is false
             for — the route says so explicitly — so they are not offered. */}
         {managesBook && (
@@ -225,6 +302,43 @@ export function OrderBulkBar({
               {s.assign}
             </ActionButton>
 
+            {/* LP.9 / R13 — the follow-up half of assignment, in bulk.
+                An empty choice means AUTO: the route treats it as the legacy's
+                `auto: !value` and runs the same workload rule the automation
+                does. Offered only when somebody carries the follow-up job role,
+                because otherwise every id comes back "nobody eligible". */}
+            {followupMembers.length > 0 && (
+              <>
+                <div>
+                  <label htmlFor="bulk-followup" className="block text-xs text-muted-foreground">
+                    {s.followupAgent}
+                  </label>
+                  <select
+                    id="bulk-followup"
+                    value={followup}
+                    onChange={(e) => setFollowup(e.target.value)}
+                    className="mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">{s.autoAssign}</option>
+                    {followupMembers.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <ActionButton
+                  data-testid="bulk-assign-followup"
+                  pending={pending}
+                  pendingLabel={s.saving}
+                  disabled={count === 0}
+                  onClick={() => void send("assignFollowup", followup)}
+                >
+                  {s.assignFollowup}
+                </ActionButton>
+              </>
+            )}
+
             <ActionButton
               data-testid="bulk-delete"
               pending={pending}
@@ -235,6 +349,65 @@ export function OrderBulkBar({
             >
               {s.deleteSelected}
             </ActionButton>
+          </>
+        )}
+
+        {/* LP.9 / R7 — THE HIGHEST-VOLUME MANAGER ACTION THERE IS.
+            Booking a day's confirmed orders one at a time is the difference
+            between a minute and an hour. Gated on `erp:shipments:write`, which
+            is what `POST /orders/[id]/shipment` checks — an agent booking their
+            own confirmed order is ordinary work, so `mayBook` is not
+            `managesBook`. The carrier picker is, because `carrierCode` is
+            MANAGER_WRITABLE. */}
+        {mayBook && (
+          <>
+            {carriers.length > 0 && (
+              <>
+                <div>
+                  <label htmlFor="bulk-carrier" className="block text-xs text-muted-foreground">
+                    {s.carrier}
+                  </label>
+                  <select
+                    id="bulk-carrier"
+                    value={carrier}
+                    onChange={(e) => setCarrier(e.target.value)}
+                    className="mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">—</option>
+                    {carriers.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <ActionButton
+                  data-testid="bulk-send-to-delivery"
+                  pending={pending}
+                  pendingLabel={s.saving}
+                  disabled={count === 0 || overBookLimit || !carrier}
+                  onClick={() => void send("sendToDelivery", carrier)}
+                >
+                  {s.sendToDelivery}
+                </ActionButton>
+              </>
+            )}
+
+            <ActionButton
+              data-testid="bulk-create-shipments"
+              pending={pending}
+              pendingLabel={s.saving}
+              disabled={count === 0 || overBookLimit}
+              onClick={() => void send("createShipments")}
+            >
+              {s.createShipments}
+            </ActionButton>
+
+            {overBookLimit && (
+              <span className="text-xs text-muted-foreground" data-testid="bulk-book-limit">
+                {s.bookingHint} {bookLimit}
+              </span>
+            )}
           </>
         )}
 

@@ -490,8 +490,13 @@ A `niche` breakdown additionally needs E7 (R12).
 
 ---
 
-### R7 · Bulk actions — 🟡 PARTIAL
-**Legacy:** eight actions. **Now:** three (`status`, `delete`, `assign`).
+### R7 · Bulk actions — ✅ DONE (LP.9)
+**Legacy:** eight actions. **Now:** SEVEN — `status`, `delete`, `assign`,
+`classify`, `assignFollowup`, `createShipments`, `sendToDelivery`. The legacy's
+`export` and `print` are deliberately not among them: both mutate nothing and
+exist only to validate ids for a browser that builds the file, and LP.6 replaced
+that with a real server-side writer (`POST /orders/export` with `ids`).
+**Was:** three (`status`, `delete`, `assign`).
 **Missing:** `classify` (fake), `assignFollowup`, `createShipments`,
 `sendToDelivery`, and the `export`/`print` validation pass.
 **Business impact:** **Medium–High.** `createShipments` over a day's confirmed
@@ -603,7 +608,7 @@ migration).
 
 ---
 
-### R13 · Manual follow-up assignment — 🟡 PARTIAL
+### R13 · Manual follow-up assignment — 🟡 PARTIAL *(the bulk half done — LP.9)*
 **Legacy:** `POST /api/followup/assign` takes either an explicit agent or
 `auto: true` and broadcasts the assignment. Reachable from the order list in bulk.
 **Now:** auto-assignment runs on confirmation (6.6a). There is no way to assign or
@@ -887,7 +892,7 @@ from complete** — order export (R4) is all that remains in it.
 |---|---|---|---|---|
 | ~~7~~ | ~~The notification provider~~ — bell, badge, panel, toast, debounced live refresh | N2, N3, L1, L2 | M | **DONE — LP.7.** The last of §0b's six blockers. It also found two defects in shipped code that only a consumer could reach: a fresh subscription replayed the whole backlog as LIVE, and `POST /api/erp/orders` answered 500 in every seeded tenant. |
 | ~~8~~ | ~~Inline row actions + list density~~ | N9, N10, N21, N22 | M | **DONE — LP.8.** All four controls call `PATCH /orders/[id]`, so a status moved from the list reserves stock and books a parcel like any other door into `confirmed`. The density half closes N21 whole and N22 with it. Found and fixed a defect it introduced: the control div carried its own `data-order-id` and the LP.3 paging tests count rows by that attribute — every count doubled. |
-| **9** | **Bulk actions completed** — classify, assignFollowup, createShipments, sendToDelivery | R7 | M | `createShipments` in bulk is the highest-volume manager action there is. Depends on 5 to be worth anything. |
+| ~~9~~ | ~~Bulk actions completed~~ | R7, half of R13 | M | **DONE — LP.9.** All four, each gated the way its single-order route is — which exposed a drift: bulk `classify` was STRICTER than `POST /orders/[id]/classify`. Booking is a second phase after the commit (D-LP.5.1), bounded at 50 and refused by name above it. It also found a defect: `fakeReason`/`fakeResponsible`/`fakeAt` were written since Phase 5 and read back by nothing. |
 | **10** | **Client detail, correction, export** | R5 (part) | M | The registry is the business's most valuable asset and is read-only. Depends on 3 for search. |
 | **11** | **Sound + desktop notification preferences** (on `ProductSetting`) | N4, N5 | S | Hangs off 7. In a call centre nobody watches the screen; the ka-ching is the alert. |
 | ~~12~~ | ~~Agent alerts · missed-counter reset · manager password reset · payroll report · audit view~~ | R11, R14, R15, N11, N12 | S ×5 | **DONE — LP.12.** The alerts screen became a FILTER (`suspicious=true`) plus a roster count, deliberately: one filter vocabulary (D-LP.3) beats a screen that can only ever show everything flagged. N12 also closed a defect underneath it — **no order mutation wrote an audit row at all**, so there was nothing to render. |

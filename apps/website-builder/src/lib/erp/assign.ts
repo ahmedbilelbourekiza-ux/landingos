@@ -281,3 +281,89 @@ export async function autoAssignFollowup(
   });
   return chosen;
 }
+
+/* -----------------------------------------------------------------------------
+ * The manual half — LP.9 / LP.21, closing R13
+ * -------------------------------------------------------------------------- */
+
+/** What `assignFollowupAgent` was asked to do. */
+export interface FollowupAssignment {
+  /** A named person, or null to let the workload rule choose. */
+  readonly userId?: string | null;
+  /** Who pressed the button. Recorded on the audit row. */
+  readonly actorUserId: string;
+}
+
+/**
+ * Give an order a follow-up agent BECAUSE SOMEBODY ASKED.
+ *
+ * The counterpart to `autoAssignFollowup` above, and the two differ in exactly
+ * two ways — both of which are the difference between an automation and an
+ * instruction:
+ *
+ *   - IT IGNORES `followupAutoAssign`. That setting answers "should the system
+ *     do this by itself"; a supervisor pressing "assign" has already answered
+ *     it. The legacy makes the same distinction with `opts.auto ||
+ *     settings.followupAutoAssign`.
+ *   - IT OVERWRITES AN EXISTING ASSIGNEE. `autoAssignFollowup` refuses to,
+ *     because filling a gap must never overrule a decision. Moving a difficult
+ *     customer to a senior agent IS the decision, and it is the whole business
+ *     case in R13.
+ *
+ * A NAMED PERSON IS STILL CHECKED FOR ELIGIBILITY. `eligibleAgents` is the same
+ * rule the automation uses — the follow-up job role, not suspended, holds
+ * `erp:orders:write`, not on a day off. Handing work to somebody the API would
+ * refuse produces a queue nobody can work and a missed-order counter climbing
+ * against a person who was never able to act (D-06.6). Returns null rather than
+ * assigning, so the caller can say so per id.
+ *
+ * Returns the chosen user, or null when nobody eligible was found or the named
+ * person is not eligible.
+ */
+export async function assignFollowupAgent(
+  db: TenantDb,
+  tenantId: string,
+  orderId: string,
+  opts: FollowupAssignment,
+): Promise<string | null> {
+  const eligible = await eligibleAgents(db, tenantId, "followup");
+  if (eligible.length === 0) return null;
+
+  const named = opts.userId?.trim();
+  let chosen: string | null;
+  if (named) {
+    chosen = eligible.includes(named) ? named : null;
+  } else {
+    chosen = leastLoaded(eligible, await workload(db, "followup", eligible));
+  }
+  if (!chosen) return null;
+
+  const order = await db.fulfillmentOrder.findUnique({
+    where: { id: orderId },
+    select: { id: true, followupUserId: true },
+  });
+  if (!order) return null;
+
+  await db.fulfillmentOrder.update({
+    where: { id: orderId },
+    data: { followupUserId: chosen, followupAssignedAt: new Date() },
+  });
+
+  /* The legacy writes `db.audit('order', id, 'followup_assign', actor, {agent})`
+   * and so does this. Moving a customer between agents is exactly the class of
+   * change N12 found had no trail at all: "who put this on Karim?" needs an
+   * answer, and the assignment itself does not carry one. */
+  await db.auditEvent.create({
+    data: {
+      tenantId,
+      product: "erp",
+      entity: "order",
+      entityId: orderId,
+      action: "followup_assign",
+      userId: opts.actorUserId,
+      payload: { followupUserId: chosen, previous: order.followupUserId, auto: !named },
+    },
+  });
+
+  return chosen;
+}

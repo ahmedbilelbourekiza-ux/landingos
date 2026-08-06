@@ -84,6 +84,8 @@ export default async function ErpOrderDetail({
         pendingCallStart: true,
         // 6.3b: the rest of what the edit form can write.
         shippingNote: true, marketer: true, brand: true, expressDelivery: true,
+        // LP.9: written since Phase 5, read by nothing until now.
+        fakeReason: true, fakeResponsible: true,
       },
     });
     if (!order) return null;
@@ -298,13 +300,26 @@ export default async function ErpOrderDetail({
           vars={toneVars(tone.tone)}
         />
         {order.classification === "fake" && (
-          <span
-            data-testid="order-fake"
-            className="rounded-full border px-2 py-0.5 text-xs"
-            style={toneVars("danger")}
-          >
-            {t("erp.order.fake")}
-          </span>
+          <>
+            <span
+              data-testid="order-fake"
+              className="rounded-full border px-2 py-0.5 text-xs"
+              style={toneVars("danger")}
+            >
+              {t("erp.order.fake")}
+            </span>
+            {/* LP.9 — WHY, and WHO SAYS. `fakeReason` and `fakeResponsible`
+                have been written by `POST /orders/[id]/classify` since Phase 5
+                and read back by nothing: the pill said an order was fake and
+                no screen said why. Marking an order fake removes it from the
+                confirmed count and names a colleague, so this is the part
+                somebody disputes. */}
+            {(order.fakeReason || order.fakeResponsible) && (
+              <span data-testid="order-fake-reason" className="text-xs text-muted-foreground">
+                {[order.fakeReason, order.fakeResponsible].filter(Boolean).join(" · ")}
+              </span>
+            )}
+          </>
         )}
       </div>
 

@@ -12,6 +12,121 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.9 The bulk bar finishes the job — and a reason nobody could read
+
+[Opus 5]
+Date: 7 August 2026
+Summary: R7 — `classify`, `assignFollowup`, `createShipments` and
+`sendToDelivery`. Plus an authorization drift the slice exposed and a
+"written and never read" defect it found. orders 40 → **58**, screens 148 → **152**.
+
+#### R7 — the legacy dispatches eight bulk actions and this dispatched three
+
+`createShipments` is the single highest-volume manager action in the building:
+booking a day's confirmed orders one at a time is the difference between a
+minute and an hour. `assignFollowup` is how a supervisor moves a difficult
+customer to a senior agent, fifty at a time. `classify` is how a duplicate
+campaign's worth of fake orders gets marked.
+
+`export` and `print` are the legacy's other two and are deliberately **not**
+restored as bulk actions: its versions mutate nothing and exist only to validate
+ids for a client that then builds the file in the browser. LP.6 gave the export a
+real server-side writer, and `POST /orders/export` with `ids` is already what the
+ticked-rows download calls.
+
+#### The drift the slice exposed: bulk `classify` was STRICTER than the single route
+
+Before LP.9 the rule was "everything except `status` requires `seesWholeBook`".
+That is right for `delete` and `assign` and wrong for `classify`:
+`POST /orders/[id]/classify` is `erp:orders:write` plus ownership and nothing
+more, so **an agent could mark one of their own orders fake and not fifty.**
+
+`ACTION_RULES` now names the permission and the manager requirement per action,
+each taken from the route that already does that one thing to one order —
+`erp:shipments:write` for the two booking actions, because that is what
+`POST /orders/[id]/shipment` checks and an agent booking a parcel for their own
+confirmed order is ordinary work. Approximating that rule is how it drifted.
+
+#### D-LP.5.1 applies, which is why booking is a second phase
+
+`withTenant` opens a 15-second interactive transaction. Fifty parcels is fifty
+times three HTTP round trips to somebody else's server; holding a pinned
+connection across them would time out and roll back — **including the
+`carrierCode` writes `sendToDelivery` had already made**, leaving orders neither
+routed nor booked. Phase one resolves ownership and stamps the carrier inside the
+transaction; phase two books through `afterCommit`, sequentially, because fifty
+concurrent bookings is how a tenant gets rate-limited off a carrier's API.
+
+**`BULK_BOOK_LIMIT = 50`, refused BY NAME above it** — the `EXPORT_LIMIT` rule
+(LP.6). A manager who ticks 200 rows, gets 50 parcels and a success message has
+150 orders they believe are booked. The constant lives in `lib/erp/orders.ts`
+rather than in the route because the order list renders the number beside its own
+control: one constant, one answer.
+
+**A carrier refusal is reported per id, carrying the carrier's own code.**
+"Forty-nine booked, one has a misspelled wilaya" is a one-minute fix; "one
+failed" is not.
+
+#### `assignFollowupAgent` — the manual half of R13
+
+The counterpart to `autoAssignFollowup`, differing in exactly two ways, both of
+which are the difference between an automation and an instruction:
+
+- **It ignores `followupAutoAssign`.** That setting answers "should the system do
+  this by itself"; a supervisor pressing the button has already answered it. The
+  legacy makes the same distinction with `opts.auto || settings.followupAutoAssign`.
+- **It overwrites an existing assignee.** `autoAssignFollowup` refuses to,
+  because filling a gap must never overrule a decision. Moving a difficult
+  customer to a senior agent IS the decision, and it is the whole business case.
+
+A named person is still checked against `eligibleAgents` — the same rule the
+automation uses. Handing work to somebody the API would refuse produces a queue
+nobody can work and a missed-order counter climbing against a person who was
+never able to act (D-06.6). It is refused per id rather than assigned, and an
+empty value means AUTO (the legacy's `auto: !value`).
+
+**It writes an audit row**, as the legacy's `db.audit('order', id,
+'followup_assign', …)` does. "Who put this customer on Karim?" is exactly the
+class of question N12 found had no answer.
+
+#### The defect the slice found: a classification reason nobody could read
+
+`POST /orders/[id]/classify` has written `fakeReason`, `fakeResponsible` and
+`fakeAt` since Phase 5, and **nothing read any of them back.** They were not in
+`ORDER_LIST_SELECT`, so the order read did not return them; the detail screen
+showed a bare "fake" pill and the list showed a bare badge.
+
+Marking an order fake is an accusation — it removes the order from the confirmed
+count and `fakeResponsible` names a colleague — so "why" and "who says" are
+precisely the parts somebody disputes. Found by building the action that writes
+them fifty at a time. Both now render: on the detail beside the pill, and as the
+list badge's tooltip, the same shape the note badge uses.
+
+#### Files
+
+- `apps/website-builder/src/app/api/erp/orders/bulk/route.ts` — rewritten around
+  `ACTION_RULES` and the two-phase booking
+- `apps/website-builder/src/lib/erp/assign.ts` — `assignFollowupAgent`
+- `apps/website-builder/src/lib/erp/orders.ts` — `BULK_BOOK_LIMIT`, and the three
+  classification columns in `ORDER_LIST_SELECT`
+- `apps/website-builder/src/components/console/erp/order-bulk.tsx` — six controls
+- `apps/website-builder/src/app/console/erp/orders/page.tsx`
+- `apps/website-builder/src/app/console/erp/orders/[id]/page.tsx` — the reason
+- `packages/i18n/src/messages/{ar,en,fr}.json` — `erp.write.*`, 5 keys × 3
+- `apps/website-builder/test/erp/orders.test.ts` — 18 new tests
+- `apps/website-builder/test/erp/screens.test.ts` — 4 new tests
+
+**Migration:** none.
+
+**Risk:** medium, and it is the booking path. A bulk run asks a carrier up to
+fifty times inside one request; the caller waits, which is deliberate (D-LP.5.1
+is not a background queue). The limit is enforced server-side and the control
+disables above it. Booking is idempotent per order — the `@@unique([tenantId,
+orderId])` on `Shipment` — so a repeated run returns the existing parcels rather
+than duplicating them, and a test asserts it.
+
+---
+
 ### LP.8 The row acts, and says enough to act on
 
 [Opus 5]

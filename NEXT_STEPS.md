@@ -223,9 +223,27 @@ was reachable any other way:
    advances `TenantSequence`. `nextReference` now heals itself from the highest
    reference already in use, counting only references it could have minted.
 
-**#8 is DONE (LP.8).** The next slices are Tier 2 #9, #10 and #11 — and #11
+**#8 and #9 are DONE.** The next slices are Tier 2 #10 and #11 — and #11
 (sound + desktop notification preferences on `ProductSetting`) hangs directly off
 this provider.
+
+### LP.9 — DONE. The bulk bar finishes the job (R7, half of R13)
+
+**Implemented and verified.** orders 40 → **58**, screens 148 → **152**. Four
+actions restored: `classify`, `assignFollowup`, `createShipments`,
+`sendToDelivery`. `export`/`print` deliberately not — LP.6 replaced them.
+
+**Two findings worth carrying forward:**
+
+- **`ACTION_RULES` replaced an approximation.** "Everything except `status`
+  requires `seesWholeBook`" made bulk `classify` STRICTER than
+  `POST /orders/[id]/classify`. Every future bulk action must name the
+  permission and manager requirement of the route that does that thing to one
+  order, not inherit a blanket rule.
+- **`fakeReason`, `fakeResponsible` and `fakeAt` had no reader at all.** Written
+  since Phase 5. The same class of defect as `IntegrationLog` (LP.14) and
+  `OrderCall.suspicious` (LP.12): computed, stored and shown nowhere. Worth
+  sweeping for the rest in the final audit.
 
 ### LP.8 — DONE. Inline row actions and list density (N9, N10, N21, N22)
 
@@ -328,7 +346,7 @@ order **[DONE LP.4]** · the real ZR adapter **[DONE LP.5]** · order export
 **[DONE LP.6]**. **TIER 1 IS COMPLETE.**
 **Tier 2 — operator productivity:** (7) the notification provider **[DONE LP.7]** ·
 (8) inline row actions + list density **[DONE LP.8]** · (9) bulk actions
-completed · (10) client detail/edit/export · (11) sound + desktop notification
+completed **[DONE LP.9]** · (10) client detail/edit/export · (11) sound + desktop notification
 preferences · (12) agent alerts, missed-counter reset, manager password reset,
 payroll report, audit view **[DONE LP.12]**.
 **Tier 3 — business value:** (13) analytics **[DONE LP.13]** ·

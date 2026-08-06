@@ -2224,3 +2224,58 @@ describe('the order row carries the facts somebody decides from (N10, N21)', () 
     assert.match(r.body, /data-flash-id="/, 'row-flash.ts has nothing to mark without this');
   });
 });
+
+describe('the bulk bar offers the four restored actions (LP.9 / R7)', () => {
+  test('a manager gets classify, follow-up assignment and both booking controls', async () => {
+    const r = await html('/console/erp/orders', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="bulk-classify-fake"/);
+    assert.match(r.body, /data-testid="bulk-classify-clear"/);
+    assert.match(r.body, /data-testid="bulk-assign-followup"/);
+    assert.match(r.body, /data-testid="bulk-create-shipments"/);
+  });
+
+  test('an agent gets classify — the single route lets them — and not follow-up', async () => {
+    // The drift LP.9 fixed, asserted on the screen as well as the route: bulk
+    // classify was manager-only while `POST /orders/[id]/classify` was not.
+    const r = await html('/console/erp/orders', acme.agent.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="bulk-classify-fake"/);
+    assert.ok(!/data-testid="bulk-assign-followup"/.test(r.body), 'followupUserId is a reassignment field');
+  });
+
+  test('the screen and the route agree about who may classify in bulk', async () => {
+    const id = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Bulk Classify', phone: phone(), agentUserId: acme.agent.userId,
+    })).body.data.id as string;
+
+    assert.equal(
+      (await acme.agent.api('POST', '/api/erp/orders/bulk', {
+        ids: [id], action: 'classify', value: 'fake',
+      })).status,
+      200,
+      'the agent was offered classify and the API refused it',
+    );
+    assert.equal(
+      (await acme.agent.api('POST', '/api/erp/orders/bulk', {
+        ids: [id], action: 'assignFollowup', value: acme.agent.userId,
+      })).status,
+      403,
+      'the agent was not offered follow-up assignment, and this is why',
+    );
+  });
+
+  test('the send-to-carrier control appears only where there is a carrier to send to', async () => {
+    // D-06.2's other half: a select with no options is a control whose every
+    // outcome is "pick something first".
+    const staged = await makeErpTenant(`bulkui-${uid()}`);
+    const bare = await html('/console/erp/orders', staged.manager.token);
+    assert.ok(!/data-testid="bulk-send-to-delivery"/.test(bare.body), 'no carriers, no control');
+
+    await staged.manager.api('POST', '/api/erp/carriers', {
+      name: 'UI Mock', code: `mk${uid()}`, adapter: 'mock', apiEnabled: true,
+    });
+    const withCarrier = await html('/console/erp/orders', staged.manager.token);
+    assert.match(withCarrier.body, /data-testid="bulk-send-to-delivery"/);
+  });
+});

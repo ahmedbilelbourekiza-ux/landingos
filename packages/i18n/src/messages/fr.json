@@ -314,7 +314,12 @@
       "webhookSecret": "Secret du webhook",
       "exportSelected": "Exporter la sélection",
       "resetPassword": "Définir un mot de passe",
-      "resetPasswordHint": "Définir un mot de passe déconnecte cette personne partout, dans toutes ses entreprises — c’est l’identifiant qui change, pas son accès à une équipe."
+      "resetPasswordHint": "Définir un mot de passe déconnecte cette personne partout, dans toutes ses entreprises — c’est l’identifiant qui change, pas son accès à une équipe.",
+      "assignFollowup": "Assigner le suivi",
+      "autoAssign": "Automatique (le moins chargé)",
+      "createShipments": "Créer les colis",
+      "sendToDelivery": "Envoyer au transporteur",
+      "bookingHint": "Création de colis limitée par lot à"
     },
     "settings": {
       "title": "Règles d'automatisation",

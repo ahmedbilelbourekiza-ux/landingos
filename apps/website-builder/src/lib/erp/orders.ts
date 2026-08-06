@@ -41,6 +41,20 @@ export const NOTE_TYPES = [
 export const CLASSIFICATIONS = ["", "fake"] as const;
 
 /**
+ * How many parcels one bulk request may book — LP.9.
+ *
+ * Lives here rather than in the route because the ORDER LIST renders the number
+ * beside its own control: an operator who ticks 200 rows should be told the
+ * ceiling, not discover it as a 422. One constant, one answer — the same reason
+ * `orderFilterFields` sits beside `orderFilters`.
+ *
+ * Refused by name above this rather than silently capped, exactly as
+ * `EXPORT_LIMIT` is (LP.6): a manager who ticks 200 rows and gets 50 parcels
+ * plus a success message has 150 orders they believe are booked.
+ */
+export const BULK_BOOK_LIMIT = 50;
+
+/**
  * Statuses an order does not move on from by being called again.
  *
  * `abandoned` belongs here with the other two: it is a cart nobody completed,
@@ -244,6 +258,16 @@ export const ORDER_LIST_SELECT = {
   unitPrice: true, subtotal: true, discount: true, shippingCost: true,
   expressDelivery: true, callReminderStatus: true,
   salesChannelName: true, platform: true, brand: true,
+  /* LP.9 — WHY an order is flagged, not only THAT it is.
+   *
+   * `POST /orders/[id]/classify` has written `fakeReason`, `fakeResponsible`
+   * and `fakeAt` since Phase 5 and **nothing read any of them back**: the order
+   * read did not return them and the detail screen showed a bare "fake" pill.
+   * Marking an order fake is an accusation — it removes it from the confirmed
+   * count, and `fakeResponsible` names a colleague — so "why" and "who says"
+   * are the parts somebody disputes. Found by building the bulk action that
+   * writes them fifty at a time. */
+  fakeReason: true, fakeResponsible: true, fakeAt: true,
   _count: { select: { calls: true } },
 } satisfies Prisma.FulfillmentOrderSelect;
 
