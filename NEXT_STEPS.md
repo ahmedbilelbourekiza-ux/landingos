@@ -46,7 +46,11 @@ none of which may be traded back.
    Push, service worker, 33 tests) has **no consumer**. No bell, no badge, no
    toast, no sound, no live refresh. An operator is never told anything.
 5. ~~**No real carrier adapter.**~~ *(Closed by LP.5 — `zr` books real parcels.)*
-6. **No export.** No CSV or XLSX anywhere. **This is the last Tier 1 blocker.**
+6. ~~**No export.**~~ *(Closed by LP.6 — CSV for ZR / Ecom / Ecotrac plus the
+   performance report, from the order list, carrying its filters.)*
+
+**Blockers 1, 2, 3, 5 and 6 are closed. TIER 1 IS COMPLETE.** What remains is
+blocker 4 — **no notification surface** — which is where Tier 2 starts.
 
 ### Two decisions re-opened by the second pass
 
@@ -146,45 +150,68 @@ first) and settled revenue for a parcel that had just left the depot; and
 `Shipment` had no unique on `(tenantId, orderId)`, so "one parcel per order" was
 a hope. Both fixed — the second with a schema change recorded in `CONSTRAINTS.md`.
 
-### THE NEXT SLICE — LP.6, order export
+**LP.6 — order export (R4), and Tier 1 closed.** `GET/POST
+/api/erp/orders/export` plus an export panel on the order list. Four formats —
+ZR Express, Ecom Delivery, Ecotrac and the performance report as `orders` +
+`agents` — with the legacy's exact column names, because a header is a contract
+with somebody else's importer. `test/erp/export.test.ts` is new at **31/31**;
+screens 123 → **130**, access 65 → **68**.
 
-**The last Tier 1 blocker.** Until every carrier has an adapter, an Excel/CSV
-hand-off is the only way a confirmed order leaves the building — and even with ZR
-registered, most Algerian carriers have no API at all.
+Three decisions, all in PROJECT_STATE: **D-LP.6.1** CSV rather than XLSX;
+**D-LP.6.2** the export IS the list, taking the same query string through the
+same `orderFilters` and `scopedWhere` (which is why the controls live on the
+order list and there is no new nav item); **D-LP.6.3** a carrier file is
+confirmed orders and no caller can widen it — including by ticking rows, which
+is the hole attacking the implementation found.
 
-Read the legacy Export screen in `apps/erp/index.html` end to end first. It
-produces four files:
+Two spreadsheet properties that are security rather than polish: a leading
+`=`/`+`/`-`/`@` is neutralised (a customer name arrives from a storefront and
+the file opens in an operator's Excel), and the file carries a UTF-8 BOM. The
+BOM test asserts BYTES — `Response.text()` strips one by specification, so the
+obvious assertion cannot fail.
 
-- **ZR Express** — `Nom, Tel, Tel2, Wilaya, Commune, Produit, Qte, Prix, Note`
-- **Ecom Delivery** and **Ecotrac** — their own column orders
-- **a two-sheet performance report** — Orders + Agents, with confirmation rates
-  and suspicious-call counts
+### THE NEXT SLICE — LP.7, the notification provider (Tier 2 opens)
 
-Plus bulk export and bulk label printing from the order-list selection (label
-printing is Tier 4, slice 25 — do not pull it forward).
+**The largest piece of dead machinery in the repo.** M-16 built storage, the
+audience decided at write time, an SSE stream with exact replay from
+`Last-Event-ID`, Web Push and a service worker — **33 contract tests** — and
+**nothing in the console consumes any of it.** No bell, no badge, no panel, no
+toast. A signed-in operator is never told anything: not that an order arrived,
+not that a parcel came back, not that a follow-up escalated.
 
-**What to decide before writing anything:**
+The architecture is already proposed and reviewed — LEGACY_PARITY §6.4(a):
 
-- **CSV or XLSX.** LEGACY_PARITY R4 sizes CSV as **M** and XLSX as **L**; the
-  carrier hand-off is CSV-shaped and only the performance report wants real
-  sheets. A dependency-free CSV writer is the likely answer, with the report's
-  two sheets as two files or deferred.
-- **The filter vocabulary is `orderFilters`, again.** D-LP.3's rule applies
-  directly: an export with its own idea of "confirmed orders from this week"
-  will eventually disagree with the screen that offered the filters. The export
-  must take the SAME query string the list does, resolve `range` in the same
-  place, and a test must assert that the export and the list return the same set.
-- **Streaming vs buffering.** An export is unbounded where every list is paged.
-  `withTenant` holds a transaction; building a 20,000-row string inside one is
-  the same shape of problem D-LP.5.1 just fixed for carriers. Decide the bound
-  explicitly (a hard row cap with a stated refusal, or a chunked read) rather
-  than discovering it at 15 seconds.
-- **Encoding.** Wilaya and commune names carry accents and the console ships
-  Arabic. A CSV opened in Excel without a UTF-8 BOM shows mojibake, and the
-  operator's conclusion is that the export is broken.
-- **Permission.** `erp:orders:read` reads the book; an export takes the whole of
-  it out of the building, and the customer registry is SENSITIVE (D-05.1). Decide
-  and record which gate applies.
+> One `<NotificationProvider>` in the console shell, subscribing **once** per
+> session to `/api/platform/notifications/stream`. It owns three things and
+> nothing else: the unread badge, a toast per arriving notification, and a
+> **debounced `router.refresh()`** (~500 ms) so a burst of carrier events costs
+> one re-render. Server-rendered truth, event-driven invalidation — every D-06
+> rule intact (no optimistic UI, no second write path).
+
+**What to settle before writing anything:**
+
+- **One subscription per session, not per screen.** The provider belongs in the
+  shell (`components/console/console-shell.tsx`), which every console page
+  already renders. A provider per screen means N streams per tab.
+- **The debounce is the whole performance story.** A carrier replaying a backlog
+  produces dozens of events in a second; each one calling `router.refresh()`
+  re-renders a server component tree that runs real queries. Debounce, and prove
+  it with a test that pushes a burst.
+- **`router.refresh()` and nothing else.** No client-side merge of the incoming
+  notification into a list — that is a second copy of the truth, and D-06.3
+  exists because a confirmed call is money.
+- **What the badge counts.** `unreadCount()` in `lib/platform/notifications.ts`
+  already exists and has no caller. Read it on the server for the first paint,
+  then let the stream move it — do not compute it in the client from the events
+  it happens to have seen, which is the in-memory-counter defect the M-16 audit
+  found.
+- **The stream is cross-product.** `/api/platform/notifications` is a platform
+  surface: one feed per person across every product. The provider must not
+  become ERP-shaped, and a toast must be able to name which product raised it.
+- **Sounds and desktop notifications are the NEXT slice** (Tier 2 #11) and hang
+  off the same provider, behind a preference on `ProductSetting` rather than
+  `localStorage` — so it follows the person between devices, which is the one
+  thing the legacy got wrong here.
 
 ### The order of work (LEGACY_PARITY.md §4)
 
@@ -193,8 +220,8 @@ operator productivity → business value → architectural dependencies → risk
 
 **Tier 1 — blockers:** product editing **[DONE LP.1]** · adapter refusal
 **[DONE LP.2]** · pagination + filters + search **[DONE LP.3]** · create an
-order **[DONE LP.4]** · the real ZR adapter **[DONE LP.5]** ·
-**(6) order export**.
+order **[DONE LP.4]** · the real ZR adapter **[DONE LP.5]** · order export
+**[DONE LP.6]**. **TIER 1 IS COMPLETE.**
 **Tier 2 — operator productivity:** (7) the notification provider · (8) inline
 row actions + list density · (9) bulk actions completed · (10) client
 detail/edit/export · (11) sound + desktop notification preferences · (12) agent
@@ -250,9 +277,10 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **512/512** across the TWELVE files: access 65 · orders 38 ·
+Expect **553/553** across the THIRTEEN files: access 68 · orders 38 ·
 validation 29 · listing 30 · catalog 55 · delivery 61 · integrations 29 ·
-order-split 8 · screens 123 · jobs 16 · assign 25 · notifications 33.
+order-split 8 · screens 130 · jobs 16 · assign 25 · notifications 33 ·
+export 31.
 
 `delivery.test.ts` starts a **stub ZR Express server on an ephemeral port** in
 the test process and points a carrier's `apiUrl` at it, so the real adapter runs

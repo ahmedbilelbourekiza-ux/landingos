@@ -14,12 +14,16 @@ import { Pager } from "@/components/console/pager";
 import type { FilterField } from "@/components/console/filter-field";
 import { OrderBulkBar, type BulkStrings } from "@/components/console/erp/order-bulk";
 import { OrderCreatePanel } from "@/components/console/erp/order-create";
-import { filterStrings, pagerStrings, orderCreateStrings } from "@/lib/console/erp-strings";
+import { OrderExportPanel } from "@/components/console/erp/order-export";
+import {
+  filterStrings, pagerStrings, orderCreateStrings, orderExportStrings,
+} from "@/lib/console/erp-strings";
 import { scopedWhere, seesWholeBook } from "@/lib/erp/scope";
 import {
   orderFilters, orderSort, orderFilterFields,
   ORDER_LIST_SELECT, ORDER_STATUSES,
 } from "@/lib/erp/orders";
+import { exportWhere } from "@/lib/erp/export";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +74,7 @@ export default async function ErpOrdersScreen({
   const page = Math.max(1, Number(params.get("page")) || 1);
   const where = scopedWhere(session, orderFilters(params));
 
-  const { orders, total, members, carriers } = await withTenant(session.auth!.tenantId, async (db) => {
+  const { orders, total, members, carriers, confirmedCount } = await withTenant(session.auth!.tenantId, async (db) => {
     const total = await db.fulfillmentOrder.count({ where });
     const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     const safePage = Math.min(page, pages);
@@ -100,6 +104,14 @@ export default async function ErpOrdersScreen({
       orderBy: [{ isDefault: "desc" }, { name: "asc" }],
       select: { code: true, name: true },
     }),
+    // What a CARRIER export would actually contain, which is not `total`: the
+    // three carrier formats force `status: confirmed` (D-LP.6.3), so showing
+    // the filtered total beside them would promise rows the file will not have.
+    // Counted through `exportWhere`, so this number and the file cannot
+    // disagree about what the link does.
+    confirmedCount: await db.fulfillmentOrder.count({
+      where: exportWhere(session, params, "zr"),
+    }),
     };
   });
 
@@ -123,6 +135,7 @@ export default async function ErpOrdersScreen({
     assignTo: t("erp.write.assignTo"),
     assign: t("erp.write.assign"),
     deleteSelected: t("erp.write.deleteSelected"),
+    exportSelected: t("erp.write.exportSelected"),
     outcome: t("erp.write.outcome"),
     of: t("erp.write.of"),
   };
@@ -294,6 +307,17 @@ export default async function ErpOrdersScreen({
         fields={fields}
         s={filterStrings(t)}
         testId="erp-orders-filters"
+      />
+
+      {/* Below the bar and above the table, because the file it produces IS the
+          filtered list — the legacy's separate Export screen could only ever
+          export "all confirmed" and never what an operator had narrowed to. */}
+      <OrderExportPanel
+        params={params}
+        s={orderExportStrings(t)}
+        confirmedCount={confirmedCount}
+        filteredTotal={total}
+        maySeeAgentReport={can(session.auth!, "erp:agents:manage")}
       />
 
       {mayWrite ? (

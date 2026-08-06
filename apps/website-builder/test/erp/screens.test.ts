@@ -659,6 +659,74 @@ describe('the order list can act on many rows at once', () => {
     assert.ok(!/data-testid="erp-bulk-bar"/.test(r.body));
     assert.ok(!/name="orderId"/.test(r.body), 'no control implies no selection');
   });
+
+  test('the ticked rows can be exported, by anyone the table is offered to', async () => {
+    // LP.6. The export route is `erp:orders:read` and record-scoped — an agent
+    // exports their own queue, which is what they are already looking at — so
+    // withholding it would be the other half of D-06.2 broken.
+    const asAgent = await html('/console/erp/orders', acme.agent.token);
+    assert.match(asAgent.body, /data-testid="bulk-export"/);
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * LP.6 — the order book leaves the building
+ * -------------------------------------------------------------------------- */
+
+describe('the order list can produce a file', () => {
+  test('the export panel offers every format the route accepts', async () => {
+    const r = await html('/console/erp/orders', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-order-export"/);
+    for (const format of ['zr', 'ecom', 'ecotrac', 'orders', 'agents']) {
+      assert.match(r.body, new RegExp(`data-testid="export-${format}"`), `no link for ${format}`);
+    }
+  });
+
+  test('the links carry the filters that are on screen', async () => {
+    // The legacy's Export screen sat somewhere else and could only ever export
+    // "all confirmed" — whatever an operator had narrowed to on the order list
+    // was not something that page could see. Here the file IS the filtered list.
+    const r = await html('/console/erp/orders?wilaya=Oran&range=today', acme.manager.token);
+    assert.match(r.body, /href="\/api\/erp\/orders\/export\?[^"]*wilaya=Oran/);
+    assert.match(r.body, /href="\/api\/erp\/orders\/export\?[^"]*range=today/);
+  });
+
+  test('a carrier link never carries a status, because it cannot honour one', async () => {
+    // D-LP.6.3: the three carrier formats force `confirmed`. A link that
+    // carried `status=pending` would promise a file the route will not build.
+    const r = await html('/console/erp/orders?status=pending', acme.manager.token);
+    const zr = /href="(\/api\/erp\/orders\/export\?[^"]*format=zr)"/.exec(r.body);
+    assert.ok(zr, 'the ZR link must be present');
+    assert.ok(!zr![1].includes('status='), `the ZR link must not carry a status: ${zr![1]}`);
+
+    // The report format is about the book rather than a delivery run, so it
+    // does keep the filter.
+    const report = /href="(\/api\/erp\/orders\/export\?[^"]*format=orders)"/.exec(r.body);
+    assert.ok(report![1].includes('status=pending'));
+  });
+
+  test('no link carries the page number', async () => {
+    const r = await html('/console/erp/orders?page=2', acme.manager.token);
+    const link = /href="(\/api\/erp\/orders\/export\?[^"]*format=zr)"/.exec(r.body);
+    assert.ok(link);
+    assert.ok(!link![1].includes('page='), 'a paged export is a silent truncation');
+  });
+
+  test('the agent report is absent for somebody the route would refuse', async () => {
+    // `erp:agents:manage` is SENSITIVE — it is a league table of confirmation
+    // rates and suspicious-call counts. Absent, not disabled: a disabled link
+    // still says "you nearly could".
+    const asAgent = await html('/console/erp/orders', acme.agent.token);
+    assert.match(asAgent.body, /data-testid="export-zr"/, 'the carrier files are still offered');
+    assert.ok(!/data-testid="export-agents"/.test(asAgent.body));
+  });
+
+  test('the counts say what the links would produce', async () => {
+    const r = await html('/console/erp/orders', acme.manager.token);
+    assert.match(r.body, /data-testid="export-confirmed-count"/);
+    assert.match(r.body, /data-testid="export-filtered-count"/);
+  });
 });
 
 /* -----------------------------------------------------------------------------

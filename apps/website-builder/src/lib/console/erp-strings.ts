@@ -5,6 +5,7 @@ import type { AgentStrings } from "@/components/console/erp/agent-write";
 import type { PagerStrings } from "@/components/console/pager";
 import type { FilterStrings } from "@/components/console/filter-bar";
 import type { OrderCreateStrings } from "@/components/console/erp/order-create";
+import type { ExportStrings } from "@/components/console/erp/order-export";
 
 /* =============================================================================
  * The ERP's write-control labels, resolved once per screen.
@@ -185,5 +186,30 @@ export function orderCreateStrings(t: (key: string) => string): OrderCreateStrin
     carrier: t("erp.carriers.title"),
     defaultCarrier: t("erp.write.defaultCarrier"),
     note: t("erp.order.note"),
+  };
+}
+
+/**
+ * The export panel's labels.
+ *
+ * The FORMAT names are the carriers' own — "ZR Express", "Ecom Delivery",
+ * "Ecotrac" — and are deliberately not translated: they are company names, and
+ * a translated one is a file an operator cannot match to the portal they are
+ * about to upload it to. Only the two report formats get a translated label,
+ * because those describe what is inside rather than who it is for.
+ */
+export function orderExportStrings(t: (key: string) => string): ExportStrings {
+  return {
+    title: t("erp.export.title"),
+    hint: t("erp.export.hint"),
+    confirmed: t("erp.export.confirmedCount"),
+    inView: t("erp.export.inViewCount"),
+    formats: {
+      zr: "ZR Express",
+      ecom: "Ecom Delivery",
+      ecotrac: "Ecotrac",
+      orders: t("erp.export.reportOrders"),
+      agents: t("erp.export.reportAgents"),
+    },
   };
 }

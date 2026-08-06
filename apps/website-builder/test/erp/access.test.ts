@@ -62,6 +62,11 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   ['POST', '/api/erp/orders'],
   ['GET', '/api/erp/orders/stats'],
   ['POST', '/api/erp/orders/bulk'],
+  // LP.6. Both methods, because they take their input from different places —
+  // a query string and a body — and a gate is easy to add to one of two
+  // handlers in the same file.
+  ['GET', '/api/erp/orders/export?format=zr'],
+  ['POST', '/api/erp/orders/export'],
   ['GET', '/api/erp/clients'],
   ['GET', '/api/erp/products'],
   // A made-up id is fine: the inventory asserts the route is CLOSED, and an
@@ -449,5 +454,23 @@ describe('a caller-supplied filter never widens what they can see', () => {
     );
     assert.equal(r.status, 200);
     assert.equal(r.body.data.items.length, 0, 'a user id from another tenant matches nothing');
+  });
+
+  test('nor with an export, which is the same filter leaving the building', async () => {
+    // LP.6. The export takes the same query string the list does, so it
+    // inherits this property only if it goes through `scopedWhere` — and an
+    // export is the one read that produces a file somebody keeps.
+    await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Not Yours', phone: phone(), agentUserId: acme.other.userId,
+    });
+
+    const r = await acme.agent.api(
+      'GET', `/api/erp/orders/export?format=orders&agentUserId=${acme.other.userId}`,
+    );
+    assert.equal(r.status, 200);
+    assert.ok(
+      !String(r.body).includes('Not Yours'),
+      'a caller-supplied agent filter widened an export',
+    );
   });
 });

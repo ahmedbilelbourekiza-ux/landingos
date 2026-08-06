@@ -99,15 +99,20 @@ production blocker in its own right.
 | 🔴 MISSING | 39 | 33% | |
 
 **These counts are the second pass's and have deliberately NOT been re-derived
-slice by slice.** Five slices have landed since (LP.1–LP.5) and each records what
+slice by slice.** Six slices have landed since (LP.1–LP.6) and each records what
 it closed in its own card; re-scoring the whole board after every slice invites
 the failure §0b exists to name — a number that moves while the workflow behind it
-has not been re-measured. **The board is re-measured in one pass, after LP.6**,
-which is also the moment Tier 1 ends.
+has not been re-measured. **TIER 1 IS NOW COMPLETE, which is the moment to
+re-measure**: the whole board is due one full pass, at the level of workflows and
+not routes, before Tier 2 is called finished.
 
-**Verdict: the platform cannot replace the legacy CRM in production today.** The
-remaining Tier 1 blocker is **order export** — a confirmed order still cannot
-leave the building except through a carrier that has an adapter, and one does.
+**Verdict: TIER 1 IS COMPLETE, and the platform still cannot replace the legacy
+CRM in production — for one reason that is now the whole of it.** An operator can
+enter a phone order, find it, correct a product's cost, book a real parcel with
+ZR Express and hand a day's confirmed orders to a carrier with no API. What they
+still cannot do is **be told anything**: M-16's entire transport has no consumer,
+so nothing reaches a signed-in person until they reload. That is Tier 2's first
+slice and the last of §0b's six blockers.
 
 The **domain layer** — the business rules, the ledger, the settlement chain, the
 assignment rules, the jobs — is at or above parity and in several places is
@@ -120,7 +125,7 @@ into an operator's working day.
 | ~~**No real carrier adapter**~~ | *(Fixed in LP.2 + LP.5. `zr` is registered and books real parcels — territory resolution, Svix webhooks, outbound creation. `ecom` remains, at Tier 3 slice 22.)* |
 | ~~**No pagination, anywhere**~~ | *(Fixed in LP.3.)* |
 | **No product editing** | *(Fixed in LP.1.)* |
-| **No export** | Orders reach carriers by Excel file in the legacy system (ZR / Ecom / Ecotrac formats). There is no CSV or XLSX anywhere on the platform. Confirmed orders cannot leave. |
+| ~~**No export**~~ | *(Fixed in LP.6. CSV for ZR Express / Ecom Delivery / Ecotrac plus the performance report, produced from the order list and carrying its filters — which the legacy's separate Export screen could not do.)* |
 | ~~Cannot create an order~~ | *(Fixed in LP.4.)* |
 | **No notification surface** | The whole M-16 transport exists with no consumer. An operator is never told anything. Found in the second pass. |
 | **No client management** | The registry is a read-only list. No detail view, no correction, no import — although `Client.importedTotalOrders` / `importedSource` / `importedAt` exist in the schema, unused. |
@@ -178,9 +183,9 @@ Legend: ✅ identical · 🔵 improved · 🟡 partial · 🔴 missing
 | B9 | Classify as fake | `/classify` | same | ✅ |
 | B10 | Attempts matrix (day × tentative) | `/attempts` | same | ✅ |
 | B11 | Reassign | `PUT` with `agent` | `PATCH`, gated on `seesWholeBook` | ✅ |
-| B12 | **Bulk actions** | 8: assign · status · classify · assignFollowup · delete · createShipments · sendToDelivery · export/print | 3: status · delete · assign | 🟡 |
+| B12 | **Bulk actions** | 8: assign · status · classify · assignFollowup · delete · createShipments · sendToDelivery · export/print | 4: status · delete · assign · **export** (LP.6) | 🟡 |
 | B13 | **Board (kanban) view** | `renderBoardView`, persisted in localStorage | list only | 🔴 |
-| B14 | **Export confirmed orders to carrier formats** | ZR Express · Ecom Delivery · Ecotrac · full performance report — 4 XLSX builders | — | 🔴 |
+| B14 | Export confirmed orders to carrier formats | ZR Express · Ecom Delivery · Ecotrac · full performance report — 4 XLSX builders | same four, as CSV, from the order list and carrying its filters (LP.6) | ✅ |
 | B15 | **Import orders from Shopify CSV** | drop-zone, preview, dedup by `shopifyId` | — | 🔴 |
 | B16 | **Print labels for selected orders** | `bulkPrintSelected()` | — | 🔴 |
 | B17 | Auto-assign on create | `autoAssign` | `autoAssignOnCreate` (6.6a) | ✅ |
@@ -407,20 +412,26 @@ not arrive" is a log line, and there is no equivalent.
 
 ---
 
-### R4 · Order export to carrier formats — 🔴 MISSING
+### R4 · Order export to carrier formats — ✅ DONE (LP.6)
 **Legacy:** the Export screen produces four XLSX files —
 ZR Express (`Nom, Tel, Tel2, Wilaya, Commune, Produit, Qte, Prix, Note`),
 Ecom Delivery, Ecotrac, and a two-sheet performance report (Orders + Agents with
 confirmation rates and suspicious-call counts). Plus bulk export and bulk label
 printing from the order list selection.
-**Now:** no CSV, XLSX, or file download anywhere on the platform.
-**Missing:** all of it.
-**Business impact:** **Critical.** Excel hand-off is how confirmed orders reach
-carriers that have no API — which, until R2 lands, is *every* carrier. Without it
-a confirmed order cannot leave the system by any route.
-**Complexity:** **M** (CSV) / **L** (XLSX with multiple sheets). CSV covers the
-carrier hand-off; the performance report wants real sheets.
-**Dependencies:** none.
+**Now:** all four, as CSV, from `GET/POST /api/erp/orders/export` and a panel on
+the order list. The report's two sheets are two formats (`orders`, `agents`), and
+the ticked-rows export is the POST.
+**Three ways the platform's is better, and one way it is not.** It carries the
+LIST's filters (the legacy's separate Export screen could only ever produce "all
+confirmed"); a carrier file cannot be widened past `confirmed` by any caller,
+including one ticking rows; a cell beginning `=`/`+`/`-`/`@` is neutralised, where
+`XLSX.utils.json_to_sheet` passed a stranger's customer name straight into an
+operator's Excel; and the file is capped at 10,000 rows with a named refusal
+rather than being unbounded. **Not better:** CSV has no sheets, so the two-sheet
+report is two files (D-LP.6.1), and XLSX remains the answer if a carrier is ever
+found that refuses CSV.
+**Still missing from B12:** bulk label PRINTING, which is Tier 4 slice 25 and was
+deliberately not pulled forward.
 
 ---
 
@@ -828,7 +839,7 @@ refusal) and LP.5 (the real ZR Express adapter) together close R1 and the ZR
 half of R2; LP.3 closes N1/N7/N8/B1 and LP.4 closes N6. **Tier 1 is one slice
 from complete** — order export (R4) is all that remains in it.
 
-### Tier 1 — production blockers (nothing ships without these)
+### Tier 1 — production blockers — **COMPLETE**
 
 | # | Slice | Restores | Size | Why here |
 |---|---|---|---|---|
@@ -837,13 +848,13 @@ from complete** — order export (R4) is all that remains in it.
 | ~~3~~ | ~~List pagination + filter bar + search~~ | N1, N7, N8, B1 | M | **DONE — LP.3** |
 | ~~4~~ | ~~Create an order from the console~~ | N6 | S | **DONE — LP.4** |
 | ~~5~~ | ~~The real ZR Express adapter~~ | R2 (ZR) | L | **DONE — LP.5.** The risk the ordering was worried about was real and was not the adapter: the carrier call sat inside a 15s transaction that a confirmation depended on. D-LP.5.1 is that fix. |
-| **6** | **Order export (CSV → ZR / Ecom / Ecotrac + performance report)** | R4 | M | **The last Tier 1 blocker.** Until every carrier has an adapter, Excel is the only way a confirmed order leaves the building — and most Algerian carriers have no API at all. |
+| ~~6~~ | ~~Order export (CSV → ZR / Ecom / Ecotrac + performance report)~~ | R4 | M | **DONE — LP.6. TIER 1 IS COMPLETE.** |
 
-### Tier 2 — daily operator productivity
+### Tier 2 — daily operator productivity — **STARTS HERE**
 
 | # | Slice | Restores | Size | Why here |
 |---|---|---|---|---|
-| **7** | **The notification provider** — bell, badge, panel, toast, debounced live refresh | N2, N3, L1, L2 | M | The whole M-16 transport has no consumer. This is one client component plus a badge, and it turns 33 tested-but-dead endpoints into the operator's live loop. Architecture in §6.4(a). |
+| **7** | **The notification provider** — bell, badge, panel, toast, debounced live refresh | N2, N3, L1, L2 | M | **NEXT (LP.7).** The whole M-16 transport has no consumer — the last of §0b's six blockers, and the only one left. This is one client component plus a badge, and it turns 33 tested-but-dead endpoints into the operator's live loop. Architecture in §6.4(a); the implementation notes are in NEXT_STEPS. |
 | **8** | **Inline row actions + list density** — agent, carrier, express, status on the row | N9, N10 | M | Halves the clicks on the two highest-frequency operations in the building. Depends on 3. |
 | **9** | **Bulk actions completed** — classify, assignFollowup, createShipments, sendToDelivery | R7 | M | `createShipments` in bulk is the highest-volume manager action there is. Depends on 5 to be worth anything. |
 | **10** | **Client detail, correction, export** | R5 (part) | M | The registry is the business's most valuable asset and is read-only. Depends on 3 for search. |

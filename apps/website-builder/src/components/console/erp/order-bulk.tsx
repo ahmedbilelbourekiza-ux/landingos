@@ -32,6 +32,7 @@ export interface BulkStrings {
   readonly assignTo: string;
   readonly assign: string;
   readonly deleteSelected: string;
+  readonly exportSelected: string;
   readonly outcome: string;
   readonly of: string;
 }
@@ -58,9 +59,66 @@ export function OrderBulkBar({
   const [status, setStatus] = useState(statuses[0]?.value ?? "");
   const [assignee, setAssignee] = useState("");
   const [outcome, setOutcome] = useState<{ succeeded: number; processed: number } | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const ids = () =>
     form.current ? (new FormData(form.current).getAll("orderId") as string[]) : [];
+
+  /**
+   * The ticked rows, as a file.
+   *
+   * A direct `fetch` rather than `useApiAction`, and it is the one control on
+   * this surface that needs one: the response is a CSV document, not the JSON
+   * envelope every other route answers with, so there is nothing for that hook
+   * to parse. It still calls the API route and nothing else (D-06.1) — the
+   * difference is only in what comes back.
+   *
+   * A POST rather than a link, because two hundred cuids do not fit comfortably
+   * in a query string and some proxies would truncate them silently. The
+   * filter-driven exports above the table ARE links, for the reasons in
+   * `order-export.tsx`.
+   */
+  const exportSelected = async () => {
+    const selected = ids();
+    if (!selected.length) return;
+    setDownloadError(null);
+    setDownloading(true);
+    try {
+      const res = await fetch("/api/erp/orders/export", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format: "orders", ids: selected }),
+      });
+
+      if (!res.ok) {
+        // The same envelope every refusal uses, turned into the same message
+        // every other control shows. A failed download is otherwise silent:
+        // the browser simply does not save a file.
+        const body = (await res.json().catch(() => null)) as { error?: { code?: string } } | null;
+        setDownloadError(errors[body?.error?.code ?? ""] ?? errors[""]);
+        return;
+      }
+
+      // The filename comes from Content-Disposition, because only the server
+      // knows the date it stamped into the file.
+      const disposition = res.headers.get("content-disposition") ?? "";
+      const named = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "orders.csv";
+
+      const url = URL.createObjectURL(await res.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = named;
+      anchor.click();
+      // Revoked on the next tick: revoking synchronously races the click on
+      // some browsers and the download silently produces an empty file.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch {
+      setDownloadError(errors.NETWORK ?? errors[""]);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const send = async (action: "status" | "assign" | "delete", value?: string) => {
     const selected = ids();
@@ -121,6 +179,20 @@ export function OrderBulkBar({
           {s.apply}
         </ActionButton>
 
+        {/* Offered to everyone the table is, because the export route is gated
+            on `erp:orders:read` and record-scoped: an agent exports their own
+            queue, which is what they are already looking at. Withholding a
+            control the API accepts is the other half of D-06.2. */}
+        <ActionButton
+          data-testid="bulk-export"
+          pending={downloading}
+          pendingLabel={s.saving}
+          disabled={count === 0}
+          onClick={() => void exportSelected()}
+        >
+          {s.exportSelected}
+        </ActionButton>
+
         {/* Assign and delete are refused for anyone `seesWholeBook` is false
             for — the route says so explicitly — so they are not offered. */}
         {managesBook && (
@@ -174,6 +246,7 @@ export function OrderBulkBar({
       </div>
 
       <ActionError message={error} />
+      <ActionError message={downloadError} />
 
       {children}
     </form>

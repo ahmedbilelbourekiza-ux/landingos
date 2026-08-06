@@ -277,7 +277,8 @@
       "createOrder": "Créer la commande",
       "orderHint": "Pour une commande prise par téléphone. Un nom ou un numéro suffit pour commencer ; le reste peut être complété plus tard.",
       "defaultCarrier": "Utiliser le transporteur par défaut",
-      "webhookSecret": "Secret du webhook"
+      "webhookSecret": "Secret du webhook",
+      "exportSelected": "Exporter la sélection"
     },
     "settings": {
       "title": "Règles d'automatisation",
@@ -357,6 +358,14 @@
         "week": "7 derniers jours",
         "month": "30 derniers jours"
       }
+    },
+    "export": {
+      "title": "Exporter",
+      "hint": "Le fichier contient exactement ce que les filtres ci-dessus sélectionnent. Les fichiers transporteur ne contiennent que les commandes confirmées.",
+      "confirmedCount": "{n} confirmées",
+      "inViewCount": "{n} dans cette vue",
+      "reportOrders": "Rapport — commandes",
+      "reportAgents": "Rapport — agents"
     }
   },
   "status": {
@@ -430,7 +439,8 @@
       "addressUnresolved": "Le transporteur ne reconnaît pas l'adresse de cette commande.",
       "carrierRejected": "Le transporteur a refusé le colis.",
       "carrierUnreachable": "Transporteur injoignable. Aucun colis n'a été créé.",
-      "carrierNoPolling": "Ce transporteur envoie seulement des mises à jour ; il n'y a rien à lui demander."
+      "carrierNoPolling": "Ce transporteur envoie seulement des mises à jour ; il n'y a rien à lui demander.",
+      "tooManyRows": "Cet export est trop volumineux. Affinez le filtre et réessayez."
     },
     "previous": "Précédent",
     "next": "Suivant",

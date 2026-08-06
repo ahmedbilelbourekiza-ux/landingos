@@ -53,6 +53,10 @@ const ERROR_KEYS: Record<string, string> = {
   CARRIER_REJECTED: "common.error.carrierRejected",
   CARRIER_UNREACHABLE: "common.error.carrierUnreachable",
   CARRIER_NO_POLLING: "common.error.carrierNoPolling",
+  // Its own message, because it names the fix: this is not "that failed", it is
+  // "narrow the filter". A generic message here sends somebody to support for a
+  // problem they can solve in one click.
+  TOO_MANY_ROWS: "common.error.tooManyRows",
   INTERNAL_ERROR: "common.error.internal",
   // Not from the server — the request never arrived. Worth its own wording
   // because "nothing was saved" is certain here and merely likely otherwise.

@@ -277,7 +277,8 @@
       "createOrder": "Create the order",
       "orderHint": "For an order taken by phone. A name or a number is enough to start; the rest can be filled in later.",
       "defaultCarrier": "Use the default carrier",
-      "webhookSecret": "Webhook secret"
+      "webhookSecret": "Webhook secret",
+      "exportSelected": "Export selected"
     },
     "settings": {
       "title": "Automation rules",
@@ -357,6 +358,14 @@
         "week": "Last 7 days",
         "month": "Last 30 days"
       }
+    },
+    "export": {
+      "title": "Export",
+      "hint": "The file contains exactly what the filters above select. Carrier files carry confirmed orders only.",
+      "confirmedCount": "{n} confirmed",
+      "inViewCount": "{n} in this view",
+      "reportOrders": "Report — orders",
+      "reportAgents": "Report — agents"
     }
   },
   "status": {
@@ -430,7 +439,8 @@
       "addressUnresolved": "The carrier does not recognise the address on this order.",
       "carrierRejected": "The carrier refused the parcel.",
       "carrierUnreachable": "The carrier could not be reached. Nothing was booked.",
-      "carrierNoPolling": "This carrier only pushes updates, so there is nothing to ask it."
+      "carrierNoPolling": "This carrier only pushes updates, so there is nothing to ask it.",
+      "tooManyRows": "That export is too large. Narrow the filter and try again."
     },
     "previous": "Previous",
     "next": "Next",

@@ -12,6 +12,144 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.6 The order book leaves the building — **Tier 1 is complete**
+
+[Opus 5]
+Date: 6 August 2026
+Summary: `GET`/`POST /api/erp/orders/export` and an export panel on the order
+list. `test/erp/export.test.ts` is new at **31/31**; screens **123 → 130**,
+access **65 → 68**. Restores R4 and the export half of R7 (B12). **The last
+Tier 1 blocker.**
+
+#### What was wrong
+
+There was no CSV, no XLSX and **no file download anywhere on the platform**, so
+a confirmed order could not leave the system by any route at all. That matters
+more here than the sentence suggests: Excel is how an order reaches a carrier
+with no API, which in this market is most of them — LP.5 registered exactly one
+that has one. The legacy CRM built four files (ZR Express, Ecom Delivery,
+Ecotrac, and a two-sheet performance report) and a fifth from the ticked rows.
+
+#### D-LP.6.1 — CSV, not XLSX
+
+The three carrier files are flat column lists; CSV is their natural shape and
+every carrier portal and spreadsheet reads it. XLSX would put a parser/writer
+dependency in the server bundle for one feature, and the only thing it buys is
+the report's two SHEETS — which are two formats here (`orders`, `agents`).
+LEGACY_PARITY R4 sizes it the same way. If a carrier is ever found that refuses
+CSV, `toCsv` is the one function that changes.
+
+#### D-LP.6.2 — the export IS the list, filtered the same way
+
+The legacy exported `orders.filter(o => o.status === 'confirmed')` out of the
+whole book it had already downloaded, so its Export screen could not honour
+anything the operator had narrowed to — a wilaya, a date window, an agent. Here
+the export takes the SAME query string the list does through the SAME
+`orderFilters` and `scopedWhere`. One vocabulary (D-LP.3), and a test drives one
+query string through both and asserts they agree on the count.
+
+That is also why the controls live **on the order list** rather than on a screen
+of their own: the file is what is on screen. It needs no new nav item, which
+`packages/product-registry` would be right to refuse for what is an action on a
+list rather than a place.
+
+#### D-LP.6.3 — a carrier file is confirmed orders, and no caller can widen it
+
+`status` is dropped from the parameters for `zr`/`ecom`/`ecotrac` and
+`confirmed` is ANDed in afterwards; every other filter still applies. Handing a
+courier an order nobody has confirmed is a real delivery attempt against a
+customer who never agreed to one.
+
+**Attacking the implementation found the hole in this**: the rule was applied to
+the filter path and not to the SELECTION path, so `POST {format:'zr', ids:[…]}`
+would have put an unconfirmed ticked row into a carrier file. Ticking is a
+deliberate act and the rule is not about intent — it is about somebody driving
+to a customer's door. Fixed, with a test that ticks one of each.
+
+#### The spreadsheet is a hostile-input surface, and the ERP's was too
+
+`client`, `product` and `note` arrive from a storefront checkout and from
+channel webhooks — a stranger types them — and the file is opened by an operator
+on their own machine. Excel evaluates a cell beginning `=`, `+`, `-` or `@`:
+`=cmd|…` has been a working command-execution vector for years and
+`=HYPERLINK(…&A1)` exfiltrates the row beside it. `csvCell` neutralises those
+with a leading apostrophe, and **only for values that are not plainly numeric**,
+so a `-500` refund is still a number a carrier's importer accepts. The legacy
+was injectable in exactly the same way through `XLSX.utils.json_to_sheet`; this
+is a deliberate improvement, not a port.
+
+**And the file starts with a UTF-8 BOM.** Without one Excel reads it as the
+machine's ANSI codepage, so every accented wilaya is mojibake and every Arabic
+name is question marks — and the operator's conclusion is that the export is
+broken. **The test for it asserts BYTES, not text**: `Response.text()` strips a
+leading BOM by specification, so the obvious assertion passes whether or not the
+byte was ever sent. It was written the obvious way first and caught by failing
+against a server that was sending one.
+
+#### Who may export what — two gates, two questions
+
+The route is `erp:orders:read` and the rows are record-scoped, so an agent
+exports their own queue and a manager exports the book — exactly what each
+already reads on screen. **`agents` additionally needs `erp:agents:manage`**: it
+is a league table of confirmation rates and suspicious-call counts, and
+`notifySuspiciousCall` withholds the same fact from the agent it is about for
+the same reason. `access.test.ts` gained the surface and a test that a
+caller-supplied `agentUserId` cannot widen an export.
+
+#### The bound, and how it was verified
+
+`EXPORT_LIMIT = 10_000`, and over it is a named `TOO_MANY_ROWS` carrying the
+real total and the limit — never a short file that looks complete, which is the
+defect LP.3 spent a slice removing. It runs inside the transaction `withTenant`
+opened, so a cap is not optional.
+
+**No fixture can reach 10,001 orders, so this path is verified manually rather
+than by contract test**, and the reproduction is recorded so it is not folklore:
+lower `EXPORT_LIMIT` to 2, rebuild, confirm three orders, and
+`GET …?format=zr` answers `422 {"code":"TOO_MANY_ROWS","total":3,"limit":2}`
+while a filter matching two still builds the file. Done, observed, restored.
+
+**The port race caught this run, exactly as documented.** The first attempt
+reported the limit had not taken effect; the cause was starting the new server
+without stopping the old one, so `/api/health` answered 200 from the stale
+process and the check ran against the previous build. Stop node, build, THEN
+start — it costs a cycle every time it is forgotten.
+
+#### Files
+`src/lib/erp/export.ts` (new — the formats, the CSV writer, `exportWhere`),
+`src/app/api/erp/orders/export/route.ts` (new — GET for the filtered link, POST
+for the ticked rows), `src/components/console/erp/order-export.tsx` (new),
+`src/components/console/erp/order-bulk.tsx` (+`bulk-export`, the one control
+here that fetches rather than using `useApiAction`, because the response is a
+document and not the JSON envelope),
+`src/app/console/erp/orders/page.tsx`, `src/lib/console/{erp-strings,action-errors}.ts`,
+`test/erp/{export,screens,access}.test.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (seven keys).
+
+#### Migration
+None. No schema change, no new column, no new permission — the two gates are
+permissions that already existed.
+
+#### Risk
+**A file of customers leaves the building**, which is the feature. It carries
+exactly the rows the caller can already read (`scopedWhere`), it is capped, it
+is `cache-control: no-store`, and the one format that reveals anything about
+COLLEAGUES is gated on the permission that supervises people.
+
+**Rate limiting still does not exist** (R16, Tier 4), and this is the most
+expensive read on the surface to repeat — a 10,000-row build per request.
+Recorded there rather than half-solved here.
+
+**Verified live:** export **31/31** (new) · screens 123 → **130/130** ·
+access 65 → **68/68** · delivery 61/61 · orders 38/38 · listing 30/30 ·
+catalog 55/55 · validation 29/29 · assign 25/25 · jobs 16/16 ·
+notifications 33/33 · integrations 29/29 · order-split 8/8 · team 56/56 ·
+billing 19/19 · signup 10/10 · console-shell 13/13 · builder-api 22/22 ·
+storefront 22/22 · builder-sections 45/45 · db 29/29 · auth 36/36 ·
+product-registry 36/36 · ui 26/26 · i18n 18/18. Build clean.
+
+---
+
 ### LP.5 The real ZR Express adapter — and the carrier leaves the transaction
 
 [Opus 5]
