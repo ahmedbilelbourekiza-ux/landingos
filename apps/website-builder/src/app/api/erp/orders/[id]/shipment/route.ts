@@ -37,7 +37,17 @@ export const POST = tenantRoute<Params>("erp:shipments:write", async ({ db, sess
 
   const result = await createShipment(db, session.auth!.tenantId, order);
   if (!result.shipment) {
-    return apiError(422, "NO_CARRIER", "No carrier is configured for this order.");
+    // Two different problems and two different fixes, so two codes. "Unknown
+    // adapter" means the carrier row names an integration this deployment does
+    // not have — booking through a fallback would hand back a tracking number
+    // the carrier has never heard of.
+    return result.error === "UNKNOWN_ADAPTER"
+      ? apiError(
+          422,
+          "UNKNOWN_ADAPTER",
+          "This carrier is configured with an integration this deployment does not have, so no parcel can be booked with it.",
+        )
+      : apiError(422, "NO_CARRIER", "No carrier is configured for this order.");
   }
 
   const events = await db.shipmentEvent.findMany({

@@ -2,7 +2,7 @@ import "server-only";
 
 import type { Prisma, TenantDb } from "@landingos/db";
 
-import { getAdapter, TERMINAL, type TrackingEvent } from "./carriers";
+import { getAdapter, mapCarrierStatus, TERMINAL, type TrackingEvent } from "./carriers";
 import { syncClientFromOrder } from "./clients";
 import { raiseFollowupTask } from "./followup";
 import { notifyDeliveryUpdate, notifyFollowupRaised } from "./notify";
@@ -50,7 +50,7 @@ async function resolveStatus(
     });
     if (mapping?.crmStatus) return mapping.crmStatus;
   }
-  return getAdapter(adapterKey).mapStatus(originalStatus);
+  return mapCarrierStatus(adapterKey, originalStatus);
 }
 
 /**
@@ -81,7 +81,15 @@ export async function createShipment(
       });
   if (!carrier) return { shipment: null, created: false, error: "NO_CARRIER" as const };
 
+  // Refused, never mocked. Booking through a fallback adapter fabricates a
+  // tracking number the carrier has never heard of and answers 201, and an
+  // order that booked successfully is one nobody looks at again. See the note
+  // on `getAdapter`.
   const adapter = getAdapter(carrier.adapter);
+  if (!adapter) {
+    return { shipment: null, created: false, error: "UNKNOWN_ADAPTER" as const };
+  }
+
   const booked = adapter.createShipment(order.id);
   const crmStatus = await resolveStatus(db, carrier.id, carrier.adapter, booked.originalStatus);
 
@@ -281,6 +289,26 @@ export async function refreshShipment(db: TenantDb, tenantId: string, orderId: s
   const stepsSeen = await db.shipmentEvent.count({ where: { shipmentId: shipment.id } });
 
   const adapter = getAdapter(shipment.carrier?.adapter ?? null);
+
+  // Nothing to ask, so nothing is invented. Polling through a fallback adapter
+  // would walk a REAL parcel along the mock's synthetic pipeline and settle its
+  // outcome — booking revenue for a delivery that may not have happened. The
+  // stored state is returned unchanged, with the reason named.
+  if (!adapter) {
+    // Re-read through SHIPMENT_SELECT so this path returns the same shape as
+    // the successful one — the extra `carrier` join above is for the adapter
+    // key and is not part of the contract.
+    const [unchanged, stored] = await Promise.all([
+      db.shipment.findUnique({ where: { id: shipment.id }, select: SHIPMENT_SELECT }),
+      db.shipmentEvent.findMany({
+        where: { shipmentId: shipment.id },
+        orderBy: [{ eventTime: "asc" }, { id: "asc" }],
+        select: EVENT_SELECT,
+      }),
+    ]);
+    return { shipment: unchanged, events: stored, error: "UNKNOWN_ADAPTER" as const };
+  }
+
   // The booking time anchors the event times, so re-polling a parcel produces
   // the same keys and stores nothing the second time.
   const reported = adapter.track(shipment.trackingNumber ?? "", stepsSeen, shipment.createdAt);

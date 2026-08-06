@@ -11,7 +11,7 @@ import { carrierStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
 import { CarrierCreatePanel, CarrierRowActions } from "@/components/console/erp/carrier-write";
-import { listAdapters } from "@/lib/erp/carriers";
+import { listAdapters, isKnownAdapter } from "@/lib/erp/carriers";
 
 export const dynamic = "force-dynamic";
 
@@ -153,7 +153,24 @@ export default async function ErpCarriersScreen() {
           {
             id: "adapter",
             header: t("erp.carriers.adapter"),
-            cell: (c) => <span className="text-muted-foreground">{c.adapter ?? "—"}</span>,
+            // Said on the row, not discovered when a parcel fails to book. A
+            // carrier naming an integration this deployment does not have
+            // cannot book or poll anything — the routes refuse it — and a row
+            // that looks the same as a working one is how that stays hidden.
+            cell: (c) => (
+              <span
+                className="text-muted-foreground"
+                data-adapter={c.adapter ?? ""}
+                data-known={isKnownAdapter(c.adapter) ? "true" : "false"}
+              >
+                {c.adapter ?? "—"}
+                {c.adapter && !isKnownAdapter(c.adapter) && (
+                  <span className="ms-2 text-xs font-medium text-destructive">
+                    {t("erp.carriers.adapterUnavailable")}
+                  </span>
+                )}
+              </span>
+            ),
           },
           {
             id: "credentials",

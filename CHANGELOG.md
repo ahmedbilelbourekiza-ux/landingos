@@ -12,6 +12,96 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.2 An unknown carrier adapter is refused, not mocked
+
+[Opus 5]
+Date: 6 August 2026
+Summary: `getAdapter` returns **null** for an unregistered key instead of
+falling back to `mock`, and every path that could act on one refuses by name.
+delivery **33 → 39**, screens **99 → 100**. First half of R2; the real ZR
+Express adapter is the second.
+
+#### The defect
+
+`ADAPTERS` holds one entry, `mock`. `getAdapter` ended
+`?? mock`, so **any** key resolved to the simulator. The legacy ERP offers
+twelve adapter keys in its dropdown and implements four for real, and
+`Carrier.adapter` was a free-text column with no validation — so a tenant could
+configure a carrier as `zr`, press "book parcel", and get:
+
+- `mock.createShipment` inventing a `MOCK…` tracking number,
+- a `201` and a shipment row,
+- the tracking number written onto the order,
+- and a `created` event on the timeline.
+
+Nothing had been booked with anybody. **An order that booked successfully is one
+nobody looks at again**, so the failure surfaced as a customer asking where their
+parcel was. A wrong answer that looks right is worse than an error, and this one
+is worse still because the second half compounds it: polling that shipment walked
+a REAL parcel along the mock's synthetic six-step pipeline and **settled its
+delivery outcome** — booking revenue, client lifetime spend and delivered-order
+pay for a delivery that never happened. That is BUG-02's blast radius, reached
+from the other direction.
+
+#### Refused at both ends
+
+**At configuration.** `POST /api/erp/carriers` and `PUT /api/erp/carriers/[id]`
+refuse an unregistered `adapter` with `422 UNKNOWN_ADAPTER`. The message NAMES
+the keys that do work — a bare "unknown adapter" is a dead end when twelve keys
+exist in the operator's head and one exists here. Omitting `adapter` still
+defaults to `mock`, so nothing that worked stopped working.
+
+**At use.** A row can already hold a bad key — it predates the check, or a
+deployment dropped an adapter it used to have — so `createShipment` and
+`refreshShipment` refuse too, and the routes answer `422 UNKNOWN_ADAPTER`. The
+refresh route says it out loud rather than answering 200 with an unchanged
+timeline: "the carrier has no news" and "we cannot ask this carrier anything"
+are different facts.
+
+#### One deliberate exception — a webhook the carrier PUSHED
+
+`mapCarrierStatus(key, original)` keeps the keyword fallback for an unregistered
+adapter, and the inbound delivery webhook uses it. Interpreting a status string
+cannot invent a parcel, and the carrier sent this event — dropping it would lose
+a real delivery outcome to a configuration problem. A test asserts a pushed
+`Livré au client` still settles the order while booking and polling refuse.
+
+#### The screen says so on the row
+
+`/console/erp/carriers` flags a carrier whose adapter is unavailable
+(`data-known="false"`), because a row that looks identical to a working one is
+how this stayed hidden. `pollCarriers` counts those shipments as **skipped**
+rather than polled — reporting a healthy sweep over parcels nobody asked about
+is the same class of lie.
+
+#### Files
+`src/lib/erp/carriers.ts` (`getAdapter` → nullable, `isKnownAdapter`,
+`mapCarrierStatus`), `src/lib/erp/shipments.ts`, `src/lib/erp/jobs.ts`,
+`src/app/api/erp/carriers/route.ts` (+`unknownAdapterMessage`),
+`src/app/api/erp/carriers/[id]/route.ts`,
+`src/app/api/erp/orders/[id]/shipment/route.ts`,
+`src/app/api/erp/orders/[id]/shipment/refresh/route.ts`,
+`src/app/api/erp/webhooks/[tenant]/delivery/route.ts`,
+`src/app/console/erp/carriers/page.tsx`,
+`test/erp/{helpers,delivery,screens}.test.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (`erp.carriers.adapterUnavailable`).
+
+#### Migration
+None. Existing rows are unchanged; a bad one is now visible and refused rather
+than silently mocked.
+
+#### Risk
+**A tenant who had configured a carrier the platform cannot talk to now gets an
+error where they previously got a fake success.** That is the fix. `mock` is
+still the default and still the only registered adapter, so every existing
+working configuration is untouched, and the contract suite — which drives `mock`
+end to end — is unaffected.
+
+**Verified live:** delivery 39/39 · screens 100/100 · access 65/65 · jobs 16/16 ·
+catalog 55/55 · i18n 18/18. Build clean.
+
+---
+
 ### LP.1 Product editing — the correction that was never possible
 
 [Opus 5]

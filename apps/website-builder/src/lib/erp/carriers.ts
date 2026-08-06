@@ -155,15 +155,45 @@ const mock: CarrierAdapter = {
 const ADAPTERS: Record<string, CarrierAdapter> = { mock };
 
 /**
- * The adapter for a carrier, falling back to the mock's contract shape.
+ * The adapter for a carrier, or **null** when nothing is registered under that
+ * key.
  *
- * A missing member used to break shipment creation for every carrier in the
- * dropdown that had no implementation yet — `getAdapter` fell back to a generic
- * adapter and `mapStatus` simply was not there. Every adapter answers the full
- * contract or it is not registered.
+ * IT USED TO FALL BACK TO THE MOCK, AND THAT WAS DANGEROUS. The legacy ERP
+ * offers twelve adapter keys and implements four of them for real; this port
+ * carries only `mock`. With a fallback, a carrier configured as `zr` booked a
+ * parcel that never existed: `mock.createShipment` invented a `MOCK…` tracking
+ * number, the route answered 201, and the order showed a number the carrier had
+ * never heard of. Nobody looks again at an order that booked successfully, so
+ * the failure surfaced as a customer asking where their parcel was.
+ *
+ * A wrong answer that looks right is worse than an error. An unregistered key
+ * now refuses at both ends — `POST/PUT /api/erp/carriers` will not store one,
+ * and booking or polling a carrier that already holds one is refused by name.
+ *
+ * Status MAPPING is the exception and keeps a fallback, through
+ * `mapCarrierStatus` below: interpreting a status string cannot invent a
+ * parcel, and refusing there would drop real carrier events on the floor.
  */
-export function getAdapter(key: string | null | undefined): CarrierAdapter {
-  return ADAPTERS[key ?? ""] ?? mock;
+export function getAdapter(key: string | null | undefined): CarrierAdapter | null {
+  return ADAPTERS[key ?? ""] ?? null;
+}
+
+/** Whether an adapter key is one this deployment can actually talk to. */
+export const isKnownAdapter = (key: string | null | undefined): boolean =>
+  Boolean(key) && key! in ADAPTERS;
+
+/**
+ * A carrier's wording turned into a CRM status.
+ *
+ * Deliberately falls back to the keyword guess when the adapter is unknown. A
+ * parcel whose carrier has no adapter can still receive webhook events — the
+ * carrier pushes them, we did not ask — and dropping them would lose real
+ * delivery outcomes to a configuration problem. The tenant's own status mapping
+ * is consulted before this, by `resolveStatus` in shipments.ts.
+ */
+export function mapCarrierStatus(key: string | null | undefined, originalStatus: string): string {
+  const adapter = getAdapter(key);
+  return adapter ? adapter.mapStatus(originalStatus) : guessStatus(originalStatus);
 }
 
 export const listAdapters = () =>

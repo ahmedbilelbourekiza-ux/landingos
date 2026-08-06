@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   skip, uid, phone, waitFor, makeErpTenant, cleanup, BASE, slugOf,
-  backdateShipmentPoll,
+  backdateShipmentPoll, setCarrierAdapter,
   contractTest as test,
 } from './helpers.ts';
 
@@ -161,6 +161,133 @@ describe('carrier credentials are never disclosed', () => {
       (await acme.agent.api('POST', '/api/erp/carriers', { name: 'x', code: `c${uid()}` })).status,
       403,
     );
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * An adapter this deployment does not have (LP.2)
+ *
+ * `getAdapter` used to fall back to `mock` for any unregistered key. The legacy
+ * ERP offers twelve adapter keys and implements four; this port carries one. So
+ * a carrier configured as `zr` booked a parcel that never existed — a `MOCK…`
+ * tracking number, a 201, and an order nobody looks at again because it booked
+ * successfully. A wrong answer that looks right is worse than an error.
+ * -------------------------------------------------------------------------- */
+
+describe('a carrier cannot name an integration this deployment does not have', () => {
+  test('creating one is refused, and the refusal says what IS available', async () => {
+    const r = await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'ZR Express', code: `zr${uid()}`, adapter: 'zr',
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'UNKNOWN_ADAPTER');
+    // A dead-end refusal is barely better than the silent fallback: twelve keys
+    // exist in the legacy dropdown and one works here, so the message has to
+    // name it or there is nothing to try next.
+    assert.match(String(r.body.error.message), /mock/, 'the message must name the keys that work');
+  });
+
+  test('omitting the adapter still defaults to the one that works', async () => {
+    const r = await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Unspecified', code: `un${uid()}`,
+    });
+    assert.equal(r.status, 201);
+    assert.equal(r.body.data.adapter, 'mock');
+  });
+
+  test('editing a working carrier into a broken one is refused too', async () => {
+    const created = await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Editable', code: `ed${uid()}`, adapter: 'mock',
+    });
+    const r = await acme.manager.api('PUT', `/api/erp/carriers/${created.body.data.id}`, {
+      adapter: 'yalidine',
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'UNKNOWN_ADAPTER');
+  });
+
+  test('a row that already holds one cannot book a parcel', async () => {
+    // The second half of the guard. A row can hold an unregistered key from
+    // before the check existed, or because a deployment dropped an adapter it
+    // used to have — so booking refuses as well as configuration.
+    const code = `st${uid()}`;
+    const carrier = (await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Stale', code, adapter: 'mock',
+    })).body.data;
+    await setCarrierAdapter(acme.tenantId, carrier.id, 'zr');
+
+    const order = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'No Parcel', phone: phone(), price: 1000, carrierCode: code,
+    })).body.data;
+
+    const r = await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {});
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'UNKNOWN_ADAPTER');
+
+    // And no fabricated tracking number reached the order.
+    const back = await acme.manager.api('GET', `/api/erp/orders/${order.id}`);
+    assert.ok(!back.body.data.trackingNumber, 'no tracking number may be invented');
+    assert.ok(!back.body.data.shipmentId);
+  });
+
+  test('a parcel whose carrier lost its adapter is not walked along the mock pipeline', async () => {
+    // Polling through a fallback would advance a REAL parcel through the mock's
+    // synthetic six steps and settle its outcome — booking revenue for a
+    // delivery that may never have happened.
+    const code = `pl${uid()}`;
+    const carrier = (await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Loses adapter', code, adapter: 'mock',
+    })).body.data;
+
+    const order = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Booked then broken', phone: phone(), price: 1000, carrierCode: code,
+    })).body.data;
+    assert.equal((await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {})).status, 201);
+
+    const before = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`)).body.data;
+    await setCarrierAdapter(acme.tenantId, carrier.id, 'noest');
+
+    const r = await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment/refresh`, {});
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'UNKNOWN_ADAPTER');
+
+    const after = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`)).body.data;
+    assert.equal(after.events.length, before.events.length, 'no event may be invented');
+    assert.equal(after.shipment.crmStatus, before.shipment.crmStatus, 'and the parcel did not move');
+  });
+
+  test('but a webhook the carrier PUSHED is still ingested', async () => {
+    // The deliberate exception. Interpreting a status string cannot invent a
+    // parcel, and the carrier sent this — dropping it would lose a real
+    // delivery outcome to a configuration problem. `mapCarrierStatus` keeps its
+    // keyword fallback for exactly this path.
+    const code = `wh${uid()}`;
+    const carrier = (await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Pushes anyway', code, adapter: 'mock',
+    })).body.data;
+
+    const order = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Pushed', phone: phone(), price: 1000, carrierCode: code,
+    })).body.data;
+    await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {});
+    const tracking = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`))
+      .body.data.shipment.trackingNumber;
+
+    await setCarrierAdapter(acme.tenantId, carrier.id, 'ems');
+
+    const slug = await slugOf(acme.tenantId);
+    const res = await fetch(`${BASE}/api/erp/webhooks/${slug}/delivery`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ trackingNumber: tracking, status: 'Livré au client' }),
+    });
+    assert.equal(res.status, 200);
+
+    const settled = await waitFor(async () => {
+      const o = (await acme.manager.api('GET', `/api/erp/orders/${order.id}`)).body.data;
+      return o.deliveryOutcome === 'delivered' ? o : null;
+    });
+    assert.ok(settled, 'the keyword fallback must still resolve a pushed event');
   });
 });
 

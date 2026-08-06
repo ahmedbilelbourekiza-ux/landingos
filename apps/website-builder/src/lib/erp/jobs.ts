@@ -423,6 +423,7 @@ export async function pollCarriers(
   const now = new Date();
   let polled = 0;
   let failed = 0;
+  let skipped = 0;
 
   for (const shipment of due) {
     const guard =
@@ -438,15 +439,19 @@ export async function pollCarriers(
     if (count === 0) continue;
 
     try {
-      await refreshShipment(db, tenantId, shipment.orderId);
-      polled += 1;
+      const result = await refreshShipment(db, tenantId, shipment.orderId);
+      // A carrier naming an integration this deployment does not have is not a
+      // failure of this job and not a poll either. Counting it as polled would
+      // report a healthy sweep over parcels nobody actually asked about.
+      if (result?.error === "UNKNOWN_ADAPTER") skipped += 1;
+      else polled += 1;
     } catch (error) {
       failed += 1;
       console.error(`[erp] tracking poll failed for shipment ${shipment.id}`, error);
     }
   }
 
-  return { job: "tracking-poll", polled, failed, due: due.length };
+  return { job: "tracking-poll", polled, failed, skipped, due: due.length };
 }
 
 /* -----------------------------------------------------------------------------

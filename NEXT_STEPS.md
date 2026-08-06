@@ -54,35 +54,54 @@ writes the level and its reason together, and that pairing is why the cost basis
 can be trusted. Answering 200 while ignoring a `stock` field would be the same
 defect this slice fixed in `costPrice`.
 
-### THE NEXT SLICE — LP.2, carrier adapters
+**LP.2 — the carrier adapter refusal (R2, first half).** `getAdapter` returned
+`mock` for ANY unregistered key, so a carrier configured as `zr` booked a
+fabricated `MOCK…` tracking number and answered 201 — and polling that shipment
+walked a REAL parcel along the mock's synthetic pipeline and settled its delivery
+outcome, booking revenue for a delivery that never happened. It now returns null,
+and configuration, booking and polling all refuse by name. delivery 33 → **39**,
+screens 99 → **100**.
 
-**Start with the refusal, it is half a day and it stops a silent wrong answer.**
-`getAdapter` in `src/lib/erp/carriers.ts:165` returns `mock` for ANY
-unregistered key. A tenant configuring a carrier as `zr` gets a fabricated
-`MOCK…` tracking number and a success response — worse than an error, because
-the order then shows a tracking number that does not exist and nobody looks
-again. Refuse an unknown adapter at booking time, name it in the error, and give
-`listAdapters` the honest list.
+**D-LP.2:** the one exception is `mapCarrierStatus`, which keeps a keyword
+fallback and is what the inbound delivery webhook uses — interpreting a status
+string cannot invent a parcel, and the carrier PUSHED that event.
 
-Then the real adapter. `apps/erp/lib/providers/zr.js` is 479 lines: territory
-resolution against `POST /territories/search` (no static wilaya→UUID map),
-`X-Tenant` + `X-Api-Key` auth, a Svix webhook envelope, a 20-entry status map,
-and a deliberate throw with a readable message when an address cannot be
-resolved — which the ERP's caller catches and surfaces as `shipment_failed`
-rather than booking a parcel to the wrong place. Read that file before writing
-anything; the territory rule is the part that is not obvious.
+### THE NEXT SLICE — LP.3, the real ZR Express adapter
 
-**Note the transaction limit before starting** (NEXT_STEPS §2b(4)): the carrier
-call happens inside the transaction `withTenant` opened, whose timeout is 15s. A
-real adapter over the network is exactly the case that makes this bite. Doing
-the HTTP outside the transaction and ingesting inside it is the shape to move
-to.
+**Read `apps/erp/lib/providers/zr.js` end to end before writing anything.** It is
+479 lines and the territory rule is the part that is not obvious:
+
+- ZR identifies wilaya and commune by its OWN UUIDs, not the standard 1–58
+  Algerian wilaya numbers. Rather than maintain a 1,585-row map, `createShipment`
+  resolves them at booking time via `POST /territories/search`: find exactly one
+  wilaya-level territory by name, then a commune-level one whose `parentId` is
+  that wilaya's id.
+- If either step fails it **throws with a readable message** rather than booking a
+  parcel to the wrong address. The ERP's caller catches that, logs it and raises a
+  `shipment_failed` notification, so the order shows the exact reason. Port that
+  half too — a silent failure here is the same defect LP.2 just removed.
+- Auth is `X-Tenant` (the tenant UUID, stored in `secretKey`) plus `X-Api-Key`
+  (`apiKey`); the base URL is `apiUrl`. Webhooks arrive in a Svix envelope
+  (`svix-id`, `svix-timestamp`, `svix-signature`) as `{ eventType, occurredAt,
+  data }`.
+- The status map is 20 entries, English and French, and it feeds `mapStatus`.
+
+**The transaction limit is the thing that will bite** (§2b(4)): the carrier call
+happens inside the transaction `withTenant` opened, whose timeout is 15s. `mock`
+is synchronous so this has never mattered; a real HTTP client makes it the normal
+case. **Do the HTTP outside the transaction and ingest inside it** — that shape
+change belongs in this slice, not after it.
+
+Register the adapter in `ADAPTERS` and it becomes selectable everywhere at once:
+`listAdapters` drives the carriers dropdown, `isKnownAdapter` drives the
+configuration gate, and the "integration unavailable" badge disappears from any
+row already naming `zr`.
 
 ### The order of work (LEGACY_PARITY.md §4)
 
 **Tier 1 — production blockers:** (1) product editing **[DONE — LP.1]** ·
-(2) adapter refusal then the ZR adapter · (3) order export ·
-(4) carrier test/sync/logs.
+(2a) adapter refusal **[DONE — LP.2]** · (2b) the real ZR adapter ·
+(3) order export · (4) carrier test/sync/logs.
 **Tier 2 — daily operations:** (5) client detail/edit/export · (6) analytics
 screen · (7) bulk actions completed · (8) agent alerts + missed-counter reset +
 manager password reset · (9) sales-channel screen.
@@ -136,9 +155,9 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **455/455** across the TWELVE files: access 65 · orders 38 ·
-validation 29 · listing 25 · catalog 55 · delivery 33 · integrations 29 ·
-order-split 8 · screens 99 · jobs 16 · assign 25 · notifications 33.
+Expect **462/462** across the TWELVE files: access 65 · orders 38 ·
+validation 29 · listing 25 · catalog 55 · delivery 39 · integrations 29 ·
+order-split 8 · screens 100 · jobs 16 · assign 25 · notifications 33.
 
 The platform contract suite lives beside it and runs the same way — **56/56**
 (team management 7.1a + invitation acceptance 7.1b + team screen 7.1c):

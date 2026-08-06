@@ -141,6 +141,7 @@
       "default": "Default",
       "credentials": "Credentials set",
       "noCredentials": "Not configured",
+      "adapterUnavailable": "Integration unavailable — cannot book or track",
       "none": "No carriers yet",
       "inactive": "Inactive"
     },

@@ -1,10 +1,20 @@
 import { z } from "zod";
 
 import { tenantRoute, apiOk, apiError, pagination } from "@/lib/api/route";
-import { maskCarrier, listAdapters } from "@/lib/erp/carriers";
+import { maskCarrier, listAdapters, isKnownAdapter } from "@/lib/erp/carriers";
 import { toJson } from "@/lib/erp/serialize";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Name the keys that DO work.
+ *
+ * The refusal has to say what is available or it is a dead end: the ERP offers
+ * twelve adapter keys and this deployment implements one, and "unknown adapter"
+ * on its own leaves nothing to try next.
+ */
+export const unknownAdapterMessage = (key: string) =>
+  `No integration is registered for "${key}". Available: ${listAdapters().map((a) => a.key).join(", ")}.`;
 
 export const CARRIER_SELECT = {
   id: true, name: true, code: true, adapter: true,
@@ -55,6 +65,15 @@ export const POST = tenantRoute("erp:shipments:write", async ({ db, req, session
     where: { code: parsed.data.code }, select: { id: true },
   });
   if (clash) return apiError(409, "CODE_TAKEN", "A carrier with that code already exists.");
+
+  // The front door. `adapter` was a free-text column, so a tenant could store
+  // "zr" — a real ZR Express integration this deployment does not have — and
+  // discover the problem only when a customer asked about a parcel that had
+  // never been booked. Refused at configuration time, and refused again at
+  // booking time, because rows predating this check may already hold one.
+  if (parsed.data.adapter !== undefined && !isKnownAdapter(parsed.data.adapter)) {
+    return apiError(422, "UNKNOWN_ADAPTER", unknownAdapterMessage(parsed.data.adapter));
+  }
 
   const created = await db.carrier.create({
     data: { ...parsed.data, tenantId: session.auth!.tenantId, adapter: parsed.data.adapter ?? "mock" },

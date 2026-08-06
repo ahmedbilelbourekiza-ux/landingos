@@ -1,6 +1,6 @@
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
-import { maskCarrier, preserveSecrets } from "@/lib/erp/carriers";
-import { CARRIER_SELECT } from "../route";
+import { maskCarrier, preserveSecrets, isKnownAdapter } from "@/lib/erp/carriers";
+import { CARRIER_SELECT, unknownAdapterMessage } from "../route";
 import { toJson } from "@/lib/erp/serialize";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +26,12 @@ export const PUT = tenantRoute<Params>("erp:shipments:write", async ({ db, req, 
   if (!carrier) return apiError(404, "NOT_FOUND", "No such carrier.");
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+
+  // Same gate as create. Editing a working carrier to name an integration this
+  // deployment does not have is the same defect arriving through the other door.
+  if (typeof body.adapter === "string" && !isKnownAdapter(body.adapter)) {
+    return apiError(422, "UNKNOWN_ADAPTER", unknownAdapterMessage(body.adapter));
+  }
 
   const updated = await db.carrier.update({
     where: { id: params.id },

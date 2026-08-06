@@ -402,6 +402,20 @@ export async function backdateShipmentPoll(
   );
 }
 
+/**
+ * Put an adapter key on a carrier row without going through the API.
+ *
+ * Needed precisely BECAUSE the API refuses an unregistered key now. A row can
+ * still hold one — it predates the check, or the deployment dropped an adapter
+ * it used to have — and the booking and polling paths have to refuse it too.
+ * Staging that state is the only way to test the second half of the guard.
+ */
+export async function setCarrierAdapter(tenantId: string, carrierId: string, adapter: string) {
+  await withTenant(tenantId, (tx) =>
+    (tx as any).carrier.update({ where: { id: carrierId }, data: { adapter } }),
+  );
+}
+
 /* -----------------------------------------------------------------------------
  * A storefront, for the paths that start with a customer rather than an agent
  * -------------------------------------------------------------------------- */

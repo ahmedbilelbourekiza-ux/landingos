@@ -141,6 +141,7 @@
       "default": "Par défaut",
       "credentials": "Identifiants définis",
       "noCredentials": "Non configuré",
+      "adapterUnavailable": "Intégration indisponible — impossible d’expédier ou de suivre",
       "none": "Aucun transporteur",
       "inactive": "Inactif"
     },

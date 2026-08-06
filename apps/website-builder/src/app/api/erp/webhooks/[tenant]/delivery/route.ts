@@ -4,7 +4,7 @@ import { asPlatform, withTenant } from "@landingos/db";
 
 import { verifySignature } from "@/lib/erp/webhooks";
 import { ingestEvents } from "@/lib/erp/shipments";
-import { getAdapter } from "@/lib/erp/carriers";
+import { mapCarrierStatus } from "@/lib/erp/carriers";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +78,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<Params> }) {
     // The CRM status is resolved here, never taken from the body. A payload
     // that could set `crmStatus: delivered` directly would be a way to settle
     // revenue without a delivery.
-    const adapter = getAdapter(shipment.carrier?.adapter ?? null);
     const mapping = shipment.carrierId
       ? await db.carrierStatusMapping.findFirst({
           where: { carrierId: shipment.carrierId, originalStatus },
@@ -89,7 +88,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<Params> }) {
     await ingestEvents(db, tenant.id, shipment, [
       {
         originalStatus,
-        crmStatus: mapping?.crmStatus ?? adapter.mapStatus(originalStatus),
+        // `mapCarrierStatus` keeps a keyword fallback for an unregistered
+        // adapter, and that is deliberate: the carrier PUSHED this event, so
+        // dropping it would lose a real delivery outcome to a configuration
+        // problem. Interpreting a status string cannot invent a parcel.
+        crmStatus: mapping?.crmStatus ?? mapCarrierStatus(shipment.carrier?.adapter ?? null, originalStatus),
         description: String(body.description ?? ""),
         // The carrier's own moment when it sends one. Stamping "now" would
         // book a replayed backlog into the wrong period.

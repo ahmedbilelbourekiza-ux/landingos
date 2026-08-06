@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.1: product editing*
+**Branch:** `master` · **Last commit:** *LP.2: an unknown carrier adapter is refused*
 **Working tree:** clean, all work committed.
 
 ---
@@ -27,9 +27,28 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | Slice | Restores | State |
 |---|---|---|
 | **LP.1** product editing | R1 | **DONE** — `PATCH /api/erp/products/[id]` + the edit panel, catalog 40→55 |
-| **LP.2** carrier adapter refusal, then the real ZR adapter | R2 | **NEXT** |
-| LP.3 order export (CSV: ZR / Ecom / Ecotrac + performance report) | R4 | to do |
-| LP.4 carrier test / sync / integration logs | R3, R20 | to do |
+| **LP.2** unknown carrier adapter refused, not mocked | R2 (first half) | **DONE** — delivery 33→39, screens 99→100 |
+| **LP.3** the real ZR Express adapter | R2 (rest) | **NEXT** |
+| LP.4 order export (CSV: ZR / Ecom / Ecotrac + performance report) | R4 | to do |
+| LP.5 carrier test / sync / integration logs | R3, R20 | to do |
+
+### D-LP.2 — an unregistered adapter refuses, except when mapping a pushed status
+
+`getAdapter` returns **null** for a key nothing is registered under; it used to
+return `mock`. Booking or polling through a fallback is how a carrier configured
+as `zr` got a fabricated `MOCK…` tracking number and a 201 — and how polling
+that shipment then walked a real parcel along the mock's synthetic pipeline and
+**settled its delivery outcome**, booking revenue for a delivery that never
+happened.
+
+Refused at configuration (`POST`/`PUT /api/erp/carriers`, message naming the
+keys that DO work) and again at use (`createShipment`, `refreshShipment`),
+because a row can already hold a bad key.
+
+**The one exception is `mapCarrierStatus`**, which keeps a keyword fallback and
+is what the inbound delivery webhook uses. Interpreting a status string cannot
+invent a parcel, and the carrier PUSHED that event — dropping it would lose a
+real delivery outcome to a configuration problem.
 
 ### D-LP.1 — an edit never moves stock
 
@@ -265,16 +284,16 @@ domain at a time.
 |---|---|
 | orders (+ stats, bulk, 6 per-order routes), clients, settings, audit | orders 38/38 · validation 29/29 · listing 25/25 |
 | products (incl. **editing**, LP.1), inventory, stock lots (incl. stock on confirm/cancel), agents, payroll, finance | catalog 55/55 |
-| carriers, shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 33/33 |
+| carriers (incl. **adapter refusal**, LP.2), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 39/39 |
 | sales channels, inbound webhooks, AI, follow-up | integrations 29/29 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
-| every ERP screen, read and write | screens 99/99 |
+| every ERP screen, read and write | screens 100/100 |
 | the scheduled work (M-15), and the worker's tick both ways | jobs 16/16 |
 | assignment — new, confirmed and overdue orders | assign 25/25 |
 | notifications: storage, audience, badge, the live stream, Web Push (M-16) | notifications 29/29 |
 | every surface, gated | access 65/65 |
 
-**455/455**, each file verified on its own. Running several back to back still
+**462/462**, each file verified on its own. Running several back to back still
 trips the documented Neon connection limit — judge them per file.
 
 Three routes answer **501 by design**, and are not gaps: `POST /api/erp/agents`
@@ -371,7 +390,8 @@ by technical simplicity. Tier 1 is the four production blockers:
 | # | Slice | Size | State |
 |---|---|---|---|
 | 1 | Product editing — `PATCH /api/erp/products/[id]` + the control | S | **DONE (LP.1)** |
-| 2 | Carrier adapter refusal, then the real ZR Express adapter | S then L | **NEXT** |
+| 2a | Carrier adapter refusal — no more fabricated tracking numbers | S | **DONE (LP.2)** |
+| 2b | The real ZR Express adapter | L | **NEXT** |
 | 3 | Order export — CSV for ZR / Ecom / Ecotrac + the performance report | M | to do |
 | 4 | Carrier test / sync / integration logs (`IntegrationLog`'s first caller) | M | to do |
 
@@ -1036,14 +1056,14 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 455 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 462 | all pass against a running server |
 | `apps/website-builder` — platform contract | 85 | team (7.1) + billing (7.2) + signup (7.3), against a running server |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1085** | green per suite |
+| **Total** | **1092** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

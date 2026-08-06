@@ -5,6 +5,7 @@ import { SESSION_COOKIE } from '@landingos/auth';
 
 import {
   skip, BASE, uid, phone, makeTenant, makeMember, makeErpTenant, makeFollowupTask, cleanup,
+  setCarrierAdapter,
   contractTest as test,
   type Caller,
 } from './helpers.ts';
@@ -795,6 +796,29 @@ describe('the catalogue can be added to and archived', () => {
 
     const r = await html('/console/erp/products?archived=true', acme.manager.token);
     assert.match(r.body, /data-testid="erp-product-edit"/);
+  });
+
+  test('a carrier naming an unavailable integration says so on its row', async () => {
+    // LP.2. Said on the row rather than discovered when a parcel fails to book:
+    // a carrier whose adapter this deployment does not have can neither book
+    // nor poll, and a row that looks identical to a working one is how that
+    // stays hidden until a customer asks where their parcel is.
+    const good = (await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Works', code: `ok${uid()}`, adapter: 'mock',
+    })).body.data;
+    const stale = (await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Stale integration', code: `br${uid()}`, adapter: 'mock',
+    })).body.data;
+    await setCarrierAdapter(acme.tenantId, stale.id, 'zr');
+
+    const r = await html('/console/erp/carriers', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-adapter="zr" data-known="false"/, 'the broken one is flagged');
+    assert.ok(
+      r.body.includes(`data-adapter="mock" data-known="true"`),
+      'and the working one is not',
+    );
+    assert.ok(good.id && stale.id);
   });
 
   test('the edit panel offers no stock box, because the API refuses one', async () => {
