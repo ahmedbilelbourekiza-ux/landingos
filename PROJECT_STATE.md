@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.12: accountability*
+**Branch:** `master` · **Last commit:** *LP.8: the row acts*
 **Working tree:** clean, all work committed.
 
 ---
@@ -16,14 +16,14 @@ anything else.
 **Second pass, 6 August 2026 (from `9d1f887`): 115 features compared —
 52 identical · 6 improved · 18 partial · 39 missing.**
 
-**As of 6 August 2026, TIER 1 IS COMPLETE and ELEVEN of the twenty-seven
-roadmap slices have landed** — LP.1–LP.7, LP.12, LP.13, LP.14, LP.16, LP.17.
+**As of 6 August 2026, TIER 1 IS COMPLETE and TWELVE of the twenty-seven
+roadmap slices have landed** — LP.1–LP.8, LP.12, LP.13, LP.14, LP.16, LP.17.
 Every production blocker §0b named is closed, as is every "computed, stored and
 shown nowhere" defect the three passes found.
 
-**Tier 2 is HALF done: 7 and 12 are in, 8, 9, 10 and 11 are not.**
+**Tier 2: 7, 8 and 12 are in; 9, 10 and 11 are not.**
 **Tier 3 is a third done: 13, 14, 16 and 17 are in; 15, 18, 19, 20, 21 and 22
-are not.** Parity is reached at the end of Tier 3, so **ten roadmap slices
+are not.** Parity is reached at the end of Tier 3, so **nine roadmap slices
 remain** — the full list is in `LEGACY_PARITY.md` §4 and every one still carries
 its own detail card in §3.
 
@@ -73,6 +73,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.17** the AI screen (a live 404) + provider/agent CRUD | R10 | **DONE** — ai 20 (new), access 73→78 |
 | **LP.14** carrier test / sync / integration logs, mapping delete | R3, R20 (rest) | **DONE** — delivery 64→77, access 78→82 |
 | **LP.12** missed-counter reset, the suspicious flag, payroll, the order audit trail, password reset | R11, R14, R15, N11, N12 | **DONE** — screens 130→140, team 56→62, access 82→84 |
+| **LP.8** inline row actions + list density + the changed-row flash | N9, N10, N21, N22 | **DONE** — screens 140→148 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -465,7 +466,7 @@ domain at a time.
 | carriers (incl. **adapter refusal** LP.2, the **real ZR Express adapter** LP.5, and **test / sync / the integration log** LP.14), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 77/77 |
 | sales channels, inbound webhooks, AI, follow-up | integrations 29/29 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
-| every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4, the **ZR configuration surface** LP.5, the **export panel** LP.6, and the accountability surface LP.12) | screens 140/140 |
+| every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4, the **ZR configuration surface** LP.5, the **export panel** LP.6, the accountability surface LP.12, and the **inline row actions + density** LP.8) | screens 148/148 |
 | the order book as a file — ZR / Ecom / Ecotrac / report (LP.6) | export 31/31 |
 | the scheduled work (M-15), and the worker's tick both ways | jobs 16/16 |
 | assignment — new, confirmed and overdue orders | assign 25/25 |
@@ -475,7 +476,7 @@ domain at a time.
 | the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
 | every surface, gated | access 84/84 |
 
-**682/682** across SIXTEEN ERP contract files, each verified on its own, plus
+**690/690** across SIXTEEN ERP contract files, each verified on its own, plus
 **91/91** platform contract (team 62 · billing 19 · signup 10) and **20/20** in
 `test/calc.test.ts` — the one PURE suite, which needs no server at all. Running
 several contract files back to back still trips the documented Neon connection
@@ -668,6 +669,41 @@ would lock out the person who forgot it while whoever is already signed in on a
 shared handset stays in. R15 closes with
 `POST /api/platform/team/members/[userId]/password` — on the platform surface,
 because identity is a platform concern.
+
+### LP.8 — the row acts, and says enough to act on
+
+**N9, N10, N21 and N22 — the four findings no route inventory could see.** The
+legacy row carries four controls (status, agent, carrier, express) and 14 facts;
+the platform's carried none and 8, and **the four facts missing were the four
+that decide what to do next** — overdue, called, noted, flagged.
+
+Every inline control calls `PATCH /api/erp/orders/[id]` (D-06.1), so a status
+moved to `confirmed` from a list select **reserves stock, books a parcel and
+raises a follow-up task** — it goes through the door that does all of that.
+Which controls exist is decided per row by the predicates the ROUTE uses:
+`status`/`expressDelivery` are `AGENT_WRITABLE`, `agentUserId` is a REASSIGNMENT
+field (403 `FORBIDDEN_FIELD` otherwise) and `carrierCode` is
+`MANAGER_WRITABLE` — an agent gets two controls, a manager four.
+
+**`orderRowFacts` lives in `lib/erp/orders.ts`**, not on the page: the list, the
+board and the queue all need one answer to "is this abandoned", and `overdue`
+takes `alertMinutes` as an argument so it cannot become a fourth opinion beside
+the dashboard banner and the queue badge. **Overdue is never-called AND old** —
+an order phoned three times is being worked however old it is.
+
+**The two facts that live on `OrderCall` are fetched for the PAGE, not per row.**
+PERF-02's decision stands: `ORDER_LIST_SELECT` still joins no call history. The
+flagged set and the newest note are two bounded queries over the fifty ids on the
+page.
+
+**N22's flash marks, it never merges.** `row-flash.ts` retries until the row
+exists (bounded, ≈2.4 s) so it survives LP.7's 500 ms debounced refresh
+re-rendering the table underneath it. No directive on that module, deliberately —
+`"use client"` would make its exports client references rather than functions.
+
+**The defect it introduced, caught by LP.3's tests:** the first build gave the
+control div its own `data-order-id`, and the paging tests count rows by that
+attribute — every count doubled, 100 rows on a page of 50.
 
 ### LP.14 — carriers: three columns nobody wrote, and a log nobody read
 
@@ -1532,7 +1568,7 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 682 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 690 | all pass against a running server |
 | `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
 | `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
@@ -1540,7 +1576,7 @@ fail without it, so check the counts, not just the exit code.
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1338** | green per suite |
+| **Total** | **1346** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

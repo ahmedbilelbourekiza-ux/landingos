@@ -12,6 +12,7 @@ import type {
 } from "@/components/console/erp/settings-structured";
 import type { CalculatorStrings } from "@/components/console/erp/profit-calculator";
 import type { AiStrings } from "@/components/console/erp/ai-write";
+import type { RowActionStrings } from "@/components/console/erp/order-row-actions";
 
 /* =============================================================================
  * The ERP's write-control labels, resolved once per screen.
@@ -375,5 +376,27 @@ export function aiStrings(t: (key: string) => string): AiStrings {
     enabled: t("erp.write.activate"),
     none: t("erp.write.unassigned"),
     keyKept: t("erp.write.maskKeeps"),
+  };
+}
+
+/**
+ * The inline row controls' labels — LP.8.
+ *
+ * Every one of them is an `aria-label` rather than a visible caption: four
+ * selects on a table row with their captions beside them is the density
+ * REGRESSION this slice exists to fix. The label still has to exist, because a
+ * select whose only identification is its position in a row is unusable with a
+ * screen reader.
+ */
+export function rowActionStrings(t: (key: string) => string): RowActionStrings {
+  return {
+    saving: t("erp.row.saving"),
+    status: t("erp.orders.status"),
+    agent: t("erp.orders.agent"),
+    carrier: t("erp.row.carrier"),
+    noAgent: t("erp.row.noAgent"),
+    noCarrier: t("erp.row.noCarrier"),
+    express: t("erp.row.expressShort"),
+    quickActions: t("erp.row.quickActions"),
   };
 }

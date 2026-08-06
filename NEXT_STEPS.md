@@ -223,8 +223,35 @@ was reachable any other way:
    advances `TenantSequence`. `nextReference` now heals itself from the highest
    reference already in use, counting only references it could have minted.
 
-**The next slice is Tier 2 #8–#12**, and #11 (sound + desktop notification
-preferences on `ProductSetting`) hangs directly off this provider.
+**#8 is DONE (LP.8).** The next slices are Tier 2 #9, #10 and #11 — and #11
+(sound + desktop notification preferences on `ProductSetting`) hangs directly off
+this provider.
+
+### LP.8 — DONE. Inline row actions and list density (N9, N10, N21, N22)
+
+**Implemented and verified.** screens 140 → **148**. Four controls on every row —
+status, agent, carrier, express — each calling `PATCH /api/erp/orders/[id]`
+(D-06.1), each gated by the predicate that route uses, so an agent gets two and a
+manager four. The density half restores every fact §3b measured as missing, and
+`row-flash.ts` closes N22.
+
+**Three decisions worth carrying forward:**
+
+- **`orderRowFacts` lives beside `orderFilters`**, not on the page. Three copies
+  of "is this abandoned" is three chances for the list, the board and the queue
+  to disagree about one order. `overdue` takes `alertMinutes` as an argument so
+  it cannot become a fourth opinion beside the dashboard banner and the queue.
+- **The `OrderCall` facts are fetched for the PAGE.** PERF-02's decision stands —
+  `ORDER_LIST_SELECT` still joins no call history. Two bounded queries over the
+  fifty ids on the page, unaffected by the size of the book.
+- **`row-flash.ts` carries no directive.** It touches the DOM and is imported
+  only from client components; `"use client"` would make its exports client
+  references rather than functions (the `edit-field.ts` trap).
+
+**The defect it introduced, caught by LP.3's own tests:** the control div carried
+its own `data-order-id`, and the paging tests count rows by that attribute — 100
+rows on a page of 50, five assertions red at once. Renamed `data-row-order`, with
+the reason recorded in the component.
 
 ### The design LP.7 was built to — preserved
 
@@ -299,10 +326,11 @@ operator productivity → business value → architectural dependencies → risk
 **[DONE LP.2]** · pagination + filters + search **[DONE LP.3]** · create an
 order **[DONE LP.4]** · the real ZR adapter **[DONE LP.5]** · order export
 **[DONE LP.6]**. **TIER 1 IS COMPLETE.**
-**Tier 2 — operator productivity:** (7) the notification provider · (8) inline
-row actions + list density · (9) bulk actions completed · (10) client
-detail/edit/export · (11) sound + desktop notification preferences · (12) agent
-alerts, missed-counter reset, manager password reset, payroll report, audit view.
+**Tier 2 — operator productivity:** (7) the notification provider **[DONE LP.7]** ·
+(8) inline row actions + list density **[DONE LP.8]** · (9) bulk actions
+completed · (10) client detail/edit/export · (11) sound + desktop notification
+preferences · (12) agent alerts, missed-counter reset, manager password reset,
+payroll report, audit view **[DONE LP.12]**.
 **Tier 3 — business value:** (13) analytics **[DONE LP.13]** ·
 (14) carrier test/sync/logs **[DONE LP.14]** ·
 (15) sales-channel screen · (16) profit calculator **[DONE LP.16]** ·

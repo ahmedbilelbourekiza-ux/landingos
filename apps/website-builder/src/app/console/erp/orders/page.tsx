@@ -15,14 +15,16 @@ import type { FilterField } from "@/components/console/filter-field";
 import { OrderBulkBar, type BulkStrings } from "@/components/console/erp/order-bulk";
 import { OrderCreatePanel } from "@/components/console/erp/order-create";
 import { OrderExportPanel } from "@/components/console/erp/order-export";
+import { OrderRowActions } from "@/components/console/erp/order-row-actions";
 import {
-  filterStrings, pagerStrings, orderCreateStrings, orderExportStrings,
+  filterStrings, pagerStrings, orderCreateStrings, orderExportStrings, rowActionStrings,
 } from "@/lib/console/erp-strings";
-import { scopedWhere, seesWholeBook } from "@/lib/erp/scope";
+import { scopedWhere, seesWholeBook, mayTouchOrder } from "@/lib/erp/scope";
 import {
-  orderFilters, orderSort, orderFilterFields,
+  orderFilters, orderSort, orderFilterFields, orderRowFacts,
   ORDER_LIST_SELECT, ORDER_STATUSES,
 } from "@/lib/erp/orders";
+import { readSettings } from "@/lib/erp/settings";
 import { exportWhere } from "@/lib/erp/export";
 
 export const dynamic = "force-dynamic";
@@ -74,19 +76,55 @@ export default async function ErpOrdersScreen({
   const page = Math.max(1, Number(params.get("page")) || 1);
   const where = scopedWhere(session, orderFilters(params));
 
-  const { orders, total, members, carriers, confirmedCount } = await withTenant(session.auth!.tenantId, async (db) => {
+  const { orders, total, members, carriers, confirmedCount, alertMinutes, flagged, notes } =
+    await withTenant(session.auth!.tenantId, async (db) => {
     const total = await db.fulfillmentOrder.count({ where });
     const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     const safePage = Math.min(page, pages);
-    return {
-    total,
-    orders: await db.fulfillmentOrder.findMany({
+
+    const orders = await db.fulfillmentOrder.findMany({
       where,
       orderBy: orderSort(params.get("sort"), params.get("dir")),
       skip: (safePage - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: ORDER_LIST_SELECT,
-    }),
+    });
+
+    /* LP.8 / N21 — THE TWO FACTS THAT LIVE ON `OrderCall`, FETCHED FOR THE PAGE
+     * AND NOT PER ROW.
+     *
+     * `ORDER_LIST_SELECT` deliberately carries no call history: attaching it
+     * per row is what made the ERP's list quadratic (3,006 ms on 5,000 orders,
+     * audit PERF-02). That decision stands. These are TWO bounded queries over
+     * the fifty ids already on this page — not a join, not per row, and not
+     * affected by how many orders the tenant has.
+     *
+     * `distinct` on the flag query means one row per order however many
+     * suspicious calls it carries; the note query takes the newest note per
+     * order the same way the queue screen already does. */
+    const ids = orders.map((o) => o.id);
+    const [flaggedRows, noteRows] = ids.length
+      ? await Promise.all([
+          db.orderCall.findMany({
+            where: { orderId: { in: ids }, suspicious: true },
+            distinct: ["orderId"],
+            select: { orderId: true },
+          }),
+          db.orderCall.findMany({
+            where: { orderId: { in: ids }, note: { not: null } },
+            distinct: ["orderId"],
+            orderBy: [{ orderId: "asc" }, { time: "desc" }],
+            select: { orderId: true, note: true },
+          }),
+        ])
+      : [[], []];
+
+    return {
+    total,
+    orders,
+    alertMinutes: Number((await readSettings(db)).alertMinutes) || 60,
+    flagged: new Set(flaggedRows.map((r) => r.orderId)),
+    notes: new Map(noteRows.map((r) => [r.orderId, r.note as string])),
     // Same rule as the order detail: only for a caller who already sees the
     // whole book, because assigning in bulk is refused for anybody else.
     members: managesBook
@@ -140,13 +178,44 @@ export default async function ErpOrdersScreen({
     of: t("erp.write.of"),
   };
 
+  const rowStrings = rowActionStrings(t);
+  const memberOptions = members.map((m) => ({
+    value: m.userId,
+    label: m.user.name || m.user.email,
+  }));
+  const carrierOptions = carriers.map((c) => ({
+    value: c.code ?? "",
+    label: c.name ?? c.code ?? "",
+  }));
+
+  /** A small badge. Every row fact renders through one, so they cannot drift
+   *  apart visually, and each carries a `data-badge` a test can name. */
+  const badge = (kind: string, label: string, tone?: "danger" | "warning" | "info") => (
+    <span
+      key={kind}
+      data-badge={kind}
+      className="me-1 inline-block rounded-full border px-1.5 py-0.5 text-[10px] leading-none"
+      style={tone ? toneVars(tone) : undefined}
+    >
+      {label}
+    </span>
+  );
+
+  const money = (v: { toString(): string } | null | undefined) =>
+    formatMoney((v ?? 0).toString(), locale, currency);
+
   const table = (
     <DataTable
         testId="erp-orders-table"
         empty={t("erp.orders.noneYet")}
         rows={orders}
         rowKey={(o) => o.id}
-        rowAttrs={(o) => ({ "data-order-id": o.id })}
+        // `data-flash-id` is what `row-flash.ts` looks for (N22). It carries the
+        // same value as `data-order-id` deliberately: the flash primitive is
+        // generic across entities, and giving it its own attribute means the
+        // clients list and the shipments list can use it without teaching it
+        // what an order is.
+        rowAttrs={(o) => ({ "data-order-id": o.id, "data-flash-id": o.id })}
         columns={[
           // The selection lives in the DOM as a plain checkbox, which is what
           // HTML already has for choosing several rows. It keeps this table a
@@ -173,18 +242,74 @@ export default async function ErpOrdersScreen({
           {
             id: "reference",
             header: t("erp.orders.reference"),
-            cell: (o) => (
-              <Link
-                href={`/console/erp/orders/${o.id}`}
-                className="font-mono text-xs underline-offset-2 hover:underline"
-                dir="ltr"
-              >
-                {/* The number a customer reads back over the phone (D-05.3).
-                    Falls back to nothing rather than showing a cuid, which
-                    would be worse than an empty cell. */}
-                {o.reference ?? "—"}
-              </Link>
-            ),
+            /* LP.8 / N10, N21 — THE ROW SAYS WHAT KIND OF ORDER THIS IS.
+             *
+             * The measured density gap was 8 facts against 14, and this column
+             * carries four of the six that were missing: the type (a draft and
+             * an abandoned cart are not orders somebody agreed to), the fake
+             * flag, the overdue tag and the note. Each is a decision an
+             * operator makes from the LIST — the point of the legacy row is
+             * that you do not open an order to find out whether to call it. */
+            cell: (o) => {
+              const facts = orderRowFacts(o, alertMinutes);
+              const note = notes.get(o.id);
+              return (
+                <div className="min-w-[9rem]">
+                  <Link
+                    href={`/console/erp/orders/${o.id}`}
+                    className="font-mono text-xs underline-offset-2 hover:underline"
+                    dir="ltr"
+                  >
+                    {/* The number a customer reads back over the phone
+                        (D-05.3). Falls back to nothing rather than showing a
+                        cuid, which would be worse than an empty cell. */}
+                    {o.reference ?? "—"}
+                  </Link>
+                  <div className="mt-1">
+                    {badge(
+                      facts.draft ? "draft" : facts.abandoned ? "abandoned" : "normal",
+                      facts.draft
+                        ? t("erp.row.typeDraft")
+                        : facts.abandoned
+                          ? t("erp.row.typeAbandoned")
+                          : t("erp.row.typeNormal"),
+                      facts.draft || facts.abandoned ? "warning" : undefined,
+                    )}
+                    {facts.fake && badge("fake", t("erp.filters.fake"), "danger")}
+                    {facts.overdue && badge("overdue", t("erp.row.overdue"), "danger")}
+                    {flagged.has(o.id) && badge("suspicious", t("erp.row.suspicious"), "danger")}
+                    {/* The note itself is the tooltip, exactly as the legacy
+                        row does it — the badge says one exists, hovering says
+                        what it is, and neither costs a click. */}
+                    {note && (
+                      <span
+                        data-badge="note"
+                        title={note}
+                        className="me-1 inline-block rounded-full border px-1.5 py-0.5 text-[10px] leading-none"
+                      >
+                        {t("erp.row.noted")}
+                      </span>
+                    )}
+                  </div>
+                  {(o.salesChannelName || o.platform || o.brand) && (
+                    <div
+                      data-testid="row-channel"
+                      className="mt-1 truncate text-[11px] text-muted-foreground"
+                    >
+                      {[o.salesChannelName, o.brand, o.platform].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                  {/* Date AND time. "Today" is not a useful answer in a call
+                      centre where the question is whether an order came in
+                      before or after the last round of calls. */}
+                  <div className="mt-1 text-[11px] text-muted-foreground" dir="ltr">
+                    {formatDate(o.createdAt, locale)}
+                    {" · "}
+                    {o.createdAt.toISOString().slice(11, 16)}
+                  </div>
+                </div>
+              );
+            },
           },
           {
             id: "customer",
@@ -212,14 +337,60 @@ export default async function ErpOrdersScreen({
           {
             id: "product",
             header: t("erp.orders.product"),
-            cell: (o) => <span className="text-muted-foreground">{o.product || "—"}</span>,
+            cell: (o) => (
+              <div className="min-w-[7rem]">
+                <span>{o.product || "—"}</span>
+                {o.productVariant && (
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {o.productVariant}
+                  </span>
+                )}
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {t("erp.orders.quantity")}: {o.quantity ?? 1}
+                </span>
+              </div>
+            ),
           },
           {
             id: "total",
             header: t("erp.orders.total"),
             numeric: true,
             align: "end",
-            cell: (o) => formatMoney(o.price?.toString() ?? "0", locale, currency),
+            /* THE BREAKDOWN, NOT ONLY THE TOTAL. A customer disputing 4,900 is
+             * disputing one of three numbers, and the legacy row shows all
+             * three. Rendered only where they exist: an order typed in over the
+             * phone carries a flat price (N15), and printing "delivery: 0" for
+             * it would state a fact nobody recorded. */
+            cell: (o) => (
+              <div className="min-w-[7rem]">
+                <div className="font-medium">{money(o.price)}</div>
+                {(o.unitPrice != null || o.shippingCost != null || o.discount != null) && (
+                  <dl
+                    data-testid="row-breakdown"
+                    className="mt-0.5 space-y-0.5 text-[11px] text-muted-foreground"
+                  >
+                    {o.unitPrice != null && (
+                      <div className="flex justify-between gap-2">
+                        <dt>{t("erp.row.unitPrice")}</dt>
+                        <dd>{money(o.subtotal ?? o.unitPrice)}</dd>
+                      </div>
+                    )}
+                    {o.shippingCost != null && (
+                      <div className="flex justify-between gap-2">
+                        <dt>{t("erp.row.shipping")}</dt>
+                        <dd>{money(o.shippingCost)}</dd>
+                      </div>
+                    )}
+                    {o.discount != null && (
+                      <div className="flex justify-between gap-2">
+                        <dt>{t("erp.row.discount")}</dt>
+                        <dd>−{money(o.discount)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+              </div>
+            ),
           },
           {
             id: "status",
@@ -229,11 +400,31 @@ export default async function ErpOrdersScreen({
               // looks like the equivalent state anywhere else on the platform.
               const tone = resolveStatus("confirmation", o.status ?? "");
               return (
-                <StatusPill
-                  status={o.status ?? "unknown"}
-                  label={t(tone.labelKey)}
-                  vars={toneVars(tone.tone)}
-                />
+                <div className="min-w-[8rem]">
+                  <StatusPill
+                    status={o.status ?? "unknown"}
+                    label={t(tone.labelKey)}
+                    vars={toneVars(tone.tone)}
+                  />
+                  {o.deliveryStatus && (
+                    <span
+                      data-testid="row-delivery-status"
+                      className="mt-1 block text-[11px] text-muted-foreground"
+                    >
+                      {o.deliveryStatus}
+                    </span>
+                  )}
+                  {o.trackingNumber && (
+                    <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground" dir="ltr">
+                      {o.trackingNumber}
+                    </span>
+                  )}
+                  {o.callReminderStatus === "overdue" && (
+                    <span className="mt-1 block">
+                      {badge("followup-overdue", t("erp.followUp.escalation"), "danger")}
+                    </span>
+                  )}
+                </div>
               );
             },
           },
@@ -244,13 +435,38 @@ export default async function ErpOrdersScreen({
             align: "end",
             cell: (o) => o._count.calls,
           },
-          {
-            id: "placed",
-            header: t("erp.orders.placed"),
-            cell: (o) => (
-              <span className="text-muted-foreground">{formatDate(o.createdAt, locale)}</span>
-            ),
-          },
+          /* LP.8 / N9 — THE INLINE CONTROLS.
+           *
+           * Offered only where `erp:orders:write` holds AND `mayTouchOrder`
+           * does for this row (D-06.2) — the same two checks `PATCH
+           * /orders/[id]` makes, in the same order. `mayTouchOrder` is
+           * effectively true for every row an agent can see (`orderScope` and
+           * it admit the same set) and is asked anyway: the two functions are
+           * separate rules and a screen that assumes they agree is a screen
+           * that breaks silently the day one of them changes. */
+          ...(mayWrite
+            ? [
+                {
+                  id: "actions",
+                  header: t("erp.row.quickActions"),
+                  cell: (o: (typeof orders)[number]) => (
+                    <OrderRowActions
+                      orderId={o.id}
+                      errors={actionErrors(t)}
+                      s={rowStrings}
+                      status={o.status ?? "pending"}
+                      statuses={statusChoices}
+                      agentUserId={o.agentUserId ?? ""}
+                      members={managesBook ? memberOptions : undefined}
+                      carrierCode={o.carrierCode ?? ""}
+                      carriers={managesBook ? carrierOptions : undefined}
+                      express={Boolean(o.expressDelivery)}
+                      mayWrite={mayTouchOrder(session, o)}
+                    />
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
   );
@@ -263,9 +479,7 @@ export default async function ErpOrdersScreen({
   const fields: readonly FilterField[] = orderFilterFields({
     t,
     statuses: statusChoices,
-    members: managesBook
-      ? members.map((m) => ({ value: m.userId, label: m.user.name || m.user.email }))
-      : undefined,
+    members: managesBook ? memberOptions : undefined,
   });
 
   const pager = (
@@ -292,12 +506,8 @@ export default async function ErpOrdersScreen({
           errors={actionErrors(t)}
           s={orderCreateStrings(t)}
           statuses={statusChoices}
-          members={
-            managesBook
-              ? members.map((m) => ({ value: m.userId, label: m.user.name || m.user.email }))
-              : undefined
-          }
-          carriers={carriers.map((c) => ({ value: c.code ?? "", label: c.name ?? c.code ?? "" }))}
+          members={managesBook ? memberOptions : undefined}
+          carriers={carrierOptions}
         />
       )}
 
@@ -325,10 +535,7 @@ export default async function ErpOrdersScreen({
           errors={actionErrors(t)}
           s={bulkStrings}
           statuses={statusChoices}
-          members={members.map((m) => ({
-            value: m.userId,
-            label: m.user.name || m.user.email,
-          }))}
+          members={memberOptions}
           managesBook={managesBook}
         >
           {table}

@@ -12,6 +12,136 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.8 The row acts, and says enough to act on
+
+[Opus 5]
+Date: 6 August 2026
+Summary: N9, N10, N21 and N22 — the four findings no route inventory could see,
+because nothing was missing from the API. screens 140 → **148**.
+
+#### N9 — the two highest-frequency operations in the building cost a page load each
+
+The legacy list row and board card each carry four controls: a status select, an
+agent select, a carrier select and an express toggle. The platform had **none of
+them**. Moving an order to `confirmed`, or handing it to another agent, meant
+opening the order, changing it, and coming back — once per order, in a screen
+whose entire purpose is working through fifty of them. §6.1 measured the click
+difference and it is not close.
+
+`components/console/erp/order-row-actions.tsx` puts all four on the row, and
+every one calls `PATCH /api/erp/orders/[id]` (D-06.1). That is not a convenience:
+it is the same route the detail screen's edit panel calls, so a status moved to
+`confirmed` from a list select **reserves stock, books a parcel and raises a
+follow-up task**, because it goes through the door that does all of that. The
+ERP's own comment on its list dropdown says why — two doors into `confirmed`
+that do different things diverge, and the difference surfaces in whichever one is
+used less.
+
+**Which controls exist is decided by the predicates the ROUTE uses, per row.**
+`status` and `expressDelivery` are `AGENT_WRITABLE`, so they are offered to
+anyone holding `erp:orders:write` for whom `mayTouchOrder` is true. `agentUserId`
+is a REASSIGNMENT field — `buildPatch` answers `403 FORBIDDEN_FIELD` for a
+non-manager — and `carrierCode` is `MANAGER_WRITABLE`, so both are offered only
+where `seesWholeBook` holds. An agent gets two controls; a manager gets four.
+
+**`mayTouchOrder` is asked per row even though `orderScope` admits the same set.**
+They are two separate rules, and a screen that assumes they agree is a screen
+that breaks silently the day one of them changes.
+
+**The one place optimistic UI is allowed, and why it is not a D-06.3 violation.**
+A controlled `<select>` whose value is the server's snaps back the instant a
+person picks something, for the length of the request. `draft` exists to stop
+that and nothing is derived from it: the badges, the total and the status pill
+all come from the server re-render, and a REFUSAL resets `draft` to the stored
+value rather than leaving the browser showing a change that did not happen.
+
+#### N10, N21 — the row carried 8 facts against 14, and the four missing were the four that decide
+
+Measured in §3b: overdue, called, noted and flagged were all absent. Every one of
+them is what an operator uses to choose the next order to open, so their absence
+means opening orders to find out.
+
+The row now carries the type badge (draft / abandoned cart / order — a cart
+nobody completed is not an order somebody agreed to), the fake flag, the overdue
+tag, a flagged-call badge, a note badge whose **tooltip is the note itself** (as
+the legacy row does it), the sales channel with its platform and brand, the date
+**and the time**, the product variant and quantity, the delivery status and
+tracking number, and the money **broken down** — items, delivery, discount —
+because a customer disputing 4,900 is disputing one of three numbers and a total
+alone cannot be checked.
+
+**`orderRowFacts` derives them in `lib/erp/orders.ts`, not on the page.** The
+list, the board and the queue all need the same answer to "is this abandoned",
+and three copies is three chances for one screen to disagree with another about
+the same order. `overdue` takes `alertMinutes` as an argument rather than reading
+settings, because the dashboard banner and the queue badge already judge against
+the tenant's own threshold — a number invented here would be a fourth opinion.
+
+**Overdue is never-called AND old, not "old".** An order somebody has phoned three
+times is being worked however old it is, and colouring it red teaches operators
+to ignore the colour.
+
+**The two facts that live on `OrderCall` are fetched for the PAGE, not per row.**
+`ORDER_LIST_SELECT` still carries no call history — attaching it per row is what
+made the ERP's list quadratic (3,006 ms on 5,000 orders, PERF-02), and that
+decision stands. The flagged set and the newest note are two bounded queries over
+the fifty ids already on the page: not a join, not per row, and unaffected by how
+many orders the tenant has.
+
+#### N22 — the changed row flashes
+
+`components/console/row-flash.ts` plus one CSS animation. It marks; it never
+merges — nothing writes a value into a cell, which would be the second copy of
+the truth D-06.3 forbids. The row's contents come from the server re-render; this
+only says *look here*.
+
+**It retries until the row exists**, bounded at 20 × 120 ms ≈ 2.4 s. That is what
+makes it work for somebody ELSE's change: a live notification arrives, LP.7's
+debounced `router.refresh()` re-renders the table 500 ms later, and looking once
+would flash the stale row or nothing. Bounded because a notification about an
+order on page 4 will never find a row, and an unbounded retry keeps a timer alive
+for the life of the tab.
+
+**No directive on that module, deliberately.** It touches the DOM and is imported
+only from `"use client"` components. Marking it `"use client"` would make its
+exports client *references* rather than functions — the trap recorded in
+`edit-field.ts` and paid for once already in 6.3b.
+
+`prefers-reduced-motion` keeps the highlight and drops the fade. Removing the
+mark entirely would take the *information* away from the people who asked for
+less motion, not just the animation.
+
+#### The defect this slice introduced and the existing tests caught
+
+The first build gave `OrderRowActions` its own `data-order-id`. The LP.3 paging
+tests count rows with `body.match(/data-order-id="/g)`, so every count on the
+order list **doubled** — 100 rows on a page of 50, and five paging assertions went
+red at once. The attribute is now `data-row-order`, and the reason is recorded in
+the component so it is not reintroduced. The row it belongs to already carries
+the id; a control inside that row does not need its own copy.
+
+#### Files
+
+- `apps/website-builder/src/components/console/erp/order-row-actions.tsx` — new
+- `apps/website-builder/src/components/console/row-flash.ts` — new
+- `apps/website-builder/src/app/console/erp/orders/page.tsx`
+- `apps/website-builder/src/lib/erp/orders.ts` — `ORDER_LIST_SELECT` widened,
+  `orderRowFacts` added
+- `apps/website-builder/src/lib/console/erp-strings.ts` — `rowActionStrings`
+- `apps/website-builder/src/components/console/notification-provider.tsx` — flashes
+  the entity a live notification names
+- `apps/website-builder/src/app/globals.css` — the `row-flash` animation
+- `packages/i18n/src/messages/{ar,en,fr}.json` — `erp.row.*`, 16 keys × 3
+- `apps/website-builder/test/erp/screens.test.ts` — 8 new tests
+
+**Migration:** none. `ORDER_LIST_SELECT` gained scalar columns that already
+existed, so the API's list and detail responses are additively wider.
+
+**Risk:** low. The row controls are additive and gated by the same functions the
+route checks; the two page-scoped call queries are bounded by the page size.
+
+---
+
 ### LP.12 Accountability — a counter that only rose, a flag nobody saw
 
 [Opus 5]

@@ -2077,3 +2077,150 @@ describe('an order carries its own audit trail (N12)', () => {
     );
   });
 });
+
+/* =============================================================================
+ * LP.8 — the row acts, and the row says enough to act on
+ *
+ * N9 (inline row actions) and N10/N21 (density) were the two findings the route
+ * inventory could not see: nothing was missing from the API, and both of the
+ * highest-frequency operations in a call centre cost a page load each.
+ *
+ * The tests below attack the same two directions every write surface here is
+ * attacked from: a control must exist exactly where the API would accept it,
+ * and must NOT exist where the API would refuse it.
+ * ========================================================================== */
+
+describe('the order row can be worked without leaving the list (N9)', () => {
+  test('a manager gets status, agent, carrier and express on every row', async () => {
+    const r = await html('/console/erp/orders', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="order-row-actions"/);
+    assert.match(r.body, /data-testid="row-status"/);
+    assert.match(r.body, /data-testid="row-agent"/);
+    assert.match(r.body, /data-testid="row-carrier"/);
+    assert.match(r.body, /data-testid="row-express"/);
+  });
+
+  test('an agent gets the two fields buildPatch lets them write, and no more', async () => {
+    // D-06.2 in both directions. `status` and `expressDelivery` are
+    // AGENT_WRITABLE; `agentUserId` is a REASSIGNMENT field the route answers
+    // 403 FORBIDDEN_FIELD for, and `carrierCode` is MANAGER_WRITABLE. A control
+    // whose only possible outcome is a refusal must not be rendered.
+    const r = await html('/console/erp/orders', acme.agent.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="row-status"/);
+    assert.match(r.body, /data-testid="row-express"/);
+    assert.ok(!/data-testid="row-agent"/.test(r.body), 'an agent cannot reassign — the route says 403');
+    assert.ok(!/data-testid="row-carrier"/.test(r.body), 'carrierCode is MANAGER_WRITABLE');
+  });
+
+  test('the API the row calls really accepts what the row offers', async () => {
+    // The control is worth nothing if the route refuses the field it sends.
+    // This is the same PATCH the select issues, with the same body shape.
+    const created = await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Row Actions', phone: phone(), price: 1500,
+    });
+    const id = created.body.data.id;
+
+    const express = await acme.manager.api('PATCH', `/api/erp/orders/${id}`, {
+      expressDelivery: true,
+    });
+    assert.equal(express.status, 200);
+    assert.equal(express.body.data.expressDelivery, true);
+
+    // The unassign case the select's empty option produces. It must reach the
+    // route as a VALUE — dropping it would turn "take this off Amina" into a
+    // silent no-op.
+    const assigned = await acme.manager.api('PATCH', `/api/erp/orders/${id}`, {
+      agentUserId: acme.agent.userId,
+    });
+    assert.equal(assigned.status, 200);
+    const cleared = await acme.manager.api('PATCH', `/api/erp/orders/${id}`, { agentUserId: '' });
+    assert.equal(cleared.status, 200);
+    assert.ok(!cleared.body.data.agentUserId, 'an empty agent must unassign, not be ignored');
+  });
+});
+
+describe('the order row carries the facts somebody decides from (N10, N21)', () => {
+  test('type, flag, breakdown and variant are on the row, not one page-load away', async () => {
+    const staged = await makeErpTenant(`row-${uid()}`);
+    const created = await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Density', phone: phone(), price: 7000,
+      product: 'Density Widget', productVariant: 'Blue L', quantity: 2,
+    });
+    const id = created.body.data.id;
+    await staged.manager.api('PATCH', `/api/erp/orders/${id}`, {
+      unitPrice: 3000, subtotal: 6000, shippingCost: 1200, discount: 200,
+      orderType: 'abandoned',
+    });
+    await staged.manager.api('POST', `/api/erp/orders/${id}/classify`, {
+      classification: 'fake', reason: 'duplicate',
+    });
+
+    const r = await html('/console/erp/orders', staged.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-badge="abandoned"/, 'an abandoned cart is not an order somebody agreed to');
+    assert.match(r.body, /data-badge="fake"/);
+    assert.match(r.body, /data-testid="row-breakdown"/, 'a total alone cannot be checked against a customer');
+    assert.match(r.body, /Blue L/, 'the variant decides which parcel is packed');
+  });
+
+  test('an order that has been called is never flagged overdue, however old', async () => {
+    const staged = await makeErpTenant(`overdue-${uid()}`);
+    // One minute, so age alone would flag anything not just created.
+    await staged.manager.api('PUT', '/api/erp/settings', { alertMinutes: 1 });
+
+    const fresh = await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Just Arrived', phone: phone(), price: 100, agentUserId: staged.agent.userId,
+    });
+    assert.equal(fresh.status, 201);
+
+    const before = await html('/console/erp/orders', staged.manager.token);
+    assert.ok(!/data-badge="overdue"/.test(before.body), 'a brand new order is not overdue');
+
+    await staged.agent.api('POST', `/api/erp/orders/${fresh.body.data.id}/call`, {
+      result: 'no_answer',
+    });
+    const after = await html('/console/erp/orders', staged.manager.token);
+    assert.ok(
+      !/data-badge="overdue"/.test(after.body),
+      'an order somebody has phoned is being worked, however old it is',
+    );
+  });
+
+  test('a flagged call is visible on the row, not only behind a filter', async () => {
+    const staged = await makeErpTenant(`flag-${uid()}`);
+    await staged.manager.api('PUT', '/api/erp/settings', { minCallSeconds: 3600 });
+    const created = await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Flagged', phone: phone(), price: 900, agentUserId: staged.agent.userId,
+    });
+    // Confirmed with no call-start at all — the exact shape `suspicious` exists
+    // to catch.
+    await staged.agent.api('POST', `/api/erp/orders/${created.body.data.id}/call`, {
+      result: 'confirmed',
+    });
+
+    const r = await html('/console/erp/orders', staged.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-badge="suspicious"/);
+  });
+
+  test('a note on a call shows as a badge carrying the note itself', async () => {
+    const staged = await makeErpTenant(`note-${uid()}`);
+    const created = await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Noted', phone: phone(), price: 300, agentUserId: staged.agent.userId,
+    });
+    await staged.agent.api('POST', `/api/erp/orders/${created.body.data.id}/note`, {
+      note: 'Customer asked to be called after 18h', noteType: 'client_instructions',
+    });
+
+    const r = await html('/console/erp/orders', staged.manager.token);
+    assert.match(r.body, /data-badge="note"/);
+    assert.match(r.body, /called after 18h/, 'the note itself is the tooltip, as the legacy row does it');
+  });
+
+  test('every row can be found by the flash primitive (N22)', async () => {
+    const r = await html('/console/erp/orders', acme.manager.token);
+    assert.match(r.body, /data-flash-id="/, 'row-flash.ts has nothing to mark without this');
+  });
+});

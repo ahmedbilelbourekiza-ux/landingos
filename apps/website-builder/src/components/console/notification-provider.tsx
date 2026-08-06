@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { toneVars } from "@landingos/ui";
 
+import { flashEntity } from "@/components/console/row-flash";
+
 /* =============================================================================
  * The notification consumer — LP.7, closing N2, N3, L1 and L2.
  *
@@ -138,6 +140,19 @@ export function NotificationProvider({
 
       if (!payload.replayed) {
         setToasts((current) => [...current, payload as Feed].slice(-MAX_TOASTS));
+        /* LP.8 / N22 — MARK THE ROW THE EVENT IS ABOUT.
+         *
+         * A live notification names an entity, and a screen that refreshes by
+         * itself is a screen where a change is invisible unless you happened to
+         * be reading that row. `flashEntity` retries until the row exists, so
+         * the highlight survives the 500 ms refresh below re-rendering the
+         * table underneath it — and does nothing at all when the entity is not
+         * on this screen, which is most of the time.
+         *
+         * Live only. A replayed backlog would flash twenty rows at once, which
+         * is the same noise the replay-does-not-toast rule above exists to
+         * prevent. */
+        flashEntity(payload.entityId);
       }
       // Both live and replayed events move the server truth, so both refresh.
       scheduleRefresh();

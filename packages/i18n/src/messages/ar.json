@@ -76,6 +76,24 @@
       "marketer": "المسوّق",
       "brand": "العلامة"
     },
+    "row": {
+      "overdue": "متأخر",
+      "noted": "ملاحظة",
+      "suspicious": "مكالمة مشبوهة",
+      "typeDraft": "مسودة",
+      "typeAbandoned": "سلة متروكة",
+      "typeNormal": "طلب",
+      "channel": "القناة",
+      "unitPrice": "المنتجات",
+      "shipping": "التوصيل",
+      "discount": "الخصم",
+      "quickActions": "إجراءات سريعة",
+      "carrier": "شركة التوصيل",
+      "noCarrier": "بدون شركة توصيل",
+      "expressShort": "سريع",
+      "saving": "جارٍ الحفظ…",
+      "noAgent": "غير معيّن"
+    },
     "order": {
       "title": "الطلب",
       "customerCard": "الزبون",

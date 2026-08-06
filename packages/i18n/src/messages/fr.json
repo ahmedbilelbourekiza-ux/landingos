@@ -76,6 +76,24 @@
       "marketer": "Marketeur",
       "brand": "Marque"
     },
+    "row": {
+      "overdue": "En retard",
+      "noted": "Note",
+      "suspicious": "Appel signalé",
+      "typeDraft": "Brouillon",
+      "typeAbandoned": "Panier abandonné",
+      "typeNormal": "Commande",
+      "channel": "Canal",
+      "unitPrice": "Articles",
+      "shipping": "Livraison",
+      "discount": "Remise",
+      "quickActions": "Actions rapides",
+      "carrier": "Transporteur",
+      "noCarrier": "Aucun transporteur",
+      "expressShort": "Express",
+      "saving": "Enregistrement…",
+      "noAgent": "Non assigné"
+    },
     "order": {
       "title": "Commande",
       "customerCard": "Client",

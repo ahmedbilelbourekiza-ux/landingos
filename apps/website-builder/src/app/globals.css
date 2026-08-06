@@ -113,3 +113,36 @@
     background: transparent;
   }
 }
+
+/* -----------------------------------------------------------------------------
+ * LP.8 / N22 — the changed row flashes.
+ *
+ * Driven by `components/console/row-flash.ts`, which adds and removes the class.
+ * It is a plain CSS animation rather than a transition so the reflow trick in
+ * that file can restart it: a second change to the same row within three seconds
+ * must flash again, and a transition already at its end state does not.
+ *
+ * `prefers-reduced-motion` keeps the highlight and drops the fade — the point is
+ * to say WHICH row moved, and removing the mark entirely would take the
+ * information away from the people who asked for less motion, not just the
+ * animation.
+ * -------------------------------------------------------------------------- */
+@keyframes row-flash-fade {
+  from {
+    background-color: color-mix(in oklab, var(--accent) 85%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.row-flash {
+  animation: row-flash-fade 3s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-flash {
+    animation: none;
+    background-color: color-mix(in oklab, var(--accent) 60%, transparent);
+  }
+}

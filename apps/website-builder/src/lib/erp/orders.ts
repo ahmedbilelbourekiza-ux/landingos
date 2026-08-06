@@ -225,8 +225,84 @@ export const ORDER_LIST_SELECT = {
   externalId: true, externalName: true, source: true, salesChannelId: true,
   overdueFlaggedAt: true, pendingCallStart: true,
   createdAt: true, updatedAt: true,
+  /* LP.8 / N21 — THE FACTS THE ROW WAS MISSING.
+   *
+   * The measured gap was 8 facts against 14, and the four that decide what to
+   * do next were all absent: whether an order is overdue, whether anybody has
+   * called it, whether there is a note on it, and whether it is flagged. Three
+   * of those were already derivable from columns above (`_count.calls`,
+   * `createdAt`, `classification`); these are the rest of the legacy row.
+   *
+   * The MONEY BREAKDOWN is here because a total alone cannot be checked. A
+   * customer disputing "4,900" is disputing one of three numbers — the items,
+   * the delivery or the discount — and the legacy row shows all three. They are
+   * scalars on the same table, so this costs nothing.
+   *
+   * `salesChannelName`, `platform` and `brand` are the denormalised display
+   * columns the channel webhooks already write. Reading them here rather than
+   * joining `SalesChannel` per row is why they are denormalised at all. */
+  unitPrice: true, subtotal: true, discount: true, shippingCost: true,
+  expressDelivery: true, callReminderStatus: true,
+  salesChannelName: true, platform: true, brand: true,
   _count: { select: { calls: true } },
 } satisfies Prisma.FulfillmentOrderSelect;
+
+/* -----------------------------------------------------------------------------
+ * What a row says about itself — LP.8, closing N10 and N21
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The row facts the legacy derived and the platform did not show.
+ *
+ * Ported from `isDraftOrder` / `isAbandonedOrder` / the overdue expression in
+ * `apps/erp/index.html`'s `renderListView`. Derived HERE rather than in the
+ * page for the same reason `orderFilterFields` lives beside `orderFilters`: the
+ * order list, the board and the queue all need the same answer, and three
+ * copies of "is this abandoned" is three chances for one screen to disagree
+ * with another about the same order.
+ *
+ * `overdue` takes the threshold as an argument rather than reading settings,
+ * because the caller has already read them once for the whole page — and
+ * because the tenant's own `alertMinutes` is the threshold the dashboard banner
+ * and the queue badge use. A number invented here would be a fourth opinion.
+ */
+export interface OrderRowFacts {
+  readonly draft: boolean;
+  readonly abandoned: boolean;
+  readonly fake: boolean;
+  readonly overdue: boolean;
+  readonly neverCalled: boolean;
+}
+
+export function orderRowFacts(
+  order: {
+    orderType?: string | null;
+    status?: string | null;
+    source?: string | null;
+    classification?: string | null;
+    createdAt: Date;
+    _count: { calls: number };
+  },
+  alertMinutes: number,
+  now: number = Date.now(),
+): OrderRowFacts {
+  const neverCalled = order._count.calls === 0;
+  return {
+    // `source` matters as much as `orderType`: a Shopify draft arrives with
+    // `source: "shopify_draft"` and an orderType the channel adapter never set.
+    draft: order.orderType === "draft" || order.source === "shopify_draft",
+    abandoned:
+      order.orderType === "abandoned" ||
+      order.status === "abandoned" ||
+      order.source === "shopify_abandoned",
+    fake: order.classification === "fake",
+    neverCalled,
+    // NEVER CALLED **and** older than the threshold — not "old". An order
+    // somebody has phoned three times is being worked, however old it is, and
+    // colouring it red teaches operators to ignore the colour.
+    overdue: neverCalled && now - order.createdAt.getTime() > alertMinutes * 60_000,
+  };
+}
 
 const ORDER_SORT_COLUMNS: Record<string, keyof Prisma.FulfillmentOrderOrderByWithRelationInput> = {
   createdAt: "createdAt",

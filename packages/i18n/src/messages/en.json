@@ -76,6 +76,24 @@
       "marketer": "Marketer",
       "brand": "Brand"
     },
+    "row": {
+      "overdue": "Overdue",
+      "noted": "Note",
+      "suspicious": "Flagged call",
+      "typeDraft": "Draft",
+      "typeAbandoned": "Abandoned cart",
+      "typeNormal": "Order",
+      "channel": "Channel",
+      "unitPrice": "Items",
+      "shipping": "Delivery",
+      "discount": "Discount",
+      "quickActions": "Quick actions",
+      "carrier": "Carrier",
+      "noCarrier": "No carrier",
+      "expressShort": "Express",
+      "saving": "Saving…",
+      "noAgent": "Unassigned"
+    },
     "order": {
       "title": "Order",
       "customerCard": "Customer",
