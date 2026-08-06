@@ -99,7 +99,9 @@
       "outcome": "Issue",
       "settledAt": "Réglée le",
       "fake": "Marquée fausse",
-      "backToList": "Retour aux commandes"
+      "backToList": "Retour aux commandes",
+      "audit": "Qui a changé quoi",
+      "auditEmpty": "Rien n’a encore été enregistré pour cette commande."
     },
     "clients": {
       "title": "Clients",
@@ -188,7 +190,12 @@
       "perDelivered": "Par livrée",
       "suspended": "Suspendu",
       "daysOff": "Jours de repos",
-      "none": "Aucun membre"
+      "none": "Aucun membre",
+      "missed": "Commandes manquées",
+      "resetMissed": "Remettre à zéro",
+      "suspicious": "Appels signalés",
+      "payroll": "Paie de la période",
+      "payrollHint": "Le salaire est proratisé selon la règle de période ; la paie à la commande compte ce qui s’est réellement passé."
     },
     "write": {
       "readOnly": "Vous pouvez consulter cette commande, pas la modifier.",
@@ -287,7 +294,9 @@
       "orderHint": "Pour une commande prise par téléphone. Un nom ou un numéro suffit pour commencer ; le reste peut être complété plus tard.",
       "defaultCarrier": "Utiliser le transporteur par défaut",
       "webhookSecret": "Secret du webhook",
-      "exportSelected": "Exporter la sélection"
+      "exportSelected": "Exporter la sélection",
+      "resetPassword": "Définir un mot de passe",
+      "resetPasswordHint": "Définir un mot de passe déconnecte cette personne partout, dans toutes ses entreprises — c’est l’identifiant qui change, pas son accès à une équipe."
     },
     "settings": {
       "title": "Règles d'automatisation",
@@ -374,7 +383,9 @@
         "yesterday": "Hier",
         "week": "7 derniers jours",
         "month": "30 derniers jours"
-      }
+      },
+      "suspicious": "Qualité d’appel",
+      "suspiciousOnly": "Appels signalés uniquement"
     },
     "export": {
       "title": "Exporter",

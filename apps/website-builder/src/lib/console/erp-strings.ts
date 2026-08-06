@@ -132,6 +132,7 @@ export function agentStrings(t: (key: string) => string): AgentStrings {
     daysOff: t("erp.agents.daysOff"),
     suspend: t("erp.write.suspend"),
     reactivate: t("erp.write.reactivate"),
+    resetMissed: t("erp.agents.resetMissed"),
     // Sunday first, because that is what getDay() returns and what the config
     // stores — the labels follow the data, not the local week convention.
     days: [

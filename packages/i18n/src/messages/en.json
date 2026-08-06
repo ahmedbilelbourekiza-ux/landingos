@@ -99,7 +99,9 @@
       "outcome": "Outcome",
       "settledAt": "Settled",
       "fake": "Marked fake",
-      "backToList": "Back to orders"
+      "backToList": "Back to orders",
+      "audit": "Who changed what",
+      "auditEmpty": "Nothing has been recorded for this order yet."
     },
     "clients": {
       "title": "Customers",
@@ -188,7 +190,12 @@
       "perDelivered": "Per delivered",
       "suspended": "Suspended",
       "daysOff": "Days off",
-      "none": "Nobody on the team yet"
+      "none": "Nobody on the team yet",
+      "missed": "Missed orders",
+      "resetMissed": "Reset counter",
+      "suspicious": "Flagged calls",
+      "payroll": "Pay for this period",
+      "payrollHint": "Salary is prorated by the period rule; per-order pay counts what actually happened in it."
     },
     "write": {
       "readOnly": "You can read this order but not change it.",
@@ -287,7 +294,9 @@
       "orderHint": "For an order taken by phone. A name or a number is enough to start; the rest can be filled in later.",
       "defaultCarrier": "Use the default carrier",
       "webhookSecret": "Webhook secret",
-      "exportSelected": "Export selected"
+      "exportSelected": "Export selected",
+      "resetPassword": "Set a new password",
+      "resetPasswordHint": "Setting a password signs that person out everywhere, on every company they belong to — the credential changed, not their access to one team."
     },
     "settings": {
       "title": "Automation rules",
@@ -374,7 +383,9 @@
         "yesterday": "Yesterday",
         "week": "Last 7 days",
         "month": "Last 30 days"
-      }
+      },
+      "suspicious": "Call quality",
+      "suspiciousOnly": "Flagged calls only"
     },
     "export": {
       "title": "Export",

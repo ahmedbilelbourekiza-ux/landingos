@@ -29,6 +29,8 @@ import type { WriteOption } from "@/components/console/edit-field";
 const FIELD = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
 
 export interface TeamStrings {
+  readonly resetPassword: string;
+  readonly resetPasswordHint: string;
   readonly saving: string;
   readonly save: string;
   readonly edit: string;
@@ -286,6 +288,34 @@ function MemberRow({
               data-testid="team-remove"
             >
               {s.remove}
+            </ActionButton>
+
+            {/* R15. There was self-service change and nothing else — no reset
+                and no forgot-password flow — so a locked-out agent could not be
+                recovered by anybody, which in a call centre is a weekly event.
+                It is behind the same guards as everything else on this row: not
+                the owner, and never yourself (changing your own password is
+                /console/settings/profile, which asks for the current one).
+
+                D-LP.12.1: this one DOES sign the person out everywhere, unlike
+                suspension. The credential is global — it is how they prove who
+                they are to every company they belong to — and the warning says
+                so before the click rather than after it. */}
+            <ActionButton
+              pending={pending}
+              pendingLabel={s.saving}
+              data-testid="team-reset-password"
+              data-user-id={member.userId}
+              onClick={() => {
+                const next = prompt(s.resetPasswordHint);
+                if (next) {
+                  void run("POST", `/api/platform/team/members/${member.userId}/password`, {
+                    password: next,
+                  });
+                }
+              }}
+            >
+              {s.resetPassword}
             </ActionButton>
           </>
         ) : null}

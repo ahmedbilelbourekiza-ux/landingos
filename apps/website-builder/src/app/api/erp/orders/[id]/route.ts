@@ -51,6 +51,36 @@ export const PATCH = tenantRoute<Params>("erp:orders:write", async ({ db, req, s
   const tenantId = session.auth!.tenantId;
   await updateOrder(db, tenantId, params.id, patch.data);
 
+  /* LP.12 / N12 — THE EDIT IS RECORDED, AND IT WAS NOT.
+   *
+   * `AuditEvent` exists, `GET /api/erp/audit` exists, `erp:audit:read` is a
+   * declared permission — and **no order mutation wrote a row**. The ERP audits
+   * every order edit and shows it in an investigation modal, because this is the
+   * path that changes a price, a status, an assigned agent and a delivery
+   * address: money and accountability. "Who moved this order to confirmed?" had
+   * no answer on the platform, only "it is confirmed".
+   *
+   * WHICH FIELDS, NOT WHAT THEY BECAME. The keys are recorded and the values are
+   * not: an order carries a customer's name, phone number and address, and an
+   * audit table is read by anybody holding `erp:audit:read`. The row that
+   * matters — who, when, which fields — is here; the values are on the order.
+   *
+   * In the same transaction as the update, so an edit that rolls back leaves no
+   * record of having happened. */
+  await db.auditEvent.create({
+    data: {
+      tenantId,
+      product: "erp",
+      entity: "order",
+      entityId: params.id,
+      action: patch.data.status && patch.data.status !== order.status
+        ? `status:${patch.data.status}`
+        : "edit",
+      userId: session.user.id,
+      payload: { fields: Object.keys(patch.data).sort() },
+    },
+  });
+
   // The second door into `confirmed`. The ERP's comment on its own version of
   // this branch is the reason it exists: a status change made from the list
   // dropdown must trigger the same side effects as one made by logging a call,

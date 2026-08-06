@@ -87,6 +87,8 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   ['GET', '/api/erp/sales-channels'],
   ['GET', '/api/erp/agents'],
   ['GET', '/api/erp/agents/payroll'],
+  // LP.12. Forgiving an accountability counter that nothing else could lower.
+  ['POST', '/api/erp/agents/nonexistent/reset-missed'],
   ['GET', '/api/erp/settings'],
   ['PUT', '/api/erp/settings'],
   ['GET', '/api/erp/followup/tasks'],
@@ -181,6 +183,7 @@ describe('an agent cannot do a manager’s job', () => {
     ['POST', '/api/erp/sales-channels', { name: 's', platform: 'shopify' }],
     ['POST', '/api/erp/ai/providers', { name: 'a', type: 'openai-compat' }],
     ['GET', '/api/erp/agents/payroll'],
+    ['POST', '/api/erp/agents/nonexistent/reset-missed', {}],
     ['POST', '/api/erp/financial-records', { periodType: 'week', startDate: 1, endDate: 2 }],
     ['POST', '/api/erp/products', { name: 'nope' }],
     // Gated before the id is resolved, so a nonexistent one still answers 403

@@ -588,3 +588,25 @@ export async function stampReferenceWithoutCounter(
     await (tx as any).tenantSequence.deleteMany({ where: { tenantId, name: 'order' } });
   });
 }
+
+/**
+ * Raise an agent's missed-order counter without waiting for the sweep — LP.12.
+ *
+ * There is no route that raises it: the overdue sweep does, on a schedule, and
+ * that is exactly why the counter could reach `suspendThreshold` with nothing
+ * able to lower it again. Staging the state is the only way to test the way out.
+ */
+export async function setAgentMissed(tenantId: string, userId: string, missedOrders: number) {
+  await withTenant(tenantId, async (tx) => {
+    const key = `agent:${userId}`;
+    const row = await (tx as any).productSetting.findUnique({
+      where: { tenantId_product_key: { tenantId, product: 'erp', key } },
+    });
+    const value = { ...(row?.value ?? {}), missedOrders };
+    await (tx as any).productSetting.upsert({
+      where: { tenantId_product_key: { tenantId, product: 'erp', key } },
+      create: { tenantId, product: 'erp', key, value },
+      update: { value },
+    });
+  });
+}

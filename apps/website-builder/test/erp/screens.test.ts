@@ -5,7 +5,7 @@ import { SESSION_COOKIE } from '@landingos/auth';
 
 import {
   skip, BASE, uid, phone, makeTenant, makeMember, makeErpTenant, makeFollowupTask, cleanup,
-  setCarrierAdapter, slugOf,
+  setCarrierAdapter, slugOf, setAgentMissed,
   contractTest as test,
   type Caller,
 } from './helpers.ts';
@@ -1877,6 +1877,203 @@ describe('the agent has a queue to work', () => {
     assert.ok(
       !new RegExp(`data-order-id="${betaOrder}"`).test(r.body),
       "another tenant's order reached this queue",
+    );
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * LP.12 — the accountability surface: a counter that only rose, a flag nobody
+ * could see, a payroll report nothing rendered, and an audit trail with no
+ * screen
+ * -------------------------------------------------------------------------- */
+
+describe('the missed-order counter can finally be reset (R14)', () => {
+  test('it is cleared, the previous value is reported, and an audit row is written', async () => {
+    // THE TRAP THIS CLOSES: the overdue sweep raises `missedOrders` and
+    // `autoSuspend` locks the account out at `suspendThreshold`, and NOTHING
+    // could lower it — so every agent eventually trips auto-suspension with no
+    // way back except editing a ProductSetting row by hand. It is latent, and
+    // uptime is what triggers it.
+    const staged = await makeErpTenant(`missed-${uid()}`);
+
+    // Stage the state the sweep produces. There is no route that raises the
+    // counter directly, which is exactly why it needs staging.
+    await setAgentMissed(staged.tenantId, staged.agent.userId, 4);
+
+    const before = await staged.manager.api('GET', '/api/erp/agents');
+    const row = before.body.data.items.find((a: { userId: string }) => a.userId === staged.agent.userId);
+    assert.equal(row.missedOrders, 4);
+
+    const r = await staged.manager.api(
+      'POST', `/api/erp/agents/${staged.agent.userId}/reset-missed`, {},
+    );
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.missedOrders, 0);
+    assert.equal(r.body.data.was, 4, 'the reset does not say what it forgave');
+
+    const after = await staged.manager.api('GET', '/api/erp/agents');
+    assert.equal(
+      after.body.data.items.find((a: { userId: string }) => a.userId === staged.agent.userId).missedOrders,
+      0,
+    );
+
+    const audit = await staged.manager.api(
+      'GET', `/api/erp/audit?entity=agent&entityId=${staged.agent.userId}`,
+    );
+    assert.ok(
+      audit.body.data.items.some((e: { action: string }) => e.action === 'reset-missed'),
+      'forgiving an accountability counter left no record',
+    );
+  });
+
+  test('it does NOT reactivate a suspended account', async () => {
+    // Two decisions, not one. A supervisor may want the count forgiven and the
+    // account still locked while they have a conversation.
+    const staged = await makeErpTenant(`missed-susp-${uid()}`);
+    await setAgentMissed(staged.tenantId, staged.agent.userId, 9);
+    await staged.manager.api('POST', `/api/erp/agents/${staged.agent.userId}/suspend`, {});
+
+    const r = await staged.manager.api(
+      'POST', `/api/erp/agents/${staged.agent.userId}/reset-missed`, {},
+    );
+    assert.equal(r.body.data.suspended, true, 'the lockout was silently lifted');
+  });
+
+  test('somebody who is not on this team is a 404, and an agent is refused', async () => {
+    assert.equal(
+      (await acme.manager.api('POST', '/api/erp/agents/not-a-user/reset-missed', {})).status,
+      404,
+    );
+    assert.equal(
+      (await acme.agent.api('POST', `/api/erp/agents/${acme.other.userId}/reset-missed`, {})).status,
+      403,
+    );
+  });
+
+  test('the control is offered only where there is something to reset', async () => {
+    // D-06.2 is as much about not offering a no-op as about not offering a
+    // refusal: a counter already at zero has no action behind the button.
+    const staged = await makeErpTenant(`missed-ui-${uid()}`);
+    const clean = await html('/console/erp/agents', staged.manager.token);
+    assert.equal(clean.status, 200);
+    assert.doesNotMatch(clean.body, /data-testid="agent-reset-missed"/);
+
+    await setAgentMissed(staged.tenantId, staged.agent.userId, 3);
+    const dirty = await html('/console/erp/agents', staged.manager.token);
+    assert.match(dirty.body, /data-testid="agent-reset-missed"/);
+    assert.match(dirty.body, /data-missed="3"/);
+  });
+});
+
+describe('the suspicious-call flag finally has a reader (R11)', () => {
+  test('a short confirmed call is flagged, and the order is findable by it', async () => {
+    // The whole point of `minCallSeconds` is catching somebody who marks orders
+    // confirmed without really phoning. The flag was computed and stored on
+    // every call and surfaced NOWHERE.
+    const staged = await makeErpTenant(`flag-${uid()}`);
+    await staged.manager.api('PUT', '/api/erp/settings', { minCallSeconds: 3600 });
+
+    const created = await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Rushed', phone: phone(), price: 1000, agentUserId: staged.agent.userId,
+    });
+    const id = created.body.data.id;
+    await staged.agent.api('POST', `/api/erp/orders/${id}/call-start`, {});
+    await staged.agent.api('POST', `/api/erp/orders/${id}/call`, { result: 'confirmed' });
+
+    const flagged = await staged.manager.api('GET', '/api/erp/orders?suspicious=true');
+    assert.ok(
+      flagged.body.data.items.some((o: { id: string }) => o.id === id),
+      'the filter does not find an order carrying a flagged call',
+    );
+
+    // And it narrows: an order with no flagged call is not in that list.
+    const plain = await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Unrushed', phone: phone(), price: 1000,
+    });
+    const still = await staged.manager.api('GET', '/api/erp/orders?suspicious=true');
+    assert.ok(
+      !still.body.data.items.some((o: { id: string }) => o.id === plain.body.data.id),
+      'the filter is not filtering',
+    );
+  });
+
+  test('the roster shows a per-agent count that links to those orders', async () => {
+    const staged = await makeErpTenant(`flag-ui-${uid()}`);
+    await staged.manager.api('PUT', '/api/erp/settings', { minCallSeconds: 3600 });
+    const created = await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Rushed Two', phone: phone(), price: 1000, agentUserId: staged.agent.userId,
+    });
+    await staged.agent.api('POST', `/api/erp/orders/${created.body.data.id}/call-start`, {});
+    await staged.agent.api('POST', `/api/erp/orders/${created.body.data.id}/call`, { result: 'confirmed' });
+
+    const r = await html('/console/erp/agents', staged.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-flagged="1"/);
+    assert.match(r.body, /suspicious=true/, 'the count does not lead anywhere');
+  });
+
+  test('the filter is offered on the order list, in the one filter vocabulary', async () => {
+    // D-LP.3: it lives in `orderFilters` rather than on an Alerts screen of its
+    // own, so "flagged calls for Alger this week" can be narrowed further,
+    // exported, or opened in analytics — none of which a separate screen could.
+    const r = await html('/console/erp/orders', acme.manager.token);
+    assert.match(r.body, /name="suspicious"/);
+  });
+});
+
+describe('the payroll report is rendered somewhere (N11)', () => {
+  test('the roster shows what each person is owed for the current month', async () => {
+    // `GET /api/erp/agents/payroll` existed and NOTHING rendered it, so the
+    // numbers somebody is actually paid were reachable only by hand-typing a URL.
+    const staged = await makeErpTenant(`pay-${uid()}`);
+    await staged.manager.api('PATCH', `/api/erp/agents/${staged.agent.userId}`, {
+      baseSalaryMonthly: 48000, payPerConfirmedOrder: 0, payPerDeliveredOrder: 0,
+    });
+
+    const r = await html('/console/erp/agents', staged.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, new RegExp(`data-pay="${staged.agent.userId}"`));
+    // A whole month under the aligned rule is the salary unchanged — the same
+    // rule a rent is prorated by since LP.16b, so the two cannot disagree.
+    assert.match(r.body, /48[\s  ,.]?000/);
+  });
+});
+
+describe('an order carries its own audit trail (N12)', () => {
+  test('a manager sees who changed what; the trail is not invented', async () => {
+    const created = await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Audited', phone: phone(), price: 2000,
+    });
+    const id = created.body.data.id;
+    await acme.manager.api('PATCH', `/api/erp/orders/${id}`, { managerNote: 'checked' });
+
+    const r = await html(`/console/erp/orders/${id}`, acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="order-audit"/);
+    assert.match(r.body, /data-audit-action="/, 'the trail rendered empty for an order that was edited');
+  });
+
+  test('the screen follows the ROUTE’s permission, not a second opinion', async () => {
+    // D-06.2: the section is gated on `erp:audit:read`, which is what
+    // `GET /api/erp/audit` checks — and which every member holds by role glob,
+    // because it is not on the SENSITIVE list. So an agent DOES see it, and the
+    // screen agrees with the API rather than inventing a stricter rule.
+    //
+    // Whether `erp:audit:read` SHOULD be sensitive is an authorization question
+    // of the same shape as N16, not a rendering one: it is recorded rather than
+    // decided here.
+    const mine = await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Agent Order', phone: phone(), price: 500, agentUserId: acme.agent.userId,
+    });
+    const id = mine.body.data.id;
+
+    const viaApi = await acme.agent.api('GET', `/api/erp/audit?entity=order&entityId=${id}`);
+    const r = await html(`/console/erp/orders/${id}`, acme.agent.token);
+    assert.equal(r.status, 200, 'the agent must still see their own order');
+    assert.equal(
+      /data-testid="order-audit"/.test(r.body),
+      viaApi.status === 200,
+      'the screen and the route disagree about who may read the trail',
     );
   });
 });

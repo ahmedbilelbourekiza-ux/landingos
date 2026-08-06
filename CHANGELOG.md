@@ -12,6 +12,133 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.12 Accountability — a counter that only rose, a flag nobody saw
+
+[Opus 5]
+Date: 6 August 2026
+Summary: R14, R11, N11, N12 and R15, plus a defect N12 turned out to be hiding.
+screens 130 → **140**, team 56 → **62**, access 82 → **84**.
+
+#### R14 — the missed-order counter only ever went UP
+
+The overdue sweep raises `missedOrders` every time an order sits with an agent
+past `reassignMinutes` with no call logged, and `autoSuspend` locks the account
+out at `suspendThreshold`. **Nothing could lower it.** So every agent eventually
+trips auto-suspension with no way back except editing a `ProductSetting` row by
+hand — a latent trap whose trigger is uptime.
+
+`POST /api/erp/agents/[id]/reset-missed`, with an audit row, because forgiving an
+accountability counter is exactly the act somebody should be able to ask about
+later. **It does NOT reactivate**: clearing the count and lifting a lockout are
+two decisions, and a supervisor may want the first while they have a
+conversation. The response says what the suspension state still is, and the
+control is offered only where the counter is above zero — D-06.2 is as much
+about not offering a no-op as about not offering a refusal.
+
+#### R11 — the flag was computed, stored, and shown nowhere
+
+`OrderCall.suspicious` is written on every logged call shorter than the tenant's
+`minCallSeconds` that was nevertheless marked confirmed. The whole point of that
+setting is catching somebody who marks orders confirmed without really phoning,
+and **the data was being collected where no screen showed it.**
+
+Two readers now: a per-agent count on the roster that links straight to those
+orders, and a `suspicious=true` filter in `orderFilters`.
+
+**It is a FILTER rather than an Alerts screen, and that is a deviation from the
+legacy worth stating.** In `orderFilters` it shares one vocabulary with the list,
+the export and the analytics (D-LP.3), so "flagged calls for Alger this week" can
+be narrowed further, handed to an export, or opened in analytics — none of which
+a separate screen could do. The legacy's Alerts page can only ever show
+"everything flagged, newest first".
+
+#### N11 — the payroll report existed and nothing rendered it
+
+`GET /api/erp/agents/payroll` was reachable only by hand-typing a URL. The roster
+now shows what each person is owed for the current calendar month, under the
+aligned proration rule LP.16b made shared — so the salary line here and the one
+on a saved P&L cannot disagree.
+
+#### N12 — and the defect underneath it: order edits were not audited at all
+
+N12 said the audit route existed and the detail screen did not render it. Half
+true. **`AuditEvent` exists, `GET /api/erp/audit` exists, `erp:audit:read` is a
+declared permission — and no order mutation wrote a row.** There was nothing to
+render. `PATCH /api/erp/orders/[id]` changes a price, a status, an assigned agent
+and a delivery address; "who moved this order to confirmed?" had no answer on the
+platform, only "it is confirmed".
+
+The edit is recorded now, in the same transaction as the update so an edit that
+rolls back leaves no record of having happened, and the trail is on the order
+detail. **WHICH FIELDS, NOT WHAT THEY BECAME**: an order carries a customer's
+name, phone number and address, and an audit table is read by anybody holding
+`erp:audit:read`. The keys are the accountability; the values are on the order.
+
+**And the test records an authorization question rather than deciding it.**
+`erp:audit:read` is not on the SENSITIVE list, so every member holds it by role
+glob and an agent DOES see the trail. The screen follows the ROUTE (D-06.2)
+rather than inventing a stricter rule, and the test asserts the two agree in
+whichever direction the permission goes. Whether that permission SHOULD be
+sensitive is the same shape of question as N16 and belongs to its own review.
+
+#### R15 — a locked-out colleague could not be recovered by anybody
+
+Self-service change and nothing else: no reset, no forgot-password flow. In a
+call centre that is a weekly event.
+
+`POST /api/platform/team/members/[userId]/password`, on the PLATFORM team
+surface rather than in the ERP, because identity is a platform concern. Behind
+`targetMemberError` — the owner is immutable and nobody resets themselves, since
+changing your own password is the profile screen, which asks for the current one.
+
+**D-LP.12.1 — this one DOES destroy sessions, and suspension deliberately does
+not.** D-07.2 keeps `destroySessionsForUser` away from suspension because it is
+keyed on the PERSON and one person belongs to many companies. A password reset is
+the opposite case for the same reason: the credential is global. Leaving old
+sessions alive would mean the person who forgot the password still cannot get in
+while whoever was already signed in on a shared handset stays signed in — which
+is backwards, since "somebody else has my session" is one of the reasons a reset
+gets asked for. The screen says so before the click.
+
+The new password is never echoed, never logged, and never lands in the audit
+payload — only that a reset happened, by whom, to whom, and how many sessions
+went.
+
+#### Files
+
+New: `src/app/api/erp/agents/[id]/reset-missed/route.ts`,
+`src/app/api/platform/team/members/[userId]/password/route.ts`.
+
+Changed: `src/lib/erp/orders.ts` (the `suspicious` filter and its field),
+`src/app/api/erp/orders/[id]/route.ts` (the audit write),
+`src/app/console/erp/agents/page.tsx`,
+`src/app/console/erp/orders/[id]/page.tsx`,
+`src/components/console/erp/agent-write.tsx`,
+`src/components/console/platform/team-screen.tsx`,
+`src/lib/console/{erp-strings,platform-strings}.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (+11 keys each),
+`test/erp/{helpers,screens,access}.test.ts`, `test/platform/team.test.ts`.
+
+#### Migration
+
+None. No schema change — `OrderCall.suspicious`, `AuditEvent` and the
+`agent:<userId>` `ProductSetting` all already existed.
+
+#### Risk
+
+**Low**, with one behaviour addition worth naming: `PATCH /api/erp/orders/[id]`
+now writes an `AuditEvent` per edit. That is one insert on a path that already
+writes, in the same transaction, and it is append-only — but it means the audit
+table grows with order edits rather than only with settings changes, which is the
+point.
+
+#### Verified
+
+build clean · screens 140/140 · team 62/62 · access 84/84 · orders 40/40 ·
+listing 30/30 · catalog 55/55 · i18n 18/18.
+
+---
+
 ### LP.14 Carriers — the integration log gets its first writer
 
 [Opus 5]

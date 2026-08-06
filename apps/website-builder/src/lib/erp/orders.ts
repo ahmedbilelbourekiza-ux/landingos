@@ -364,6 +364,23 @@ export function orderFilters(params: URLSearchParams): Prisma.FulfillmentOrderWh
     if (bounds) where.createdAt = bounds;
   }
 
+  /* LP.12 / R11 — ORDERS CARRYING A SUSPICIOUS CALL.
+   *
+   * `OrderCall.suspicious` is computed and stored on every logged call — a call
+   * shorter than the tenant's `minCallSeconds` that was nevertheless marked
+   * confirmed — and **nothing surfaced it**. The whole point of that setting is
+   * catching an agent who marks orders confirmed without really phoning, and the
+   * data was being collected where nobody could see it.
+   *
+   * It goes in `orderFilters` rather than on a screen of its own so it shares
+   * one filter vocabulary with the list, the export and the analytics (D-LP.3):
+   * "suspicious calls for Alger this week" is then a filter somebody can narrow
+   * further, hand to an export, or open in analytics — none of which a separate
+   * Alerts screen could do. */
+  if (get("suspicious") === "true") {
+    where.calls = { some: { suspicious: true } };
+  }
+
   const search = get("search");
   if (search) {
     // `mode: insensitive` is not optional here. Postgres LIKE is
@@ -441,6 +458,12 @@ export function orderFilterFields(opts: {
       label: t("erp.filters.classification"),
       kind: "select",
       options: [{ value: "fake", label: t("erp.filters.fake") }],
+    },
+    {
+      name: "suspicious",
+      label: t("erp.filters.suspicious"),
+      kind: "select",
+      options: [{ value: "true", label: t("erp.filters.suspiciousOnly") }],
     },
     {
       name: "deliveryOutcome",

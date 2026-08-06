@@ -122,12 +122,28 @@ export default async function ErpOrderDetail({
       },
     });
 
-    return { order, calls, shipment, members };
+    /* N12. The platform audit trail for THIS order, read only for somebody
+       holding `erp:audit:read`. Seeing an order is doing your job; seeing who
+       else touched it is supervision — the same distinction the analytics
+       league table draws. `null` rather than `[]` when withheld, so the section
+       is absent rather than rendering an empty list that reads as "nobody
+       touched this". */
+    const audit = can(session.auth!, "erp:audit:read")
+      ? await db.auditEvent.findMany({
+          where: { product: "erp", entity: "order", entityId: id },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+          select: { id: true, userId: true, action: true, createdAt: true },
+        })
+      : null;
+
+    return { order, calls, shipment, members, audit };
   });
 
   if (!data || !mayTouchOrder(session, data.order)) notFound();
 
-  const { order, calls, shipment, members } = data;
+  const { order, calls, shipment, members, audit } = data;
+  const actorNames = new Map(members.map((m) => [m.userId, m.user.name || m.user.email]));
   const currency = session.tenant!.currency;
   const tone = resolveStatus("confirmation", order.status ?? "");
   const attempts = calls.filter((c) => c.result);
@@ -532,6 +548,36 @@ export default async function ErpOrderDetail({
           </ul>
         )}
       </section>
+
+      {/* N12 — WHO CHANGED WHAT. The ERP opens an investigation modal per
+          order; `/api/erp/audit?entity=order&entityId=…` existed and no screen
+          rendered it, so the trail was reachable only by hand-typing a URL. It
+          is the answer to the question that follows every disputed order: who
+          moved it, when, and from what.
+
+          Gated on `erp:audit:read` rather than on reading the order. Seeing an
+          order is doing your job; seeing who else touched it is supervision, and
+          the same distinction the analytics league table draws. */}
+      {audit && (
+        <section className="mt-4 rounded-lg border border-border p-4" data-testid="order-audit">
+          <h2 className="text-sm font-medium">{t("erp.order.audit")}</h2>
+          {audit.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">{t("erp.order.auditEmpty")}</p>
+          ) : (
+            <ul className="mt-2 space-y-1 text-sm">
+              {audit.map((row) => (
+                <li key={row.id} data-audit-action={row.action} className="flex flex-wrap gap-2">
+                  <span className="text-muted-foreground">{formatDate(row.createdAt, locale)}</span>
+                  <span className="font-medium">{row.action}</span>
+                  <span className="text-muted-foreground">
+                    {row.userId ? (actorNames.get(row.userId) ?? row.userId) : t("erp.orders.unassigned")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <section className="mt-4 rounded-lg border border-border p-4" data-testid="order-shipment">
         <h2 className="text-sm font-medium">{t("erp.order.shipment")}</h2>

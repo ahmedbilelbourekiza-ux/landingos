@@ -953,3 +953,93 @@ describe('the team screen', () => {
   });
 });
 
+/* -----------------------------------------------------------------------------
+ * LP.12 — a locked-out colleague can be recovered (R15)
+ *
+ * There was self-service change and NOTHING ELSE: no reset and no
+ * forgot-password flow, so a locked-out agent could not be recovered by
+ * anybody. In a call centre that is a weekly event, and it turns into "somebody
+ * edits the database" the first time it happens on a busy morning.
+ * -------------------------------------------------------------------------- */
+
+describe('a manager can set a locked-out colleague’s password', () => {
+  contractTest('the new password works and the old sessions are gone', async () => {
+    // D-LP.12.1. Suspension deliberately does NOT destroy sessions (D-07.2),
+    // because that function is keyed on the PERSON and one person belongs to
+    // many companies. A password reset is the opposite case for the same
+    // reason: the credential is global. Leaving old sessions alive would mean
+    // the person who forgot the password still cannot get in while whoever was
+    // already signed in on a shared handset stays signed in.
+    const { owner, member } = await makeTeam(`pwd-${uid()}`);
+
+    const before = await member.api('GET', '/api/platform/team/members');
+    assert.notEqual(before.status, 401, 'the fixture session must start valid');
+
+    const r = await owner.api(
+      'POST', `/api/platform/team/members/${member.userId}/password`,
+      { password: 'a-brand-new-password-1' },
+    );
+    assert.equal(r.status, 200);
+    assert.ok(r.body.data.sessionsDestroyed >= 1, 'no session was destroyed');
+
+    const after = await member.api('GET', '/api/platform/team/members');
+    assert.equal(after.status, 401, 'the old session still works after a reset');
+  });
+
+  contractTest('a short password is refused, and the refusal changes nothing', async () => {
+    const { owner, member } = await makeTeam(`pwd-short-${uid()}`);
+    const r = await owner.api(
+      'POST', `/api/platform/team/members/${member.userId}/password`,
+      { password: 'short' },
+    );
+    assert.equal(r.status, 422);
+    assert.notEqual(
+      (await member.api('GET', '/api/platform/team/members')).status,
+      401,
+      'a refused reset destroyed a session anyway',
+    );
+  });
+
+  contractTest('the owner cannot be reset, and nobody resets themselves', async () => {
+    // The same guards as every other control on that row. Changing your own
+    // password is /console/settings/profile, which asks for the CURRENT one —
+    // which is exactly why this route must not be reachable against yourself.
+    const { owner } = await makeTeam(`pwd-owner-${uid()}`);
+    const r = await owner.api(
+      'POST', `/api/platform/team/members/${owner.userId}/password`,
+      { password: 'a-brand-new-password-1' },
+    );
+    assert.equal(r.status, 409);
+    assert.ok(['OWNER_IMMUTABLE', 'SELF_TARGET'].includes(r.body.error.code));
+  });
+
+  contractTest('somebody who is not on this team is a 404, never a 403', async () => {
+    const { owner } = await makeTeam(`pwd-404-${uid()}`);
+    const r = await owner.api(
+      'POST', '/api/platform/team/members/not-a-user/password',
+      { password: 'a-brand-new-password-1' },
+    );
+    assert.equal(r.status, 404);
+  });
+
+  contractTest('a MANAGER cannot reach it — the team surface is SENSITIVE', async () => {
+    const { tenantId, member } = await makeTeam(`pwd-mgr-${uid()}`);
+    const manager = await makeMember(tenantId, { role: 'MANAGER' });
+    const r = await manager.api(
+      'POST', `/api/platform/team/members/${member.userId}/password`,
+      { password: 'a-brand-new-password-1' },
+    );
+    assert.equal(r.status, 403);
+  });
+
+  contractTest('the control is on the screen, and it warns before the click', async () => {
+    const { owner } = await makeTeam(`pwd-ui-${uid()}`);
+    const res = await fetch(`${BASE}/console/settings/team`, {
+      headers: { cookie: `${SESSION_COOKIE}=${owner.token}; locale=en` },
+    });
+    const body = await res.text();
+    assert.equal(res.status, 200);
+    assert.match(body, /data-testid="team-reset-password"/);
+    assert.match(body, /signs that person out everywhere/i);
+  });
+});

@@ -44,6 +44,7 @@ export interface AgentStrings {
   readonly daysOff: string;
   readonly suspend: string;
   readonly reactivate: string;
+  readonly resetMissed: string;
   /** Seven, Sunday first — matching JS getDay(), which is what is stored. */
   readonly days: readonly string[];
 }
@@ -57,6 +58,7 @@ export interface AgentPay {
 export function AgentRowActions({
   userId,
   suspended,
+  missedOrders,
   jobRole,
   pay,
   daysOff,
@@ -68,6 +70,8 @@ export function AgentRowActions({
 }: {
   readonly userId: string;
   readonly suspended: boolean;
+  /** R14. The counter the overdue sweep raises and `autoSuspend` acts on. */
+  readonly missedOrders: number;
   readonly jobRole: string;
   readonly pay: AgentPay;
   readonly daysOff: readonly number[];
@@ -129,6 +133,25 @@ export function AgentRowActions({
             }
           >
             {suspended ? s.reactivate : s.suspend}
+          </ActionButton>
+        )}
+
+        {/* R14. Offered only where there is something to reset — a counter
+            already at zero has no action behind the button, and D-06.2 is as
+            much about not offering a no-op as about not offering a refusal.
+            Resetting does NOT reactivate: clearing an accountability counter and
+            lifting a lockout are two decisions, and a supervisor may want the
+            first without the second. */}
+        {missedOrders > 0 && (
+          <ActionButton
+            data-testid="agent-reset-missed"
+            data-user-id={userId}
+            data-missed={missedOrders}
+            pending={pending}
+            pendingLabel={s.saving}
+            onClick={() => void run("POST", `/api/erp/agents/${userId}/reset-missed`, {})}
+          >
+            {s.resetMissed}
           </ActionButton>
         )}
       </div>

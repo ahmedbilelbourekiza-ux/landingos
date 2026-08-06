@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { can } from "@landingos/auth";
@@ -10,7 +11,8 @@ import { agentStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
 import { AgentRowActions } from "@/components/console/erp/agent-write";
-import { readAllAgentConfigs, JOB_ROLES } from "@/lib/erp/agents";
+import { readAllAgentConfigs, computePayroll, JOB_ROLES } from "@/lib/erp/agents";
+import { alignedRange } from "@/lib/erp/prorate";
 
 export const dynamic = "force-dynamic";
 
@@ -39,16 +41,50 @@ export default async function ErpAgentsScreen() {
   // OWNER, ADMIN, or somebody granted it by name.
   if (!session.auth || !can(session.auth, "erp:agents:manage")) notFound();
 
-  const { members, configs } = await withTenant(session.auth.tenantId, async (db) => ({
-    members: await db.membership.findMany({
+  const { members, configs, flagged, payroll } = await withTenant(session.auth.tenantId, async (db) => {
+    const members = await db.membership.findMany({
       orderBy: { createdAt: "asc" },
       select: {
         userId: true, role: true, jobRole: true, suspended: true, createdAt: true,
         user: { select: { email: true, name: true } },
       },
-    }),
-    configs: await readAllAgentConfigs(db),
-  }));
+    });
+    const configs = await readAllAgentConfigs(db);
+
+    /* R11 — THE FLAG NOBODY COULD SEE. `OrderCall.suspicious` is computed and
+       stored on every logged call shorter than the tenant's `minCallSeconds`
+       that was nevertheless marked confirmed. The whole point of that setting is
+       catching somebody who marks orders confirmed without really phoning, and
+       the data was being collected where no screen showed it. One `groupBy`. */
+    const rows = await db.orderCall.groupBy({
+      by: ["agentUserId"],
+      where: { suspicious: true },
+      _count: { _all: true },
+    });
+    const flagged = new Map(
+      rows.map((r) => [r.agentUserId ?? "", (r._count as { _all: number })._all]),
+    );
+
+    /* N11 — the payroll report. `GET /api/erp/agents/payroll` existed and
+       NOTHING RENDERED IT, so the numbers an agent is actually paid were
+       reachable only by hand-typing a URL. Computed for the current calendar
+       month, aligned, under the same proration rule LP.16b made shared — so the
+       salary line here and on a saved P&L cannot disagree. */
+    const month = alignedRange("month")!;
+    const payroll = new Map<string, Awaited<ReturnType<typeof computePayroll>>>();
+    for (const m of members) {
+      const config = configs.get(m.userId) ?? {
+        baseSalaryMonthly: "0", payPerConfirmedOrder: "0", payPerDeliveredOrder: "0",
+        weeklyDaysOff: [], missedOrders: 0,
+      };
+      payroll.set(
+        m.userId,
+        await computePayroll(db, m.userId, config, month.start, month.end, "month"),
+      );
+    }
+
+    return { members, configs, flagged, payroll };
+  });
 
   const currency = session.tenant!.currency;
   const money = (v: string) => formatMoney(v, locale, currency);
@@ -127,6 +163,55 @@ export default async function ErpAgentsScreen() {
             cell: (m) => money(configs.get(m.userId)?.payPerDeliveredOrder ?? "0"),
           },
           {
+            // R11. The flag was computed, stored, and shown nowhere.
+            id: "flagged",
+            header: t("erp.agents.suspicious"),
+            numeric: true,
+            align: "end",
+            cell: (m) => {
+              const n = flagged.get(m.userId) ?? 0;
+              return n === 0 ? (
+                <span className="text-muted-foreground">0</span>
+              ) : (
+                <Link
+                  href={`/console/erp/orders?suspicious=true&agentUserId=${m.userId}`}
+                  data-flagged={n}
+                  className="font-medium underline"
+                >
+                  {n}
+                </Link>
+              );
+            },
+          },
+          {
+            // R14. The counter only ever ROSE — the sweep increments it and
+            // `autoSuspend` locks the account out at `suspendThreshold`, with no
+            // way back except editing a ProductSetting row by hand.
+            id: "missed",
+            header: t("erp.agents.missed"),
+            numeric: true,
+            align: "end",
+            cell: (m) => (
+              <span data-missed={configs.get(m.userId)?.missedOrders ?? 0}>
+                {configs.get(m.userId)?.missedOrders ?? 0}
+              </span>
+            ),
+          },
+          {
+            // N11. `GET /api/erp/agents/payroll` existed and nothing rendered
+            // it, so what somebody is actually paid was reachable only by
+            // hand-typing a URL.
+            id: "pay",
+            header: t("erp.agents.payroll"),
+            numeric: true,
+            align: "end",
+            cell: (m) => (
+              <span data-pay={m.userId} title={t("erp.agents.payrollHint")}>
+                {money(payroll.get(m.userId)?.totalPay ?? "0")}
+              </span>
+            ),
+          },
+          {
             id: "days-off",
             header: t("erp.agents.daysOff"),
             cell: (m) => {
@@ -146,6 +231,7 @@ export default async function ErpAgentsScreen() {
               const config = configs.get(m.userId);
               return (
                 <AgentRowActions
+                  missedOrders={config?.missedOrders ?? 0}
                   // Keyed on what the server holds, so a save that changed a
                   // value remounts the form on the stored answer rather than
                   // leaving it showing what was typed.

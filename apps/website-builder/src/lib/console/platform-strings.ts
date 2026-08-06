@@ -28,6 +28,8 @@ export function teamStrings(t: (key: string) => string): TeamStrings {
     reactivate: t("team.reactivate"),
     remove: t("team.remove"),
     removeConfirm: t("team.removeConfirm"),
+    resetPassword: t("erp.write.resetPassword"),
+    resetPasswordHint: t("erp.write.resetPasswordHint"),
     revoke: t("team.revoke"),
     copyLink: t("team.copyLink"),
     linkCopied: t("team.linkCopied"),

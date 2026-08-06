@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.14: carriers — test, sync, logs*
+**Branch:** `master` · **Last commit:** *LP.12: accountability*
 **Working tree:** clean, all work committed.
 
 ---
@@ -62,6 +62,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.13** analytics + the dashboard's reaction-time figures | R6, K1, N18, N20 | **DONE** — analytics 19 (new), access 72→73 |
 | **LP.17** the AI screen (a live 404) + provider/agent CRUD | R10 | **DONE** — ai 20 (new), access 73→78 |
 | **LP.14** carrier test / sync / integration logs, mapping delete | R3, R20 (rest) | **DONE** — delivery 64→77, access 78→82 |
+| **LP.12** missed-counter reset, the suspicious flag, payroll, the order audit trail, password reset | R11, R14, R15, N11, N12 | **DONE** — screens 130→140, team 56→62, access 82→84 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -454,7 +455,7 @@ domain at a time.
 | carriers (incl. **adapter refusal** LP.2, the **real ZR Express adapter** LP.5, and **test / sync / the integration log** LP.14), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 77/77 |
 | sales channels, inbound webhooks, AI, follow-up | integrations 29/29 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
-| every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4, the **ZR configuration surface** LP.5, the **export panel** LP.6) | screens 130/130 |
+| every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4, the **ZR configuration surface** LP.5, the **export panel** LP.6, and the accountability surface LP.12) | screens 140/140 |
 | the order book as a file — ZR / Ecom / Ecotrac / report (LP.6) | export 31/31 |
 | the scheduled work (M-15), and the worker's tick both ways | jobs 16/16 |
 | assignment — new, confirmed and overdue orders | assign 25/25 |
@@ -462,9 +463,9 @@ domain at a time.
 | the P&L department — proration, fixed costs, versions, roll-up, the calculator screen (LP.16) | finance 38/38 + calc 20/20 |
 | the confirmation rate and six other breakdowns, plus the dashboard's reaction-time figures (LP.13) | analytics 19/19 |
 | the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
-| every surface, gated | access 82/82 |
+| every surface, gated | access 84/84 |
 
-**664/664** across SIXTEEN contract files, each verified on its own, plus
+**690/690** across SIXTEEN contract files, each verified on its own, plus
 **20/20** in `test/calc.test.ts` — the one PURE suite, which needs no server at
 all. Running several contract files back to back still trips the documented Neon
 connection limit; judge them per file.
@@ -619,6 +620,43 @@ closing half of §7 P3 and all of R20.
 
 **Confirmed as NOT gaps, twice now:** neither system has keyboard shortcuts,
 context menus, or a chart of any kind.
+
+### LP.12 — a counter that only rose, and a trail nobody wrote
+
+**R14 is the operational trap.** The overdue sweep raises `missedOrders` and
+`autoSuspend` locks the account out at `suspendThreshold`, and **nothing could
+lower it** — so every agent eventually trips auto-suspension with no way back
+except editing a `ProductSetting` row by hand. `POST /agents/[id]/reset-missed`
+closes it, with an audit row, and **does NOT reactivate**: clearing a count and
+lifting a lockout are two decisions.
+
+**R11 — the flag was computed, stored and shown nowhere.** `OrderCall.suspicious`
+is written on every short confirmed call, which is the entire point of
+`minCallSeconds`. Two readers now: a per-agent count on the roster and a
+`suspicious=true` filter. **A filter rather than an Alerts screen**, deliberately
+— in `orderFilters` it shares one vocabulary with the list, the export and the
+analytics (D-LP.3), so a flagged set can be narrowed, exported or analysed.
+
+**N12 turned out to be hiding a defect.** The audit route existed and the screen
+did not render it — but `AuditEvent`, `GET /api/erp/audit` and `erp:audit:read`
+all existed while **no order mutation wrote a row**. There was nothing to render.
+`PATCH /orders/[id]` records the edit now — WHICH FIELDS, not what they became,
+because an order carries a customer's address and an audit table is read by
+anybody with the permission. The screen follows the ROUTE's permission (D-06.2);
+whether `erp:audit:read` should be SENSITIVE is recorded as an authorization
+question of N16's shape, not decided here.
+
+**N11** the payroll report finally renders — on the roster, for the aligned
+current month, under the rule LP.16b made shared.
+
+**D-LP.12.1 — a password reset DOES destroy sessions, and suspension does not.**
+D-07.2 keeps `destroySessionsForUser` away from suspension because it is keyed on
+the PERSON and one person belongs to many companies. A reset is the opposite case
+for the same reason: the credential is global, and leaving old sessions alive
+would lock out the person who forgot it while whoever is already signed in on a
+shared handset stays in. R15 closes with
+`POST /api/platform/team/members/[userId]/password` — on the platform surface,
+because identity is a platform concern.
 
 ### LP.14 — carriers: three columns nobody wrote, and a log nobody read
 
