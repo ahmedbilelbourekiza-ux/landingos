@@ -517,3 +517,54 @@ export async function waitFor<T>(
     await new Promise((r) => setTimeout(r, interval));
   }
 }
+
+/**
+ * Link a catalogue product to an external listing — LP.16a.
+ *
+ * `CatalogProductLink` is written by the channel import path, which needs a
+ * configured storefront and a webhook. `sales-summary`'s precedence rule —
+ * the channel's own link wins over the name, and wins by saying NO as well as
+ * yes — is decided entirely by these rows, so a test that cannot create one
+ * cannot attack the rule it exists for.
+ */
+export async function linkProduct(
+  tenantId: string,
+  productId: string,
+  link: { platform?: string; salesChannelId?: string | null; externalProductId: string },
+) {
+  await withTenant(tenantId, (tx) =>
+    (tx as any).catalogProductLink.create({
+      data: {
+        tenantId,
+        productId,
+        platform: link.platform ?? 'shopify',
+        salesChannelId: link.salesChannelId ?? null,
+        externalProductId: link.externalProductId,
+      },
+    }),
+  );
+}
+
+/**
+ * Stamp an order with the external identity a channel webhook would have set.
+ *
+ * `POST /api/erp/orders` deliberately does not accept `externalProductId` — an
+ * order typed by an operator has no external listing behind it — so this is
+ * the only way to produce the state the matcher has to get right.
+ */
+export async function setOrderExternalProduct(
+  tenantId: string,
+  orderId: string,
+  external: { externalProductId: string; platform?: string; salesChannelId?: string | null },
+) {
+  await withTenant(tenantId, (tx) =>
+    (tx as any).fulfillmentOrder.update({
+      where: { id: orderId },
+      data: {
+        externalProductId: external.externalProductId,
+        platform: external.platform ?? 'shopify',
+        salesChannelId: external.salesChannelId ?? null,
+      },
+    }),
+  );
+}

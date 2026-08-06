@@ -64,19 +64,21 @@ blocker 4 — **no notification surface** — which is where Tier 2 starts.
   nothing and is the difference between a dropped 3G connection showing a stale
   screen and showing nothing. Worth revisiting with that narrower scope.
 
-### Five defects in shipped code
+### Five defects in shipped code — three are closed by LP.16
 
-- **A product with a `™` in its name reports ZERO revenue.** `sales-summary`
-  matches its orders with `where: { product: product.name }` — exact string
-  equality — where the legacy matched by external product id then by a
-  NORMALISED name. `/console/erp/products` renders that zero today. LEGACY_PARITY
-  §7 P2; fix it in slice 16a.
-- **Every saved P&L record is missing its fixed costs.** `fixedCosts` is a
-  declared setting that `prorate-fixed` sums and **nothing writes** — the
-  automation screen correctly excludes array settings and no other screen offers
-  one — so the prorated figure is always zero. §7 P3; slice 16b. **The same
-  missing pattern hides `defaultCarrierByChannel`** — one structured-settings
-  editor closes both (§8 N23).
+- ~~**A product with a `™` in its name reports ZERO revenue.**~~ **CLOSED —
+  LP.16a.** `sales-summary` now resolves orders through
+  `lib/erp/product-match.ts`: the channel's `CatalogProductLink` first and
+  exclusively, then a normalised name. It also found a second failure on the same
+  line — a catalogue row with a NULL name passed `product: undefined` to Prisma,
+  which is not a filter, so a nameless product reported the whole book.
+- ~~**Every saved P&L record is missing its fixed costs.**~~ **CLOSED —
+  LP.16b.** A list editor and a map editor in
+  `components/console/erp/settings-structured.tsx`, on the automation screen (and
+  the fixed-cost one on the calculator, where its effect is visible). The
+  automation screen's type filter is untouched: it was the right rule and the
+  editors were the gap. `defaultCarrierByChannel` also got its first READER
+  (`planShipment`), so §8 N23 closes whole.
 - **The confirmation rate is computed NOWHERE.** Not on the dashboard, not
   anywhere. It is the number a COD call centre is managed by, and the legacy
   leads its dashboard with it. LEGACY_PARITY §8 N18 — it comes with the
@@ -185,6 +187,20 @@ the file opens in an operator's Excel), and the file carries a UTF-8 BOM. The
 BOM test asserts BYTES — `Response.text()` strips one by specification, so the
 obvious assertion cannot fail.
 
+**LP.16 — the profit/loss calculator (R9, N23, half of R20).** Four steps, all
+of §7's gaps: 16a `sales-summary` (normalised + link-first product matching,
+`returnedCount`, `avgPackagingCost` split out, the cost-basis honesty columns);
+16b one proration rule shared with payroll plus the two structured-settings
+editors AND the channel-carrier resolver; 16c `versions` and `aggregate`; 16d
+`/console/erp/calculator`. `test/erp/finance.test.ts` is new at **38/38** and
+`test/calc.test.ts` at **20/20**; delivery 61 → **64**, access 68 → **72**.
+
+**D-LP.16.1 is the defect the port found rather than the plan predicted:** the
+legacy's saved record disagreed with the legacy's own screen, because incidents
+are subtracted in the banner and omitted from the POST. Incidents now go into
+`productCosts`, and the calc suite asserts the record's derived net profit equals
+the screen's total.
+
 ### THE NEXT SLICE — LP.7, the notification provider (Tier 2 opens)
 
 **The largest piece of dead machinery in the repo.** M-16 built storage, the
@@ -228,9 +244,9 @@ The architecture is already proposed and reviewed — LEGACY_PARITY §6.4(a):
   `localStorage` — so it follows the person between devices, which is the one
   thing the legacy got wrong here.
 
-### One slice the third pass added, which did not exist before it
+### One slice the third pass added — DONE in LP.16b
 
-**A structured-settings editor** — `S`, and it closes two live defects at once.
+**A structured-settings editor** — `S`, and it closed two live defects at once.
 `fixedCosts` (an array) and `defaultCarrierByChannel` (an object) are both
 declared in `SETTINGS_SCHEMA`, both validated, both READ by real code, and
 neither is reachable by any control: `/console/erp/automation` builds its
@@ -240,15 +256,14 @@ later cannot render as a checkbox. The fix is a list editor and a map editor, no
 a change to that filter. Until it lands, every saved P&L record is missing its
 rent and the order form cannot preselect a channel's carrier. §8 N23, §7 P3, R20.
 
-### And one slice out of order, if the defects above are judged urgent
+### The slice taken out of order — DECIDED, and it was the whole of 16, not 16a
 
-**Slice 16a** (LEGACY_PARITY §7.4) is a Tier 3 step that fixes a Tier 1-shaped
-problem: `sales-summary`'s exact-string product match means a product whose name
-differs from its orders by one invisible character reports zero revenue on a
-screen that already ships. It is **M**, it is independent of everything else, and
-it is the prerequisite for the whole profit-calculator slice regardless of when
-that happens. Pulling it forward is a judgement call, not a roadmap change —
-record the decision either way.
+**LP.16 was taken before LP.7.** The reasoning this section asked to be recorded:
+two of §7's findings were **live wrong answers on screens that already ship**
+(the exact-string product match, and the always-zero fixed costs), not missing
+features — and once 16a is being done, 16b–16d are its consumers. Taking the
+calculator whole cost three more steps and closed R9, N23 and half of R20 in one
+slice. **Tier 2 resumes at LP.7, unchanged.**
 
 ### The order of work (LEGACY_PARITY.md §4)
 
@@ -264,7 +279,8 @@ row actions + list density · (9) bulk actions completed · (10) client
 detail/edit/export · (11) sound + desktop notification preferences · (12) agent
 alerts, missed-counter reset, manager password reset, payroll report, audit view.
 **Tier 3 — business value:** (13) analytics · (14) carrier test/sync/logs ·
-(15) sales-channel screen · (16) profit calculator · (17) AI screen ·
+(15) sales-channel screen · (16) profit calculator **[DONE LP.16]** ·
+(17) AI screen ·
 (18) product fields + variant editor · (19) CSV import · (20) channel webhooks ·
 (21) manual follow-up assignment · (22) Ecom adapter.
 **Tier 4 — hardening:** (23) rate limiting + `CSRF_ORIGIN` · (24) the offline
@@ -314,10 +330,18 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **553/553** across the THIRTEEN files: access 68 · orders 38 ·
-validation 29 · listing 30 · catalog 55 · delivery 61 · integrations 29 ·
+Expect **598/598** across the FOURTEEN files: access 72 · orders 38 ·
+validation 29 · listing 30 · catalog 55 · delivery 64 · integrations 29 ·
 order-split 8 · screens 130 · jobs 16 · assign 25 · notifications 33 ·
-export 31.
+export 31 · finance 38.
+
+`test/calc.test.ts` (20) is the one PURE suite and needs **no server and no
+database** — the profit calculator's arithmetic, which is the highest-consequence
+code on any screen here because its output is filed as a permanent record:
+
+```bash
+node --test "test/calc.test.ts"
+```
 
 `delivery.test.ts` starts a **stub ZR Express server on an ephemeral port** in
 the test process and points a carrier's `apiUrl` at it, so the real adapter runs

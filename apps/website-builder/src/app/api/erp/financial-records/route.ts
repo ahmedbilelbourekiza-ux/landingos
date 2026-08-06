@@ -52,6 +52,25 @@ const SaveRecord = z.object({
   unexpectedExpenses: z.union([z.string(), z.number()]).optional(),
   notes: z.string().trim().max(2000).optional(),
   source: z.string().trim().max(40).optional(),
+  /* The per-product figures behind this total, for drill-down — LP.16d.
+   *
+   * A SNAPSHOT, not a relation, and deliberately so: it records what each
+   * product contributed AT THE TIME the period was stated. A product renamed
+   * or archived later must not change what March said, which is the same
+   * argument that makes the record itself insert-only.
+   *
+   * Capped at 200 rows because it is a JSON column on an append-only table and
+   * an uncapped one is an unbounded write from a form. */
+  productBreakdown: z
+    .array(
+      z.object({
+        name: z.string().trim().max(200),
+        profit: z.union([z.string(), z.number()]).optional(),
+        revenue: z.union([z.string(), z.number()]).optional(),
+      }),
+    )
+    .max(200)
+    .optional(),
 });
 
 const ZERO = new Prisma.Decimal(0);
@@ -104,6 +123,17 @@ export const POST = tenantRoute("erp:finance:write", async ({ db, req, session }
       margin,
       notes: input.notes ?? "",
       source: input.source ?? "manual",
+      // Money inside the snapshot is stored as the STRING the caller sent, not
+      // as a JS number: this column is `Json`, and a float here would reproduce
+      // the binary-float bug M-06 removed from every other money value on the
+      // row beside it.
+      productBreakdown: input.productBreakdown
+        ? input.productBreakdown.map((p) => ({
+            name: p.name,
+            profit: String(p.profit ?? "0"),
+            revenue: String(p.revenue ?? "0"),
+          }))
+        : undefined,
       actorUserId: session.user.id,
     },
   });

@@ -12,6 +12,262 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.16 The profit/loss calculator — every gap LP.0c measured, closed
+
+[Opus 5]
+Date: 6 August 2026
+Summary: `LEGACY_PARITY.md` §7's seven gaps (**P1–P7**), implemented in four
+steps. `test/erp/finance.test.ts` is new at **38/38** and `test/calc.test.ts` is
+new at **20/20** — the first PURE suite in this app. delivery 61 → **64**,
+access 68 → **72**. Three defects in shipped code are closed, and a fourth was
+found while porting and is closed here too.
+
+#### The four defects, because three of them were live answers rather than gaps
+
+**1. A product whose name carried a `™` reported ZERO revenue.** `sales-summary`
+resolved its orders with `where: { product: product.name }` — exact string
+equality — where the legacy matched by external product id first and then by a
+NORMALISED name. Every screen rendered, every number was a real number, and the
+product had apparently never sold anything. BUG-02's shape exactly, and live on
+a route that already ships.
+
+**And the same line had a second failure nobody had looked for:** a catalogue row
+with a NULL name passed `product: undefined` to Prisma, which is not a filter at
+all — so a nameless product reported **the entire book's** delivered revenue as
+its own.
+
+**2. Every saved P&L record was missing its rent and salaries.** `fixedCosts` is
+declared in `SETTINGS_SCHEMA`, validated by `validateSettings` and summed by
+`prorate-fixed` — and **written by nothing**. `/console/erp/automation` builds
+its controls with `spec.type !== "object" && spec.type !== "array"`, which is the
+RIGHT rule and was chosen deliberately so a structured setting added later cannot
+render as a checkbox; no other screen offered an editor. So the prorated figure
+was `0` for every tenant, always. Not absent — zero, which reads as "there are
+none".
+
+**3. `periodType` was accepted and echoed back without being used.** Every window
+got the day-count rule, so a week charged `7/30.44` of a month instead of a
+quarter. The legacy's `÷4` looks arbitrary and is load-bearing: **four saved
+weeks must tile into exactly one month**, because `aggregate` builds a month by
+SUMMING four weekly records rather than recomputing one. `4 × 0.2300 = 0.92`, so
+every aggregated month under-charged fixed costs by 8%, compounding to a full
+month's rent missing per year — and invisible, because every individual number
+looks plausible.
+
+**4. Found while porting: the saved record disagreed with the screen that
+produced it.** The legacy calculator computes `incidents` (returns + exchanges +
+losses), subtracts it from every product's profit, shows the result in its
+banner — and then does not send it, because `FinancialRecord` has no incidents
+column. The stored `netProfit`, derived server-side as revenue minus the five
+cost lines, came out HIGHER than the number the manager was looking at when they
+pressed save, by exactly the incident total. One period, two answers, and the
+permanent one was the optimistic one.
+
+#### LP.16a — `sales-summary` can answer what the calculator asks
+
+`src/lib/erp/product-match.ts` is new and holds the precedence rule:
+
+1. **the channel's own link wins, and it is EXCLUSIVE** — if the order names an
+   external product id and a `CatalogProductLink` resolves it, that link decides,
+   *including by saying no*. A shop that renamed a listing must not have its
+   sales reattributed by a name collision;
+2. **otherwise the normalised name** — strip the trademark signs, fold the
+   non-breaking space, collapse whitespace, trim, lowercase.
+
+Accents and punctuation are deliberately NOT stripped: `Café` and `Cafe` are
+plausibly two products, and guessing wrong attributes one product's revenue to
+another — a worse failure than the zero this fixes, because it looks right.
+
+The route now answers `returnedCount` (not returned at all before, so the one
+figure that turns revenue into a return rate had to be typed from memory), splits
+`avgPackagingCost` out of `avgBuyPrice`, and echoes `productName`, `since`,
+`until`, `costTrackedUnits` and `costFallbackUnits`. The last two are the honesty
+column: a margin computed 80% from today's flat price is a guess, and the route
+could not say so.
+
+**Why the split matters more than it looks.** The calculator multiplies BOTH the
+buy price and the packaging cost by units. Filling the platform's old
+`avgBuyPrice` — which folded packaging in — into the buy field and leaving the
+packaging field alone **counted packaging twice**, and the resulting profit was
+wrong in the safe-looking direction.
+
+The per-order movement query also became one batched read; it was one query per
+order inside a loop, which is a query count that grows with the window a manager
+picks.
+
+#### LP.16b — one proration rule, and the two settings nothing could write
+
+`src/lib/erp/prorate.ts` is new: `prorateMonthlyAmount` (month unchanged, week
+÷4, quarter ×3, year ×12, day ÷ the real length of THAT month, anything else
+÷30.44 × days), `alignedRange` (Monday-to-Sunday weeks, the 1st to the 31st) and
+`monthlyFixedTotal`.
+
+**Both callers now share it.** `prorate-fixed` and the payroll routes each had
+their own copy of the day-count half, so a rent and a salary — the same monthly
+figure scaled onto the same week — came out at different fractions of a month.
+The legacy had exactly one function for both and said why: *"ONE rule, one place,
+instead of two copies that could drift apart."* `GET /agents/payroll` and
+`GET /agents/[id]/payroll` now accept `periodType` and echo it; absent, they give
+the day-count answer they always gave.
+
+`prorate-fixed` also reads `startDate`/`endDate` — the names the calculator sends
+— as well as `since`/`until`. It read only the latter and **defaulted to the last
+30 days when they were absent**, so it answered confidently about a window nobody
+asked about.
+
+`components/console/erp/settings-structured.tsx` is new: a list editor for
+`fixedCosts` and a map editor for `defaultCarrierByChannel`, both calling
+`PUT /api/erp/settings` (D-06.1) and both rendered on `/console/erp/automation`.
+**Not a JSON textarea** — a textarea accepts anything the server's
+`typeof value === "object"` check allows, which is how a settings table becomes a
+scratchpad: an amount typed with a letter O validates, saves, and contributes
+nothing forever. The type filter that excluded them is untouched and a test
+asserts it survived: the fix was the missing editors, not a change to the rule.
+
+**And the map's reader was built too, so it is not a second write-only setting.**
+`planShipment` resolves a carrier in three steps now — the order's own code, then
+the sales channel's default, then the tenant's. An EXPLICIT code is still
+honoured or refused and never quietly replaced; a channel default that matches no
+active carrier falls through, because the map outlives the carrier row. Closes
+half of R20.
+
+#### LP.16c — `versions` and `aggregate`
+
+`GET /api/erp/financial-records/versions` lists every save of ONE exact period,
+newest first. All three parameters are required and none has a default: a version
+list is only meaningful for one period, and defaulting the window answers a
+question nobody asked with a list that looks authoritative.
+
+`GET /api/erp/financial-records/aggregate` rolls saved sub-periods up —
+week→month, month→quarter, month→year — touching no orders and no inventory. Two
+properties that are arithmetic rather than polish:
+
+- **one version per sub-period.** Records are insert-only, so a corrected week
+  leaves two rows and summing both charges that week twice. Only the newest save
+  of each distinct `(start, end)` counts — the same reading as "the current
+  record for a period is whichever row is newest".
+- **`covered: false` names what is missing.** A month built from three of its
+  four weeks is not a month, and a silently-shorter total produces a business
+  that believes it made more than it did. `no_smaller_unit` and
+  `no_saved_sub_records` are distinguished, because "there is nothing smaller to
+  add up" is a different fact from "those weeks made no money".
+
+Nothing is persisted: a GET that wrote a permanent financial record would be a
+GET with a side effect on the books. `POST` gained `productBreakdown`, stored as
+strings so no figure in it becomes a float.
+
+#### LP.16d — the screen
+
+`/console/erp/calculator`, a new nav item gated on `erp:finance:read` (SENSITIVE,
+D-05.1). **The legacy served this as a standalone HTML file with no authorization
+on the page at all** — the whole company's margins, break-even points and carrier
+shortfalls, behind a URL.
+
+Everything §7 P7 listed: the A–G blocks, the exchange LIST (each exchange costs
+what it costs, so it is not a count times a cost), ad spend in USD with an
+explicit rate, the six KPIs including break-even-or-never, calendar-ALIGNED
+period presets, the history panel and its CSV export with the legacy's thirteen
+French column headings.
+
+**The period is in the URL and the working sheet is not.** The A–G inputs are a
+person thinking — they change per keystroke and most are never saved — so the
+sheet is client state. The period is a link, because it decides what the SERVER
+reads (the prorated fixed costs, this window's charges, the history) and because
+a calculation somebody is about to save should be linkable to the colleague they
+are arguing with about it.
+
+**`src/lib/money.ts` is new: exact decimal arithmetic that runs in a browser.**
+The legacy calculator is `Number(...)` end to end and its output is stored as a
+company's permanent record of a month. `Prisma.Decimal` arrives through a
+server-only package; sixty lines of scaled `bigint` is exact for plus, minus and
+times on values with three decimal places and ships nothing. Assumption 7 of this
+project says money is a Decimal formatted from its string form and never a JS
+float, and a calculator is the last place to make an exception.
+
+**The arithmetic lives in `src/lib/erp/calc.ts`, not in the component**, so it
+can be tested by `node --test` with no build step — a `.tsx` module cannot be
+imported by the type stripper, and an implementation only reachable through
+rendered HTML is how a rounding error survives review.
+
+`GET /api/erp/financial-records/export` returns the saved history as CSV, reusing
+LP.6's `toCsv` (formula neutralisation, UTF-8 BOM) and its column-name-as-a-
+contract reasoning.
+
+#### Decisions
+
+- **D-LP.16.1 — incidents are part of `productCosts` when a record is saved.**
+  See defect 4. A returned or destroyed unit's cost is a cost of goods; folding
+  it in makes the stored `netProfit` equal the total on the screen that produced
+  it. The page says so above the button, and `test/calc.test.ts` asserts both the
+  new agreement and the size of the legacy's overstatement.
+- **D-LP.16.2 — the calculator is its own nav item, not a tab on Finance.** It is
+  a working tool rather than a report: the thing a manager opens to decide
+  whether a product line survives. Finance lists what was already stated.
+- **D-LP.16.3 — aligned periods are a SECOND vocabulary, deliberately.**
+  `alignedRange` gives Monday-to-Sunday weeks; `orderFilters`' `range=week` is a
+  ROLLING seven days and is right for "what came in recently". Naming them the
+  same thing would make them look interchangeable, and the tiling that
+  `aggregate` depends on needs the aligned one.
+- **`tsconfig` target ES2017 → ES2020.** A BigInt literal is a syntax error below
+  ES2020. `noEmit` is on and `lib` was already `esnext`, so nothing emitted or
+  type-visible changes — only whether `tsc` accepts the literal.
+
+#### Files
+
+New: `src/lib/erp/product-match.ts`, `src/lib/erp/prorate.ts`,
+`src/lib/erp/calc.ts`, `src/lib/money.ts`,
+`src/app/api/erp/financial-records/{versions,aggregate,export}/route.ts`,
+`src/app/console/erp/calculator/page.tsx`,
+`src/components/console/erp/{profit-calculator,settings-structured}.tsx`,
+`test/erp/finance.test.ts`, `test/calc.test.ts`.
+
+Changed: `src/app/api/erp/products/[id]/sales-summary/route.ts`,
+`src/app/api/erp/financial-records/{route,prorate-fixed/route}.ts`,
+`src/app/api/erp/agents/{payroll,[id]/payroll}/route.ts`,
+`src/lib/erp/{agents,shipments}.ts`, `src/lib/console/erp-strings.ts`,
+`src/app/console/erp/automation/page.tsx`,
+`packages/product-registry/src/manifests.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (+65 keys each),
+`apps/website-builder/tsconfig.json`,
+`test/erp/{helpers,delivery,access}.test.ts`.
+
+#### Migration
+
+None. No schema change: `FinancialRecord.productBreakdown` and
+`CatalogProductLink` already existed and gain their first writer and their first
+reader respectively.
+
+#### Risk
+
+**Low, with one behaviour change that is visible in existing data.**
+`avgBuyPrice` no longer includes packaging — any caller that added it to a
+packaging figure was double-counting and now is not, and any caller that used it
+alone as a full unit cost now reads low by the packaging amount. There is one
+caller in the repo (the new calculator) and the field is documented on both
+sides. The proration change makes a week's fixed costs 8.7% larger than before,
+which is the correction, not a regression.
+
+#### Verified
+
+build clean · **finance 38/38** (new) · **calc 20/20** (new, pure) ·
+delivery 64/64 · access 72/72 · catalog 55/55 · screens 130/130 · orders 38/38 ·
+validation 29/29 · listing 30/30 · integrations 29/29 · order-split 8/8 ·
+jobs 16/16 · assign 25/25 · notifications 33/33 · export 31/31 ·
+team 56/56 · billing 19/19 · signup 10/10 · console-shell 13/13 ·
+builder-api 22/22 · builder-sections 45/45 · storefront 22/22 ·
+db 29/29 · auth 36/36 · ui 26/26 · i18n 18/18 · product-registry 36/36.
+
+**And driven by hand in a browser**, because a green suite is not a working
+screen: signed in as `manager@demo.test`, the sync button filled four product
+blocks from real delivered orders — `Sac à Dos Antivol` came back with 1 unit,
+4,200 DA, `avgBuyPrice` 2,100 and `avgPackagingCost` **200, separately** — and
+`Écouteurs Bluetooth Pro` reported the returned parcel that `returnedCount` could
+not answer before. Entering a 120,000 DA fixed cost moved the month's net profit
+from +43,625 to −76,375, and switching to the aligned week showed **exactly
+30,000** rather than 27,595.
+
+---
+
 ### LP.0d The third pass — module by module, after Tier 1
 
 [Opus 5]

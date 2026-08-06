@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.0d: the third pass — module by module*
+**Branch:** `master` · **Last commit:** *LP.16: the profit/loss calculator*
 **Working tree:** clean, all work committed.
 
 ---
@@ -57,6 +57,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.4** create an order from the console | N6 | **DONE** — screens 112→121 |
 | **LP.5** the real ZR Express adapter | R2 (rest) | **DONE** — delivery 39→61, screens 121→123 |
 | **LP.6** order export (CSV: ZR / Ecom / Ecotrac + report) | R4 | **DONE** — export 31 (new), screens 123→130, access 65→68 |
+| **LP.16** the profit/loss calculator, all four steps | R9, N23, half of R20 | **DONE** — finance 38 (new), calc 20 (new), delivery 61→64, access 68→72 |
 | **LP.7** the notification provider (bell, badge, toast, live refresh) | N2, N3, L1, L2 | **NEXT — Tier 2 opens here** |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
@@ -446,7 +447,7 @@ domain at a time.
 | Surface | Contract |
 |---|---|
 | orders (+ stats, bulk, 6 per-order routes), clients, settings, audit | orders 38/38 · validation 29/29 · listing 30/30 |
-| products (incl. **editing**, LP.1), inventory, stock lots (incl. stock on confirm/cancel), agents, payroll, finance | catalog 55/55 |
+| products (incl. **editing**, LP.1 and the **normalised sales-summary match**, LP.16a), inventory, stock lots (incl. stock on confirm/cancel), agents, payroll (incl. `periodType`, LP.16b) | catalog 55/55 |
 | carriers (incl. **adapter refusal** LP.2 and the **real ZR Express adapter** LP.5), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 61/61 |
 | sales channels, inbound webhooks, AI, follow-up | integrations 29/29 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
@@ -455,10 +456,13 @@ domain at a time.
 | the scheduled work (M-15), and the worker's tick both ways | jobs 16/16 |
 | assignment — new, confirmed and overdue orders | assign 25/25 |
 | notifications: storage, audience, badge, the live stream, Web Push (M-16) | notifications 29/29 |
-| every surface, gated | access 68/68 |
+| the P&L department — proration, fixed costs, versions, roll-up, the calculator screen (LP.16) | finance 38/38 + calc 20/20 |
+| every surface, gated | access 72/72 |
 
-**553/553** across THIRTEEN files, each verified on its own. Running several back to back still
-trips the documented Neon connection limit — judge them per file.
+**598/598** across FOURTEEN contract files, each verified on its own, plus
+**20/20** in `test/calc.test.ts` — the one PURE suite, which needs no server at
+all. Running several contract files back to back still trips the documented Neon
+connection limit; judge them per file.
 
 Three routes answer **501 by design**, and are not gaps: `POST /api/erp/agents`
 (inviting a person is a platform action, M-02), and `ai/chat`, `ai/chat/stream`,
@@ -565,8 +569,14 @@ real ZR Express adapter (LP.5) and order export (LP.6). An operator can now
 enter a phone order, find it, correct a product's cost, book a real parcel with
 ZR Express, and hand a day's confirmed orders to a carrier that has no API.
 
-**The next work is Tier 2 — daily operator productivity — and it starts with
-the notification provider (LP.7)**, which is the largest single piece of dead
+**LP.16 was taken next rather than LP.7**, because two of its findings were live
+wrong answers on shipping screens (§7 P2 and P3) rather than missing features,
+and taking the calculator whole instead of only its prerequisite closed R9, N23
+and half of R20 in one slice. It is recorded as a judgement call, per
+NEXT_STEPS's own instruction to record it either way.
+
+**The next work is still Tier 2 — daily operator productivity — and it starts
+with the notification provider (LP.7)**, which is the largest single piece of dead
 machinery in the repo: M-16's whole transport (storage, audience, SSE with exact
 replay, Web Push, service worker, 33 tests) has **no consumer in the console**.
 An operator is still never told anything.
@@ -604,6 +614,66 @@ closing half of §7 P3 and all of R20.
 
 **Confirmed as NOT gaps, twice now:** neither system has keyboard shortcuts,
 context menus, or a chart of any kind.
+
+### LP.16 — the P&L calculator, and the four defects it closed
+
+**Every gap LP.0c measured (§7 P1–P7) is implemented**, in four steps, plus a
+fourth defect the port itself found. `test/erp/finance.test.ts` is new at
+**38/38**; `test/calc.test.ts` is new at **20/20** and is the **first pure suite
+in this app** — no server, no database.
+
+**The three defects that were live wrong answers, not missing features:**
+
+1. **A `™` cost a product all of its revenue.** `sales-summary` matched orders
+   with exact string equality. It now goes through `lib/erp/product-match.ts`:
+   the channel's `CatalogProductLink` first — **exclusively**, so a linked order
+   is refused by name-matching rather than double-counted — then a normalised
+   name. Accents are deliberately NOT normalised: attributing `Café`'s revenue to
+   `Cafe` is worse than a zero, because it looks right. **And the same line hid a
+   second failure**: a catalogue row with a NULL name passed `product: undefined`
+   to Prisma, which is not a filter, so a nameless product reported the whole
+   book's revenue.
+2. **Every saved P&L was missing its rent.** `fixedCosts` had no editor anywhere.
+   Two now exist — a list editor and a map editor in
+   `components/console/erp/settings-structured.tsx` — and the automation screen's
+   type filter is untouched, because the filter was right and the editors were
+   the gap. `defaultCarrierByChannel` got its editor **and its first reader**
+   (`planShipment` resolves order code → channel default → tenant default), so
+   N23 closes whole and R20's default-carrier half with it.
+3. **`periodType` was echoed and never used.** `lib/erp/prorate.ts` is now the
+   one rule — month unchanged, week ÷4, quarter ×3, year ×12, day ÷ that month's
+   real length, anything else ÷30.44 × days — and **both payroll routes share
+   it**, because a rent and a salary scaled onto the same week were coming out at
+   different fractions of a month.
+
+**D-LP.16.1 — the fourth defect, found by porting: the legacy's saved record
+disagreed with its own screen.** `calcAll` subtracts incidents (returns +
+exchanges + losses) from every product's profit and shows the result; the POST
+sends six cost lines that do not include them, because `FinancialRecord` has no
+incidents column. The stored `netProfit` therefore came out HIGHER than the
+banner by exactly the incident total — one period, two answers, and the permanent
+one was the optimistic one. Incidents are folded into `productCosts` here, and
+`test/calc.test.ts` asserts both the new agreement and the size of the old
+overstatement.
+
+**Why `÷4` for a week is load-bearing and not arbitrary:** four saved weeks must
+tile into exactly one month, because `aggregate` builds a month by SUMMING four
+weekly records. Day-counting gives `0.92 × month` — an 8% under-charge of fixed
+costs on every aggregated month, invisible because each number looks plausible.
+
+**D-LP.16.2** the calculator is its own nav item (`/console/erp/calculator`),
+gated on `erp:finance:read`; the legacy served it as a static HTML file with no
+authorization on the page at all. **D-LP.16.3** `alignedRange` (Monday-to-Sunday)
+is a SECOND vocabulary beside `orderFilters`' rolling `range=week`, deliberately
+— the tiling needs the aligned one and "what came in recently" needs the rolling
+one.
+
+**`src/lib/money.ts` is exact decimal arithmetic that runs in a browser**
+(scaled `bigint`), because the legacy calculator is `Number(...)` end to end and
+its output is filed as a company's permanent record of a month. The arithmetic
+lives in `src/lib/erp/calc.ts` rather than in the component so `node --test` can
+reach it: a `.tsx` module cannot be imported by the type stripper, and maths only
+reachable through rendered HTML is how a rounding error survives review.
 
 ### LP.0c — the P&L calculator measured, and two defects it found
 

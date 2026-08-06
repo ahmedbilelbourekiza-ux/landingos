@@ -86,6 +86,14 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   ['POST', '/api/erp/followup/tasks/nonexistent/resolve'],
   ['GET', '/api/erp/followup/dashboard'],
   ['GET', '/api/erp/financial-records'],
+  // LP.16b/c/d. Four surfaces onto the company's P&L, each reachable with a
+  // different question — the prorated rent, one period's version history, a
+  // roll-up, and the whole history as a file. A gate is easy to add to three of
+  // four routes in the same directory.
+  ['GET', '/api/erp/financial-records/prorate-fixed?periodType=month'],
+  ['GET', '/api/erp/financial-records/versions?periodType=month&startDate=1&endDate=2'],
+  ['GET', '/api/erp/financial-records/aggregate?periodType=month&startDate=1&endDate=2'],
+  ['GET', '/api/erp/financial-records/export'],
   ['GET', '/api/erp/unexpected-charges'],
   ['GET', '/api/erp/ai/providers'],
   ['GET', '/api/erp/ai/agents'],
@@ -211,7 +219,16 @@ describe('an agent cannot do a manager’s job', () => {
   });
 
   test('D-05.1 — the finance surfaces are not readable by an agent', async () => {
-    for (const path of ['/api/erp/financial-records', '/api/erp/followup/dashboard']) {
+    for (const path of [
+      '/api/erp/financial-records',
+      '/api/erp/followup/dashboard',
+      // LP.16. Every new door onto the same books, listed rather than assumed
+      // — the prorated rent tells an agent the company's cost base, and the
+      // roll-up tells them its quarter.
+      '/api/erp/financial-records/prorate-fixed?periodType=month',
+      '/api/erp/financial-records/versions?periodType=month&startDate=1&endDate=2',
+      '/api/erp/financial-records/aggregate?periodType=month&startDate=1&endDate=2',
+    ]) {
       assert.equal((await acme.agent.api('GET', path)).status, 403, path);
       assert.equal((await acme.manager.api('GET', path)).status, 200, path);
     }

@@ -736,7 +736,7 @@ missed all of them.
 | **N20** | **Seven analytics breakdowns from one function** | `tbl(title, keyFn, valueLabel)` called seven times — status · channel · product · wilaya · confirming agent · **marketer/source** · delivery status — each with orders / confirmed / conf-rate (with a bar) / canc-rate / revenue | none. Every one is a `groupBy` over `FulfillmentOrder`. **`marketer` and `source` are populated by the channel webhooks and read by nothing**, so ad attribution is uncomputable today. | 🔴 |
 | **N21** | **Order-row density, measured** | 14 facts: order number · **type badge** (draft/abandoned/normal) · **note badge with the note as its tooltip** · **fake badge** · **overdue tag with a pulsing dot** · store logo + name + brand + platform · date **and** time · customer · phone · wilaya + commune · **variant thumbnail** · qty · unit price · delivery cost · discount · total · status · agent · carrier | 8: reference · customer + phone · destination · product · total · status · call count · date. **The four that decide what to do next are all missing** — overdue, called, noted, flagged. The call count is the one equivalent and answers a weaker question: three failed calls and three callbacks look identical. | 🟡 |
 | **N22** | **The changed row flashes** | `hl-flash`, a 3s animation on the row or card that just moved — on the list and the board | the page re-renders and marks nothing. One CSS class plus knowing which id moved, which LP.7 will be carrying anyway. | 🔴 |
-| **N23** | **Two structured settings have no editor** | both edited on their own screens (`fixedCosts` on the calculator, the default-carrier map on Stores) | `fixedCosts` and `defaultCarrierByChannel` are declared, validated and READ by real code, and the automation screen correctly excludes `array`/`object` by type — so **both are unreachable by any control.** One missing pattern, not two bugs: `fixedCosts` means every saved P&L is missing its rent (§7 P3) and `defaultCarrierByChannel` means the order form cannot preselect a channel's carrier (R20). **S**, and it closes both. | 🔴 |
+| **N23** | **Two structured settings have no editor** | both edited on their own screens (`fixedCosts` on the calculator, the default-carrier map on Stores) | `fixedCosts` and `defaultCarrierByChannel` are declared, validated and READ by real code, and the automation screen correctly excludes `array`/`object` by type — so **both are unreachable by any control.** One missing pattern, not two bugs: `fixedCosts` means every saved P&L is missing its rent (§7 P3) and `defaultCarrierByChannel` means the order form cannot preselect a channel's carrier (R20). **S**, and it closes both. | ✅ **CLOSED — LP.16b**: a list editor and a map editor on `/console/erp/automation` (the fixed-cost one also on the calculator, where its effect is visible), plus the map's first READER in `planShipment`. The type filter that excluded them is untouched and a test asserts it survived. |
 | **N17** | **The scheduled poll still calls a carrier inside a transaction** | in-process `setInterval`, no transaction at all | LP.5 moved booking and the manual refresh out (D-LP.5.1); `pollCarriers` was left in, bounded by `POLL_BATCH = 25`. It writes nothing a person is waiting on, and **neither registered adapter reaches a network from there** — ZR declares `canPoll: false` and `planRefresh` refuses first. Moving it out means `runJob` stops receiving a bound `db` and opens a binding per parcel: a change to the job runner and both of its routes. **Grouped with Tier 3 slice 22 (the Ecom adapter)**, the first registered carrier that can be polled. | *(not a legacy gap — recorded so it is not rediscovered)* |
 
 **Not present in either system, so not a gap:** global keyboard shortcuts, and
@@ -894,18 +894,18 @@ from complete** — order export (R4) is all that remains in it.
 
 ### Tier 3 — business value
 
-| # | Slice | Restores | Size |
-|---|---|---|---|
-| **13** | Analytics screen + headline rates (confirmation, cancellation, AOV, delivered/returned) | R6, K1 | M |
-| **14** | Carrier test / sync / integration logs — `IntegrationLog`'s first caller | R3, R20 | M |
-| **15** | Sales-channel screen + platform adapter registry | R8 | M |
-| **16** | Profit/loss calculator + record versions + period aggregation — **measured in §7 (LP.0c); four steps, 16a first** | R9 | L |
-| **17** | AI screen (fixes the live 404) + provider/agent CRUD | R10 | M |
-| **18** | Product fields, variant editor, `niche`/`category`/`supplier` | R12 | M |
-| **19** | Client + order CSV import | R5 (rest), R17 | M |
-| **20** | Channel webhooks: lead-capture, product, Shopify HMAC | R19 | M |
-| **21** | Manual follow-up assignment · live countdown | R13, N14 | S |
-| **22** | Ecom carrier adapter | R2 (rest) | M |
+| # | Slice | Restores | Size | |
+|---|---|---|---|---|
+| **13** | Analytics screen + headline rates (confirmation, cancellation, AOV, delivered/returned) | R6, K1 | M | |
+| **14** | Carrier test / sync / integration logs — `IntegrationLog`'s first caller | R3, R20 | M | R20's default-carrier half is **closed by LP.16b** (editor + resolver); the status-mapping delete remains. |
+| **15** | Sales-channel screen + platform adapter registry | R8 | M | |
+| ~~16~~ | ~~Profit/loss calculator + record versions + period aggregation~~ | R9 | L | **DONE — LP.16.** All four steps (§7.4): 16a `sales-summary`, 16b proration + the structured-settings editors, 16c `versions`/`aggregate`, 16d the screen. Also closes **N23** and the write half of **R20**. |
+| **17** | AI screen (fixes the live 404) + provider/agent CRUD | R10 | M | |
+| **18** | Product fields, variant editor, `niche`/`category`/`supplier` | R12 | M | |
+| **19** | Client + order CSV import | R5 (rest), R17 | M | |
+| **20** | Channel webhooks: lead-capture, product, Shopify HMAC | R19 | M | |
+| **21** | Manual follow-up assignment · live countdown | R13, N14 | S | |
+| **22** | Ecom carrier adapter | R2 (rest) | M | |
 
 ### Tier 4 — hardening and polish (overlaps Phase 8)
 
@@ -944,6 +944,14 @@ Carried over from the existing project conventions, and binding on every slice:
 ---
 
 ## 7. The Profit/Loss calculator, measured end to end — LP.0c
+
+> **STATUS: CLOSED BY LP.16.** Every gap below (**P1–P7**) is implemented and
+> tested — see CHANGELOG §LP.16 and `test/erp/finance.test.ts` (38) +
+> `test/calc.test.ts` (20). The measurement is preserved unchanged because it is
+> the argument for what was built, and because two of its findings were live
+> wrong answers rather than missing features. **A fourth defect surfaced during
+> the port and is recorded at the end of §7.2:** the legacy's saved record
+> disagreed with the screen that produced it.
 
 **Measured 6 August 2026 from `fbfe0f7`,** by reading
 `apps/erp/calculateur_profit_perte.html` (1,244 lines) line by line against
@@ -1163,6 +1171,24 @@ No calculator exists. Beyond the arithmetic, these have no equivalent anywhere:
   aggregated later, and a failed aggregate says which sub-period records are
   missing.
 
+#### P8 · The one this measurement missed, found by porting it
+
+**The legacy's saved record does not agree with the legacy's own screen.**
+`calcAll()` computes `incidents` (returns + exchanges + losses), subtracts it
+from every product's profit, and puts the result in the banner. Then
+`saveCurrentAsFinancialRecord()` sends `revenue`, `productCosts` (buy + packaging
+only), `shippingCosts`, `advertisingCosts`, `fixedExpenses` and
+`unexpectedExpenses` — **and not the incidents**, because `financial_records` has
+no column for them. `netProfit` is derived server-side from those six lines, so
+the PERMANENT record comes out higher than the number the manager was reading by
+exactly the incident total.
+
+It is invisible from either side alone: the screen is self-consistent, the record
+is self-consistent, and nothing compares them. **D-LP.16.1** folds incidents into
+`productCosts` — which is where a returned or destroyed unit's cost belongs — so
+the two agree, and `test/calc.test.ts` asserts both the agreement and the size of
+the legacy's overstatement.
+
 ### 7.3 What the platform already does better here, and must keep
 
 - **`Decimal` throughout.** The calculator is `+(el.value)` and `Number(...)`
@@ -1183,16 +1209,32 @@ No calculator exists. Beyond the arithmetic, these have no equivalent anywhere:
 **Tier 3, slice 16 stands, and it grows a prerequisite.** The order below is
 forced by the measurements, not by preference:
 
-| Step | Work | Size | Why first |
-|---|---|---|---|
-| **16a** | `sales-summary`: add `returnedCount`, split `avgPackagingCost` out of `avgBuyPrice`, echo `costTrackedUnits`/`costFallbackUnits`, and **fix the product match** (external id, then a normalised name) | **M** | P1 + P2. The calculator cannot auto-fill without it, and P2 is a live wrong answer on a screen that already ships. |
-| **16b** | A fixed-cost editor, and `prorate-fixed` honouring `periodType` with the legacy's aligned rules plus the day-count fallback | **S** | P3 + P4. Without it every saved record is missing its fixed costs, and with the wrong rule four weeks do not make a month. |
-| **16c** | `versions` and `aggregate` | **M** | P5 + P6. `aggregate` is the requirement's own fast path and depends on 16b's tiling. |
-| **16d** | The calculator screen | **L** | P7. Everything above is its input. |
+| Step | Work | Size | Why first | State |
+|---|---|---|---|---|
+| **16a** | `sales-summary`: add `returnedCount`, split `avgPackagingCost` out of `avgBuyPrice`, echo `costTrackedUnits`/`costFallbackUnits`, and **fix the product match** (external id, then a normalised name) | **M** | P1 + P2. The calculator cannot auto-fill without it, and P2 is a live wrong answer on a screen that already ships. | **DONE** |
+| **16b** | A fixed-cost editor, and `prorate-fixed` honouring `periodType` with the legacy's aligned rules plus the day-count fallback | **S** | P3 + P4. Without it every saved record is missing its fixed costs, and with the wrong rule four weeks do not make a month. | **DONE** — plus the `defaultCarrierByChannel` map editor AND its resolver, so N23 closes whole and R20's default-carrier half with it |
+| **16c** | `versions` and `aggregate` | **M** | P5 + P6. `aggregate` is the requirement's own fast path and depends on 16b's tiling. | **DONE** |
+| **16d** | The calculator screen | **L** | P7. Everything above is its input. | **DONE** |
 
 **16a is worth pulling forward on its own merits.** P2 is a defect in shipped
 code with no calculator anywhere near it: a product whose name carries a `™`
 reports zero revenue on `/console/erp/products` today.
+
+**Three things the implementation added that this plan did not name**, each
+because building it exposed something the reading had not:
+
+- **the payroll routes share the proration rule.** They had their own copy of the
+  day-count half, so a rent and a salary scaled onto the same week came out at
+  different fractions of a month. The legacy had ONE function for both and said
+  why. `periodType` is now accepted and echoed by both payroll routes.
+- **`planShipment` reads `defaultCarrierByChannel`.** Shipping the editor without
+  the reader would have replaced one write-only setting with one read-nothing
+  setting, which is the same defect wearing the other shoe.
+- **`src/lib/money.ts` and `src/lib/erp/calc.ts`.** Exact decimal arithmetic that
+  runs in a browser, and the calculator's maths in a directive-free module so a
+  pure `node --test` suite can check it. §7.3's first bullet says the platform's
+  advantage here is `Decimal` throughout; a client-side calculator written with
+  `Number` would have handed that back on the one screen whose output is filed.
 
 ---
 
@@ -1509,12 +1551,15 @@ force:
    from the dashboard as well as from the missing screen, and every breakdown is
    a `groupBy` over one table. It carries K1 (the four missing headline figures)
    with it.
-3. **One slice should be added and it did not exist before this pass: a
-   structured-settings editor.** `fixedCosts` and `defaultCarrierByChannel` are
-   both declared, validated, read by real code and unreachable by any control.
-   It is **S**, it closes half of §7 P3 and all of R20, and until it lands every
-   saved P&L record is missing its fixed costs.
+3. ~~**One slice should be added and it did not exist before this pass: a
+   structured-settings editor.**~~ **DONE — LP.16b.** Both editors landed with
+   the calculator, and the `defaultCarrierByChannel` READER landed with them, so
+   the setting is not merely writable but consulted (`planShipment`, R20's
+   default-carrier half). N23 is closed.
 
-And the two defects §7 found remain the strongest candidates for jumping the
-queue, because both are wrong answers on screens that already ship: the exact
-product-name match (§7 P2) and the fixed-cost editor above.
+**And the two defects §7 found, which were the strongest candidates for jumping
+the queue, did jump it: LP.16 was taken before LP.7.** Both were wrong answers on
+screens that already ship — the exact product-name match (§7 P2) and the missing
+fixed-cost editor (§7 P3) — and taking the calculator whole rather than 16a alone
+cost three more steps and closed R9, N23 and half of R20 in one slice. **LP.7 is
+next and unchanged.**

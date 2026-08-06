@@ -4,7 +4,7 @@ import { createHmac } from 'node:crypto';
 
 import {
   skip, uid, phone, waitFor, makeErpTenant, cleanup, BASE, slugOf,
-  backdateShipmentPoll, setCarrierAdapter,
+  backdateShipmentPoll, setCarrierAdapter, linkProduct, setOrderExternalProduct,
   contractTest as test,
 } from './helpers.ts';
 
@@ -482,6 +482,126 @@ describe('the four things that read deliveryOutcome', () => {
     assert.equal(String(summary.realCA), '9000', 'real revenue is no longer zero');
     assert.ok(Number(summary.avgBuyPrice) > 0, 'the cost basis resolves for the profit calculation');
     assert.equal(String(summary.totalCostOfGoods), '3200', 'cost + packaging for one unit');
+
+    // LP.16a. The two used to be ONE number — `avgBuyPrice` was
+    // (unit + packaging) / units — and the profit calculator multiplies BOTH
+    // by units, so filling one field from it and leaving the other counted
+    // packaging twice. Wrong in the safe-looking direction, which is the kind
+    // of error nobody investigates.
+    assert.equal(String(summary.avgBuyPrice), '3000', 'the buy price alone');
+    assert.equal(String(summary.avgPackagingCost), '200', 'packaging, separately');
+    assert.equal(
+      Number(summary.avgBuyPrice) + Number(summary.avgPackagingCost),
+      Number(summary.totalCostOfGoods) / summary.deliveredUnits,
+      'and the two still add up to what was actually spent per unit',
+    );
+    assert.equal(
+      summary.costTrackedUnits + summary.costFallbackUnits,
+      summary.deliveredUnits,
+      'every delivered unit is accounted for as tracked or fallen back on',
+    );
+    assert.equal(summary.productName, name, 'the answer names what it is about');
+  });
+
+  /* ---------------------------------------------------------------------------
+   * LP.16a — which orders belong to a product
+   *
+   * The defect this group exists for: `where: { product: product.name }` was
+   * EXACT STRING EQUALITY, so a catalogue product named `Montre™` matched no
+   * orders at all and reported zero revenue on a screen that already ships.
+   * Every number was a real number and the product had apparently never sold
+   * anything — BUG-02's shape exactly.
+   * ------------------------------------------------------------------------ */
+  describe('a product is matched by normalised name, then by the channel’s link', () => {
+    test('a ™, a non-breaking space and a capital letter no longer hide the revenue', async () => {
+      const base = `Montre Or ${uid()}`;
+      // What the catalogue holds. What the ORDERS hold is the same product
+      // written the way a storefront and an operator each write it.
+      const product = (await acme.manager.api('POST', '/api/erp/products', {
+        name: `${base}™`, price: 5000, costPrice: 1000, packagingCost: 100,
+        variants: [{ name: 'Solo', stock: 50 }],
+      })).body.data;
+
+      // Lower-cased, and with a NON-BREAKING space where the catalogue has a
+      // normal one — the invisible one, pasted out of a supplier's price list.
+      await deliverAnOrder({ price: 5000, product: base.toLowerCase().replace(' ', ' '), quantity: 1 });
+
+      const summary = await waitFor(async () => {
+        const r = await acme.manager.api(
+          'GET', `/api/erp/products/${product.id}/sales-summary?since=0&until=${Date.now() + 60000}`,
+        );
+        return r.body.data.deliveredCount > 0 ? r.body.data : null;
+      }, { label: 'the normalised match to find the order' });
+
+      assert.equal(summary.deliveredCount, 1, 'the ™ used to make this zero');
+      assert.equal(String(summary.realCA), '5000');
+    });
+
+    test('a returned parcel is counted as returned and not as a sale', async () => {
+      const name = `Returned Widget ${uid()}`;
+      const product = (await acme.manager.api('POST', '/api/erp/products', {
+        name, price: 3000, costPrice: 900, packagingCost: 100,
+        variants: [{ name: 'Solo', stock: 50 }],
+      })).body.data;
+
+      const order = (await acme.manager.api('POST', '/api/erp/orders', {
+        client: 'Refuser', phone: phone(), price: 3000, product: name, quantity: 1, carrierCode,
+      })).body.data;
+      await acme.manager.api('POST', `/api/erp/orders/${order.id}/call-start`, {});
+      await acme.manager.api('POST', `/api/erp/orders/${order.id}/call`, { result: 'confirmed' });
+
+      const tracking = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`))
+        .body.data.shipment.trackingNumber;
+      await fetch(`${BASE}/api/erp/webhooks/${await slugOf(acme.tenantId)}/delivery`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ trackingNumber: tracking, status: 'Retour au vendeur' }),
+      });
+
+      const summary = await waitFor(async () => {
+        const r = await acme.manager.api(
+          'GET', `/api/erp/products/${product.id}/sales-summary?since=0&until=${Date.now() + 60000}`,
+        );
+        return r.body.data.returnedCount > 0 ? r.body.data : null;
+      }, { label: 'the return to be counted' });
+
+      // `returnedCount` was not answered AT ALL before LP.16a, so the one figure
+      // that turns revenue into a return rate had to be typed from memory.
+      assert.equal(summary.returnedCount, 1);
+      assert.equal(summary.deliveredCount, 0, 'and a refused parcel is not a sale');
+      assert.equal(String(summary.realCA), '0');
+    });
+
+    test('an order linked to ANOTHER product is refused, even when the names match', async () => {
+      // The rule that makes the link exclusive. Two catalogue rows with the
+      // same name, one linked to the listing the order came from: the link
+      // decides, including by saying no. Without it, a shop that renamed a
+      // listing has its sales quietly reattributed by a name collision.
+      const shared = `Twin Widget ${uid()}`;
+      const mineProduct = (await acme.manager.api('POST', '/api/erp/products', {
+        name: shared, price: 4000, costPrice: 1000, variants: [{ name: 'Solo', stock: 20 }],
+      })).body.data;
+      const theirsProduct = (await acme.manager.api('POST', '/api/erp/products', {
+        name: shared, price: 4000, costPrice: 1000, variants: [{ name: 'Solo', stock: 20 }],
+      })).body.data;
+
+      const externalProductId = `ext-${uid()}`;
+      await linkProduct(acme.tenantId, theirsProduct.id, { externalProductId });
+
+      const orderId = await deliverAnOrder({ price: 4000, product: shared, quantity: 1 });
+      await setOrderExternalProduct(acme.tenantId, orderId, { externalProductId });
+
+      const forMine = (await acme.manager.api(
+        'GET', `/api/erp/products/${mineProduct.id}/sales-summary?since=0&until=${Date.now() + 60000}`,
+      )).body.data;
+      const forTheirs = (await acme.manager.api(
+        'GET', `/api/erp/products/${theirsProduct.id}/sales-summary?since=0&until=${Date.now() + 60000}`,
+      )).body.data;
+
+      assert.equal(forMine.deliveredCount, 0, 'the name matched and the link said no');
+      assert.equal(forTheirs.deliveredCount, 1, 'the linked product owns the sale');
+      assert.equal(String(forTheirs.realCA), '4000');
+    });
   });
 
   test('agent delivered-pay payroll earns', async () => {

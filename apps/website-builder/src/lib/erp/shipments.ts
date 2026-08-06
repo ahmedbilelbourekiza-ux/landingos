@@ -16,6 +16,7 @@ import {
 import { syncClientFromOrder } from "./clients";
 import { raiseFollowupTask } from "./followup";
 import { notifyDeliveryUpdate, notifyFollowupRaised, notifyShipmentFailed } from "./notify";
+import { readSettings } from "./settings";
 
 /* =============================================================================
  * Shipments, and the settlement that BUG-02 was about.
@@ -126,7 +127,7 @@ export async function planShipment(
   const order = await db.fulfillmentOrder.findUnique({
     where: { id: orderId },
     select: {
-      id: true, reference: true, carrierCode: true,
+      id: true, reference: true, carrierCode: true, salesChannelId: true,
       client: true, phone: true, wilaya: true, commune: true,
       product: true, quantity: true, price: true,
       shippingNote: true, note: true, expressDelivery: true,
@@ -134,15 +135,45 @@ export async function planShipment(
   });
   if (!order) return { kind: "refused", error: "NOT_FOUND" };
 
-  const carrier = order.carrierCode
-    ? await db.carrier.findFirst({
-        where: { code: order.carrierCode, active: true },
-        select: { id: true, adapter: true, apiUrl: true, apiKey: true, secretKey: true, webhookSecret: true },
-      })
-    : await db.carrier.findFirst({
-        where: { isDefault: true, active: true },
-        select: { id: true, adapter: true, apiUrl: true, apiKey: true, secretKey: true, webhookSecret: true },
-      });
+  /* Which carrier, in three steps — LP.16b closes the middle one (R20).
+   *
+   *   1. THE ORDER'S OWN CODE. Somebody chose it; nothing overrides a choice.
+   *   2. THE SALES CHANNEL'S DEFAULT, from `defaultCarrierByChannel`. A company
+   *      selling through two storefronts usually ships them through two
+   *      carriers, and the whole reason that setting exists is so nobody has to
+   *      remember which. It was declared, validated, and READ BY NOTHING — so
+   *      every channel silently fell through to step 3.
+   *   3. THE TENANT'S DEFAULT CARRIER.
+   *
+   * A configured code that matches no ACTIVE carrier falls through rather than
+   * refusing: the map outlives the carrier row, and a deactivated carrier must
+   * not stop a channel's orders shipping at all. */
+  const CARRIER_SELECT = {
+    id: true, adapter: true, apiUrl: true, apiKey: true, secretKey: true, webhookSecret: true,
+  } as const;
+  const byCode = (code: string) =>
+    db.carrier.findFirst({ where: { code, active: true }, select: CARRIER_SELECT });
+
+  let carrier = null as Awaited<ReturnType<typeof byCode>>;
+  if (order.carrierCode) {
+    // An EXPLICIT code is honoured or refused, never quietly replaced. Falling
+    // back here would book a parcel with a carrier nobody chose and say so
+    // nowhere — the same class of defect as the fabricated tracking numbers
+    // D-LP.2 removed.
+    carrier = await byCode(order.carrierCode);
+  } else {
+    const channelDefault = order.salesChannelId
+      ? (await readSettings(db)).defaultCarrierByChannel?.[order.salesChannelId]
+      : undefined;
+    // A configured code that matches no ACTIVE carrier falls through to the
+    // tenant default rather than refusing: the map outlives the carrier row,
+    // and a deactivated carrier must not stop a channel's orders shipping.
+    if (channelDefault) carrier = await byCode(channelDefault);
+    carrier ??= await db.carrier.findFirst({
+      where: { isDefault: true, active: true },
+      select: CARRIER_SELECT,
+    });
+  }
   if (!carrier) return { kind: "refused", error: "NO_CARRIER" };
 
   // Refused, never mocked. Booking through a fallback adapter fabricates a

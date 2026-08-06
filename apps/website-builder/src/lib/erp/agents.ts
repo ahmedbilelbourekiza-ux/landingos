@@ -4,6 +4,7 @@ import { Prisma, type TenantDb } from "@landingos/db";
 
 import { ERP_PRODUCT } from "./settings";
 import { toDecimal } from "./serialize";
+import { prorateMonthlyAmount } from "./prorate";
 
 /* =============================================================================
  * Per-member ERP configuration, and payroll.
@@ -117,26 +118,36 @@ export const JOB_ROLES = ["confirmation", "followup", "both"] as const;
  * Payroll
  * -------------------------------------------------------------------------- */
 
-const MS_PER_DAY = 86_400_000;
-
 /**
- * A monthly salary, prorated across an arbitrary window by day count.
+ * A monthly salary, prorated onto the window being asked about.
  *
  * The manager enters one monthly figure and then asks for payroll over "last
- * week" or "the 3rd to the 19th". Proration by days is what makes an arbitrary
- * range answerable at all — 30.44 is the mean month length, so a full month
- * comes back to roughly the figure that was entered rather than to a number
- * that depends on which month it was.
+ * week" or "the 3rd to the 19th".
+ *
+ * LP.16b. This used to be its own copy of the day-count rule, which meant a
+ * salary and a rent — the same monthly figure, scaled onto the same week —
+ * came out at different fractions of a month. The rule now lives once, in
+ * `lib/erp/prorate.ts`, keyed on `periodType`, exactly as the legacy had it
+ * ("ONE rule, one place, instead of two copies that could drift apart"). The
+ * signature keeps its `periodType` last and optional, so a caller that has none
+ * still gets the day-count answer it got before.
  */
-export function prorateMonthly(monthly: Prisma.Decimal, since: number, until: number): Prisma.Decimal {
-  const days = Math.max(0, (until - since) / MS_PER_DAY);
-  return monthly.dividedBy(30.44).times(days);
+export function prorateMonthly(
+  monthly: Prisma.Decimal,
+  since: number,
+  until: number,
+  periodType?: string | null,
+): Prisma.Decimal {
+  return prorateMonthlyAmount(monthly, periodType ?? "custom", since, until);
 }
 
 export interface Payroll {
   userId: string;
   since: number;
   until: number;
+  /** What scaled the salary — see `lib/erp/prorate.ts`. Echoed so a payslip
+   *  records which rule produced it, not only the amount. */
+  periodType: string;
   confirmedOrders: number;
   deliveredOrders: number;
   baseSalaryMonthly: string;
@@ -167,6 +178,7 @@ export async function computePayroll(
   config: AgentConfig,
   since: number,
   until: number,
+  periodType?: string | null,
 ): Promise<Payroll> {
   const [confirmedOrders, deliveredOrders] = await Promise.all([
     db.fulfillmentOrder.count({
@@ -189,7 +201,7 @@ export async function computePayroll(
   const perConfirmed = toDecimal(config.payPerConfirmedOrder) ?? new Prisma.Decimal(0);
   const perDelivered = toDecimal(config.payPerDeliveredOrder) ?? new Prisma.Decimal(0);
 
-  const salaryPay = prorateMonthly(base, since, until);
+  const salaryPay = prorateMonthly(base, since, until, periodType);
   const confirmedPay = perConfirmed.times(confirmedOrders);
   const deliveredPay = perDelivered.times(deliveredOrders);
 
@@ -197,6 +209,7 @@ export async function computePayroll(
     userId,
     since,
     until,
+    periodType: periodType ?? "custom",
     confirmedOrders,
     deliveredOrders,
     baseSalaryMonthly: base.toString(),

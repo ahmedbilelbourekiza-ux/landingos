@@ -13,6 +13,9 @@ export const dynamic = "force-dynamic";
 export const GET = tenantRoute("erp:agents:manage", async ({ db, searchParams }) => {
   const since = Number(searchParams.get("since")) || 0;
   const until = Number(searchParams.get("until")) || Date.now();
+  // See the per-member route: one proration rule, keyed on the period, shared
+  // with the fixed-cost side so a salary and a rent scale identically (LP.16b).
+  const periodType = searchParams.get("periodType");
 
   const [memberships, configs] = await Promise.all([
     db.membership.findMany({
@@ -30,9 +33,9 @@ export const GET = tenantRoute("erp:agents:manage", async ({ db, searchParams })
       baseSalaryMonthly: "0", payPerConfirmedOrder: "0", payPerDeliveredOrder: "0",
       weeklyDaysOff: [], missedOrders: 0,
     };
-    const payroll = await computePayroll(db, m.userId, config, since, until);
+    const payroll = await computePayroll(db, m.userId, config, since, until, periodType);
     items.push({ ...payroll, email: m.user.email, name: m.user.name, jobRole: m.jobRole, suspended: m.suspended });
   }
 
-  return apiOk({ items, since, until });
+  return apiOk({ items, since, until, periodType: periodType ?? "custom" });
 });

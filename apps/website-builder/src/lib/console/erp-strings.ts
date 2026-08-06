@@ -6,6 +6,11 @@ import type { PagerStrings } from "@/components/console/pager";
 import type { FilterStrings } from "@/components/console/filter-bar";
 import type { OrderCreateStrings } from "@/components/console/erp/order-create";
 import type { ExportStrings } from "@/components/console/erp/order-export";
+import type {
+  StructuredStrings,
+  FixedCostRow,
+} from "@/components/console/erp/settings-structured";
+import type { CalculatorStrings } from "@/components/console/erp/profit-calculator";
 
 /* =============================================================================
  * The ERP's write-control labels, resolved once per screen.
@@ -211,5 +216,127 @@ export function orderExportStrings(t: (key: string) => string): ExportStrings {
       orders: t("erp.export.reportOrders"),
       agents: t("erp.export.reportAgents"),
     },
+  };
+}
+
+/* -----------------------------------------------------------------------------
+ * The structured settings — LP.16b
+ * -------------------------------------------------------------------------- */
+
+export function structuredStrings(t: (key: string) => string): StructuredStrings {
+  return {
+    saving: t("common.saving"),
+    save: t("common.save"),
+    add: t("erp.write.add"),
+    remove: t("common.delete"),
+    fixedCosts: t("erp.settings.fixedCosts"),
+    fixedCostsHint: t("erp.settings.fixedCostsHint"),
+    label: t("erp.finance.charges"),
+    monthlyAmount: t("erp.settings.monthlyAmount"),
+    monthlyTotal: t("erp.settings.monthlyTotal"),
+    noFixedCosts: t("erp.settings.noFixedCosts"),
+    channelCarriers: t("erp.settings.defaultCarrierByChannel"),
+    channelCarriersHint: t("erp.settings.channelCarrierHint"),
+    noChannels: t("erp.settings.noChannels"),
+    none: t("erp.write.unassigned"),
+  };
+}
+
+/**
+ * The stored `fixedCosts` value, as rows the editor can render.
+ *
+ * Tolerant on the way OUT and strict on the way IN, deliberately: rows written
+ * through the API before this editor existed carry no `id`, and refusing to
+ * display them would hide a cost the P&L is already charging. Anything that is
+ * not an object at all is dropped rather than rendered as `[object Object]`.
+ */
+export function readFixedCostRows(value: unknown): FixedCostRow[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((row, i) => {
+    if (!row || typeof row !== "object") return [];
+    const r = row as { id?: unknown; label?: unknown; amount?: unknown };
+    return [{
+      id: typeof r.id === "string" && r.id ? r.id : `fc_stored_${i}`,
+      label: r.label === null || r.label === undefined ? "" : String(r.label),
+      amount: r.amount === null || r.amount === undefined ? "" : String(r.amount),
+    }];
+  });
+}
+
+/** The stored `defaultCarrierByChannel` map, with only string values kept. */
+export function readChannelCarriers(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, code] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof code === "string" && code) out[key] = code;
+  }
+  return out;
+}
+
+/* -----------------------------------------------------------------------------
+ * The profit/loss calculator — LP.16d
+ * -------------------------------------------------------------------------- */
+
+export function calculatorStrings(t: (key: string) => string): CalculatorStrings {
+  return {
+    saving: t("common.saving"),
+    add: t("erp.write.add"),
+    remove: t("common.delete"),
+    product: t("erp.write.product"),
+    addProduct: t("erp.calculator.addProduct"),
+    sync: t("erp.calculator.sync"),
+    syncHint: t("erp.calculator.syncHint"),
+    noLink: t("erp.calculator.noLink"),
+    sellPrice: t("erp.products.price"),
+    buyPrice: t("erp.products.cost"),
+    grossMargin: t("erp.calculator.grossMargin"),
+    adsUsd: t("erp.calculator.adsUsd"),
+    rate: t("erp.calculator.rate"),
+    adsDa: t("erp.calculator.adsDa"),
+    adsPerUnit: t("erp.calculator.adsPerUnit"),
+    packaging: t("erp.write.packaging"),
+    shipping: t("erp.write.shippingCosts"),
+    totalUnitCost: t("erp.calculator.totalUnitCost"),
+    unitsSold: t("erp.calculator.unitsSold"),
+    caTheoretical: t("erp.calculator.caTheoretical"),
+    profitPerUnit: t("erp.calculator.profitPerUnit"),
+    returnCost: t("erp.calculator.returnCost"),
+    returnCount: t("erp.calculator.returnCount"),
+    exchanges: t("erp.calculator.exchanges"),
+    addExchange: t("erp.calculator.addExchange"),
+    lossCost: t("erp.calculator.lossCost"),
+    lossCount: t("erp.calculator.lossCount"),
+    incidents: t("erp.calculator.incidents"),
+    realCa: t("erp.calculator.realCa"),
+    caGap: t("erp.calculator.caGap"),
+    allCosts: t("erp.calculator.allCosts"),
+    profit: t("erp.calculator.profit"),
+    roi: t("erp.calculator.roi"),
+    breakEven: t("erp.calculator.breakEven"),
+    breakEvenNever: t("erp.calculator.breakEvenNever"),
+    returnRate: t("erp.calculator.returnRate"),
+    netMargin: t("erp.calculator.netMargin"),
+    units: t("erp.calculator.units"),
+    grandTitle: t("erp.calculator.grandTitle"),
+    sumProfit: t("erp.calculator.sumProfit"),
+    otherCosts: t("erp.calculator.otherCosts"),
+    fixedProrated: t("erp.calculator.fixedProrated"),
+    unexpected: t("erp.write.unexpectedExpenses"),
+    grandTotal: t("erp.calculator.grandTotal"),
+    profitable: t("erp.calculator.profitable"),
+    losing: t("erp.calculator.losing"),
+    breakingEven: t("erp.calculator.breakingEven"),
+    saveRecord: t("erp.write.saveRecord"),
+    saveHint: t("erp.calculator.saveHint"),
+    customWarning: t("erp.calculator.customWarning"),
+    notes: t("erp.calculator.notes"),
+    saved: t("erp.finance.saved"),
+    aggregate: t("erp.calculator.aggregate"),
+    aggregateHint: t("erp.calculator.aggregateHint"),
+    aggregateOnly: t("erp.calculator.aggregateOnly"),
+    aggregateMissing: t("erp.calculator.aggregateMissing"),
+    aggregateFrom: t("erp.calculator.aggregateFrom"),
+    saveAggregate: t("erp.calculator.saveAggregate"),
+    incidentsInProductCosts: t("erp.calculator.incidentsInProductCosts"),
   };
 }

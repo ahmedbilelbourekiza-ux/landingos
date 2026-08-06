@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
+    "//target": "ES2020, not ES2017, since LP.16d: src/lib/money.ts is scaled-bigint arithmetic and a BigInt LITERAL is a syntax error below ES2020. `noEmit` is on and `lib` is already esnext, so this changes nothing that is emitted or type-visible — only whether tsc accepts the literal. BigInt has been in every browser this console supports since 2020.",
+    "target": "ES2020",
     "lib": [
       "dom",
       "dom.iterable",

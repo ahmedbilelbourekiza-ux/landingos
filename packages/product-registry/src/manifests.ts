@@ -85,6 +85,12 @@ export const erp: ProductManifest = {
     { id: 'carriers', titleKey: 'erp.nav.carriers', path: 'carriers', icon: 'route', permission: 'erp:shipments:write' },
     { id: 'follow-up', titleKey: 'erp.nav.followUp', path: 'follow-up', icon: 'bell-ring', permission: 'erp:orders:write' },
     { id: 'finance', titleKey: 'erp.nav.finance', path: 'finance', icon: 'line-chart', permission: 'erp:finance:read' },
+    // LP.16d. The legacy served this as a standalone HTML file with no
+    // authorization on the page at all; here it is its own screen behind the
+    // same SENSITIVE permission the books are behind. It is beside Finance
+    // rather than inside it because it is a working tool, not a report — the
+    // thing a manager opens to decide whether a product line survives.
+    { id: 'calculator', titleKey: 'erp.nav.calculator', path: 'calculator', icon: 'calculator', permission: 'erp:finance:read' },
     { id: 'agents', titleKey: 'erp.nav.agents', path: 'agents', icon: 'user-cog', permission: 'erp:agents:manage' },
     { id: 'ai', titleKey: 'erp.nav.ai', path: 'ai', icon: 'sparkles', permission: 'erp:ai:use' },
     // Phase 6.3d. NOT called "settings", and the registry's own test is why:

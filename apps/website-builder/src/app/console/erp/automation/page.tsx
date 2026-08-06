@@ -7,6 +7,11 @@ import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { SettingsForm } from "@/components/console/erp/settings-form";
+import {
+  FixedCostsEditor,
+  ChannelCarrierEditor,
+} from "@/components/console/erp/settings-structured";
+import { structuredStrings, readFixedCostRows, readChannelCarriers } from "@/lib/console/erp-strings";
 import type { SettingField } from "@/components/console/setting-field";
 import { readSettings, SETTINGS_SCHEMA } from "@/lib/erp/settings";
 
@@ -47,7 +52,25 @@ export default async function ErpAutomationScreen() {
   // boxes — the screen exists to change them.
   if (!session.auth || !can(session.auth, "erp:settings:write")) notFound();
 
-  const stored = await withTenant(session.auth.tenantId, (db) => readSettings(db));
+  const { stored, channels, carriers } = await withTenant(session.auth.tenantId, async (db) => ({
+    stored: await readSettings(db),
+    // The vocabularies the structured editors offer, read from the same tables
+    // the shipment path resolves against — so a channel that exists cannot be
+    // missing from the map, and a carrier code that would book nothing cannot
+    // be chosen.
+    channels: await db.salesChannel.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    // A carrier with no code cannot be resolved by `planShipment`, so offering
+    // one would put a choice in the map that books nothing.
+    carriers: await db.carrier.findMany({
+      where: { active: true, code: { not: null } },
+      orderBy: { name: "asc" },
+      select: { code: true, name: true },
+    }),
+  }));
 
   /* Which settings get a control is decided by their TYPE, not by a list of
      names kept in step by hand. Two are structured — `defaultCarrierByChannel`
@@ -55,10 +78,13 @@ export default async function ErpAutomationScreen() {
      `{ id, label, amount }` — and each needs an editor of its own. A JSON
      textarea would accept anything the server's `typeof value === "object"`
      check happens to allow, which is how a settings table becomes a scratchpad.
-     Both stay editable through the API until those editors exist.
+     LP.16b BUILT THOSE TWO EDITORS (below, and N23 is why): until then both
+     settings were declared, validated, read by real code, and unreachable by
+     any control — so every saved P&L was missing its rent.
      Filtering on the type rather than the name means a structured setting added
-     later is excluded automatically instead of silently rendering as a
-     checkbox. */
+     later is still excluded automatically instead of silently rendering as a
+     checkbox, and shows up here as a setting with no editor rather than as a
+     wrong one. */
   const fields: SettingField[] = Object.entries(SETTINGS_SCHEMA)
     .filter(([, spec]) => spec.type !== "object" && spec.type !== "array")
     .map(([key, spec]) => {
@@ -98,6 +124,10 @@ export default async function ErpAutomationScreen() {
       };
     });
 
+  const structured = structuredStrings(t);
+  const fixedCosts = readFixedCostRows(stored.fixedCosts);
+  const channelCarriers = readChannelCarriers(stored.defaultCarrierByChannel);
+
   return (
     <ConsoleShell session={session} productId="erp">
       <h1 className="text-xl font-semibold">{t("erp.settings.title")}</h1>
@@ -111,6 +141,25 @@ export default async function ErpAutomationScreen() {
         saving={t("common.saving")}
         save={t("common.save")}
         atomicHint={t("erp.settings.atomicHint")}
+      />
+
+      {/* The two structured settings, LP.16b. Same route, same permission, own
+          editors — see components/console/erp/settings-structured.tsx. Both are
+          keyed on the stored value for the same reason the form above is. */}
+      <FixedCostsEditor
+        key={`fc:${JSON.stringify(fixedCosts)}`}
+        errors={actionErrors(t)}
+        s={structured}
+        rows={fixedCosts}
+      />
+
+      <ChannelCarrierEditor
+        key={`cc:${JSON.stringify(channelCarriers)}`}
+        errors={actionErrors(t)}
+        s={structured}
+        channels={channels}
+        carriers={carriers.map((c) => ({ code: c.code!, name: c.name }))}
+        value={channelCarriers}
       />
     </ConsoleShell>
   );
