@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.13: analytics*
+**Branch:** `master` · **Last commit:** *LP.17: the AI screen*
 **Working tree:** clean, all work committed.
 
 ---
@@ -60,6 +60,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.16** the profit/loss calculator, all four steps | R9, N23, half of R20 | **DONE** — finance 38 (new), calc 20 (new), delivery 61→64, access 68→72 |
 | **LP.7** the notification provider (bell, badge, panel, toast, live refresh) | N2, N3, L1, L2 | **DONE** — notifications 33→41, orders 38→40 |
 | **LP.13** analytics + the dashboard's reaction-time figures | R6, K1, N18, N20 | **DONE** — analytics 19 (new), access 72→73 |
+| **LP.17** the AI screen (a live 404) + provider/agent CRUD | R10 | **DONE** — ai 20 (new), access 73→78 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -459,9 +460,10 @@ domain at a time.
 | notifications: storage, audience, badge, the live stream, Web Push (M-16) **and the console that consumes them (LP.7)** | notifications 41/41 |
 | the P&L department — proration, fixed costs, versions, roll-up, the calculator screen (LP.16) | finance 38/38 + calc 20/20 |
 | the confirmation rate and six other breakdowns, plus the dashboard's reaction-time figures (LP.13) | analytics 19/19 |
-| every surface, gated | access 73/73 |
+| the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
+| every surface, gated | access 78/78 |
 
-**627/627** across FIFTEEN contract files, each verified on its own, plus
+**647/647** across SIXTEEN contract files, each verified on its own, plus
 **20/20** in `test/calc.test.ts` — the one PURE suite, which needs no server at
 all. Running several contract files back to back still trips the documented Neon
 connection limit; judge them per file.
@@ -616,6 +618,27 @@ closing half of §7 P3 and all of R20.
 
 **Confirmed as NOT gaps, twice now:** neither system has keyboard shortcuts,
 context menus, or a chart of any kind.
+
+### LP.17 — the AI screen, and a nav item that answered 404
+
+`packages/product-registry` shipped an `ai` nav item and **no screen existed at
+that path**. Every member saw a menu item that 404'd; `screens.test.ts`
+enumerates screens by hand and omitted this one, so nothing caught it. **The new
+suite's first test is the general form of that defect** — it reads the MANIFEST
+and asserts every declared nav item answers 200, so the next one cannot be added.
+
+The screen's insights half is real and works with no provider (counts, not
+generation). **The chat half is a sentence saying it is unavailable**, not a box
+that fails on submit: `ai/chat` is a deliberate 501, and a control that always
+errors says less than the sentence — the same class of lie as D-LP.2's
+fabricated tracking numbers. Provider `/test` is deferred to Tier 4 slice 27 for
+the same reason, and the column where it would appear says so.
+
+R10's missing half also landed: `PUT`/`DELETE` on providers and assistants, plus
+`/default`. **`type` is not editable** (it decides which adapter and what each
+field means), an **empty `apiKey` is refused** rather than blanking a key,
+**exactly one default** is enforced in one transaction, and deleting a provider
+**does not cascade** to the assistants pointing at it.
 
 ### LP.13 — analytics, and the number that was computed nowhere
 

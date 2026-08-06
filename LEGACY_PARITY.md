@@ -900,7 +900,7 @@ from complete** — order export (R4) is all that remains in it.
 | **14** | Carrier test / sync / integration logs — `IntegrationLog`'s first caller | R3, R20 | M | R20's default-carrier half is **closed by LP.16b** (editor + resolver); the status-mapping delete remains. |
 | **15** | Sales-channel screen + platform adapter registry | R8 | M | |
 | ~~16~~ | ~~Profit/loss calculator + record versions + period aggregation~~ | R9 | L | **DONE — LP.16.** All four steps (§7.4): 16a `sales-summary`, 16b proration + the structured-settings editors, 16c `versions`/`aggregate`, 16d the screen. Also closes **N23** and the write half of **R20**. |
-| **17** | AI screen (fixes the live 404) + provider/agent CRUD | R10 | M | |
+| ~~17~~ | ~~AI screen + provider/agent CRUD~~ | R10 | M | **DONE — LP.17.** The 404 is closed and the manifest is now asserted whole: every declared nav item must answer 200. Chat stays a stated 501; provider `/test` is deferred to slice 27 with its reason on the screen. |
 | **18** | Product fields, variant editor, `niche`/`category`/`supplier` | R12 | M | |
 | **19** | Client + order CSV import | R5 (rest), R17 | M | |
 | **20** | Channel webhooks: lead-capture, product, Shopify HMAC | R19 | M | |

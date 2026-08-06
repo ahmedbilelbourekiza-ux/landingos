@@ -12,6 +12,104 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.17 The AI screen — a nav item that led to a 404
+
+[Opus 5]
+Date: 6 August 2026
+Summary: `/console/erp/ai` exists. `test/erp/ai.test.ts` is new at **20/20**;
+access 73 → **78**. Closes **R10** and the live 404 LP.0d recorded.
+
+#### A nav item is a promise, and this one was broken in production
+
+`packages/product-registry` ships an `ai` nav item for the ERP and **no screen
+existed at that path**. Every member — the permission is held by role glob — saw
+a menu item that answered 404. `screens.test.ts` enumerates screens by hand and
+omitted this one, so nothing caught it.
+
+**The first test in the new file is the general form of that defect**, and it is
+the one worth keeping: it reads the MANIFEST and asserts every declared nav item
+answers 200. A screen missing from a hand-written list is invisible; a nav item
+that 404s is not, and now cannot be added.
+
+#### What the screen honestly offers, which is not what the legacy's does
+
+**The insights half is real and needs no provider at all**, because it is counts
+rather than generation — the same figures `GET /api/erp/ai/insights` returns.
+
+**The chat half is a sentence saying it is unavailable, not a box that fails on
+submit.** `POST /api/erp/ai/chat` answers 501 by design: calling a model needs a
+configured provider, a real key and an adapter layer, which is deployment
+configuration rather than a port. A chat box that always errors says less than
+the sentence does, and it is the same class of lie as the fabricated tracking
+numbers D-LP.2 removed.
+
+**The ceiling line is the CALLER's**, not the company's — `read_analytics` maps
+to `erp:finance:read`, which is SENSITIVE (D-05.1) because it aggregates across
+every order and ignores the record scope that limits an agent to their own queue.
+
+#### R10's missing half: a provider could be created and never corrected
+
+`POST /ai/providers` and `POST /ai/agents` existed and **nothing could edit or
+remove what they created**. A provider added with a typo in its base URL was
+permanent, and a key that leaked could not be rotated from the console.
+
+`PUT`/`DELETE` on both, plus `POST /ai/providers/[id]/default`. Four rules, each
+with a test that violates it:
+
+- **`type` is not editable.** It decides which adapter would be used and what
+  each field means; changing it in place turns a configured provider into a
+  differently-shaped one carrying the old provider's credentials.
+- **An empty `apiKey` is refused rather than treated as a way to blank one.** A
+  provider with no key is indistinguishable from a broken one, and the failure
+  would surface much later as a model call that fails.
+- **Exactly one default**, cleared before it is set, in the same transaction —
+  the shape `POST /carriers/[id]/default` uses. Two rows flagged default is a
+  state no reader can resolve. A DEACTIVATED provider is refused by name rather
+  than half-applied.
+- **Deleting a provider does not cascade to its assistants.** An assistant is a
+  prompt and a permission set somebody wrote; removing a billing account must
+  not destroy it, and the screen shows it as unconfigured, which it now is.
+
+**`/test` is deliberately NOT built, and the screen says so in the column where
+it would appear.** Testing a provider means calling a model. A "test" button that
+reported success without contacting anything is exactly the defect D-LP.2
+removed from the carrier path. Recorded as Tier 4 slice 27.
+
+#### The permission list is a REQUEST, and the form says so
+
+An assistant's permissions are clamped per CALLER at use time
+(`clampPermissions`), so an analytics assistant configured by a manager gives an
+agent nothing extra. The checkbox list carries that sentence, because a list that
+looks like a grant is how somebody talks themselves into believing an assistant
+is a way around a permission.
+
+#### Files
+
+New: `src/app/console/erp/ai/page.tsx`,
+`src/components/console/erp/ai-write.tsx`,
+`src/app/api/erp/ai/providers/[id]/route.ts`,
+`src/app/api/erp/ai/providers/[id]/default/route.ts`,
+`src/app/api/erp/ai/agents/[id]/route.ts`, `test/erp/ai.test.ts`.
+
+Changed: `src/lib/console/erp-strings.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (+27 keys each),
+`test/erp/access.test.ts`.
+
+#### Migration
+
+None. No schema change — `AiProvider` and `AiAgent` already existed.
+
+#### Risk
+
+**Low.** One new screen behind a permission it checks itself, and five routes
+that are all `erp:settings:write`. Nothing existing changed behaviour.
+
+#### Verified
+
+build clean · ai 20/20 (new) · access 78/78 · screens 130/130 · i18n 18/18.
+
+---
+
 ### LP.13 Analytics — the number this business is managed by
 
 [Opus 5]

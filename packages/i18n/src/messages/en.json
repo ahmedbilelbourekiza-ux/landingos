@@ -454,6 +454,42 @@
       "deliveryStatus": "Delivery status",
       "unknown": "Not recorded",
       "revenueNote": "Confirmed value is what customers agreed to on the phone; delivered value is what the carrier actually paid. Under cash on delivery those are different numbers, and the gap between them is the one worth explaining."
+    },
+    "ai": {
+      "title": "AI assistant",
+      "subtitle": "Instant figures from your own data, and the assistants that may read it.",
+      "insights": "Instant insights",
+      "chat": "Chat",
+      "chatUnavailable": "Model calls are not enabled on this deployment. Everything above is computed from your own data and needs no provider; a chat box that always failed would say less than this sentence does.",
+      "yourCeiling": "What an assistant could read for you",
+      "providers": "Model providers",
+      "provider": "Provider",
+      "addProvider": "Add a provider",
+      "name": "Name",
+      "type": "Type",
+      "baseUrl": "Base URL",
+      "defaultModel": "Default model",
+      "noProviders": "No provider is configured, so nothing here can call a model.",
+      "lastTest": "Last tested",
+      "testUnavailable": "Testing needs a model adapter",
+      "agents": "Assistants",
+      "agent": "Assistant",
+      "addAgent": "Add an assistant",
+      "systemPrompt": "Instructions",
+      "role": "Role",
+      "permissions": "What it may read",
+      "permissionsHint": "A request, not a grant: whatever is ticked here is narrowed to what the person ASKING is allowed to see, every time it is used. An assistant can never be a way around a permission.",
+      "enabled": "Enabled",
+      "allAllowed": "Everything the asker may see",
+      "noAgents": "No assistants configured.",
+      "perm": {
+        "read_orders": "Read orders",
+        "read_customers": "Read customers",
+        "read_products": "Read products",
+        "read_inventory": "Read inventory",
+        "read_shipments": "Read shipments",
+        "read_analytics": "Read analytics"
+      }
     }
   },
   "status": {

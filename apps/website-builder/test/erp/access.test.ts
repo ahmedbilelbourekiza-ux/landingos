@@ -100,6 +100,13 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   ['GET', '/api/erp/ai/providers'],
   ['GET', '/api/erp/ai/agents'],
   ['GET', '/api/erp/ai/insights'],
+  // LP.17. Editing and removing a provider or an assistant — the half
+  // R10 was missing, and a provider is a billing account.
+  ['PUT', '/api/erp/ai/providers/nonexistent'],
+  ['DELETE', '/api/erp/ai/providers/nonexistent'],
+  ['POST', '/api/erp/ai/providers/nonexistent/default'],
+  ['PUT', '/api/erp/ai/agents/nonexistent'],
+  ['DELETE', '/api/erp/ai/agents/nonexistent'],
 ];
 
 describe('the ERP API is closed by default (SEC-01)', () => {

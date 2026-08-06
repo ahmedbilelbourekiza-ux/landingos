@@ -83,8 +83,9 @@ notification surface, closed with **LP.7**, which is where Tier 2 opened.
   `GET /api/erp/analytics` + `/console/erp/analytics`, seven breakdowns, and the
   dashboard's reaction-time figures back (N18). `marketer`/`source` get their
   first reader, so ad attribution is computable at last (N20).
-- **`/console/erp/ai` is a live 404** — the manifest ships an `ai` nav item and
-  no screen exists. `screens.test.ts` lists eight screens and omits it.
+- ~~**`/console/erp/ai` is a live 404**~~ **CLOSED — LP.17.** The screen exists,
+  and `test/erp/ai.test.ts` now asserts the general form: every nav item the
+  MANIFEST declares must answer 200, so the next one cannot be added.
 - **`IntegrationLog` has zero callers** — the model was migrated and nothing
   reads or writes it. `Carrier.lastTestAt`/`lastSyncAt`/`lastTestOk` are rendered
   by the carriers screen and written by nothing.
@@ -303,7 +304,7 @@ alerts, missed-counter reset, manager password reset, payroll report, audit view
 **Tier 3 — business value:** (13) analytics **[DONE LP.13]** ·
 (14) carrier test/sync/logs ·
 (15) sales-channel screen · (16) profit calculator **[DONE LP.16]** ·
-(17) AI screen ·
+(17) AI screen **[DONE LP.17]** ·
 (18) product fields + variant editor · (19) CSV import · (20) channel webhooks ·
 (21) manual follow-up assignment · (22) Ecom adapter.
 **Tier 4 — hardening:** (23) rate limiting + `CSRF_ORIGIN` · (24) the offline

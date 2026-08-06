@@ -454,6 +454,42 @@
       "deliveryStatus": "Statut de livraison",
       "unknown": "Non renseigné",
       "revenueNote": "Le montant confirmé est ce que les clients ont accepté au téléphone ; le montant livré est ce que le livreur a réellement payé. En paiement à la livraison ce sont deux nombres différents, et l’écart est celui qu’il faut expliquer."
+    },
+    "ai": {
+      "title": "Assistant IA",
+      "subtitle": "Des chiffres instantanés issus de vos données, et les assistants qui peuvent les lire.",
+      "insights": "Insights instantanés",
+      "chat": "Chat",
+      "chatUnavailable": "Les appels de modèle ne sont pas activés sur ce déploiement. Tout ce qui est au-dessus est calculé depuis vos propres données et n’a besoin d’aucun fournisseur ; une zone de chat qui échouerait toujours en dirait moins que cette phrase.",
+      "yourCeiling": "Ce qu’un assistant pourrait lire pour vous",
+      "providers": "Fournisseurs de modèles",
+      "provider": "Fournisseur",
+      "addProvider": "Ajouter un fournisseur",
+      "name": "Nom",
+      "type": "Type",
+      "baseUrl": "URL de base",
+      "defaultModel": "Modèle par défaut",
+      "noProviders": "Aucun fournisseur configuré : rien ici ne peut appeler un modèle.",
+      "lastTest": "Dernier test",
+      "testUnavailable": "Le test exige un adaptateur de modèle",
+      "agents": "Assistants",
+      "agent": "Assistant",
+      "addAgent": "Ajouter un assistant",
+      "systemPrompt": "Instructions",
+      "role": "Rôle",
+      "permissions": "Ce qu’il peut lire",
+      "permissionsHint": "Une demande, pas une autorisation : ce qui est coché ici est réduit à ce que la personne QUI DEMANDE a le droit de voir, à chaque utilisation. Un assistant ne peut jamais contourner une permission.",
+      "enabled": "Activé",
+      "allAllowed": "Tout ce que le demandeur peut voir",
+      "noAgents": "Aucun assistant configuré.",
+      "perm": {
+        "read_orders": "Lire les commandes",
+        "read_customers": "Lire les clients",
+        "read_products": "Lire les produits",
+        "read_inventory": "Lire le stock",
+        "read_shipments": "Lire les expéditions",
+        "read_analytics": "Lire les analyses"
+      }
     }
   },
   "status": {

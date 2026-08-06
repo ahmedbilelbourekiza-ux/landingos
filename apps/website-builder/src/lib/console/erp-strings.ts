@@ -11,6 +11,7 @@ import type {
   FixedCostRow,
 } from "@/components/console/erp/settings-structured";
 import type { CalculatorStrings } from "@/components/console/erp/profit-calculator";
+import type { AiStrings } from "@/components/console/erp/ai-write";
 
 /* =============================================================================
  * The ERP's write-control labels, resolved once per screen.
@@ -338,5 +339,36 @@ export function calculatorStrings(t: (key: string) => string): CalculatorStrings
     aggregateFrom: t("erp.calculator.aggregateFrom"),
     saveAggregate: t("erp.calculator.saveAggregate"),
     incidentsInProductCosts: t("erp.calculator.incidentsInProductCosts"),
+  };
+}
+
+/* -----------------------------------------------------------------------------
+ * The AI screen — LP.17
+ * -------------------------------------------------------------------------- */
+
+export function aiStrings(t: (key: string) => string): AiStrings {
+  return {
+    saving: t("common.saving"),
+    save: t("common.save"),
+    cancel: t("erp.write.deactivate"),
+    remove: t("common.delete"),
+    addProvider: t("erp.ai.addProvider"),
+    name: t("erp.ai.name"),
+    type: t("erp.ai.type"),
+    baseUrl: t("erp.ai.baseUrl"),
+    apiKey: t("erp.write.apiKey"),
+    defaultModel: t("erp.ai.defaultModel"),
+    create: t("erp.write.create"),
+    makeDefault: t("erp.write.makeDefault"),
+    addAgent: t("erp.ai.addAgent"),
+    description: t("erp.write.description"),
+    systemPrompt: t("erp.ai.systemPrompt"),
+    role: t("erp.ai.role"),
+    provider: t("erp.ai.provider"),
+    permissions: t("erp.ai.permissions"),
+    permissionsHint: t("erp.ai.permissionsHint"),
+    enabled: t("erp.write.activate"),
+    none: t("erp.write.unassigned"),
+    keyKept: t("erp.write.maskKeeps"),
   };
 }
