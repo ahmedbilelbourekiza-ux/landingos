@@ -1,8 +1,26 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *Phase 7.3: self-serve signup*
+**Branch:** `master` · **Last commit:** *LP.0: the legacy parity gap report*
 **Working tree:** clean, all work committed.
+
+---
+
+## ⚠️ CURRENT PHASE: LEGACY PARITY RESTORATION — NOT Phase 8
+
+Phase 7 is complete, but **Phase 8 is deferred.** A full feature-by-feature
+comparison of `apps/erp` (the legacy CRM) against the platform ERP was carried
+out on 6 August 2026 and is in **`LEGACY_PARITY.md`**. Read it before doing
+anything else.
+
+**101 features compared: 55 identical · 8 improved · 14 partial · 24 missing.**
+**The platform cannot replace the legacy CRM in production today.** Three hard
+blockers: no real carrier adapter (only `mock`, which fabricates tracking
+numbers), no product editing, no export of any kind. Plus a read-only client
+registry.
+
+Do not start Phase 8, do not add SaaS functionality, and do not redesign
+anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 
 ---
 
@@ -319,19 +337,27 @@ stream and inbound carrier webhooks).
 | 7 | SaaS layer — team management (**complete**), billing (**complete**), self-serve signup (**complete**). See NEXT_STEPS §7. |
 | 8 | Hardening — adversarial isolation review, load testing, backup/restore, runbooks |
 
-### Next recommended task — Phase 8, hardening
+### Next recommended task — LEGACY PARITY, Tier 1
 
 **Phase 7 (the SaaS layer) is complete.** Four slices: 7.1 team management
 (API + acceptance + screen, 56 tests), 7.2 billing (entitlement management,
-19 tests), 7.3 self-serve signup (10 tests), plus a demo tenant. A customer can
-now sign up, invite a team, manage roles, change entitlements, and accept
-invitations — all on the platform, all contract-tested.
+19 tests), 7.3 self-serve signup (10 tests), plus a demo tenant.
 
-**Phase 8 is hardening** — adversarial isolation review, load testing,
-backup/restore, runbooks. Two platform guarantees from the ERP still need an
-owner (NEXT_STEPS §4): cross-origin state-change refusal (`CSRF_ORIGIN`) and
-rate limiting (login throttling + an API backstop). Both were real and tested in
-the ERP and left the product suite in 5.1 because neither belongs in one.
+**Phase 8 is DEFERRED.** `LEGACY_PARITY.md` measured the platform ERP against
+`apps/erp` feature by feature and found 24 missing and 14 partial features. The
+restoration roadmap is in that file, §4, ordered by business value rather than
+by technical simplicity. Tier 1 is the four production blockers:
+
+| # | Slice | Size |
+|---|---|---|
+| 1 | Product editing — `PUT /api/erp/products/[id]` + the control | S |
+| 2 | Carrier adapter refusal, then the real ZR Express adapter | S then L |
+| 3 | Order export — CSV for ZR / Ecom / Ecotrac + the performance report | M |
+| 4 | Carrier test / sync / integration logs (`IntegrationLog`'s first caller) | M |
+
+Phase 8's two guarantees (`CSRF_ORIGIN` and rate limiting) remain owed and are
+Tier 4 of the same roadmap — the legacy system had both, so they are a parity
+item as well as a hardening one.
 
 ### Phase 7.3 — landed (GLM-5.2)
 

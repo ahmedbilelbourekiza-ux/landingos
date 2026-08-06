@@ -1,9 +1,66 @@
 # Next Steps
 
-**Phase 5 and Phase 6 are complete. Phase 7 (the SaaS layer) is COMPLETE.**
-**THE NEXT PHASE IS 8: hardening. See §8 (below, to be written).**
-Immediate tasks to continue from the Phase 7.3 commit. Full context is in
-`PROJECT_STATE.md` — read its "Read this first" section before starting.
+**Phase 5, 6 and 7 are complete. PHASE 8 IS DEFERRED.**
+**THE CURRENT PHASE IS LEGACY PARITY RESTORATION — see `LEGACY_PARITY.md`.**
+Full context is in `PROJECT_STATE.md` — read its "Read this first" section
+before starting.
+
+---
+
+## LP. Legacy parity restoration — THE CURRENT WORK
+
+`LEGACY_PARITY.md` compares `apps/erp` (the legacy CRM/ERP: 123 routes, 27
+tables, 15 screens) against the platform ERP (60 route files, 22 models, 12
+screens), feature by feature. **101 features: 55 identical · 8 improved ·
+14 partial · 24 missing.**
+
+**Read `LEGACY_PARITY.md` before writing anything.** §3 has a detail card for
+every partial and missing feature — what existed, what exists now, what is
+missing, business impact, complexity and dependencies. §4 is the roadmap,
+ordered by business value.
+
+### The three hard blockers
+
+1. **No real carrier adapter.** `ADAPTERS = { mock }` in `lib/erp/carriers.ts`,
+   and `getAdapter` falls back to `mock` for any unknown key — so a carrier
+   configured as `zr` books a fabricated tracking number and reports success.
+   The legacy `zr.js` is 479 lines of live ZR Express integration.
+2. **No product editing.** `products/[id]/route.ts` is `GET` + `DELETE`. A wrong
+   `costPrice` is permanent and it is the cost basis for FIFO lots, delivered
+   pay, `/sales-summary` and every P&L record.
+3. **No export.** No CSV or XLSX anywhere. The legacy Export screen (ZR / Ecom /
+   Ecotrac / performance report) is how confirmed orders reach a carrier.
+
+### Two defects in shipped code, found by the measurement
+
+- **`/console/erp/ai` is a live 404** — the manifest ships an `ai` nav item and
+  no screen exists. `screens.test.ts` lists eight screens and omits it.
+- **`IntegrationLog` has zero callers** — the model was migrated and nothing
+  reads or writes it. `Carrier.lastTestAt`/`lastSyncAt`/`lastTestOk` are
+  rendered by the carriers screen and written by nothing.
+
+### The order of work (LEGACY_PARITY.md §4)
+
+**Tier 1 — production blockers:** (1) product editing · (2) adapter refusal then
+the ZR adapter · (3) order export · (4) carrier test/sync/logs.
+**Tier 2 — daily operations:** (5) client detail/edit/export · (6) analytics
+screen · (7) bulk actions completed · (8) agent alerts + missed-counter reset +
+manager password reset · (9) sales-channel screen.
+**Tier 3 — completeness:** (10) profit calculator + versions + aggregation ·
+(11) AI screen + provider/agent CRUD · (12) product fields + variant editor ·
+(13) manual follow-up assignment · (14) CSV import · (15) channel webhooks ·
+(16) Ecom adapter.
+**Tier 4 — hardening (overlaps Phase 8):** (17) rate limiting + `CSRF_ORIGIN` ·
+(18) board view + print · (19) status vocabulary endpoints · (20) real AI calls.
+
+**Parity is reached at the end of Tier 3.**
+
+### Slice rules
+
+One slice per commit; never touch unrelated code. Every slice compiles, keeps
+every suite green, adds new tests, and updates CHANGELOG + PROJECT_STATE +
+NEXT_STEPS. Before every commit: build · tests · permissions · a neighbouring
+suite for regressions.
 
 ---
 

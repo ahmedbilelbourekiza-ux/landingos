@@ -10,6 +10,84 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## Phase LP — Legacy parity restoration
+
+### LP.0 The feature gap report — measuring the legacy CRM against the platform
+
+[Opus 5]
+Date: 6 August 2026
+Summary: **LEGACY_PARITY.md** is new. Both implementations were read end to end
+and compared feature by feature — **101 features**, each classified IDENTICAL /
+IMPROVED / PARTIAL / MISSING, with a restoration roadmap ordered by business
+value. **No code was written.** Phase 8 is deferred until parity is restored.
+
+#### The result
+
+| Class | Count |
+|---|---|
+| ✅ IDENTICAL | 55 |
+| 🔵 IMPROVED | 8 |
+| 🟡 PARTIAL | 14 |
+| 🔴 MISSING | 24 |
+
+**The platform cannot replace the legacy CRM in production today.** The order
+pipeline is at or above parity; what is missing clusters in four places, and
+three are hard blockers:
+
+- **No real carrier adapter.** `ADAPTERS = { mock }` in `lib/erp/carriers.ts`.
+  The legacy system ships four working adapters — `zr.js` alone is 479 lines
+  with live territory resolution and outbound parcel creation. Worse than
+  absent: `getAdapter` falls back to `mock` for any unknown key, so a carrier
+  configured as `zr` books a fabricated `MOCK…` tracking number and reports
+  success.
+- **No product editing.** `products/[id]/route.ts` exports `GET` and `DELETE`
+  only. A wrong `costPrice` is permanent, and it is the cost basis for FIFO
+  lots, delivered-order pay, `/sales-summary` and every P&L record.
+- **No export of any kind.** No CSV, no XLSX anywhere on the platform. The
+  legacy Export screen is how confirmed orders reach carriers.
+- **No client management.** Read-only list. No detail, no correction, no
+  import — although `Client.importedTotalOrders` / `importedSource` /
+  `importedAt` are in the schema for exactly that, unused.
+
+#### Two defects the measurement found in shipped code
+
+**`/console/erp/ai` is a live 404.** The ERP manifest ships an `ai` nav item
+(`packages/product-registry/src/manifests.ts:89`) and no `console/erp/ai/page.tsx`
+exists. `screens.test.ts` enumerates eight screens and does not include it, so
+nothing catches it — an owner clicking "AI" in their own product's navigation
+gets a not-found. PROJECT_STATE's claim that every nav item leads to a real
+screen was off by one.
+
+**`IntegrationLog` has zero callers.** The model was migrated (`erp.prisma:430`)
+and nothing reads or writes it. `Carrier.lastTestAt` / `lastSyncAt` / `lastTestOk`
+are selected by the API and rendered by `carriers/page.tsx:181` — and written by
+nothing, because no test or sync route was ported. The column shows "—" forever.
+
+#### Why the gaps were invisible
+
+The same reason 6.5/6.6 kept finding Phase 5 gaps: **contract tests over HTTP
+attack endpoints, and an endpoint that is simply absent has no test to fail.**
+The ERP surface was declared complete by counting routes that exist, never by
+diffing against the routes that existed before. This report is that diff:
+123 legacy routes and 15 legacy screens against 60 platform route files and
+12 screens.
+
+#### Files
+`LEGACY_PARITY.md` (new). `PROJECT_STATE.md`, `NEXT_STEPS.md`, `CHANGELOG.md`
+updated to make parity restoration the current phase.
+
+#### Migration
+None. **The schema is already at parity** — all 27 legacy tables have a platform
+home. Every gap is behaviour, and several are storage that exists with nothing
+using it.
+
+#### Risk
+None — no code changed. The risk this entry records is the one it removes:
+Phase 7 completed and Phase 8 was queued while the ERP could not book a parcel,
+edit a product, or export an order.
+
+---
+
 ## Phase 7 — The SaaS layer
 
 ### 7.3 Self-serve signup — the first public write path
