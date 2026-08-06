@@ -14,8 +14,18 @@ out on 6 August 2026 and is in **`LEGACY_PARITY.md`**. Read it before doing
 anything else.
 
 **Second pass, 6 August 2026 (from `9d1f887`): 115 features compared —
-52 identical · 6 improved · 18 partial · 39 missing.** The platform cannot
-replace the legacy CRM in production today.
+52 identical · 6 improved · 18 partial · 39 missing.**
+
+**As of the LP.12 run (6 August 2026), TIER 1 AND TIER 2 ARE COMPLETE and Tier 3
+is four slices from it.** Twelve restoration slices have landed — LP.1–LP.7,
+LP.12, LP.13, LP.14, LP.16, LP.17 — closing every production blocker §0b named,
+every "computed and shown nowhere" defect the three passes found, and eleven of
+the twenty-seven roadmap slices. **What remains before parity is Tier 3's
+(15) sales-channel screen, (18) product fields + variant editor, (19) CSV import,
+(20) channel webhooks, (21) manual follow-up assignment and (22) the Ecom
+adapter**, plus Tier 2's (8) inline row actions, (9) bulk actions completed,
+(10) client detail/edit/export and (11) sound + desktop preferences. Tier 4 is
+Phase 8 work the legacy happened to also have.
 
 **The first pass measured APIs, not workflows, and five verdicts did not
 survive.** A feature was marked ✅ when the endpoint existed and had contract
@@ -465,10 +475,11 @@ domain at a time.
 | the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
 | every surface, gated | access 84/84 |
 
-**690/690** across SIXTEEN contract files, each verified on its own, plus
-**20/20** in `test/calc.test.ts` — the one PURE suite, which needs no server at
-all. Running several contract files back to back still trips the documented Neon
-connection limit; judge them per file.
+**682/682** across SIXTEEN ERP contract files, each verified on its own, plus
+**91/91** platform contract (team 62 · billing 19 · signup 10) and **20/20** in
+`test/calc.test.ts` — the one PURE suite, which needs no server at all. Running
+several contract files back to back still trips the documented Neon connection
+limit; judge them per file.
 
 Three routes answer **501 by design**, and are not gaps: `POST /api/erp/agents`
 (inviting a person is a platform action, M-02), and `ai/chat`, `ai/chat/stream`,
@@ -1521,14 +1532,15 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 553 | all pass against a running server |
-| `apps/website-builder` — platform contract | 85 | team (7.1) + billing (7.2) + signup (7.3), against a running server |
+| `apps/website-builder` — ERP contract | 682 | all pass against a running server |
+| `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
+| `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1183** | green per suite |
+| **Total** | **1338** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and
