@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { toneVars } from "@landingos/ui";
 
 import { flashEntity } from "@/components/console/row-flash";
+import { playFamily } from "@/components/console/notification-sound";
+import { soundFamilyOf, type NotifyPrefs } from "@/lib/platform/notify-vocab";
 
 /* =============================================================================
  * The notification consumer — LP.7, closing N2, N3, L1 and L2.
@@ -87,6 +89,7 @@ export function NotificationProvider({
   unread,
   strings: s,
   productNames,
+  prefs,
 }: {
   /** The server's count, re-read on every render of the shell. */
   readonly unread: number;
@@ -94,6 +97,12 @@ export function NotificationProvider({
   /** Product id → translated name, so a toast can say where it came from
    *  without the client holding a registry or a catalogue of strings. */
   readonly productNames: Readonly<Record<string, string>>;
+  /* LP.11 — HOW THIS PERSON WANTS TO BE TOLD, read on the SERVER.
+   *
+   * A prop rather than a fetch, for the reason the unread count is one: the
+   * shell reads it on every render, so a change made on the settings screen or
+   * in another tab takes effect on the next navigation rather than never. */
+  readonly prefs: NotifyPrefs;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -102,6 +111,13 @@ export function NotificationProvider({
   const [connected, setConnected] = useState(false);
 
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* The stream subscription is opened ONCE and its handler closes over
+   * whatever `prefs` was at that moment. A ref keeps the handler reading the
+   * current value without re-opening the connection every time the shell
+   * re-renders — which would drop and replay the stream on every navigation. */
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
 
   /** One re-render for a burst, not one per event. */
   const scheduleRefresh = useCallback(() => {
@@ -153,6 +169,55 @@ export function NotificationProvider({
          * is the same noise the replay-does-not-toast rule above exists to
          * prevent. */
         flashEntity(payload.entityId);
+
+        /* LP.11 / N4 — THE SOUND IS THE CHANNEL, NOT DECORATION.
+         *
+         * In a call centre nobody watches the screen: an operator is on the
+         * phone with their eyes on a customer's address. Six signatures, so the
+         * sound itself says what happened — money arrived, a colleague may be
+         * marking orders confirmed without dialling, somebody is waiting for a
+         * call back. Live arrivals only, for the reason replayed frames do not
+         * toast: fifty sirens on reconnect is not information.
+         *
+         * The family falls back to a neutral chime for an unmapped type rather
+         * than to silence — a notification type added later must be audible by
+         * default, which is the safe direction. */
+        const family = soundFamilyOf(payload.type);
+        if (prefsRef.current.sound && prefsRef.current.families[family] !== false) {
+          playFamily(family, prefsRef.current.volume);
+        }
+
+        /* LP.11 / N5 — THE DESKTOP NOTIFICATION.
+         *
+         * Only when the tab is NOT visible. A browser notification for a page
+         * the person is looking at duplicates the toast beside it, and the
+         * legacy raised both unconditionally.
+         *
+         * TAGGED BY ENTITY, as the legacy tags by order id: six carrier events
+         * for one parcel should replace each other in the tray rather than
+         * stack six deep.
+         *
+         * Permission is never REQUESTED here. Asking on page load is what
+         * trains people to click Block, and a blocked permission cannot be
+         * asked for again — the settings panel asks, on a click, where the
+         * person has just said they want it. */
+        if (
+          prefsRef.current.desktop &&
+          typeof Notification !== "undefined" &&
+          Notification.permission === "granted" &&
+          typeof document !== "undefined" &&
+          document.visibilityState !== "visible"
+        ) {
+          try {
+            new Notification(payload.title || payload.type || payload.product, {
+              body: payload.body ?? undefined,
+              tag: payload.entityId ?? payload.type ?? undefined,
+            });
+          } catch {
+            // A worker-only Notification constructor, a locked-down browser.
+            // Never fatal: the toast and the badge still happened.
+          }
+        }
       }
       // Both live and replayed events move the server truth, so both refresh.
       scheduleRefresh();

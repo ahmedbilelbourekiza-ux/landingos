@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.10: the registry stops being read-only*
+**Branch:** `master` · **Last commit:** *LP.11: the bell learns to make a noise*
 **Working tree:** clean, all work committed.
 
 ---
@@ -16,14 +16,14 @@ anything else.
 **Second pass, 6 August 2026 (from `9d1f887`): 115 features compared —
 52 identical · 6 improved · 18 partial · 39 missing.**
 
-**As of 7 August 2026, TIER 1 IS COMPLETE and FOURTEEN of the twenty-seven
-roadmap slices have landed** — LP.1–LP.10, LP.12, LP.13, LP.14, LP.16, LP.17.
+**As of 7 August 2026, TIERS 1 AND 2 ARE COMPLETE and FIFTEEN of the twenty-seven
+roadmap slices have landed** — LP.1–LP.14, LP.16, LP.17 (all but 15, 18–22).
 Every production blocker §0b named is closed, as is every "computed, stored and
 shown nowhere" defect the three passes found.
 
-**Tier 2: 7, 8, 9, 10 and 12 are in; only 11 is not.**
+**TIER 2 IS COMPLETE** — 7, 8, 9, 10, 11 and 12 are all in.
 **Tier 3 is a third done: 13, 14, 16 and 17 are in; 15, 18, 19, 20, 21 and 22
-are not.** Parity is reached at the end of Tier 3, so **seven roadmap slices
+are not.** Parity is reached at the end of Tier 3, so **six roadmap slices
 remain** — the full list is in `LEGACY_PARITY.md` §4 and every one still carries
 its own detail card in §3.
 
@@ -76,6 +76,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.8** inline row actions + list density + the changed-row flash | N9, N10, N21, N22 | **DONE** — screens 140→148 |
 | **LP.9** bulk classify / assignFollowup / createShipments / sendToDelivery | R7, half of R13 | **DONE** — orders 40→58, screens 148→152 |
 | **LP.10** client detail / correction / export / eight filters | R5 (3 of 4) | **DONE** — registry 21 (new), access 84→87 |
+| **LP.11** six sound signatures, per-family toggles, desktop notifications | N4, N5 | **DONE — TIER 2 COMPLETE** — notifications 41→48 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -473,13 +474,13 @@ domain at a time.
 | the order book as a file — ZR / Ecom / Ecotrac / report (LP.6) | export 31/31 |
 | the scheduled work (M-15), and the worker's tick both ways | jobs 16/16 |
 | assignment — new, confirmed and overdue orders | assign 25/25 |
-| notifications: storage, audience, badge, the live stream, Web Push (M-16) **and the console that consumes them (LP.7)** | notifications 41/41 |
+| notifications: storage, audience, badge, the live stream, Web Push (M-16), the console that consumes them (LP.7) **and how a person wants to be told (LP.11)** | notifications 48/48 |
 | the P&L department — proration, fixed costs, versions, roll-up, the calculator screen (LP.16) | finance 38/38 + calc 20/20 |
 | the confirmation rate and six other breakdowns, plus the dashboard's reaction-time figures (LP.13) | analytics 19/19 |
 | the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
 | every surface, gated | access 87/87 |
 
-**736/736** across SEVENTEEN ERP contract files, each verified on its own, plus
+**743/743** across SEVENTEEN ERP contract files, each verified on its own, plus
 **91/91** platform contract (team 62 · billing 19 · signup 10) and **20/20** in
 `test/calc.test.ts` — the one PURE suite, which needs no server at all. Running
 several contract files back to back still trips the documented Neon connection
@@ -779,6 +780,37 @@ nothing.
 **The detail screen does not attach a parcel timeline per history row.** The
 legacy did, at two extra queries PER ORDER; forty orders was eighty round trips
 on a screen somebody opens to read a phone number.
+
+### LP.11 — the bell learns to make a noise (Tier 2 complete)
+
+**N4 and N5.** LP.7's bell, badge, panel and toast are all things you have to be
+LOOKING at, and in a call centre nobody watches the screen. Six Web Audio
+signatures, ported note for note, with a per-family toggle, a volume and a test
+button beside each — a per-type sound you cannot hear before saving is one
+nobody sets correctly.
+
+**D-LP.11.1 — `ProductSetting`, not `localStorage`.** The one thing the legacy
+got wrong here: a manager who mutes the manipulation siren on one machine is
+un-muted on the next, and a supervisor cannot tell whether an agent has silenced
+the alert that watches them.
+
+**D-LP.11.2 — the preference is per (person, tenant)**, because
+`ProductSetting` is tenant-scoped and because the volume somebody wants in a COD
+call centre is not the volume they want in a quiet back office.
+
+**There is no way to name a target.** The session's own id is used; a `userId` in
+the body is ignored, and a test asserts it. The manipulation siren is the one
+notification a person has a motive to silence for somebody else.
+
+**N5's two corrections to the legacy:** the desktop notification fires only when
+the tab is NOT visible (otherwise it duplicates the toast beside it), and
+permission is asked on a CLICK rather than on page load — asking on load is what
+trains people to click Block, and a blocked permission can never be re-requested.
+
+**The build failure that produced `notify-vocab.ts`:** the vocabulary started in
+the `server-only` module that the client components import, and the whole build
+failed. Directive-free module for anything both sides need — the `edit-field.ts`
+rule, now with a second worked example.
 
 ### LP.14 — carriers: three columns nobody wrote, and a log nobody read
 
@@ -1643,7 +1675,7 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 736 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 743 | all pass against a running server |
 | `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
 | `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
@@ -1651,7 +1683,7 @@ fail without it, so check the counts, not just the exit code.
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1392** | green per suite |
+| **Total** | **1399** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

@@ -728,6 +728,21 @@
     "markAllRead": "Tout marquer comme lu",
     "unread": "Non lues",
     "live": "En direct",
-    "reconnecting": "Reconnexion…"
+    "reconnecting": "Reconnexion…",
+    "prefsPanel": "Alertes",
+    "prefsHint": "Enregistré sur votre compte, donc conservé d'un appareil à l'autre. Dans un centre d'appels personne ne regarde l'écran — le son est l'alerte.",
+    "sound": "Jouer un son",
+    "volume": "Volume",
+    "desktop": "Afficher une notification système quand cet onglet est en arrière-plan",
+    "desktopBlocked": "Votre navigateur bloque les notifications pour ce site. Modifiez-le dans les paramètres du site — cette page ne peut plus le demander.",
+    "desktopAsk": "Autoriser les notifications",
+    "test": "Tester",
+    "saved": "Enregistré.",
+    "familyNewOrder": "Nouvelle commande",
+    "familyAbandoned": "Panier abandonné",
+    "familyAssignment": "Travail qui m'est assigné",
+    "familyManipulation": "Appel signalé ou alerte agent",
+    "familyDelivery": "Mise à jour du colis",
+    "familyFollowup": "Rappel de suivi"
   }
 }

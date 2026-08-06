@@ -891,3 +891,125 @@ describe('the console finally consumes its own notifications', () => {
     assert.equal(older?.read, true, 'and everything up to what was shown is read');
   });
 });
+
+/** A rendered console page, for the two LP.11 assertions that need HTML. */
+const screen = async (path: string, token: string) => {
+  const res = await fetch(BASE + path, {
+    redirect: 'manual',
+    headers: { cookie: `${SESSION_COOKIE}=${token}` },
+  });
+  return { status: res.status, body: await res.text() };
+};
+
+/* =============================================================================
+ * LP.11 — how a person wants to be told (N4, N5)
+ *
+ * The bell LP.7 built is silent, and in a call centre nobody watches the screen.
+ * These assert the two properties that make the preference safe rather than just
+ * present: it is stored SERVER-side so it follows the person between devices,
+ * and it is the caller's OWN and unreachable for anybody else.
+ * ========================================================================== */
+
+describe('a person can choose how they are told (N4, N5)', () => {
+  test('the default is audible — six families on, at the legacy’s volume', async () => {
+    const r = await acme.manager.api('GET', '/api/platform/notifications/preferences');
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.sound, true);
+    assert.equal(r.body.data.volume, 0.6, 'the legacy default, deliberately kept');
+    assert.equal(r.body.data.desktop, true);
+    for (const family of ['new_order', 'abandoned', 'assignment', 'manipulation', 'delivery', 'followup']) {
+      assert.equal(r.body.data.families[family], true, `${family} must be on by default`);
+    }
+  });
+
+  test('it round-trips and is stored on the SERVER, not in a browser', async () => {
+    const put = await acme.manager.api('PUT', '/api/platform/notifications/preferences', {
+      sound: true, volume: 0.25, desktop: false,
+      families: { manipulation: false },
+    });
+    assert.equal(put.status, 200);
+
+    const back = await acme.manager.api('GET', '/api/platform/notifications/preferences');
+    assert.equal(back.body.data.volume, 0.25);
+    assert.equal(back.body.data.desktop, false);
+    assert.equal(back.body.data.families.manipulation, false);
+    // Absent means ON: a family added later must be audible by default, which
+    // is the safe direction.
+    assert.equal(back.body.data.families.new_order, true);
+  });
+
+  test('the volume is CLAMPED, not trusted', async () => {
+    // A stored 40 would be forty times the gain the envelopes were designed
+    // for, which is a genuinely painful noise on a headset.
+    const high = await acme.manager.api('PUT', '/api/platform/notifications/preferences', {
+      volume: 40,
+    });
+    assert.equal(high.body.data.volume, 1);
+
+    const low = await acme.manager.api('PUT', '/api/platform/notifications/preferences', {
+      volume: -3,
+    });
+    assert.equal(low.body.data.volume, 0);
+
+    const junk = await acme.manager.api('PUT', '/api/platform/notifications/preferences', {
+      volume: 'loud',
+    });
+    assert.equal(junk.body.data.volume, 0.6, 'junk falls back to the default rather than to NaN');
+  });
+
+  test('it is PER PERSON — one operator cannot silence another', async () => {
+    // The manipulation siren is the alert that watches for an agent marking
+    // orders confirmed without dialling. It is the one notification somebody
+    // has a motive to turn off for a colleague, and there is no way to name a
+    // target: the route uses the session's own id.
+    await acme.manager.api('PUT', '/api/platform/notifications/preferences', {
+      sound: false,
+    });
+    const theirs = await acme.agent.api('GET', '/api/platform/notifications/preferences');
+    assert.equal(theirs.body.data.sound, true, 'the agent’s own preference was changed by the manager');
+
+    // And a userId in the body is ignored rather than honoured.
+    await acme.manager.api('PUT', '/api/platform/notifications/preferences', {
+      userId: acme.agent.userId, sound: true, volume: 0.1,
+    });
+    const still = await acme.agent.api('GET', '/api/platform/notifications/preferences');
+    assert.equal(still.body.data.volume, 0.6, 'a userId in the body must not select a target');
+  });
+
+  test('an anonymous caller gets nothing', async () => {
+    const get = await fetch(`${BASE}/api/platform/notifications/preferences`);
+    assert.equal(get.status, 401);
+    const put = await fetch(`${BASE}/api/platform/notifications/preferences`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    assert.equal(put.status, 401);
+  });
+
+  test('the panel is on the profile screen, with a test button per family', async () => {
+    const r = await screen('/console/settings/profile', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="notify-preferences"/);
+    assert.match(r.body, /data-testid="notify-volume"/);
+    assert.match(r.body, /data-testid="notify-desktop"/);
+    for (const family of ['new_order', 'abandoned', 'assignment', 'manipulation', 'delivery', 'followup']) {
+      assert.match(r.body, new RegExp(`data-testid="notify-family-${family}"`));
+      // A per-type sound you cannot hear before saving is one nobody sets
+      // correctly — the point of six signatures is that they differ.
+      assert.match(r.body, new RegExp(`data-testid="notify-test-${family}"`));
+    }
+  });
+
+  test('the shell renders with a stored preference, not only a default', async () => {
+    // The preference is a PROP read on the server, so a broken read would take
+    // out every console page rather than one panel. This asserts the shell
+    // still renders after a non-default preference is stored.
+    await acme.agent.api('PUT', '/api/platform/notifications/preferences', {
+      sound: false, volume: 0.1, desktop: false, families: { delivery: false },
+    });
+    const r = await screen('/console/erp/orders', acme.agent.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="notification-bell"/);
+  });
+});

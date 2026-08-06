@@ -15,6 +15,7 @@ import type { AiStrings } from "@/components/console/erp/ai-write";
 import type { RowActionStrings } from "@/components/console/erp/order-row-actions";
 import type { ClientEditStrings } from "@/components/console/erp/client-write";
 import type { ClientExportStrings } from "@/components/console/erp/client-export";
+import type { NotifyPrefStrings } from "@/components/console/notify-preferences";
 
 /* =============================================================================
  * The ERP's write-control labels, resolved once per screen.
@@ -430,5 +431,39 @@ export function clientExportStrings(t: (key: string) => string): ClientExportStr
     hint: t("erp.clients.exportHint"),
     download: t("erp.clients.exportDownload"),
     inView: t("erp.export.inViewCount"),
+  };
+}
+
+
+/**
+ * The alert-preferences panel's labels — LP.11.
+ *
+ * A PLATFORM bundle living in this file, which is otherwise the ERP's. It is
+ * here rather than in a second module because the file is already the console's
+ * one place for "translate on the server, hand the client strings", and a
+ * platform-strings module holding one function would be a directory to explain.
+ * The keys themselves are under `notifications.*`, which is where they belong.
+ */
+export function notifyPrefStrings(t: (key: string) => string): NotifyPrefStrings {
+  return {
+    saving: t("common.saving"),
+    panel: t("notifications.prefsPanel"),
+    hint: t("notifications.prefsHint"),
+    sound: t("notifications.sound"),
+    volume: t("notifications.volume"),
+    desktop: t("notifications.desktop"),
+    desktopBlocked: t("notifications.desktopBlocked"),
+    desktopAsk: t("notifications.desktopAsk"),
+    test: t("notifications.test"),
+    save: t("common.save"),
+    saved: t("notifications.saved"),
+    families: {
+      new_order: t("notifications.familyNewOrder"),
+      abandoned: t("notifications.familyAbandoned"),
+      assignment: t("notifications.familyAssignment"),
+      manipulation: t("notifications.familyManipulation"),
+      delivery: t("notifications.familyDelivery"),
+      followup: t("notifications.familyFollowup"),
+    },
   };
 }

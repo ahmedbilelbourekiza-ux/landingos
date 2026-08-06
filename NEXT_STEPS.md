@@ -223,9 +223,29 @@ was reachable any other way:
    advances `TenantSequence`. `nextReference` now heals itself from the highest
    reference already in use, counting only references it could have minted.
 
-**#8, #9 and #10 are DONE.** The next Tier 2 slice is #11 — which
+**TIER 2 IS COMPLETE** (#7–#12). The remaining work is Tier 3: #15, #18, #19,
+#20, #21 and #22. #11
 (sound + desktop notification preferences on `ProductSetting`) hangs directly off
 this provider.
+
+### LP.11 — DONE. The bell learns to make a noise (N4, N5) — **TIER 2 COMPLETE**
+
+**Implemented and verified.** notifications 41 → **48**. Six Web Audio
+signatures, per-family toggles with a test button each, a clamped volume,
+desktop notifications when the tab is not visible — all stored on
+`ProductSetting`.
+
+**Two things to carry forward:**
+
+- **`notify-vocab.ts` is directive-free and `notify-prefs.ts` is
+  `server-only`.** The first build put both in one module and failed outright:
+  a client component cannot import `server-only`. This is the second worked
+  example of the `edit-field.ts` rule; do not merge them back.
+- **Not verifiable here:** whether the six signatures sound distinct through a
+  headset, and whether a real browser raises the desktop notification. Both need
+  a person with speakers on a real device. Grouped with the two other things
+  Phase 8 owes a device (Web Push crossing a real push service, and the install
+  prompt).
 
 ### LP.10 — DONE. The registry stops being read-only (R5, 3 of 4)
 
@@ -364,7 +384,7 @@ order **[DONE LP.4]** · the real ZR adapter **[DONE LP.5]** · order export
 **Tier 2 — operator productivity:** (7) the notification provider **[DONE LP.7]** ·
 (8) inline row actions + list density **[DONE LP.8]** · (9) bulk actions
 completed **[DONE LP.9]** · (10) client detail/edit/export **[DONE LP.10]** ·
-(11) sound + desktop notification
+(11) sound + desktop notification **[DONE LP.11]**
 preferences · (12) agent alerts, missed-counter reset, manager password reset,
 payroll report, audit view **[DONE LP.12]**.
 **Tier 3 — business value:** (13) analytics **[DONE LP.13]** ·

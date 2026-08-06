@@ -12,6 +12,126 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.11 The bell learns to make a noise — **TIER 2 IS COMPLETE**
+
+[Opus 5]
+Date: 7 August 2026
+Summary: N4 and N5 — six Web Audio signatures with a per-family toggle and a
+volume, plus desktop notifications, stored on `ProductSetting` rather than in a
+browser. notifications 41 → **48**.
+
+#### N4 — in a call centre nobody watches the screen
+
+LP.7 gave the console a bell, a badge, a panel and a toast, and every one of them
+is a thing you have to be LOOKING at. An operator is on the phone with their eyes
+on a customer's address; the ka-ching IS the alert. The legacy CRM has six
+distinct Web Audio signatures for exactly that reason, and one generic ping is
+trained out within a day.
+
+`components/console/notification-sound.ts` ports all six note for note —
+ka-ching, the abandoned-cart descent, a two-note assignment bell, the
+manipulation siren, the delivery honk and the follow-up trill. **Synthesised
+rather than sampled**: six audio files are six requests, six things to cache and
+six things to ship, and an `<audio>` element a browser refuses to play before a
+user gesture fails SILENTLY. Web Audio is ~120 lines and no assets.
+
+**It never throws.** Autoplay policy, a locked-down kiosk, a headless agent — a
+notification that failed to arrive because its sound could not play would be a
+far worse defect than a silent one.
+
+**The family for an unmapped type is a neutral chime, never silence.** A
+notification type added later is audible by default and somebody turns it off,
+rather than inaudible by default and nobody finding out it exists.
+
+#### D-LP.11.1 — `ProductSetting`, not `localStorage`
+
+The one thing the legacy got wrong here. Its preference lives in `localStorage`,
+so a manager who mutes the manipulation siren on the office desktop is un-muted
+on the laptop, on the tablet and after clearing site data — and a supervisor
+cannot tell whether an agent has silenced the alert that watches them. Stored
+server-side under `platform` / `notify:<userId>`, it follows the person between
+devices. That is D-05.4's mechanism applied to a platform concern: the table
+exists so configuration needs no new table, it is tenant-scoped and RLS-covered,
+and no platform model learns what a sound preference is.
+
+#### D-LP.11.2 — the preference is per (person, tenant), deliberately
+
+`ProductSetting` is tenant-scoped, so a consultant belonging to two companies has
+two sets. That is the right answer rather than a limitation: the notifications
+themselves are per tenant, and the volume somebody wants in a COD call centre is
+not the volume they want in a quiet back office.
+
+#### It is the caller's own, and there is no way to name a target
+
+No `userId` in the query, in the body, or anywhere else — the session's own id is
+used. The manipulation siren is the alert that catches an agent marking orders
+confirmed without dialling, which makes it the one notification a person has a
+motive to turn off **for somebody else**. A test posts `{userId: <colleague>}`
+and asserts it is ignored.
+
+**The volume is clamped, not trusted.** A stored 40 would be forty times the gain
+the envelopes were designed for — a genuinely painful noise on a headset — and
+junk falls back to 0.6 rather than to `NaN`.
+
+#### N5 — the desktop notification, and two things the legacy got wrong
+
+It fires **only when the tab is not visible**. A browser notification for a page
+somebody is looking at duplicates the toast beside it; the legacy raised both
+unconditionally.
+
+**Permission is asked on a CLICK, never on load.** The legacy calls
+`Notification.requestPermission()` during start-up, which is what trains people
+to click Block — and a blocked permission can never be asked for again by that
+origin. Here the request comes from the desktop toggle, at the moment somebody
+has said they want it, and a denied permission is stated on the panel so an
+operator wondering why nothing appears is told it is their browser.
+
+**Tagged by entity**, as the legacy tags by order id: six carrier events for one
+parcel replace each other in the tray rather than stacking six deep.
+
+#### The build failure that produced `notify-vocab.ts`
+
+The first build put the vocabulary, the types and the coercion in
+`notify-prefs.ts`, which imports `server-only` — and the client components import
+`SOUND_FAMILIES` and `soundFamilyOf`. The whole build failed with *"'server-only'
+cannot be imported from a Client Component module"*.
+
+Split: `notify-vocab.ts` carries NO directive and holds the vocabulary, the
+mapping, the shape and `parseNotifyPrefs`; `notify-prefs.ts` is `server-only` and
+holds the two database functions. It is the `edit-field.ts` pattern, and the
+reason is recorded in both files so the split is not quietly undone.
+
+**One coercion, not two.** `parseNotifyPrefs` is in the shared module so the
+client renders from the same normalisation the server stores — a second copy
+would eventually disagree about what `volume: "loud"` means.
+
+#### Files
+
+- `apps/website-builder/src/lib/platform/notify-vocab.ts` — new, directive-free
+- `apps/website-builder/src/lib/platform/notify-prefs.ts` — new, `server-only`
+- `apps/website-builder/src/components/console/notification-sound.ts` — new
+- `apps/website-builder/src/components/console/notify-preferences.tsx` — new
+- `apps/website-builder/src/app/api/platform/notifications/preferences/route.ts` — new
+- `apps/website-builder/src/components/console/notification-provider.tsx`
+- `apps/website-builder/src/components/console/console-shell.tsx`
+- `apps/website-builder/src/app/console/settings/profile/page.tsx`
+- `apps/website-builder/src/lib/console/erp-strings.ts`
+- `packages/i18n/src/messages/{ar,en,fr}.json` — `notifications.*`, 18 keys × 3
+- `apps/website-builder/test/erp/notifications.test.ts` — 7 new tests
+
+**Migration:** none. An absent `ProductSetting` row is the default preference.
+
+**Risk:** low. The shell's read shares the unread count's connection and its
+fallback — a failed read leaves an operator hearing their alerts rather than
+sitting in silence.
+
+**Not verifiable here:** whether the six signatures actually sound distinct
+through a headset, and whether a real browser raises the desktop notification.
+Both need a person with speakers on a real device; the synthesis is a note-for-
+note port and the permission handling is asserted structurally.
+
+---
+
 ### LP.10 The customer registry stops being read-only
 
 [Opus 5]

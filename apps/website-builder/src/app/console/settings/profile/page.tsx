@@ -13,8 +13,15 @@ import {
 } from "@landingos/auth";
 import { LOCALES, LOCALE_NAMES } from "@landingos/i18n";
 
+import { withTenant } from "@landingos/db";
+import { getTranslations } from "next-intl/server";
+
 import { requireConsoleSession } from "@/lib/console/session";
+import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { NotifyPreferences } from "@/components/console/notify-preferences";
+import { notifyPrefStrings } from "@/lib/console/erp-strings";
+import { readNotifyPrefs, NOTIFY_DEFAULTS } from "@/lib/platform/notify-prefs";
 
 export const dynamic = "force-dynamic";
 
@@ -95,6 +102,23 @@ export default async function ProfilePage({
 }) {
   const session = await requireConsoleSession("/console/settings/profile");
   const { saved, error } = await searchParams;
+  const t = await getTranslations();
+
+  /* LP.11. On the PROFILE screen because a notification feed is one per person
+     across every product — putting it inside the ERP would mean a second copy
+     the day a second product raises anything. Read under the same fallback the
+     shell uses: an operator hears their alerts rather than sitting in silence
+     because a settings row could not be fetched. */
+  let prefs = NOTIFY_DEFAULTS;
+  if (session.auth) {
+    try {
+      prefs = await withTenant(session.auth.tenantId, (db) =>
+        readNotifyPrefs(db, session.user.id),
+      );
+    } catch (e) {
+      console.error("[console] could not read notification preferences", e);
+    }
+  }
 
   const messages: Record<string, string> = {
     name: "A name is required.",
@@ -219,6 +243,16 @@ export default async function ProfilePage({
           </button>
         </form>
       </div>
+
+      {/* Only where there is a feed to configure. Without an active tenant
+          `Notification` is unbindable and the shell renders no bell either. */}
+      {session.auth && (
+        <NotifyPreferences
+          errors={actionErrors(t)}
+          s={notifyPrefStrings(t)}
+          initial={prefs}
+        />
+      )}
     </ConsoleShell>
   );
 }

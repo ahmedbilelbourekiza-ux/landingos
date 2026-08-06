@@ -5,6 +5,7 @@ import { withTenant } from "@landingos/db";
 import { productRegistry } from "@landingos/product-registry";
 import type { ConsoleSession } from "@/lib/console/session";
 import { unreadCount } from "@/lib/platform/notifications";
+import { readNotifyPrefs, NOTIFY_DEFAULTS } from "@/lib/platform/notify-prefs";
 
 import { ProductSwitcher } from "./product-switcher";
 import { TenantSwitcher } from "./tenant-switcher";
@@ -60,9 +61,19 @@ export async function ConsoleShell({
      known limitations), and adding a second chance to hit it without a fallback
      would make every console page strictly more fragile than before LP.7. */
   let unread = 0;
+  /* LP.11 — read beside the count, on the same connection, under the same
+     fallback. The DEFAULTS are what a failed read produces, which is the safe
+     direction: an operator hears their alerts rather than sitting in silence
+     because a settings row could not be fetched. */
+  let notifyPrefs = NOTIFY_DEFAULTS;
   if (session.auth) {
     try {
-      unread = await withTenant(session.auth.tenantId, (db) => unreadCount(db, session.user.id));
+      const read = await withTenant(session.auth.tenantId, async (db) => ({
+        unread: await unreadCount(db, session.user.id),
+        prefs: await readNotifyPrefs(db, session.user.id),
+      }));
+      unread = read.unread;
+      notifyPrefs = read.prefs;
     } catch (error) {
       console.error("[console] could not read the unread count", error);
     }
@@ -142,6 +153,7 @@ export async function ConsoleShell({
             {session.auth && (
               <NotificationProvider
                 unread={unread}
+                prefs={notifyPrefs}
                 productNames={productNames}
                 strings={{
                   title: t("common.notifications"),

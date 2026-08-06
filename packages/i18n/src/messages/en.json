@@ -728,6 +728,21 @@
     "markAllRead": "Mark all read",
     "unread": "Unread",
     "live": "Live",
-    "reconnecting": "Reconnecting…"
+    "reconnecting": "Reconnecting…",
+    "prefsPanel": "Alerts",
+    "prefsHint": "Stored on your account, so it follows you between devices. In a call centre nobody watches the screen — the sound is the alert.",
+    "sound": "Play a sound",
+    "volume": "Volume",
+    "desktop": "Show a desktop notification when this tab is in the background",
+    "desktopBlocked": "Your browser is blocking notifications for this site. Change it in the site settings — this page cannot ask again.",
+    "desktopAsk": "Allow notifications",
+    "test": "Test",
+    "saved": "Saved.",
+    "familyNewOrder": "New order",
+    "familyAbandoned": "Abandoned cart",
+    "familyAssignment": "Work assigned to me",
+    "familyManipulation": "Flagged call or agent alert",
+    "familyDelivery": "Parcel update",
+    "familyFollowup": "Follow-up reminder"
   }
 }
