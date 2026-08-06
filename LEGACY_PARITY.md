@@ -1211,10 +1211,23 @@ workflow, business rules, permissions, reports, calculations, filters, exports,
 search, background jobs, validation, edge cases, density, navigation,
 discoverability.
 
-**The honest limit of this pass, stated up front:** it re-measured every module
-listed below against source on both sides, but it did not re-derive the 117-row
-scoreboard in §1. Where a verdict changes, it says so here and the row is
-corrected in place. Where nothing changed, this section does not repeat §2.
+**The honest limit of this pass, stated up front, because an overclaim here is
+exactly the failure §0b exists to name.** What was read from source on BOTH sides
+this pass: the screen and nav inventories, `renderStats` against the overview
+page, `renderAnalytics` and its seven breakdowns, `renderAlerts`, the order-row
+builder in `renderOrders`, both `SETTINGS_SCHEMA`s in full, the view-mode
+machinery, and the shared-component inventories. Carried forward from LP.5 /
+LP.6 / LP.0c, all read in full there: the carrier adapters and `statusMap`, the
+four export builders, the profit calculator, and `sales-summary` /
+`prorate-fixed` / `financial-records` on both sides.
+
+**Everything else leans on passes 1 and 2** — the clients, products, follow-up,
+stores, import and AI screens are taken from §2/§3 rather than re-read. The
+verdicts below for those modules are therefore *inherited*, not re-derived, and
+`page-stores` and `page-import` in particular are stated from their markup and
+their route inventory rather than from their JavaScript. **This pass does not
+re-derive the 117-row scoreboard in §1.** Where a verdict changes it says so and
+the row is corrected in place; where nothing changed it does not repeat §2.
 
 ### 8.1 The module map
 
