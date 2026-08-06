@@ -143,7 +143,9 @@
       "noCredentials": "Not configured",
       "adapterUnavailable": "Integration unavailable — cannot book or track",
       "none": "No carriers yet",
-      "inactive": "Inactive"
+      "inactive": "Inactive",
+      "webhookUrl": "Inbound webhook",
+      "webhookHint": "Give this address to the carrier so it can push delivery updates."
     },
     "followUp": {
       "title": "Follow-up",
@@ -274,7 +276,8 @@
       "newOrder": "New order",
       "createOrder": "Create the order",
       "orderHint": "For an order taken by phone. A name or a number is enough to start; the rest can be filled in later.",
-      "defaultCarrier": "Use the default carrier"
+      "defaultCarrier": "Use the default carrier",
+      "webhookSecret": "Webhook secret"
     },
     "settings": {
       "title": "Automation rules",
@@ -422,7 +425,12 @@
       "notFound": "That record is no longer there. Reload the page.",
       "invalidInput": "That value was not accepted.",
       "noCarrier": "No carrier is set on this order, so there is nothing to book with.",
-      "internal": "Something went wrong. Nothing was saved."
+      "internal": "Something went wrong. Nothing was saved.",
+      "unknownAdapter": "This carrier uses an integration this system does not have.",
+      "addressUnresolved": "The carrier does not recognise the address on this order.",
+      "carrierRejected": "The carrier refused the parcel.",
+      "carrierUnreachable": "The carrier could not be reached. Nothing was booked.",
+      "carrierNoPolling": "This carrier only pushes updates, so there is nothing to ask it."
     },
     "previous": "Previous",
     "next": "Next",

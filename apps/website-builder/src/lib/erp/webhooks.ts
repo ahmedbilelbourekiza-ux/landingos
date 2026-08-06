@@ -68,7 +68,10 @@ const SIGNATURE_HEADERS: Record<string, string> = {
   woocommerce: "x-wc-webhook-signature",
 };
 
-export type SignatureVerdict = "ok" | "missing" | "invalid" | "unsigned-allowed";
+// Defined with the carrier contract, because carriers and sales channels answer
+// the same four things and two copies of that union would eventually disagree.
+export type { SignatureVerdict } from "./carrier-contract";
+import type { SignatureVerdict } from "./carrier-contract";
 
 /**
  * Decide whether this raw body may be trusted.

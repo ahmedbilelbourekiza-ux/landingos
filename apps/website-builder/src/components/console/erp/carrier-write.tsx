@@ -44,6 +44,9 @@ export interface CarrierStrings {
   readonly apiUrl: string;
   readonly apiKey: string;
   readonly secretKey: string;
+  readonly webhookSecret: string;
+  readonly webhookUrl: string;
+  readonly webhookHint: string;
   readonly create: string;
   readonly save: string;
   readonly makeDefault: string;
@@ -75,7 +78,7 @@ export function CarrierCreatePanel({
   const [open, setOpen] = useState(false);
   const blank = {
     name: "", code: "", adapter: adapters[0]?.value ?? "mock",
-    apiUrl: "", apiKey: "", secretKey: "",
+    apiUrl: "", apiKey: "", secretKey: "", webhookSecret: "",
   };
   const [f, setF] = useState(blank);
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
@@ -114,8 +117,14 @@ export function CarrierCreatePanel({
         </ActionButton>
       </div>
 
-      {open && (
-        <>
+      {/* HIDDEN, never unmounted — D-06.4, and LP.5 is where it started to
+          matter. `{open && …}` meant the offered adapter list only existed after
+          somebody clicked, so no contract test could assert what this form lets
+          a manager choose and assistive tech could not read it either. That is
+          the rule NEXT_STEPS §1 already states; this panel was the one write
+          surface still breaking it, and registering a second adapter is exactly
+          when "which integrations can be chosen" became worth asserting. */}
+      <div hidden={!open}>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {input("name", s.name)}
             {input("code", s.code)}
@@ -139,6 +148,13 @@ export function CarrierCreatePanel({
             {input("apiUrl", s.apiUrl)}
             {input("apiKey", s.apiKey, true)}
             {input("secretKey", s.secretKey, true)}
+            {/* The route has accepted `webhookSecret` since Phase 5 and no
+                control ever sent one, so a carrier's inbound updates could only
+                ever be UNSIGNED. That is the dominant defect class in this port
+                — a tested endpoint with no caller — and it is load-bearing
+                here: ZR Express signs every webhook with Svix, and a secret
+                nobody can set is a signature nobody can check. */}
+            {input("webhookSecret", s.webhookSecret, true)}
           </div>
 
           <div className="mt-4">
@@ -156,6 +172,7 @@ export function CarrierCreatePanel({
                   ...(f.apiUrl.trim() ? { apiUrl: f.apiUrl.trim() } : {}),
                   ...(f.apiKey ? { apiKey: f.apiKey } : {}),
                   ...(f.secretKey ? { secretKey: f.secretKey } : {}),
+                  ...(f.webhookSecret ? { webhookSecret: f.webhookSecret } : {}),
                 });
                 if (ok) { setF(blank); setOpen(false); }
               }}
@@ -165,8 +182,7 @@ export function CarrierCreatePanel({
           </div>
 
           <ActionError message={error} />
-        </>
-      )}
+      </div>
     </section>
   );
 }
@@ -186,6 +202,7 @@ export function CarrierRowActions({
   isDefault,
   active,
   hasCredentials,
+  webhookUrl,
   mappings,
   crmStatuses,
   errors,
@@ -196,6 +213,8 @@ export function CarrierRowActions({
   readonly active: boolean;
   /** Whether any credential is stored. NOT the credential. */
   readonly hasCredentials: boolean;
+  /** Where this tenant's carriers push delivery updates. Not a secret. */
+  readonly webhookUrl: string;
   readonly mappings: readonly StatusMapping[];
   readonly crmStatuses: readonly WriteOption[];
   readonly errors: ActionErrors;
@@ -210,6 +229,7 @@ export function CarrierRowActions({
   const stored = hasCredentials ? CARRIER_SECRET_MASK : "";
   const [apiKey, setApiKey] = useState(stored);
   const [secretKey, setSecretKey] = useState(stored);
+  const [webhookSecret, setWebhookSecret] = useState(stored);
 
   const [originalStatus, setOriginalStatus] = useState("");
   const [crmStatus, setCrmStatus] = useState(crmStatuses[0]?.value ?? "");
@@ -295,16 +315,38 @@ export function CarrierRowActions({
             value={secretKey} onChange={(e) => setSecretKey(e.target.value)}
             placeholder={s.secretKey} className={FIELD}
           />
+          <input
+            aria-label={s.webhookSecret} type="password" autoComplete="new-password"
+            value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)}
+            placeholder={s.webhookSecret} className={FIELD}
+          />
+
+          {/* Where the carrier pushes TO. Not a credential — it is derived from
+              the tenant slug, which is in every storefront URL already — and
+              without it there is no way to tell a carrier where to send
+              anything, which makes the secret beside it pointless. */}
+          <p className="text-xs text-muted-foreground">{s.webhookHint}</p>
+          <input
+            aria-label={s.webhookUrl}
+            data-testid="carrier-webhook-url"
+            readOnly
+            dir="ltr"
+            value={webhookUrl}
+            onFocus={(e) => e.currentTarget.select()}
+            className={`${FIELD} font-mono text-xs`}
+          />
+
           <ActionButton
             data-testid="carrier-keys-save"
             pending={pending}
             pendingLabel={s.saving}
             variant="primary"
-            disabled={!changed(apiKey) && !changed(secretKey)}
+            disabled={!changed(apiKey) && !changed(secretKey) && !changed(webhookSecret)}
             onClick={async () => {
               const { ok } = await run("PUT", `/api/erp/carriers/${carrierId}`, {
                 ...(changed(apiKey) ? { apiKey } : {}),
                 ...(changed(secretKey) ? { secretKey } : {}),
+                ...(changed(webhookSecret) ? { webhookSecret } : {}),
               });
               if (ok) {
                 // Back to the mask: something is stored now either way, and
@@ -312,6 +354,7 @@ export function CarrierRowActions({
                 // console ever displayed a real key.
                 setApiKey(CARRIER_SECRET_MASK);
                 setSecretKey(CARRIER_SECRET_MASK);
+                setWebhookSecret(CARRIER_SECRET_MASK);
                 setPanel("none");
               }
             }}

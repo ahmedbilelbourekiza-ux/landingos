@@ -3,7 +3,6 @@ import "server-only";
 import type { TenantDb } from "@landingos/db";
 
 import { autoAssignFollowup } from "./assign";
-import { createShipment } from "./shipments";
 import { reserveOnConfirm, releaseOnCancel } from "./inventory";
 import type { ErpSettings } from "./settings";
 
@@ -36,10 +35,28 @@ import type { ErpSettings } from "./settings";
  * cancellation restored none, while `reservationMode` sat on the automation
  * screen being read by nothing. That was the last functional difference between
  * this platform and `apps/erp`.
+ *
+ * LP.5 TOOK THE BOOKING OUT OF THIS FUNCTION, and the paragraph above is why.
+ * "Nothing here may fail the confirmation" was enforced with a `try/catch`,
+ * which is enough for a synchronous simulator and not for a real carrier: the
+ * call ran inside the transaction `withTenant` opened, whose timeout is 15
+ * seconds, and a ZR Express booking is three HTTP round trips. A `catch` does
+ * not save a transaction that has already timed out — every statement after it
+ * fails too — so a slow carrier would have rolled back the call record, the
+ * status change and the stock movement. This function now says a booking is
+ * WANTED; the route runs it after the transaction commits, through
+ * `afterCommit` (D-LP.5.1).
  * ========================================================================== */
 
 export interface ConfirmResult {
-  readonly shipmentBooked: boolean;
+  /**
+   * Whether a parcel should be booked once this transaction has committed.
+   *
+   * The decision belongs here — it is the tenant's `autoCreateShipment` setting
+   * and it must read the same on both doors into `confirmed` — while the doing
+   * belongs outside any transaction.
+   */
+  readonly bookShipment: boolean;
   readonly followupUserId: string | null;
   readonly stockLinesMoved: number;
 }
@@ -75,18 +92,10 @@ export async function onOrderConfirmed(
     }
   }
 
-  let shipmentBooked = false;
-
-  // Booking here rather than on a timer means the tracking number exists by the
-  // time the agent finishes the sentence, which is when the customer asks for it.
-  if (settings.autoCreateShipment && order) {
-    try {
-      const booked = await createShipment(db, tenantId, order);
-      shipmentBooked = Boolean(booked.created);
-    } catch (error) {
-      console.error(`[erp] auto-booking failed for order ${orderId}`, error);
-    }
-  }
+  // Still on confirmation rather than on a timer, so the tracking number exists
+  // by the time the agent finishes the sentence, which is when the customer asks
+  // for it — just after this transaction commits rather than inside it.
+  const bookShipment = Boolean(settings.autoCreateShipment && order);
 
   let followupUserId: string | null = null;
   try {
@@ -95,7 +104,7 @@ export async function onOrderConfirmed(
     console.error(`[erp] follow-up auto-assign failed for order ${orderId}`, error);
   }
 
-  return { shipmentBooked, followupUserId, stockLinesMoved };
+  return { bookShipment, followupUserId, stockLinesMoved };
 }
 
 /**

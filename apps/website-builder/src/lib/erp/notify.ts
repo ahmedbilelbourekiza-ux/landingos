@@ -133,6 +133,40 @@ export function notifyDeliveryUpdate(
 }
 
 /**
+ * A parcel could not be booked with the carrier.
+ *
+ * THE LEGACY CRM HAD THIS AND THE PORT DROPPED IT. `tryAutoCreateShipment`
+ * caught the adapter's throw and pushed `shipment_failed` with the reason, so
+ * the order appeared with "ZR Express does not know a wilaya called …" on it.
+ * Without it an unbooked parcel is INVISIBLE: the confirmation succeeded, the
+ * order looks normal, and nothing says the carrier was never told — which is
+ * the same silent-wrong-answer shape LP.2 removed from the other direction.
+ *
+ * The reason is the body, and it is the whole point. "Booking failed" is a
+ * support ticket; "the commune is misspelled" is a one-minute correction.
+ *
+ * To whoever owns the parcel and to the whole-book supervisors — the same
+ * audience as a delivery update, because it is the same parcel.
+ */
+export function notifyShipmentFailed(
+  db: TenantDb,
+  tenantId: string,
+  order: { id: string; reference: string | null; agentUserId: string | null; followupUserId: string | null },
+  reason: string,
+) {
+  const owner = order.followupUserId ?? order.agentUserId;
+  return notifyQuietly(db, tenantId, {
+    product: ERP,
+    type: "shipment_failed",
+    title: `Parcel ${label(order)} was not booked`,
+    body: reason,
+    audience: owner ? { userId: owner, permission: SUPERVISOR } : { permission: SUPERVISOR },
+    entity: "order",
+    entityId: order.id,
+  });
+}
+
+/**
  * A carrier reported something needing a phone call.
  *
  * Goes to the person the task was raised against, and to supervisors — an

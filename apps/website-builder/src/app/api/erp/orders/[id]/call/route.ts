@@ -5,6 +5,7 @@ import { loadOwnedOrder } from "@/lib/erp/guard";
 import { addCall, updateOrder, CALL_RESULTS } from "@/lib/erp/orders";
 import { readSettings } from "@/lib/erp/settings";
 import { onOrderConfirmed, onOrderCancelled } from "@/lib/erp/confirm";
+import { bookShipment } from "@/lib/erp/shipments";
 import { notifySuspiciousCall } from "@/lib/erp/notify";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ const LogCall = z.object({
  * an agent's own action changes a number they are paid on — so this is also the
  * route the suspicious-call flag exists to watch. See addCall.
  */
-export const POST = tenantRoute<Params>("erp:orders:write", async ({ db, req, session, params }) => {
+export const POST = tenantRoute<Params>("erp:orders:write", async ({ db, req, session, params, afterCommit }) => {
   const { order, denied } = await loadOwnedOrder(db, session, params.id);
   if (denied) return denied;
 
@@ -62,7 +63,7 @@ export const POST = tenantRoute<Params>("erp:orders:write", async ({ db, req, se
   const confirmed =
     result === "confirmed"
       ? await onOrderConfirmed(db, tenantId, params.id, settings, session.user.id)
-      : { shipmentBooked: false, followupUserId: null, stockLinesMoved: 0 };
+      : { bookShipment: false, followupUserId: null, stockLinesMoved: 0 };
 
   // The other half of the same transition: cancelling gives the stock back, to
   // the same lots the reservation consumed.
@@ -85,11 +86,25 @@ export const POST = tenantRoute<Params>("erp:orders:write", async ({ db, req, se
     }
   }
 
-  return apiOk({
+  const payload = {
     message: "logged",
     callId: call.id,
     suspicious: call.suspicious,
-    shipmentBooked: confirmed.shipmentBooked,
+    shipmentBooked: false,
     followupUserId: confirmed.followupUserId,
-  });
+  };
+
+  // The carrier is asked AFTER this transaction commits (D-LP.5.1). A confirmed
+  // call is real work an agent did; a third party's latency must not be able to
+  // undo it, and a 15-second transaction timeout would have done exactly that.
+  // The response still waits for the answer — the agent is about to read the
+  // tracking number to the customer.
+  if (confirmed.bookShipment) {
+    afterCommit(async () => {
+      const booked = await bookShipment(tenantId, params.id);
+      return apiOk({ ...payload, shipmentBooked: booked.created });
+    });
+  }
+
+  return apiOk(payload);
 });

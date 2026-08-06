@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.4: an order can be taken over the phone*
+**Branch:** `master` · **Last commit:** *LP.5: the real ZR Express adapter*
 **Working tree:** clean, all work committed.
 
 ---
@@ -55,8 +55,8 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.2** unknown carrier adapter refused, not mocked | R2 (half) | **DONE** — delivery 33→39, screens 99→100 |
 | **LP.3** list pagination + filter bar + search | N1, N7, N8, B1 | **DONE** — screens 100→112, listing 25→30 |
 | **LP.4** create an order from the console | N6 | **DONE** — screens 112→121 |
-| **LP.5** the real ZR Express adapter | R2 (rest) | **NEXT** |
-| LP.6 order export (CSV: ZR / Ecom / Ecotrac + report) | R4 | to do |
+| **LP.5** the real ZR Express adapter | R2 (rest) | **DONE** — delivery 39→61, screens 121→123 |
+| **LP.6** order export (CSV: ZR / Ecom / Ecotrac + report) | R4 | **NEXT** |
 | LP.7 the notification provider (bell, badge, toast, live refresh) | N2, N3, L1, L2 | to do |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
@@ -65,6 +65,68 @@ moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
 The ZR adapter moved back one place deliberately — it is the highest-risk slice
 in the roadmap (network I/O inside a 15s transaction), and LP.3/LP.4 are low-risk
 and unblock daily work immediately.
+
+### D-LP.5.1 — a carrier is not a database, and must not share its transaction
+
+`withTenant` opens an interactive transaction with a 15-second timeout
+(TX_OPTIONS), and until LP.5 every carrier call ran inside it. That was harmless
+only because the one registered adapter was a synchronous simulator. A ZR
+booking is three HTTP round trips to somebody else's server — **and booking is
+triggered by CONFIRMING an order**, so a slow carrier would have rolled back the
+call record, the status change and the stock movement. `confirm.ts`'s
+`try/catch` does not save a transaction that has already timed out; every
+statement after it fails too.
+
+Every carrier interaction is now three phases — **plan** in a transaction,
+**call** in none, **record** in a transaction — as separate exported functions in
+`shipments.ts`, so the route and the scheduled poll compose the SAME
+`ingestEvents`. `bookAtCarrier` takes no `db`, so a caller cannot hand it one.
+
+`tenantRoute` gained **`afterCommit(work)`**: work that runs after the
+transaction commits and before the response is sent, and may replace the
+response. Additive — a handler that never calls it is unchanged. It is not a
+background queue; the response waits, because whoever pressed the button is owed
+the answer.
+
+**The one caller still inside a transaction is the scheduled poll** — bounded by
+`POLL_BATCH = 25`, waiting on nobody, and reaching no network today because ZR
+declares `canPoll: false` and refuses first. Recorded as **N17**, grouped with
+the Ecom adapter (Tier 3, slice 22).
+
+### D-LP.5.2 — the commune must belong to the wilaya, which the ERP did not require
+
+`zr.js` scoped the commune lookup to the resolved wilaya and then, if that
+missed, searched every returned territory "ignoring parentId (rare but safe)".
+It is not safe: Algerian commune names repeat across wilayas, so the fallback
+books a real parcel to the right NAME in the wrong PLACE — a courier drives to
+another province, the customer is never called, and the order looks perfectly
+booked. The platform refuses instead, naming the word to correct. It is the only
+place LP.5 does not port the legacy behaviour.
+
+Two more ZR rules worth stating: **the Svix check fails closed** (the ERP's
+returned *accept* for a missing header, a missing secret, and from its own
+`catch` — SEC-04), and **a ZR parcel has no tracking number when booked**, so the
+delivery webhook finds a parcel by `carrierReference` as well as by tracking
+number and writes the number once, on the first webhook that carries it.
+
+### Two defects LP.5 found, both in shipped code
+
+**`guessStatus` read "Sorti en livraison" as DELIVERED.** It tested
+`/livr|deliver/` first and "livraison" contains "livr", so an unmapped carrier
+reporting a parcel that had just left the depot settled the order — outcome
+written, client lifetime spend moved, product revenue moved, delivered pay
+earned, none of it reversible because settlement is permanent by design.
+Reachable from the one path that deliberately keeps this fallback: a webhook
+PUSHED for a carrier with no registered adapter (D-LP.2). `refus|rejected` had
+also been dropped, so every unmapped refusal resolved to "pending". Both
+restored from `apps/erp/lib/statusMap.js`, which had the ordering right.
+
+**`Shipment` had no unique on `(tenantId, orderId)`.** "One parcel per order" was
+stated in three comments and enforced by a `findFirst` before a `create` — two
+concurrent bookings could both see nothing and both insert. Milliseconds wide
+before, as wide as the carrier's latency after D-LP.5.1, so this slice closes it:
+the constraint is real, `bookShipment` recovers from the P2002 by returning the
+winner's shipment, and a test fires two bookings at one order.
 
 ### Two open questions LP.4 recorded rather than answered
 
@@ -353,16 +415,16 @@ domain at a time.
 |---|---|
 | orders (+ stats, bulk, 6 per-order routes), clients, settings, audit | orders 38/38 · validation 29/29 · listing 30/30 |
 | products (incl. **editing**, LP.1), inventory, stock lots (incl. stock on confirm/cancel), agents, payroll, finance | catalog 55/55 |
-| carriers (incl. **adapter refusal**, LP.2), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 39/39 |
+| carriers (incl. **adapter refusal** LP.2 and the **real ZR Express adapter** LP.5), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 61/61 |
 | sales channels, inbound webhooks, AI, follow-up | integrations 29/29 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
-| every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4) | screens 121/121 |
+| every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4, the **ZR configuration surface** LP.5) | screens 123/123 |
 | the scheduled work (M-15), and the worker's tick both ways | jobs 16/16 |
 | assignment — new, confirmed and overdue orders | assign 25/25 |
 | notifications: storage, audience, badge, the live stream, Web Push (M-16) | notifications 29/29 |
 | every surface, gated | access 65/65 |
 
-**488/488**, each file verified on its own. Running several back to back still
+**512/512**, each file verified on its own. Running several back to back still
 trips the documented Neon connection limit — judge them per file.
 
 Three routes answer **501 by design**, and are not gaps: `POST /api/erp/agents`
@@ -460,16 +522,15 @@ by technical simplicity. Tier 1 is the four production blockers:
 |---|---|---|---|
 | 1 | Product editing — `PATCH /api/erp/products/[id]` + the control | S | **DONE (LP.1)** |
 | 2a | Carrier adapter refusal — no more fabricated tracking numbers | S | **DONE (LP.2)** |
-| 2b | The real ZR Express adapter | L | **NEXT** |
-| 3 | Order export — CSV for ZR / Ecom / Ecotrac + the performance report | M | to do |
-| 4 | Carrier test / sync / integration logs (`IntegrationLog`'s first caller) | M | to do |
+| 2b | The real ZR Express adapter | L | **DONE (LP.5)** |
+| 3 | Order export — CSV for ZR / Ecom / Ecotrac + the performance report | M | **NEXT (LP.6)** |
+| 4 | Carrier test / sync / integration logs (`IntegrationLog`'s first caller) | M | to do (Tier 3, slice 14) |
 
-**LP.2 starts with the refusal, not the adapter.** `getAdapter` in
-`src/lib/erp/carriers.ts` falls back to `mock` for any unregistered key, so a
-carrier configured as `zr` books a fabricated `MOCK…` tracking number and
-reports success. That half is small and stops a silent wrong answer; the real ZR
-Express adapter (`apps/erp/lib/providers/zr.js`, 479 lines — live territory
-resolution, Svix webhooks, outbound parcel creation) is the large half after it.
+**Tier 1 is one slice from complete.** LP.5 registered `zr` — live territory
+resolution, Svix webhooks, outbound parcel creation — and took every carrier call
+out of the request transaction (D-LP.5.1). What is left in Tier 1 is **order
+export**: until every carrier has an adapter, an Excel hand-off is the only way a
+confirmed order leaves the building.
 
 Phase 8's two guarantees (`CSRF_ORIGIN` and rate limiting) remain owed and are
 Tier 4 of the same roadmap — the legacy system had both, so they are a parity
@@ -1125,14 +1186,14 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 488 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 512 | all pass against a running server |
 | `apps/website-builder` — platform contract | 85 | team (7.1) + billing (7.2) + signup (7.3), against a running server |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1118** | green per suite |
+| **Total** | **1142** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

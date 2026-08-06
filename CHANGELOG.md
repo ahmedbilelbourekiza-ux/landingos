@@ -12,6 +12,202 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.5 The real ZR Express adapter — and the carrier leaves the transaction
+
+[Opus 5]
+Date: 6 August 2026
+Summary: `zr` is a registered adapter that books real parcels. delivery
+**39 → 61**, screens **121 → 123**. Closes the second half of R2 and the last
+large Tier 1 blocker. The load-bearing change is not the adapter: it is
+**D-LP.5.1**, which took every carrier call out of the request's database
+transaction.
+
+#### What was wrong
+
+`ADAPTERS` held one entry, `mock`. LP.2 stopped an unregistered key from being
+silently simulated; it did not give anybody a carrier to book with. Not one
+parcel could reach ZR Express, Ecom or anyone else, and the ERP's 479-line ZR
+adapter — live territory resolution, Svix webhooks, outbound parcel creation —
+had no equivalent.
+
+#### D-LP.5.1 — a carrier is not a database, and must not share its transaction
+
+`withTenant` opens an interactive transaction whose timeout is 15 seconds
+(TX_OPTIONS). Every carrier call ran inside it, which was harmless only because
+the one registered adapter was a synchronous simulator. A ZR booking is three
+HTTP round trips to somebody else's server.
+
+**That is a data-integrity problem, not a performance one.** Booking is
+triggered by CONFIRMING an order. `confirm.ts` promised "nothing here may fail
+the confirmation" and enforced it with a `try/catch` — which does not save a
+transaction that has already timed out, because every statement after it fails
+too. A slow carrier would therefore have rolled back the call record, the status
+change and the stock movement: an agent rang a customer, the customer said yes,
+and the record disappears because a third party was busy.
+
+So every carrier interaction is now three phases — **plan** in a transaction,
+**call** in none, **record** in a transaction — and the phases are separate
+exported functions so both callers compose the same `ingestEvents`, which is the
+one property that file exists to hold. `bookAtCarrier` takes no `db` at all, so
+a future caller cannot hand it one.
+
+`tenantRoute` gained **`afterCommit(work)`**: work that runs once the
+transaction has committed and released, before the response is sent, and may
+replace the response. Purely additive — a handler that never calls it behaves
+exactly as before. It is not a background queue: the response still waits,
+because an operator who pressed "book the parcel" is owed the answer.
+
+**The test that proves it** makes the stub carrier sleep 17 seconds — decisively
+past the 15-second transaction timeout and inside the adapter's own 25-second
+limit — and asserts a 201 and a stored shipment.
+
+#### The adapter, and the one place it deliberately diverges from the ERP
+
+`src/lib/erp/carrier-zr.ts`. Territory resolution is the part that is not
+obvious: ZR identifies wilaya and commune by its own UUIDs, so the order's NAMES
+are resolved at booking time against `POST /territories/search` rather than from
+a 1,585-row map that goes stale the first time ZR reorganises a district. The
+alias table (`Béjaïa`/`Bejaia`/`bjaia`) is ported verbatim, because the wilaya on
+an order is typed by a customer or read down a phone.
+
+**The commune must belong to the resolved wilaya, with no fallback — and the ERP
+had one.** `zr.js` searched every returned territory "ignoring parentId (rare but
+safe)" when the scoped lookup missed. It is not safe: Algerian commune names
+repeat across wilayas, so that fallback books a real parcel to the right NAME in
+the wrong PLACE. A courier drives to another province, the customer is never
+called, and the order looks perfectly booked — the wrong-answer-that-looks-right
+this whole slice's refusals exist to prevent. An unresolvable commune is a
+one-minute spelling correction, and the refusal names the word to correct.
+
+**The Svix check fails closed.** `verifySvixSignature` in the ERP returns
+*accept* when the headers are absent, when no secret is configured, and from its
+own `catch` — SEC-04 exactly. A configured secret here means a signature is
+required and must verify, and a test drives both the unsigned and the forged
+case and asserts nothing was written.
+
+**A ZR parcel has no tracking number when it is booked** — ZR assigns it later
+and delivers it on the first webhook. Three consequences, each of which would
+otherwise have made the adapter useless: the delivery webhook finds a parcel by
+`carrierReference` as well as by tracking number; `recordTrackingNumber` writes
+the number once, on the first webhook that carries it; and `canPoll: false`
+makes "ask the carrier" answer `CARRIER_NO_POLLING` rather than 200 with an
+unchanged timeline, which is LP.2's distinction applied to the other side of the
+question.
+
+#### A failed booking is TOLD, not only logged
+
+`notifyShipmentFailed` restores the ERP's `shipment_failed` push. Without it an
+unbooked parcel is invisible: the confirmation succeeded, the order looks
+normal, and nothing says the carrier was never told. The reason travels in the
+body — "ZR Express does not know a wilaya called …" — because "booking failed"
+is a support ticket and the actual sentence is a correction somebody makes in a
+minute. The console gained the five carrier refusal codes it had no i18n keys
+for, `UNKNOWN_ADAPTER` included: LP.2 shipped that code and the screen rendered
+"that did not work" for it.
+
+#### Two defects found by measuring, and one found by attacking
+
+**`guessStatus` read "Sorti en livraison" as DELIVERED.** It tested
+`/livr|deliver/` first and "livraison" contains "livr". So an unmapped carrier
+reporting a parcel that had just left the depot settled the order as delivered —
+`deliveryOutcome` written, client lifetime spend moved, product revenue moved,
+delivered pay earned, none of it reversible because settlement is permanent by
+design. Reachable from the one path that deliberately keeps this fallback: a
+webhook PUSHED for a carrier with no registered adapter (D-LP.2). That is BUG-02
+arriving from the other direction. `apps/erp/lib/statusMap.js` had the order
+right; both halves are restored, and `refus|rejected` — dropped entirely by the
+port, so every unmapped refusal resolved to "pending" — is back.
+
+**`Shipment` had no unique on `(tenantId, orderId)`.** "One parcel per order" was
+stated in three comments and enforced by a `findFirst` before a `create`, which
+under READ COMMITTED lets two concurrent bookings both see nothing and both
+insert — two parcels collected, one customer paying once. The window was
+milliseconds while the carrier call sat inside the transaction; D-LP.5.1 made it
+as long as the carrier takes to answer, so this slice is what has to close it.
+The constraint is now real, `bookShipment` recovers from the P2002 by returning
+the winner's shipment, and a test fires two bookings at one order concurrently
+and asserts one parcel and one creation event. Recorded in `CONSTRAINTS.md`.
+
+**The carrier create panel mounted on click.** `{open && …}` meant the offered
+adapter list only existed after JavaScript ran — unassertable by a contract test
+and unreadable to assistive tech, which is the rule D-06.4 already states. It was
+the last write surface still breaking it, and registering a second adapter is
+exactly when "which integrations can be chosen" became worth asserting. Now
+`hidden`, like every other panel.
+
+#### The console
+
+Registering the adapter makes it selectable everywhere at once: `listAdapters`
+drives the carriers dropdown, `isKnownAdapter` drives the LP.2 configuration
+gate, and the "integration unavailable" badge disappears from any row already
+naming `zr`. Two controls were added because ZR cannot be configured without
+them: a **webhook secret** field — the route has accepted `webhookSecret` since
+Phase 5 and no control ever sent one, so inbound updates could only ever be
+UNSIGNED — and the **inbound webhook address** on the credentials panel, because
+a secret nobody can pair with an address configures nothing.
+
+#### What this slice deliberately did NOT do
+
+The scheduled poll still calls the carrier inside the job's transaction. It is
+bounded by `POLL_BATCH = 25`, it writes nothing a person is waiting on, and
+**neither registered adapter reaches a network from there** — ZR declares
+`canPoll: false` and refuses first. Moving it out means `runJob` stops receiving
+a bound `db` and starts opening a binding per parcel, which is a change to the
+job runner and both of its routes. Recorded as **N17** and grouped with the Ecom
+adapter (Tier 3, slice 22), the first registered carrier that can be polled.
+
+`zr-webhook` (the older inbound-only ZR integration) and `ecom` are not
+registered. Both stay where the roadmap already put them.
+
+#### Files
+`src/lib/erp/carrier-zr.ts` (new, the adapter),
+`src/lib/erp/carrier-contract.ts` (new — the adapter contract, split out because
+an adapter cannot import the registry that imports it),
+`src/lib/erp/carriers.ts` (registry, `guessStatus`, `webhookIdentifiers`,
+`verifyCarrierWebhook`, `parseCarrierWebhook`),
+`src/lib/erp/shipments.ts` (plan/call/record for booking and refreshing,
+`recordTrackingNumber`, the P2002 recovery),
+`src/lib/erp/{confirm,jobs,notify,webhooks}.ts`,
+`src/lib/api/route.ts` (`afterCommit`),
+`src/app/api/erp/orders/[id]/{route,call/route,shipment/route,shipment/refresh/route}.ts`,
+`src/app/api/erp/webhooks/[tenant]/delivery/route.ts` (identify → authenticate →
+interpret), `src/app/console/erp/carriers/page.tsx`,
+`src/components/console/erp/carrier-write.tsx`,
+`src/lib/console/{action-errors,erp-strings}.ts`,
+`packages/db/prisma/schema/erp.prisma` + `packages/db/CONSTRAINTS.md`,
+`test/erp/{delivery,screens}.test.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (five error keys, three carrier
+keys).
+
+#### Migration
+**One schema change:** `@@unique([tenantId, orderId])` on `Shipment`, applied
+with `prisma db push` after verifying zero duplicate groups on the live
+database. RLS re-applied (47/47) and the preflight re-run. No data was altered.
+
+#### Risk
+**A booking now holds no database transaction while the carrier answers**, which
+is the fix, and the cost is that two operators pressing the button at the same
+moment can both reach the carrier before either writes. The database refuses the
+second row; the duplicate parcel at the carrier is the honest, unavoidable price
+of asking a third party outside a transaction, and it is logged by name.
+
+**A ZR carrier with no webhook secret accepts unsigned payloads**, which is the
+platform's existing posture for every channel that predates its secret, closable
+with `REQUIRE_WEBHOOK_SIGNATURES=1`. **No ZR credentials exist here**, so the
+adapter has never spoken to the real `api.zrexpress.app` — it is driven end to
+end against a stub ZR server over real HTTP, exercising the territory search,
+the auth headers, the parcel body, ZR's error shapes and the Svix envelope.
+
+**Verified live:** delivery 39 → **61/61** · screens 121 → **123/123** ·
+access 65/65 · orders 38/38 · jobs 16/16 · notifications 33/33 · catalog 55/55 ·
+listing 30/30 · validation 29/29 · assign 25/25 · integrations 29/29 ·
+order-split 8/8 · team 56/56 · billing 19/19 · signup 10/10 ·
+console-shell 13/13 · builder-api 22/22 · storefront 22/22 ·
+builder-sections 45/45 · db 29/29 · auth 36/36 · product-registry 36/36 ·
+ui 26/26 · i18n 18/18. Build clean.
+
+---
+
 ### LP.4 An order can be taken over the phone
 
 [Opus 5]

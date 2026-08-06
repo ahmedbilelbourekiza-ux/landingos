@@ -2,9 +2,10 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { asPlatform, withTenant } from "@landingos/db";
 
-import { verifySignature } from "@/lib/erp/webhooks";
-import { ingestEvents } from "@/lib/erp/shipments";
-import { mapCarrierStatus } from "@/lib/erp/carriers";
+import { ingestEvents, recordTrackingNumber } from "@/lib/erp/shipments";
+import {
+  mapCarrierStatus, parseCarrierWebhook, verifyCarrierWebhook, webhookIdentifiers,
+} from "@/lib/erp/carriers";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +20,25 @@ type Params = { tenant: string };
  * endpoint settles nothing that is not signed by the carrier whose shipment it
  * names.
  *
- * The parcel is found by TRACKING NUMBER, which is the only identifier a
- * carrier knows. That is also why the carrier is resolved from the shipment
- * rather than from the payload — a body that could name its own carrier could
- * name one whose secret the sender happens to know.
+ * THREE STEPS, AND THE ORDER IS THE DESIGN: identify, authenticate, interpret.
+ *
+ *  1. IDENTIFY. Which parcel is this about? Read from the payload, because the
+ *     carrier — and therefore its adapter and its secret — is a column on the
+ *     shipment, and the shipment is what we are looking for. Nothing is written
+ *     on the strength of this step.
+ *  2. AUTHENTICATE. Now the carrier is known, its own signature scheme is
+ *     applied: Svix for ZR Express, the platform's HMAC otherwise. Fails closed.
+ *  3. INTERPRET. Only now is the body read for what it says, by the adapter that
+ *     understands the carrier's shape.
+ *
+ * The carrier is resolved from the SHIPMENT and never from the payload — a body
+ * that could name its own carrier could name one whose secret the sender
+ * happens to know.
+ *
+ * A PARCEL IS FOUND BY TRACKING NUMBER **OR** BY THE REFERENCE WE GAVE IT. ZR
+ * Express books a parcel and assigns its tracking number afterwards, delivering
+ * it on the first webhook — so a shipment findable only by tracking number
+ * could never receive the event that gives it one. LP.5.
  *
  * Carriers are never rate-limited and never given a retryable error: they
  * replay backlogs, and an endpoint that pushes back gets switched off.
@@ -46,14 +62,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<Params> }) {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
 
-  const trackingNumber = String(body.trackingNumber ?? body.tracking ?? "").trim();
-  if (!trackingNumber) return NextResponse.json({ received: true });
+  // (1) Identify.
+  const ids = webhookIdentifiers(body);
+  if (!ids.trackingNumber && !ids.externalId) return NextResponse.json({ received: true });
 
   return withTenant(tenant.id, async (db) => {
+    // An empty tracking number must never match: a ZR parcel is booked without
+    // one, so `trackingNumber: ""` would otherwise find the first unnumbered
+    // shipment in the tenant and file somebody else's delivery against it.
+    //
+    // `carrierReference` and not `orderId`, even though today they hold the same
+    // value: the reference is what WE gave the carrier and what the carrier
+    // echoes, and a carrier that issues its own reference instead would break a
+    // lookup keyed on our primary key.
+    const match = [
+      ...(ids.trackingNumber ? [{ trackingNumber: ids.trackingNumber }] : []),
+      ...(ids.externalId ? [{ carrierReference: ids.externalId }] : []),
+    ];
+
     const shipment = await db.shipment.findFirst({
-      where: { trackingNumber },
+      where: { OR: match },
       select: {
-        id: true, orderId: true, carrierId: true, crmStatus: true,
+        id: true, orderId: true, carrierId: true, crmStatus: true, trackingNumber: true,
         carrier: { select: { adapter: true, webhookSecret: true } },
       },
     });
@@ -61,8 +91,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<Params> }) {
     // parcel" would let anyone test whether a number belongs to this company.
     if (!shipment) return NextResponse.json({ received: true });
 
-    const verdict = verifySignature(
-      shipment.carrier?.adapter ?? null,
+    const adapterKey = shipment.carrier?.adapter ?? null;
+
+    // (2) Authenticate — the way THIS carrier signs.
+    const verdict = verifyCarrierWebhook(
+      adapterKey,
       shipment.carrier?.webhookSecret ?? null,
       raw,
       req.headers,
@@ -72,31 +105,35 @@ export async function POST(req: NextRequest, ctx: { params: Promise<Params> }) {
       return NextResponse.json({ received: true });
     }
 
-    const originalStatus = String(body.status ?? body.originalStatus ?? "").trim();
-    if (!originalStatus) return NextResponse.json({ received: true });
+    // (3) Interpret.
+    const event = parseCarrierWebhook(adapterKey, body);
+    if (!event) return NextResponse.json({ received: true });
+
+    // The tracking number the carrier has finally issued, written once. Only
+    // now — after the signature checked out — because it is the identifier the
+    // next webhook will be matched on.
+    await recordTrackingNumber(db, shipment, event.trackingNumber);
 
     // The CRM status is resolved here, never taken from the body. A payload
     // that could set `crmStatus: delivered` directly would be a way to settle
-    // revenue without a delivery.
+    // revenue without a delivery. The tenant's own mapping wins, then the
+    // adapter's, then the shared keyword fallback — `mapCarrierStatus` keeps
+    // that last one even for an unregistered adapter, because the carrier PUSHED
+    // this event and dropping it would lose a real delivery outcome to a
+    // configuration problem (D-LP.2).
     const mapping = shipment.carrierId
       ? await db.carrierStatusMapping.findFirst({
-          where: { carrierId: shipment.carrierId, originalStatus },
+          where: { carrierId: shipment.carrierId, originalStatus: event.originalStatus },
           select: { crmStatus: true },
         })
       : null;
 
     await ingestEvents(db, tenant.id, shipment, [
       {
-        originalStatus,
-        // `mapCarrierStatus` keeps a keyword fallback for an unregistered
-        // adapter, and that is deliberate: the carrier PUSHED this event, so
-        // dropping it would lose a real delivery outcome to a configuration
-        // problem. Interpreting a status string cannot invent a parcel.
-        crmStatus: mapping?.crmStatus ?? mapCarrierStatus(shipment.carrier?.adapter ?? null, originalStatus),
-        description: String(body.description ?? ""),
-        // The carrier's own moment when it sends one. Stamping "now" would
-        // book a replayed backlog into the wrong period.
-        eventTime: body.eventTime ? new Date(Number(body.eventTime) || String(body.eventTime)) : new Date(),
+        originalStatus: event.originalStatus,
+        crmStatus: mapping?.crmStatus || event.crmStatus || mapCarrierStatus(adapterKey, event.originalStatus),
+        description: event.description,
+        eventTime: event.eventTime,
       },
     ]);
 

@@ -1,11 +1,21 @@
 import "server-only";
 
-import type { Prisma, TenantDb } from "@landingos/db";
+import { withTenant, type Prisma, type TenantDb } from "@landingos/db";
 
-import { getAdapter, mapCarrierStatus, TERMINAL, type TrackingEvent } from "./carriers";
+import {
+  CarrierError,
+  getAdapter,
+  mapCarrierStatus,
+  TERMINAL,
+  type BookingRequest,
+  type BookingResult,
+  type CarrierAdapter,
+  type CarrierConfig,
+  type TrackingEvent,
+} from "./carriers";
 import { syncClientFromOrder } from "./clients";
 import { raiseFollowupTask } from "./followup";
-import { notifyDeliveryUpdate, notifyFollowupRaised } from "./notify";
+import { notifyDeliveryUpdate, notifyFollowupRaised, notifyShipmentFailed } from "./notify";
 
 /* =============================================================================
  * Shipments, and the settlement that BUG-02 was about.
@@ -19,6 +29,26 @@ import { notifyDeliveryUpdate, notifyFollowupRaised } from "./notify";
  * This file is the write. Everything downstream — the four things listed above —
  * already reads the column and needs no further change, which is exactly why
  * the defect was invisible for so long.
+ *
+ * -----------------------------------------------------------------------------
+ * D-LP.5.1 — THREE PHASES, BECAUSE A CARRIER IS NOT A DATABASE
+ *
+ * Every carrier interaction here is split into PLAN, CALL and RECORD. Plan and
+ * record run inside a tenant-bound transaction; the call runs inside none.
+ *
+ * Until LP.5 all three happened in one transaction, and that was harmless only
+ * because the single registered adapter was a synchronous simulator. With a
+ * real carrier it is a data-integrity problem, not a performance one:
+ * `withTenant` opens an interactive transaction with a 15-second timeout
+ * (TX_OPTIONS), a ZR Express booking is three HTTP round trips to somebody
+ * else's server, and the booking is triggered BY A CONFIRMATION. A slow carrier
+ * would therefore roll back the fact that an agent rang a customer and the
+ * customer said yes — losing the work, the call record and the stock movement
+ * to a third party being busy.
+ *
+ * The three phases are separate exported functions rather than one closure so
+ * that both callers — the route and the scheduled poll — compose the SAME
+ * ingest, which is the property `ingestEvents` exists to hold.
  * ========================================================================== */
 
 const SHIPMENT_SELECT = {
@@ -32,6 +62,17 @@ export const EVENT_SELECT = {
   id: true, eventTime: true, originalStatus: true, crmStatus: true,
   description: true, insertedAt: true,
 } satisfies Prisma.ShipmentEventSelect;
+
+/** Everything the carrier call needs, read once inside a transaction. */
+export interface BookingPlan {
+  readonly orderId: string;
+  readonly carrierId: string;
+  readonly adapter: CarrierAdapter;
+  readonly config: CarrierConfig;
+  readonly request: BookingRequest;
+}
+
+export type BookingRefusal = "NO_CARRIER" | "UNKNOWN_ADAPTER" | "NOT_FOUND";
 
 /** Resolve a carrier status through this tenant's mappings, then the adapter. */
 async function resolveStatus(
@@ -53,56 +94,145 @@ async function resolveStatus(
   return mapCarrierStatus(adapterKey, originalStatus);
 }
 
+/* -----------------------------------------------------------------------------
+ * Booking — plan, call, record
+ * -------------------------------------------------------------------------- */
+
 /**
- * Book a parcel with the carrier and record it.
+ * Read everything the carrier needs, and decide whether there is anything to do.
  *
- * Refuses a second shipment for an order that already has one. Two shipments
- * for one order means two parcels, and the customer is charged once.
+ * `existing` is not an error: booking is idempotent, and a second call for an
+ * order that already has a parcel returns the parcel. Two shipments for one
+ * order means two parcels and one customer paying once.
+ *
+ * THE SECRETS ARE SELECTED HERE AND NOWHERE ELSE. They are handed to the
+ * adapter and never returned to a caller, never logged and never serialised —
+ * `maskCarrier` governs every path that leaves this process.
  */
-export async function createShipment(
+export async function planShipment(
   db: TenantDb,
-  tenantId: string,
-  order: { id: string; carrierCode: string | null },
-) {
+  orderId: string,
+): Promise<
+  | { readonly kind: "exists"; readonly shipment: Prisma.ShipmentGetPayload<{ select: typeof SHIPMENT_SELECT }> }
+  | { readonly kind: "refused"; readonly error: BookingRefusal }
+  | { readonly kind: "plan"; readonly plan: BookingPlan }
+> {
   const existing = await db.shipment.findFirst({
-    where: { orderId: order.id },
+    where: { orderId },
     select: SHIPMENT_SELECT,
   });
-  if (existing) return { shipment: existing, created: false };
+  if (existing) return { kind: "exists", shipment: existing };
+
+  const order = await db.fulfillmentOrder.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true, reference: true, carrierCode: true,
+      client: true, phone: true, wilaya: true, commune: true,
+      product: true, quantity: true, price: true,
+      shippingNote: true, note: true, expressDelivery: true,
+    },
+  });
+  if (!order) return { kind: "refused", error: "NOT_FOUND" };
 
   const carrier = order.carrierCode
     ? await db.carrier.findFirst({
         where: { code: order.carrierCode, active: true },
-        select: { id: true, adapter: true },
+        select: { id: true, adapter: true, apiUrl: true, apiKey: true, secretKey: true, webhookSecret: true },
       })
     : await db.carrier.findFirst({
         where: { isDefault: true, active: true },
-        select: { id: true, adapter: true },
+        select: { id: true, adapter: true, apiUrl: true, apiKey: true, secretKey: true, webhookSecret: true },
       });
-  if (!carrier) return { shipment: null, created: false, error: "NO_CARRIER" as const };
+  if (!carrier) return { kind: "refused", error: "NO_CARRIER" };
 
   // Refused, never mocked. Booking through a fallback adapter fabricates a
   // tracking number the carrier has never heard of and answers 201, and an
   // order that booked successfully is one nobody looks at again. See the note
   // on `getAdapter`.
   const adapter = getAdapter(carrier.adapter);
-  if (!adapter) {
-    return { shipment: null, created: false, error: "UNKNOWN_ADAPTER" as const };
-  }
+  if (!adapter) return { kind: "refused", error: "UNKNOWN_ADAPTER" };
 
-  const booked = adapter.createShipment(order.id);
-  const crmStatus = await resolveStatus(db, carrier.id, carrier.adapter, booked.originalStatus);
+  return {
+    kind: "plan",
+    plan: {
+      orderId: order.id,
+      carrierId: carrier.id,
+      adapter,
+      config: {
+        apiUrl: carrier.apiUrl,
+        apiKey: carrier.apiKey,
+        secretKey: carrier.secretKey,
+        webhookSecret: carrier.webhookSecret,
+      },
+      request: {
+        orderId: order.id,
+        reference: order.reference,
+        client: order.client,
+        phone: order.phone,
+        wilaya: order.wilaya,
+        commune: order.commune,
+        // The delivery instruction, then the general note. Both are free text a
+        // courier reads at the door.
+        address: order.shippingNote || order.note || "",
+        product: order.product,
+        quantity: Number(order.quantity) || 1,
+        // As a STRING, all the way to the wire. M-06 made these `numeric`; a
+        // JS double on the way to a carrier that collects cash gives that back.
+        price: order.price ? order.price.toString() : "0",
+        express: order.expressDelivery === true,
+      },
+    },
+  };
+}
+
+/**
+ * Ask the carrier for a parcel. NO DATABASE, ON PURPOSE.
+ *
+ * This is the phase that must not hold a transaction. It takes no `db` so that
+ * a future caller cannot accidentally give it one.
+ */
+export function bookAtCarrier(plan: BookingPlan): Promise<BookingResult> {
+  return plan.adapter.createShipment(plan.request, plan.config);
+}
+
+/**
+ * Store what the carrier said.
+ *
+ * Re-checks for an existing shipment, and the database checks again underneath:
+ * the transaction that planned this booking has been committed and released, so
+ * two operators pressing the button at the same moment can both reach the
+ * carrier. The read below catches the ordinary case; `@@unique([tenantId,
+ * orderId])` catches the one where both reads happened before either write.
+ * A `findFirst` before a `create` is not a guard, it is a hope.
+ */
+export async function recordShipment(
+  db: TenantDb,
+  tenantId: string,
+  plan: BookingPlan,
+  booked: BookingResult,
+) {
+  const existing = await db.shipment.findFirst({
+    where: { orderId: plan.orderId },
+    select: SHIPMENT_SELECT,
+  });
+  if (existing) return { shipment: existing, created: false };
+
+  const crmStatus = await resolveStatus(db, plan.carrierId, plan.adapter.key, booked.originalStatus);
 
   const shipment = await db.shipment.create({
     data: {
       tenantId,
-      orderId: order.id,
-      carrierId: carrier.id,
+      orderId: plan.orderId,
+      carrierId: plan.carrierId,
       trackingNumber: booked.trackingNumber,
       carrierShipmentId: booked.carrierShipmentId,
-      carrierReference: order.id,
+      // What the CARRIER will echo back. For ZR that is our order id, and it is
+      // the only way a parcel booked without a tracking number can be matched to
+      // the webhook that finally brings one.
+      carrierReference: booked.carrierReference || plan.orderId,
       crmStatus,
       originalStatus: booked.originalStatus,
+      labelUrl: booked.labelUrl || null,
     },
     select: SHIPMENT_SELECT,
   });
@@ -121,17 +251,94 @@ export async function createShipment(
   // The order carries the tracking number so the list can show it without a
   // join, and the shipment id so the per-order screen can find it.
   await db.fulfillmentOrder.update({
-    where: { id: order.id },
+    where: { id: plan.orderId },
     data: {
       shipmentId: shipment.id,
       trackingNumber: booked.trackingNumber,
       deliveryStatus: crmStatus,
-      carrierId: carrier.id,
+      carrierId: plan.carrierId,
     },
   });
 
   return { shipment, created: true };
 }
+
+export interface BookingOutcome {
+  readonly shipment: Prisma.ShipmentGetPayload<{ select: typeof SHIPMENT_SELECT }> | null;
+  readonly created: boolean;
+  readonly error?: BookingRefusal | "CARRIER_REJECTED" | "ADDRESS_UNRESOLVED" | "CARRIER_UNREACHABLE";
+  readonly message?: string;
+}
+
+/**
+ * Book a parcel, holding no transaction while the carrier is being asked.
+ *
+ * The one entry point for booking. Two bindings with the network call between
+ * them, so a slow carrier costs a slow response and nothing else.
+ *
+ * A CARRIER REFUSAL IS TOLD, NEVER SWALLOWED. The legacy CRM caught this throw
+ * and pushed a `shipment_failed` notification so the order appeared with the
+ * reason on it — an unbooked parcel is invisible otherwise, and "the wilaya is
+ * misspelled" is a one-minute fix that nobody can make if nobody is told.
+ */
+export async function bookShipment(tenantId: string, orderId: string): Promise<BookingOutcome> {
+  const planned = await withTenant(tenantId, (db) => planShipment(db, orderId));
+
+  if (planned.kind === "exists") return { shipment: planned.shipment, created: false };
+  if (planned.kind === "refused") return { shipment: null, created: false, error: planned.error };
+
+  let booked: BookingResult;
+  try {
+    booked = await bookAtCarrier(planned.plan);
+  } catch (error) {
+    const failure =
+      error instanceof CarrierError
+        ? { code: error.code, message: error.message }
+        : { code: "CARRIER_UNREACHABLE" as const, message: "The carrier could not be reached." };
+
+    console.error(`[erp] booking failed for order ${orderId}: ${failure.message}`);
+    await withTenant(tenantId, async (db) => {
+      const order = await db.fulfillmentOrder.findUnique({
+        where: { id: orderId },
+        select: { id: true, reference: true, agentUserId: true, followupUserId: true },
+      });
+      if (order) await notifyShipmentFailed(db, tenantId, order, failure.message);
+    });
+
+    return { shipment: null, created: false, error: failure.code, message: failure.message };
+  }
+
+  try {
+    return await withTenant(tenantId, (db) => recordShipment(db, tenantId, planned.plan, booked));
+  } catch (error) {
+    // Somebody else booked this order while the carrier was answering us. The
+    // `@@unique([tenantId, orderId])` on Shipment is what turned that from two
+    // rows into this error, and it is the point: a unique violation ABORTS the
+    // Postgres transaction, so the recovery has to be a fresh binding rather
+    // than a catch inside the one that failed.
+    //
+    // The parcel we just booked at the carrier is real and is now orphaned —
+    // which is the honest cost of asking a third party outside a transaction,
+    // and is why the console's button disables while it is pending. What must
+    // not happen is a second shipment row, and it cannot.
+    if (!isUniqueViolation(error)) throw error;
+
+    console.warn(`[erp] a concurrent booking won for order ${orderId}; this parcel is orphaned at the carrier`);
+    const shipment = await withTenant(tenantId, (db) =>
+      db.shipment.findFirst({ where: { orderId }, select: SHIPMENT_SELECT }),
+    );
+    return { shipment, created: false };
+  }
+}
+
+/** P2002 — the unique constraint, whichever client shape reports it. */
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "P2002");
+}
+
+/* -----------------------------------------------------------------------------
+ * Intake
+ * -------------------------------------------------------------------------- */
 
 /**
  * Store carrier events, then settle the outcome if one of them is terminal.
@@ -220,6 +427,37 @@ export async function ingestEvents(
 }
 
 /**
+ * Write the tracking number a carrier finally issued.
+ *
+ * ZR Express books a parcel and assigns its tracking number afterwards, so a
+ * ZR shipment exists for a while with an empty one. Written ONCE, and only onto
+ * a shipment that has none: a carrier correcting a number it already gave would
+ * silently orphan every event already filed under the old one, and the parcel
+ * is found by `carrierReference` in that case anyway.
+ */
+export async function recordTrackingNumber(
+  db: TenantDb,
+  shipment: { id: string; orderId: string; trackingNumber: string | null },
+  trackingNumber: string,
+): Promise<boolean> {
+  if (!trackingNumber || shipment.trackingNumber) return false;
+
+  const { count } = await db.shipment.updateMany({
+    // Guarded in the WHERE as well as read above, so two deliveries of the same
+    // first webhook cannot both write.
+    where: { id: shipment.id, OR: [{ trackingNumber: null }, { trackingNumber: "" }] },
+    data: { trackingNumber },
+  });
+  if (count === 0) return false;
+
+  await db.fulfillmentOrder.update({
+    where: { id: shipment.orderId },
+    data: { trackingNumber },
+  });
+  return true;
+}
+
+/**
  * Write `deliveryOutcome` once, from the carrier's own event time.
  *
  * SETTLED ONCE, PERMANENTLY. More polls keep arriving after a parcel is
@@ -276,64 +514,209 @@ async function settleOutcome(
   );
 }
 
-/** Poll the carrier and ingest whatever it reports. */
-export async function refreshShipment(db: TenantDb, tenantId: string, orderId: string) {
+/* -----------------------------------------------------------------------------
+ * Refreshing — plan, call, record
+ * -------------------------------------------------------------------------- */
+
+export interface RefreshPlan {
+  readonly shipment: { id: string; orderId: string; carrierId: string | null; crmStatus: string | null; trackingNumber: string | null; createdAt: Date };
+  readonly adapterKey: string | null;
+  readonly adapter: CarrierAdapter;
+  readonly config: CarrierConfig;
+  readonly stepsSeen: number;
+}
+
+export type RefreshRefusal = "NOT_FOUND" | "UNKNOWN_ADAPTER" | "NO_POLLING";
+
+type ShipmentRow = Prisma.ShipmentGetPayload<{ select: typeof SHIPMENT_SELECT }>;
+type EventRow = Prisma.ShipmentEventGetPayload<{ select: typeof EVENT_SELECT }>;
+
+/**
+ * What a refresh answers with, whether or not the carrier was reachable.
+ *
+ * `error` is optional and always present in the type, so a caller cannot forget
+ * to branch on it — the stored state comes back either way, because "we could
+ * not ask" still has to render the timeline that already exists.
+ */
+export interface RefreshOutcome {
+  readonly shipment: ShipmentRow | null;
+  readonly events: readonly EventRow[];
+  readonly error?: Exclude<RefreshRefusal, "NOT_FOUND"> | "CARRIER_REJECTED" | "ADDRESS_UNRESOLVED" | "CARRIER_UNREACHABLE";
+  readonly message?: string;
+}
+
+export async function planRefresh(
+  db: TenantDb,
+  orderId: string,
+): Promise<
+  | { readonly kind: "refused"; readonly error: RefreshRefusal }
+  | { readonly kind: "plan"; readonly plan: RefreshPlan }
+> {
   const shipment = await db.shipment.findFirst({
     where: { orderId },
-    select: { ...SHIPMENT_SELECT, carrier: { select: { adapter: true } } },
+    select: {
+      id: true, orderId: true, carrierId: true, crmStatus: true,
+      trackingNumber: true, createdAt: true,
+      carrier: {
+        select: { adapter: true, apiUrl: true, apiKey: true, secretKey: true, webhookSecret: true },
+      },
+    },
   });
-  if (!shipment) return null;
-
-  // How far the parcel has come is derived from the events on record, not from
-  // process memory. See the note in carriers.ts.
-  const stepsSeen = await db.shipmentEvent.count({ where: { shipmentId: shipment.id } });
+  if (!shipment) return { kind: "refused", error: "NOT_FOUND" };
 
   const adapter = getAdapter(shipment.carrier?.adapter ?? null);
 
   // Nothing to ask, so nothing is invented. Polling through a fallback adapter
   // would walk a REAL parcel along the mock's synthetic pipeline and settle its
-  // outcome — booking revenue for a delivery that may not have happened. The
-  // stored state is returned unchanged, with the reason named.
-  if (!adapter) {
-    // Re-read through SHIPMENT_SELECT so this path returns the same shape as
-    // the successful one — the extra `carrier` join above is for the adapter
-    // key and is not part of the contract.
-    const [unchanged, stored] = await Promise.all([
-      db.shipment.findUnique({ where: { id: shipment.id }, select: SHIPMENT_SELECT }),
-      db.shipmentEvent.findMany({
-        where: { shipmentId: shipment.id },
-        orderBy: [{ eventTime: "asc" }, { id: "asc" }],
-        select: EVENT_SELECT,
-      }),
-    ]);
-    return { shipment: unchanged, events: stored, error: "UNKNOWN_ADAPTER" as const };
-  }
+  // outcome — booking revenue for a delivery that may not have happened.
+  if (!adapter) return { kind: "refused", error: "UNKNOWN_ADAPTER" };
 
-  // The booking time anchors the event times, so re-polling a parcel produces
-  // the same keys and stores nothing the second time.
-  const reported = adapter.track(shipment.trackingNumber ?? "", stepsSeen, shipment.createdAt);
+  // A carrier that only pushes says so. LP.2's rule applied to the other side
+  // of the same question: "the carrier has no news" and "this carrier cannot be
+  // asked" are different facts, and answering 200 with an unchanged timeline
+  // states the first when the second is true. ZR Express is exactly this — it
+  // publishes no tracking endpoint at all.
+  if (!adapter.canPoll) return { kind: "refused", error: "NO_POLLING" };
 
-  // Re-resolve through the tenant's mappings: the adapter's own guess is the
-  // fallback, not the answer.
+  // How far the parcel has come is derived from the events on record, not from
+  // process memory. See the note in carriers.ts.
+  const stepsSeen = await db.shipmentEvent.count({ where: { shipmentId: shipment.id } });
+
+  const { carrier, ...rest } = shipment;
+  return {
+    kind: "plan",
+    plan: {
+      shipment: rest,
+      adapterKey: carrier?.adapter ?? null,
+      adapter,
+      config: {
+        apiUrl: carrier?.apiUrl ?? null,
+        apiKey: carrier?.apiKey ?? null,
+        secretKey: carrier?.secretKey ?? null,
+        webhookSecret: carrier?.webhookSecret ?? null,
+      },
+      stepsSeen,
+    },
+  };
+}
+
+/** Ask the carrier. NO DATABASE, for the reason at the top of this file. */
+export function fetchTracking(plan: RefreshPlan): Promise<TrackingEvent[]> {
+  return plan.adapter.track(
+    plan.shipment.trackingNumber ?? "",
+    // The booking time anchors the event times, so re-polling a parcel produces
+    // the same keys and stores nothing the second time.
+    { stepsSeen: plan.stepsSeen, bookedAt: plan.shipment.createdAt },
+    plan.config,
+  );
+}
+
+/** Resolve every reported status through the tenant's mappings, then ingest. */
+export async function ingestReported(
+  db: TenantDb,
+  tenantId: string,
+  plan: RefreshPlan,
+  reported: readonly TrackingEvent[],
+): Promise<void> {
   const events: TrackingEvent[] = [];
   for (const event of reported) {
     events.push({
       ...event,
-      crmStatus: await resolveStatus(
-        db, shipment.carrierId, shipment.carrier?.adapter ?? null, event.originalStatus,
-      ),
+      // The adapter's own guess is the fallback, not the answer.
+      crmStatus: await resolveStatus(db, plan.shipment.carrierId, plan.adapterKey, event.originalStatus),
     });
   }
 
-  await ingestEvents(db, tenantId, shipment, events);
+  await ingestEvents(db, tenantId, plan.shipment, events);
+}
 
-  const after = await db.shipment.findUnique({ where: { id: shipment.id }, select: SHIPMENT_SELECT });
-  const stored = await db.shipmentEvent.findMany({
-    where: { shipmentId: shipment.id },
-    orderBy: [{ eventTime: "asc" }, { id: "asc" }],
-    select: EVENT_SELECT,
+async function readShipment(db: TenantDb, shipmentId: string): Promise<RefreshOutcome> {
+  const [shipment, events] = await Promise.all([
+    db.shipment.findUnique({ where: { id: shipmentId }, select: SHIPMENT_SELECT }),
+    db.shipmentEvent.findMany({
+      where: { shipmentId },
+      orderBy: [{ eventTime: "asc" }, { id: "asc" }],
+      select: EVENT_SELECT,
+    }),
+  ]);
+  return { shipment, events };
+}
+
+/**
+ * Poll the carrier and ingest whatever it reports — for a caller that already
+ * holds a tenant binding.
+ *
+ * IT REPORTS ONLY WHETHER IT COULD ASK, because that is all the poll uses and
+ * because the poll is the one caller with 25 parcels inside one 15-second
+ * transaction. Reading the shipment and its whole timeline back per parcel — the
+ * shape the manual route wants — cost enough queries at that batch size to trip
+ * the timeout, which surfaces as a 500 from the job rather than as anything that
+ * names the real reason.
+ *
+ * THE SCHEDULED POLL USES THIS, and it is the one place a carrier call still
+ * happens inside a transaction. It is bounded by `POLL_BATCH` and is why that
+ * number is 25 rather than 200. Moving it out means `runJob` stops receiving a
+ * bound `db` and starts opening its own bindings per parcel, which is a change
+ * to the job runner and both of its routes — recorded as N17 and grouped with
+ * the Ecom adapter, the first registered carrier that can actually be polled.
+ * ZR cannot (`canPoll: false`), so nothing registered today reaches a network
+ * from here.
+ */
+export async function refreshShipment(
+  db: TenantDb,
+  tenantId: string,
+  orderId: string,
+): Promise<{ error?: Exclude<RefreshRefusal, "NOT_FOUND"> } | null> {
+  const planned = await planRefresh(db, orderId);
+  if (planned.kind === "refused") {
+    return planned.error === "NOT_FOUND" ? null : { error: planned.error };
+  }
+
+  const reported = await fetchTracking(planned.plan);
+  await ingestReported(db, tenantId, planned.plan, reported);
+  return {};
+}
+
+/**
+ * Poll the carrier without holding a transaction while it is being asked.
+ *
+ * What the manual "ask the carrier" control uses. Same three phases, same
+ * ingest, two bindings instead of one.
+ */
+export async function refreshShipmentForOrder(
+  tenantId: string,
+  orderId: string,
+): Promise<RefreshOutcome | null> {
+  const planned = await withTenant(tenantId, (db) => planRefresh(db, orderId));
+
+  if (planned.kind === "refused") {
+    if (planned.error === "NOT_FOUND") return null;
+    const state = await withTenant(tenantId, async (db) => {
+      const row = await db.shipment.findFirst({ where: { orderId }, select: { id: true } });
+      return row ? readShipment(db, row.id) : null;
+    });
+    return { shipment: state?.shipment ?? null, events: state?.events ?? [], error: planned.error };
+  }
+
+  let reported: TrackingEvent[];
+  try {
+    reported = await fetchTracking(planned.plan);
+  } catch (error) {
+    const message = error instanceof CarrierError ? error.message : "The carrier could not be reached.";
+    console.error(`[erp] tracking refresh failed for order ${orderId}: ${message}`);
+    const state = await withTenant(tenantId, (db) => readShipment(db, planned.plan.shipment.id));
+    return {
+      shipment: state.shipment,
+      events: state.events,
+      error: error instanceof CarrierError ? error.code : "CARRIER_UNREACHABLE",
+      message,
+    };
+  }
+
+  return withTenant(tenantId, async (db) => {
+    await ingestReported(db, tenantId, planned.plan, reported);
+    return readShipment(db, planned.plan.shipment.id);
   });
-  return { shipment: after, events: stored };
 }
 
 export { SHIPMENT_SELECT };

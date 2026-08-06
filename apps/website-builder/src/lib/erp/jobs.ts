@@ -363,6 +363,16 @@ export async function sweepOverdueOrders(
  * That the carrier call happens inside a database transaction at all is a real
  * limitation of the current shape and is recorded in NEXT_STEPS; it is why this
  * number is 25 and not 200.
+ *
+ * LP.5 MOVED THE OTHER TWO CALLERS OUT (D-LP.5.1) AND LEFT THIS ONE IN, on
+ * purpose. Booking is triggered by a confirmation, so a slow carrier there rolls
+ * back an agent's work — this job writes nothing a person is waiting on, and
+ * moving it out means `runJob` stops receiving a bound `db` and starts opening a
+ * binding per parcel, which is a change to the job runner and both of its
+ * routes. Recorded as N17 and grouped with the Ecom adapter, the first
+ * registered carrier that can actually be polled: neither adapter registered
+ * today reaches a network from here, because ZR Express declares `canPoll:
+ * false` and refuses above.
  */
 const POLL_BATCH = 25;
 
@@ -440,10 +450,13 @@ export async function pollCarriers(
 
     try {
       const result = await refreshShipment(db, tenantId, shipment.orderId);
-      // A carrier naming an integration this deployment does not have is not a
-      // failure of this job and not a poll either. Counting it as polled would
-      // report a healthy sweep over parcels nobody actually asked about.
-      if (result?.error === "UNKNOWN_ADAPTER") skipped += 1;
+      // Two reasons nothing was asked, and neither is a failure of this job nor
+      // a poll. Counting either as polled would report a healthy sweep over
+      // parcels nobody actually asked about. `UNKNOWN_ADAPTER` is a carrier
+      // naming an integration this deployment does not have; `NO_POLLING` is
+      // one that publishes no tracking endpoint at all and reports by webhook
+      // only — ZR Express is the second kind.
+      if (result?.error === "UNKNOWN_ADAPTER" || result?.error === "NO_POLLING") skipped += 1;
       else polled += 1;
     } catch (error) {
       failed += 1;

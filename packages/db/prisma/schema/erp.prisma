@@ -486,7 +486,17 @@ model Shipment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([tenantId, orderId])
+  // ONE PARCEL PER ORDER, enforced by the database rather than by a read.
+  //
+  // Every booking path already checked for an existing shipment first and
+  // refused a second one, because two shipments mean two parcels collected and
+  // one customer paying once. That check was a `findFirst` followed by a
+  // `create`, which under READ COMMITTED lets two concurrent bookings both see
+  // nothing and both insert. The window used to be a few milliseconds; LP.5
+  // moved the carrier call OUT of the transaction (D-LP.5.1), so it is now as
+  // long as the carrier takes to answer. The invariant was always stated and
+  // never true — this is the line that makes it true.
+  @@unique([tenantId, orderId])
   @@index([tenantId, crmStatus])
   @@index([tenantId, trackingNumber])
   // The tracking poll's own query: non-terminal parcels, least recently polled

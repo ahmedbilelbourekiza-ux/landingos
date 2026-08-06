@@ -5,7 +5,7 @@ import { SESSION_COOKIE } from '@landingos/auth';
 
 import {
   skip, BASE, uid, phone, makeTenant, makeMember, makeErpTenant, makeFollowupTask, cleanup,
-  setCarrierAdapter,
+  setCarrierAdapter, slugOf,
   contractTest as test,
   type Caller,
 } from './helpers.ts';
@@ -1141,11 +1141,13 @@ describe('the catalogue can be added to and archived', () => {
     const stale = (await acme.manager.api('POST', '/api/erp/carriers', {
       name: 'Stale integration', code: `br${uid()}`, adapter: 'mock',
     })).body.data;
-    await setCarrierAdapter(acme.tenantId, stale.id, 'zr');
+    // `yalidine`, not `zr`: LP.5 registered ZR Express, so it is a working
+    // integration now and no longer an example of a missing one.
+    await setCarrierAdapter(acme.tenantId, stale.id, 'yalidine');
 
     const r = await html('/console/erp/carriers', acme.manager.token);
     assert.equal(r.status, 200);
-    assert.match(r.body, /data-adapter="zr" data-known="false"/, 'the broken one is flagged');
+    assert.match(r.body, /data-adapter="yalidine" data-known="false"/, 'the broken one is flagged');
     assert.ok(
       r.body.includes(`data-adapter="mock" data-known="true"`),
       'and the working one is not',
@@ -1275,6 +1277,41 @@ describe('carriers can be configured without their keys reaching the page', () =
     const after = await acme.manager.api('GET', `/api/erp/carriers/${carrierId}`);
     assert.equal(after.body.data.name, 'Renamed Carrier');
     assert.equal(after.body.data._hasCredentials, true, 'the stored key was destroyed');
+  });
+
+  test('the adapter picker offers every integration this deployment has, including ZR', async () => {
+    // LP.5. The picker is built from the live registry, so registering an
+    // adapter makes it selectable everywhere at once — this is the half that
+    // turns "the ZR code exists" into "a manager can choose it".
+    const r = await html('/console/erp/carriers', acme.manager.token, 'en');
+    assert.match(r.body, /id="carrier-adapter"/);
+    assert.match(r.body, /<option value="mock"/);
+    assert.match(r.body, /<option value="zr"/, 'ZR Express must be selectable');
+  });
+
+  test('a webhook secret can be set, and the address to give the carrier is on the page', async () => {
+    // The route has accepted `webhookSecret` since Phase 5 and no control ever
+    // sent one, so a carrier's inbound updates could only ever be UNSIGNED —
+    // the same tested-endpoint-with-no-caller defect this restoration keeps
+    // finding. ZR signs every webhook, so a secret nobody can set is a
+    // signature nobody can check.
+    const r = await html('/console/erp/carriers', acme.manager.token, 'en');
+    assert.match(r.body, /data-testid="carrier-webhook-url"/, 'the inbound address must be shown');
+    assert.match(
+      r.body,
+      new RegExp(`value="/api/erp/webhooks/${await slugOf(acme.tenantId)}/delivery"`),
+      'and it must be this tenant’s own endpoint',
+    );
+
+    // The write half: a secret set through the form is stored and masked.
+    const created = (await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Signed Carrier', code: `sg${uid()}`, adapter: 'zr',
+      webhookSecret: 'whsec_screen_test_value',
+    })).body.data;
+    assert.equal(created._hasCredentials, true, 'a webhook secret counts as a credential');
+
+    const back = await html('/console/erp/carriers', acme.manager.token);
+    assert.ok(!back.body.includes('whsec_screen_test_value'), 'and it never reaches the page');
   });
 
   test('the mapping picker offers CRM statuses and nothing else', async () => {

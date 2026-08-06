@@ -45,9 +45,8 @@ none of which may be traded back.
 4. **No notification surface.** M-16's transport (SSE with exact replay, Web
    Push, service worker, 33 tests) has **no consumer**. No bell, no badge, no
    toast, no sound, no live refresh. An operator is never told anything.
-5. **No real carrier adapter.** LP.2 made it refuse instead of fabricating a
-   tracking number; the real ZR adapter is still owed.
-6. **No export.** No CSV or XLSX anywhere.
+5. ~~**No real carrier adapter.**~~ *(Closed by LP.5 — `zr` books real parcels.)*
+6. **No export.** No CSV or XLSX anywhere. **This is the last Tier 1 blocker.**
 
 ### Two decisions re-opened by the second pass
 
@@ -122,37 +121,70 @@ captured unit price / discount / shipping and derived the total; and `price` and
 `carrierCode` are manager-only on EDIT and ungated on CREATE, so an agent may set
 a price and then not change it. Both are decisions, not form changes.
 
-### THE NEXT SLICE — LP.5, the real ZR Express adapter
+**LP.5 — the real ZR Express adapter (R2, rest).** `zr` is registered and books
+real parcels: territory resolution against `POST /territories/search` at booking
+time, `X-Tenant`/`X-Api-Key` auth, the 20-entry status map, Svix webhooks, and a
+refusal that names the wilaya or commune it could not resolve. delivery
+39 → **61**, screens 121 → **123**.
 
-**The last large Tier 1 blocker, and the highest-risk slice in the roadmap.**
-Read `apps/erp/lib/providers/zr.js` end to end first — 479 lines, and the
-territory rule is the part that is not obvious:
+**D-LP.5.1 is the load-bearing change, not the adapter.** Every carrier call left
+the request transaction. `withTenant`'s timeout is 15s and booking is triggered
+by CONFIRMING an order, so a slow carrier would have rolled back the call record,
+the status change and the stock movement — a `try/catch` cannot save a
+transaction that has already timed out. Booking and refreshing are now **plan
+(in a transaction) → call (in none) → record (in a transaction)**, and
+`tenantRoute` gained `afterCommit(work)` so a route can do that without a second
+write path. A test makes the stub carrier sleep 17 seconds and asserts a 201.
 
-- ZR identifies wilaya and commune by its OWN UUIDs, not the standard 1–58
-  Algerian wilaya numbers. Rather than maintain a 1,585-row map, `createShipment`
-  resolves them at booking time via `POST /territories/search`: exactly one
-  wilaya-level territory by name, then a commune-level one whose `parentId` is
-  that wilaya's id.
-- If either step fails it **throws with a readable message** rather than booking
-  a parcel to the wrong address, and the ERP's caller turns that into a
-  `shipment_failed` notification so the order shows the reason. Port that half
-  too — a silent failure here is the defect LP.2 just removed.
-- Auth is `X-Tenant` (the tenant UUID, in `secretKey`) plus `X-Api-Key`
-  (`apiKey`); the base URL is `apiUrl`. Webhooks arrive in a Svix envelope
-  (`svix-id`, `svix-timestamp`, `svix-signature`) as `{ eventType, occurredAt,
-  data }`.
-- The status map is 20 entries, English and French, feeding `mapStatus`.
+**D-LP.5.2:** the commune must belong to the resolved wilaya, with no fallback —
+the ERP had one ("ignoring parentId, rare but safe") and it books a parcel to the
+right name in the wrong province.
 
-**The transaction limit is what will bite** (§2b(4)): the carrier call happens
-inside the transaction `withTenant` opened, whose timeout is 15s. `mock` is
-synchronous so this has never mattered; a real HTTP client makes it the normal
-case. **Do the HTTP outside the transaction and ingest inside it** — that shape
-change belongs in this slice, not after it.
+**Two defects in shipped code, found by measuring and by attacking:**
+`guessStatus` read "Sorti en livraison" as **delivered** (it tested `/livr/`
+first) and settled revenue for a parcel that had just left the depot; and
+`Shipment` had no unique on `(tenantId, orderId)`, so "one parcel per order" was
+a hope. Both fixed — the second with a schema change recorded in `CONSTRAINTS.md`.
 
-Registering the adapter in `ADAPTERS` makes it selectable everywhere at once:
-`listAdapters` drives the carriers dropdown, `isKnownAdapter` drives the
-configuration gate (LP.2), and the "integration unavailable" badge disappears
-from any row already naming `zr`.
+### THE NEXT SLICE — LP.6, order export
+
+**The last Tier 1 blocker.** Until every carrier has an adapter, an Excel/CSV
+hand-off is the only way a confirmed order leaves the building — and even with ZR
+registered, most Algerian carriers have no API at all.
+
+Read the legacy Export screen in `apps/erp/index.html` end to end first. It
+produces four files:
+
+- **ZR Express** — `Nom, Tel, Tel2, Wilaya, Commune, Produit, Qte, Prix, Note`
+- **Ecom Delivery** and **Ecotrac** — their own column orders
+- **a two-sheet performance report** — Orders + Agents, with confirmation rates
+  and suspicious-call counts
+
+Plus bulk export and bulk label printing from the order-list selection (label
+printing is Tier 4, slice 25 — do not pull it forward).
+
+**What to decide before writing anything:**
+
+- **CSV or XLSX.** LEGACY_PARITY R4 sizes CSV as **M** and XLSX as **L**; the
+  carrier hand-off is CSV-shaped and only the performance report wants real
+  sheets. A dependency-free CSV writer is the likely answer, with the report's
+  two sheets as two files or deferred.
+- **The filter vocabulary is `orderFilters`, again.** D-LP.3's rule applies
+  directly: an export with its own idea of "confirmed orders from this week"
+  will eventually disagree with the screen that offered the filters. The export
+  must take the SAME query string the list does, resolve `range` in the same
+  place, and a test must assert that the export and the list return the same set.
+- **Streaming vs buffering.** An export is unbounded where every list is paged.
+  `withTenant` holds a transaction; building a 20,000-row string inside one is
+  the same shape of problem D-LP.5.1 just fixed for carriers. Decide the bound
+  explicitly (a hard row cap with a stated refusal, or a chunked read) rather
+  than discovering it at 15 seconds.
+- **Encoding.** Wilaya and commune names carry accents and the console ships
+  Arabic. A CSV opened in Excel without a UTF-8 BOM shows mojibake, and the
+  operator's conclusion is that the export is broken.
+- **Permission.** `erp:orders:read` reads the book; an export takes the whole of
+  it out of the building, and the customer registry is SENSITIVE (D-05.1). Decide
+  and record which gate applies.
 
 ### The order of work (LEGACY_PARITY.md §4)
 
@@ -161,7 +193,8 @@ operator productivity → business value → architectural dependencies → risk
 
 **Tier 1 — blockers:** product editing **[DONE LP.1]** · adapter refusal
 **[DONE LP.2]** · pagination + filters + search **[DONE LP.3]** · create an
-order **[DONE LP.4]** · **(5) the real ZR adapter** · (6) order export.
+order **[DONE LP.4]** · the real ZR adapter **[DONE LP.5]** ·
+**(6) order export**.
 **Tier 2 — operator productivity:** (7) the notification provider · (8) inline
 row actions + list density · (9) bulk actions completed · (10) client
 detail/edit/export · (11) sound + desktop notification preferences · (12) agent
@@ -217,9 +250,15 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **488/488** across the TWELVE files: access 65 · orders 38 ·
-validation 29 · listing 30 · catalog 55 · delivery 39 · integrations 29 ·
-order-split 8 · screens 121 · jobs 16 · assign 25 · notifications 33.
+Expect **512/512** across the TWELVE files: access 65 · orders 38 ·
+validation 29 · listing 30 · catalog 55 · delivery 61 · integrations 29 ·
+order-split 8 · screens 123 · jobs 16 · assign 25 · notifications 33.
+
+`delivery.test.ts` starts a **stub ZR Express server on an ephemeral port** in
+the test process and points a carrier's `apiUrl` at it, so the real adapter runs
+over real HTTP. Nothing external is contacted and no credentials are needed. One
+test deliberately takes ~20 seconds: it makes that stub sleep 17 seconds to prove
+a booking outlives the 15-second transaction timeout (D-LP.5.1).
 
 The platform contract suite lives beside it and runs the same way — **56/56**
 (team management 7.1a + invitation acceptance 7.1b + team screen 7.1c):
@@ -435,10 +474,16 @@ predicate the storefront checkout uses. `WORKER_SECRET` is required by
 `ERP_CONTRACT=strict`, and two tests exercise the authorised path: it escalates a
 real task, and a cancelled subscription is skipped.
 
-**The limitation to fix if a real carrier adapter is slow:** the carrier call
-happens inside the transaction `withTenant` opened, whose timeout is 15s. The
-batch size (25) is the mitigation, not the fix. Doing the HTTP outside the
-transaction and ingesting inside it is the shape to move to.
+**The limitation, fixed for two of its three callers in LP.5.** The carrier call
+happened inside the transaction `withTenant` opened, whose timeout is 15s.
+Booking and the manual refresh now do the HTTP outside it and ingest inside
+(D-LP.5.1). **The scheduled poll still does not**, deliberately: it is bounded by
+`POLL_BATCH = 25`, it writes nothing a person is waiting on, and neither
+registered adapter reaches a network from there — ZR declares `canPoll: false`
+and `planRefresh` refuses first. Moving it out means `runJob` stops receiving a
+bound `db` and starts opening a binding per parcel, which is a change to the job
+runner and both of its routes. **Recorded as N17 and grouped with the Ecom
+adapter (Tier 3, slice 22)**, the first registered carrier that can be polled.
 
 ---
 

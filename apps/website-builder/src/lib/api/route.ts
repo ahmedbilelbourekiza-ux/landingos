@@ -36,6 +36,26 @@ export interface RouteContext<P> {
   readonly params: P;
   /** Convenience for the common `?page=&search=` shape. */
   readonly searchParams: URLSearchParams;
+  /**
+   * Run work AFTER this request's tenant transaction has committed, and before
+   * the response is sent (D-LP.5.1).
+   *
+   * FOR ONE THING ONLY: talking to somebody else's server. `withTenant` opens an
+   * interactive transaction whose timeout is 15 seconds, so a carrier's API
+   * called from inside a handler makes a third party's latency able to roll back
+   * this tenant's writes. LP.5 hit the sharp end of that: booking a parcel is
+   * triggered by CONFIRMING an order, so a slow carrier would undo the fact that
+   * an agent rang a customer and the customer said yes.
+   *
+   * Work registered here runs once the transaction is committed and released, in
+   * registration order. Returning a Response replaces the handler's; throwing is
+   * logged and leaves the handler's response standing, because the committed
+   * work is real whatever happened afterwards.
+   *
+   * It is NOT a background queue. The response waits for it — an operator who
+   * pressed "book the parcel" is owed the answer, not an acknowledgement.
+   */
+  afterCommit(work: () => Promise<Response | void>): void;
 }
 
 type Handler<P> = (ctx: RouteContext<P>) => Promise<Response> | Response;
@@ -100,10 +120,30 @@ export function tenantRoute<P = Record<string, never>>(
     const params = ((await ctx?.params) ?? {}) as P;
     const searchParams = new URL(req.url).searchParams;
 
+    const deferred: Array<() => Promise<Response | void>> = [];
+    const afterCommit = (work: () => Promise<Response | void>) => {
+      deferred.push(work);
+    };
+
     try {
-      return await withTenant(session.auth.tenantId, (db) =>
-        Promise.resolve(handler({ db, session, req, params, searchParams })),
+      let response = await withTenant(session.auth.tenantId, (db) =>
+        Promise.resolve(handler({ db, session, req, params, searchParams, afterCommit })),
       );
+
+      // The transaction is committed and its connection released before any of
+      // this runs. See `afterCommit` above for why that matters.
+      for (const work of deferred) {
+        try {
+          const replacement = await work();
+          if (replacement) response = replacement;
+        } catch (error) {
+          // Logged, never rethrown: what was committed happened, and turning it
+          // into a 500 would tell the caller their confirmed call was not saved.
+          console.error(`[api] after-commit ${req.method} ${new URL(req.url).pathname}`, error);
+        }
+      }
+
+      return response;
     } catch (error) {
       // A thrown handler must not leak a stack trace or a SQL fragment to the
       // client. The detail goes to the log, where it is useful.

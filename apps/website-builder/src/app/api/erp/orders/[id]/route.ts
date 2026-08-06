@@ -1,8 +1,11 @@
+import { withTenant, type TenantDb } from "@landingos/db";
+
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
 import { loadOwnedOrder } from "@/lib/erp/guard";
 import { seesWholeBook } from "@/lib/erp/scope";
 import { buildPatch, updateOrder, ORDER_LIST_SELECT } from "@/lib/erp/orders";
 import { onOrderConfirmed, onOrderCancelled } from "@/lib/erp/confirm";
+import { bookShipment } from "@/lib/erp/shipments";
 import { readSettings } from "@/lib/erp/settings";
 import { toJson } from "@/lib/erp/serialize";
 
@@ -14,12 +17,7 @@ export const GET = tenantRoute<Params>("erp:orders:read", async ({ db, session, 
   const { denied } = await loadOwnedOrder(db, session, params.id);
   if (denied) return denied;
 
-  const order = await db.fulfillmentOrder.findUnique({
-    where: { id: params.id },
-    select: ORDER_LIST_SELECT,
-  });
-  const { _count, ...rest } = order!;
-  return apiOk({ ...(toJson(rest) as object), callCount: _count.calls });
+  return apiOk(await readOrder(db, params.id));
 });
 
 /**
@@ -34,7 +32,7 @@ export const GET = tenantRoute<Params>("erp:orders:read", async ({ db, session, 
  * Everything the caller may not write is dropped silently, EXCEPT reassignment,
  * which is a loud 403. See buildPatch for why the two are treated differently.
  */
-export const PATCH = tenantRoute<Params>("erp:orders:write", async ({ db, req, session, params }) => {
+export const PATCH = tenantRoute<Params>("erp:orders:write", async ({ db, req, session, params, afterCommit }) => {
   const { order, denied } = await loadOwnedOrder(db, session, params.id);
   if (denied) return denied;
 
@@ -59,18 +57,31 @@ export const PATCH = tenantRoute<Params>("erp:orders:write", async ({ db, req, s
   // or the two silently diverge and the difference only shows up in whichever
   // door is used less. See confirm.ts.
   if (patch.data.status === "confirmed" && order.status !== "confirmed") {
-    await onOrderConfirmed(db, tenantId, params.id, await readSettings(db), session.user.id);
+    const confirmed = await onOrderConfirmed(db, tenantId, params.id, await readSettings(db), session.user.id);
+    // Outside the transaction, for the reason in confirm.ts: this door reaches
+    // the same carrier the other one does, and a booking that shared this
+    // transaction would let a slow carrier roll the status change back.
+    if (confirmed.bookShipment) {
+      afterCommit(async () => {
+        await bookShipment(tenantId, params.id);
+        // Re-read so the response carries the tracking number the booking just
+        // wrote. The order below is built before the parcel exists.
+        return apiOk(await withTenant(tenantId, (fresh) => readOrder(fresh, params.id)));
+      });
+    }
   } else if (patch.data.status === "cancelled" && order.status === "confirmed") {
     await onOrderCancelled(db, tenantId, params.id, session.user.id);
   }
 
-  const after = await db.fulfillmentOrder.findUnique({
-    where: { id: params.id },
-    select: ORDER_LIST_SELECT,
-  });
-  const { _count, ...rest } = after!;
-  return apiOk({ ...(toJson(rest) as object), callCount: _count.calls });
+  return apiOk(await readOrder(db, params.id));
 });
+
+/** The shape both the read and the write answer with. */
+async function readOrder(db: TenantDb, id: string) {
+  const row = await db.fulfillmentOrder.findUnique({ where: { id }, select: ORDER_LIST_SELECT });
+  const { _count, ...rest } = row!;
+  return { ...(toJson(rest) as object), callCount: _count.calls };
+}
 
 /**
  * Delete an order.

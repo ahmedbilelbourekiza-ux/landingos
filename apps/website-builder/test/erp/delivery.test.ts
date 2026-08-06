@@ -1,5 +1,6 @@
 import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 
 import {
   skip, uid, phone, waitFor, makeErpTenant, cleanup, BASE, slugOf,
@@ -176,15 +177,21 @@ describe('carrier credentials are never disclosed', () => {
 
 describe('a carrier cannot name an integration this deployment does not have', () => {
   test('creating one is refused, and the refusal says what IS available', async () => {
+    // `yalidine` rather than `zr`: LP.5 registered ZR Express for real, so it is
+    // no longer an example of an integration this deployment lacks. The legacy
+    // dropdown offers twelve keys and this deployment implements two, so the
+    // boundary this test guards has moved by exactly one adapter — it has not
+    // been relaxed.
     const r = await acme.manager.api('POST', '/api/erp/carriers', {
-      name: 'ZR Express', code: `zr${uid()}`, adapter: 'zr',
+      name: 'Yalidine', code: `yl${uid()}`, adapter: 'yalidine',
     });
     assert.equal(r.status, 422);
     assert.equal(r.body.error.code, 'UNKNOWN_ADAPTER');
     // A dead-end refusal is barely better than the silent fallback: twelve keys
-    // exist in the legacy dropdown and one works here, so the message has to
-    // name it or there is nothing to try next.
+    // exist in the legacy dropdown and two work here, so the message has to
+    // name them or there is nothing to try next.
     assert.match(String(r.body.error.message), /mock/, 'the message must name the keys that work');
+    assert.match(String(r.body.error.message), /zr/, 'including the one LP.5 added');
   });
 
   test('omitting the adapter still defaults to the one that works', async () => {
@@ -214,7 +221,7 @@ describe('a carrier cannot name an integration this deployment does not have', (
     const carrier = (await acme.manager.api('POST', '/api/erp/carriers', {
       name: 'Stale', code, adapter: 'mock',
     })).body.data;
-    await setCarrierAdapter(acme.tenantId, carrier.id, 'zr');
+    await setCarrierAdapter(acme.tenantId, carrier.id, 'yalidine');
 
     const order = (await acme.manager.api('POST', '/api/erp/orders', {
       client: 'No Parcel', phone: phone(), price: 1000, carrierCode: code,
@@ -788,5 +795,617 @@ describe('the scheduled tracking poll', () => {
     // Same gate as every other job: it spends money at a carrier's API and
     // moves other people's orders.
     assert.equal((await acme.agent.api('POST', '/api/erp/jobs/tracking-poll', {})).status, 403);
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * The real ZR Express adapter — LP.5
+ *
+ * Driven against a STUB ZR EXPRESS running in this test process. That is the
+ * point, not a shortcut: `Carrier.apiUrl` is a per-carrier column the manager
+ * configures, so pointing it at 127.0.0.1 exercises the real adapter over real
+ * HTTP — the territory search, the auth headers ZR expects, the exact parcel
+ * body, its error shapes, and the Svix envelope on the way back. A mocked
+ * adapter would assert that this file's own fixtures agree with themselves.
+ *
+ * The stub also records every request, which is what lets these tests assert the
+ * thing that actually matters about an outbound integration: not that a 201 came
+ * back, but that the RIGHT PARCEL was ordered.
+ * -------------------------------------------------------------------------- */
+
+describe('ZR Express', () => {
+  /** ZR's own territory ids — unrelated to the standard 1–58 wilaya numbers. */
+  const TERRITORIES = [
+    { id: 'w-alger-0001', name: 'Alger', level: 'wilaya' },
+    { id: 'w-oran-0002', name: 'Oran', level: 'wilaya' },
+    { id: 'c-babez-0011', name: 'Bab Ezzouar', level: 'commune', parentId: 'w-alger-0001' },
+    { id: 'c-bir-0012', name: 'Bir Mourad Rais', level: 'commune', parentId: 'w-alger-0001' },
+    // The same commune NAME under a different wilaya, so a test can prove the
+    // commune lookup is scoped by parent rather than matched globally.
+    { id: 'c-babez-0021', name: 'Bab Ezzouar', level: 'commune', parentId: 'w-oran-0002' },
+  ];
+
+  const normalize = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+  interface Recorded {
+    readonly path: string;
+    readonly headers: Record<string, string | string[] | undefined>;
+    readonly body: Record<string, any> | null;
+  }
+
+  let server: import('node:http').Server;
+  let apiUrl = '';
+  let seen: Recorded[] = [];
+
+  /** What the stub does next. Each test sets only what it cares about. */
+  const behaviour = {
+    parcelStatus: 200,
+    parcelBody: { id: 'zr-parcel-1' } as unknown,
+    parcelDelayMs: 0,
+    searchStatus: 200,
+  };
+
+  const reset = () => {
+    seen = [];
+    behaviour.parcelStatus = 200;
+    behaviour.parcelBody = { id: `zr-parcel-${uid()}` };
+    behaviour.parcelDelayMs = 0;
+    behaviour.searchStatus = 200;
+  };
+
+  const WEBHOOK_SECRET = 'whsec_' + Buffer.from('zr-lp5-signing-key-0123456789').toString('base64');
+  const API_KEY = 'zr-api-key-value';
+  const TENANT_UUID = '11111111-2222-3333-4444-555555555555';
+
+  let carrierCode = '';
+  let carrierId = '';
+  let zrSlug = '';
+
+  before(async () => {
+    if (skip) return;
+
+    const http = await import('node:http');
+    server = http.createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => chunks.push(c));
+      req.on('end', async () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        let body: Record<string, any> | null = null;
+        try { body = text ? JSON.parse(text) : null; } catch { /* keep null */ }
+        seen.push({ path: req.url ?? '', headers: req.headers, body });
+
+        const send = (status: number, payload: unknown) => {
+          res.writeHead(status, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(payload));
+        };
+
+        if ((req.url ?? '').includes('/territories/search')) {
+          if (behaviour.searchStatus !== 200) {
+            return send(behaviour.searchStatus, { detail: 'territory service unavailable' });
+          }
+          const keyword = normalize(String(body?.advancedSearch?.keyword ?? ''));
+          const items = keyword
+            ? TERRITORIES.filter(
+                (t) => normalize(t.name).includes(keyword) || keyword.includes(normalize(t.name)),
+              )
+            : TERRITORIES;
+          return send(200, { items, totalCount: items.length });
+        }
+
+        if ((req.url ?? '').includes('/parcels')) {
+          if (behaviour.parcelDelayMs > 0) {
+            await new Promise((r) => setTimeout(r, behaviour.parcelDelayMs));
+          }
+          return send(behaviour.parcelStatus, behaviour.parcelBody);
+        }
+
+        return send(404, { detail: 'no such ZR route' });
+      });
+    });
+
+    await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve); });
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    apiUrl = `http://127.0.0.1:${port}/api/v1`;
+
+    carrierCode = `zr${uid()}`;
+    const created = await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'ZR Express', code: carrierCode, adapter: 'zr',
+      apiUrl, apiKey: API_KEY, secretKey: TENANT_UUID, webhookSecret: WEBHOOK_SECRET,
+    });
+    assert.equal(created.status, 201, `ZR carrier creation failed: ${JSON.stringify(created.body)}`);
+    carrierId = created.body.data.id;
+    zrSlug = await slugOf(acme.tenantId);
+  });
+
+  after(async () => {
+    if (skip) return;
+    await new Promise<void>((resolve) => { server.close(() => resolve()); });
+  });
+
+  /** An unconfirmed order addressed somewhere ZR knows, unless told otherwise. */
+  const zrOrder = async (over: Record<string, unknown> = {}) => {
+    reset();
+    const r = await acme.manager.api('POST', '/api/erp/orders', {
+      client: `ZR Buyer ${uid()}`, phone: phone(),
+      wilaya: 'Alger', commune: 'Bab Ezzouar',
+      product: 'Montre connectee', quantity: 2, price: 7000,
+      carrierCode, ...over,
+    });
+    assert.equal(r.status, 201, `order creation failed: ${JSON.stringify(r.body)}`);
+    return r.body.data as { id: string; reference: string };
+  };
+
+  const parcelRequest = () => seen.find((s) => s.path.includes('/parcels'));
+
+  test('a carrier may now name the ZR Express integration', async () => {
+    // LP.2 refused this key, correctly, because nothing was registered under it.
+    // The refusal was never the goal — booking real parcels was.
+    const adapters = (await acme.manager.api('GET', '/api/erp/carriers?adapters=true')).body.data.items;
+    const entry = adapters.find((a: { key: string }) => a.key === 'zr');
+    assert.ok(entry, 'the adapter registry must offer zr');
+    assert.equal(entry.canCreateOutbound, true);
+    assert.equal(entry.canPoll, false, 'ZR publishes no tracking endpoint');
+  });
+
+  test('booking resolves the address against ZR and orders the right parcel', async () => {
+    const order = await zrOrder();
+
+    const r = await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {});
+    assert.equal(r.status, 201, `booking failed: ${JSON.stringify(r.body)}`);
+
+    const parcel = parcelRequest();
+    assert.ok(parcel, 'ZR must actually have been asked for a parcel');
+
+    // The territory ids are ZR's own, resolved at booking time — the whole
+    // reason the adapter searches instead of carrying a 1,585-row map.
+    assert.equal(parcel!.body!.deliveryAddress.cityTerritoryId, 'w-alger-0001');
+    assert.equal(parcel!.body!.deliveryAddress.districtTerritoryId, 'c-babez-0011');
+
+    // Money: the order's total is what ZR collects, and the unit price is
+    // derived from it rather than taken from a column that disagrees the moment
+    // a discount is applied.
+    assert.equal(parcel!.body!.amount, 7000);
+    assert.equal(parcel!.body!.orderedProducts[0].quantity, 2);
+    assert.equal(parcel!.body!.orderedProducts[0].unitPrice, 3500);
+
+    // The identifier ZR echoes back, and the only way a parcel booked without a
+    // tracking number can be matched to the webhook that finally brings one.
+    assert.equal(parcel!.body!.externalId, order.id);
+
+    // ZR wants an international number; this platform stores the local form.
+    assert.match(String(parcel!.body!.customer.phone.number1), /^\+213/);
+  });
+
+  test('the credentials travel in ZR own headers, from the fields the CRM stores them in', async () => {
+    // The tenant UUID lives in "Secret Key" and the ZR secret in "API Key".
+    // Swapping them would silently break every carrier row a company already
+    // configured against the legacy CRM.
+    const order = await zrOrder();
+    assert.equal((await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {})).status, 201);
+
+    const parcel = parcelRequest();
+    assert.equal(parcel!.headers['x-tenant'], TENANT_UUID);
+    assert.equal(parcel!.headers['x-api-key'], API_KEY);
+  });
+
+  test('the parcel is recorded with ZR id and NO tracking number', async () => {
+    const order = await zrOrder();
+    behaviour.parcelBody = { id: 'zr-parcel-known' };
+
+    assert.equal((await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {})).status, 201);
+
+    const { shipment } = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`)).body.data;
+    assert.equal(shipment.carrierShipmentId, 'zr-parcel-known');
+    assert.equal(shipment.carrierReference, order.id);
+    assert.ok(!shipment.trackingNumber, 'ZR assigns the tracking number later, on the webhook');
+  });
+
+  test('a wilaya ZR does not know refuses the booking and creates nothing', async () => {
+    // The failure the legacy adapter existed to make loud. Booking a parcel to
+    // an address the carrier could not resolve is the same class of wrong answer
+    // LP.2 removed: it looks exactly like a success.
+    const order = await zrOrder({ wilaya: 'Atlantis', commune: 'Bab Ezzouar' });
+
+    const r = await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {});
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'ADDRESS_UNRESOLVED');
+    assert.match(String(r.body.error.message), /Atlantis/, 'the refusal must name what could not be resolved');
+
+    assert.ok(!parcelRequest(), 'no parcel may be ordered when the address is unresolved');
+
+    const back = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`)).body.data;
+    assert.equal(back.shipment, null, 'and no shipment row may exist');
+  });
+
+  test('a commune ZR does not know INSIDE a known wilaya refuses too', async () => {
+    const order = await zrOrder({ wilaya: 'Alger', commune: 'Nowhere-sur-Mer' });
+
+    const r = await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {});
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'ADDRESS_UNRESOLVED');
+    assert.match(String(r.body.error.message), /Nowhere-sur-Mer/);
+    assert.ok(!parcelRequest(), 'no parcel may be ordered');
+  });
+
+  test('a commune belonging to ANOTHER wilaya is not accepted for this one', async () => {
+    // "Bir Mourad Rais" belongs to Alger in the fixture, not to Oran. Communes
+    // repeat across wilayas in Algeria, and an unscoped match is how a parcel
+    // reaches the right name in the wrong place.
+    const order = await zrOrder({ wilaya: 'Oran', commune: 'Bir Mourad Rais' });
+
+    const r = await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {});
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'ADDRESS_UNRESOLVED');
+  });
+
+  test('an alternate spelling of a wilaya still resolves', async () => {
+    // The wilaya on an order is typed by a customer on a storefront or by an
+    // agent on the phone. Normalisation plus the alias table is what turns
+    // "ALGER CENTRE" into the territory ZR answers to.
+    const order = await zrOrder({ wilaya: 'ALGER CENTRE', commune: 'Bab Ezzouar' });
+    assert.equal((await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {})).status, 201);
+    assert.equal(parcelRequest()!.body!.deliveryAddress.cityTerritoryId, 'w-alger-0001');
+  });
+
+  test('ZR refusing the parcel is reported with ZR own reason', async () => {
+    const order = await zrOrder();
+    behaviour.parcelStatus = 400;
+    behaviour.parcelBody = { errors: [{ description: 'Phone number is not valid' }] };
+
+    const r = await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {});
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'CARRIER_REJECTED');
+    assert.match(String(r.body.error.message), /Phone number is not valid/);
+
+    const back = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`)).body.data;
+    assert.equal(back.shipment, null, 'a refused parcel leaves no shipment behind');
+  });
+
+  test('a failed booking is TOLD, not only logged', async () => {
+    // The legacy CRM pushed `shipment_failed` with the reason, so the order
+    // appeared with "the wilaya is misspelled" on it. Without it an unbooked
+    // parcel is invisible: the confirmation succeeded and nothing says the
+    // carrier was never told.
+    const order = await zrOrder({ wilaya: 'Atlantis' });
+    await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {});
+
+    const told = await waitFor(async () => {
+      const feed = (await acme.manager.api('GET', '/api/platform/notifications')).body.data;
+      return feed.items.find(
+        (n: { type: string; entityId: string | null }) =>
+          n.type === 'shipment_failed' && n.entityId === order.id,
+      );
+    }, { label: 'a shipment_failed notification' });
+
+    assert.match(String(told.body), /Atlantis/, 'the reason travels with it, or it is a support ticket');
+  });
+
+  test('the booking survives a carrier slower than the transaction timeout', async () => {
+    // D-LP.5.1, and the load-bearing test of this slice. `withTenant` opens an
+    // interactive transaction whose timeout is 15 seconds. Before LP.5 the
+    // carrier call happened inside it, which was harmless only because the one
+    // registered adapter was synchronous — with a real carrier, a slow third
+    // party would have rolled back the CONFIRMATION that triggered the booking.
+    //
+    // 17 seconds is chosen to be decisively past that timeout and inside the
+    // adapter's own 25s limit on parcel creation.
+    const order = await zrOrder();
+    behaviour.parcelDelayMs = 17_000;
+
+    const r = await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {});
+    assert.equal(r.status, 201, `a slow carrier must not fail the booking: ${JSON.stringify(r.body)}`);
+
+    const { shipment } = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`)).body.data;
+    assert.ok(shipment, 'and the shipment must have been recorded');
+  });
+
+  test('confirming an order books through ZR without the confirmation riding on it', async () => {
+    // The other door, and the one that matters most: a confirmed call is real
+    // work an agent did. It is committed before ZR is asked anything, so a
+    // carrier that refuses — or is slow — cannot undo it.
+    await acme.manager.api('PUT', '/api/erp/settings', { autoCreateShipment: true });
+    const order = await zrOrder({ wilaya: 'Atlantis' });
+
+    await acme.manager.api('POST', `/api/erp/orders/${order.id}/call-start`, {});
+    const call = await acme.manager.api('POST', `/api/erp/orders/${order.id}/call`, { result: 'confirmed' });
+    assert.equal(call.status, 200, 'the call must be logged even though ZR refused the address');
+    assert.equal(call.body.data.shipmentBooked, false, 'and it says the parcel was not booked');
+
+    const back = (await acme.manager.api('GET', `/api/erp/orders/${order.id}`)).body.data;
+    assert.equal(back.status, 'confirmed', 'the confirmation stands');
+    assert.ok(!back.shipmentId, 'and no parcel was invented for an address ZR does not know');
+  });
+
+  test('a confirmation ZR accepts comes back with the parcel already booked', async () => {
+    await acme.manager.api('PUT', '/api/erp/settings', { autoCreateShipment: true });
+    const order = await zrOrder();
+
+    await acme.manager.api('POST', `/api/erp/orders/${order.id}/call-start`, {});
+    const call = await acme.manager.api('POST', `/api/erp/orders/${order.id}/call`, { result: 'confirmed' });
+    assert.equal(call.status, 200);
+    assert.equal(call.body.data.shipmentBooked, true, 'the response waits for the answer');
+    assert.ok(parcelRequest(), 'and ZR was asked');
+  });
+
+  test('two bookings for one order still produce exactly one parcel', async () => {
+    // The race D-LP.5.1 widened, and the constraint that closes it. The carrier
+    // call now happens outside the transaction, so two operators pressing the
+    // button at the same moment can both reach ZR before either writes — and a
+    // `findFirst` before a `create` is a hope, not a guard. Two shipment rows
+    // would mean two parcels collected and one customer paying once.
+    const order = await zrOrder();
+    behaviour.parcelDelayMs = 1200;
+
+    const [a, b] = await Promise.all([
+      acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {}),
+      acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {}),
+    ]);
+
+    assert.ok([200, 201].includes(a.status), `first booking answered ${a.status}: ${JSON.stringify(a.body)}`);
+    assert.ok([200, 201].includes(b.status), `second booking answered ${b.status}: ${JSON.stringify(b.body)}`);
+    assert.equal(a.body.data.shipment.id, b.body.data.shipment.id, 'both must name the same parcel');
+
+    const events = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`)).body.data.events;
+    assert.equal(events.length, 1, 'and one creation event, not two');
+  });
+
+  test('asking ZR where a parcel is says WHY it cannot be asked', async () => {
+    // LP.2's distinction applied to the other side of the question: "the carrier
+    // has no news" and "this carrier cannot be asked" are different facts, and
+    // answering 200 with an unchanged timeline states the first when the second
+    // is true. ZR publishes no tracking endpoint at all.
+    const order = await zrOrder();
+    assert.equal((await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {})).status, 201);
+
+    const r = await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment/refresh`, {});
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'CARRIER_NO_POLLING');
+  });
+
+  /* ---------------------------------------------------------------------------
+   * The Svix webhook
+   * ------------------------------------------------------------------------ */
+
+  const svixSign = (raw: string, id: string, timestamp: string) => {
+    const key = Buffer.from(WEBHOOK_SECRET.slice('whsec_'.length), 'base64');
+    return 'v1,' + createHmac('sha256', key).update(`${id}.${timestamp}.${raw}`).digest('base64');
+  };
+
+  const pushZr = async (payload: unknown, opts: { sign?: boolean; corrupt?: boolean } = {}) => {
+    const raw = JSON.stringify(payload);
+    const id = `msg_${uid()}`;
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (opts.sign !== false) {
+      headers['svix-id'] = id;
+      headers['svix-timestamp'] = timestamp;
+      headers['svix-signature'] = opts.corrupt
+        ? 'v1,' + Buffer.from('not the right mac at all').toString('base64')
+        : svixSign(raw, id, timestamp);
+    }
+    return fetch(`${BASE}/api/erp/webhooks/${zrSlug}/delivery`, { method: 'POST', headers, body: raw });
+  };
+
+  const zrEvent = (data: Record<string, unknown>) => ({
+    eventType: 'parcel.updated',
+    occurredAt: new Date().toISOString(),
+    data: { situation: { slug: 'delivered', name: 'Delivered' }, state: { name: 'Delivered' }, ...data },
+  });
+
+  test('a signed webhook finds the parcel by the reference we gave it, and attaches the tracking number', async () => {
+    // The property without which ZR cannot work at all: a parcel booked with no
+    // tracking number could never receive the event that gives it one.
+    const order = await zrOrder();
+    assert.equal((await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {})).status, 201);
+
+    const res = await pushZr(zrEvent({
+      externalId: order.id,
+      trackingNumber: 'ZR-TRK-0001',
+      situation: { slug: 'in_transit', name: 'In transit' },
+      state: { name: 'In transit' },
+    }));
+    assert.equal(res.status, 200);
+
+    const attached = await waitFor(async () => {
+      const { shipment } = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`)).body.data;
+      return shipment?.trackingNumber === 'ZR-TRK-0001' ? shipment : null;
+    }, { label: 'the tracking number ZR issued' });
+
+    assert.equal(attached.crmStatus, 'in_transit', 'and ZR own vocabulary is mapped');
+
+    const back = (await acme.manager.api('GET', `/api/erp/orders/${order.id}`)).body.data;
+    assert.equal(back.trackingNumber, 'ZR-TRK-0001', 'the order carries it too');
+  });
+
+  test('a delivered event settles the outcome from ZR own moment', async () => {
+    const order = await zrOrder();
+    assert.equal((await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {})).status, 201);
+
+    const when = new Date(Date.now() - 3 * 3600_000);
+    const res = await pushZr({
+      eventType: 'parcel.updated',
+      occurredAt: when.toISOString(),
+      data: {
+        externalId: order.id, trackingNumber: `ZR-TRK-${uid()}`,
+        situation: { slug: 'delivered', name: 'Delivered' }, state: { name: 'Delivered' },
+      },
+    });
+    assert.equal(res.status, 200);
+
+    const settled = await waitFor(async () => {
+      const o = (await acme.manager.api('GET', `/api/erp/orders/${order.id}`)).body.data;
+      return o.deliveryOutcome === 'delivered' ? o : null;
+    }, { label: 'a settled delivery' });
+
+    // Not the clock. A backlog replayed a week late must not book every one of
+    // those deliveries into this week's revenue.
+    const drift = Math.abs(new Date(settled.deliveryOutcomeAt).getTime() - when.getTime());
+    assert.ok(drift < 5000, `deliveryOutcomeAt must come from the carrier event (off by ${drift}ms)`);
+  });
+
+  test('an UNSIGNED webhook changes nothing, and so does a forged one', async () => {
+    // SEC-04. The legacy Svix check returned "accept" when the headers were
+    // absent, when no secret was set, and from its own catch — so omitting the
+    // signature was enough. A configured secret here means a signature is
+    // REQUIRED and must verify.
+    const order = await zrOrder();
+    assert.equal((await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {})).status, 201);
+
+    const unsigned = await pushZr(
+      zrEvent({ externalId: order.id, trackingNumber: 'ZR-TRK-BAD' }),
+      { sign: false },
+    );
+    assert.equal(unsigned.status, 200, 'a carrier is never given a retryable error');
+
+    const forged = await pushZr(
+      zrEvent({ externalId: order.id, trackingNumber: 'ZR-TRK-BAD' }),
+      { corrupt: true },
+    );
+    assert.equal(forged.status, 200);
+
+    // A moment, in case either had been accepted.
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const back = (await acme.manager.api('GET', `/api/erp/orders/${order.id}`)).body.data;
+    assert.ok(!back.deliveryOutcome, 'an unsigned delivery must never settle revenue');
+    const { shipment } = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`)).body.data;
+    assert.ok(!shipment.trackingNumber, 'and must not write a tracking number');
+  });
+
+  test('a tenant own status mapping still wins over ZR reading', async () => {
+    await acme.manager.api('POST', `/api/erp/carriers/${carrierId}/status-mappings`, {
+      originalStatus: 'Chez le livreur', crmStatus: 'out_for_delivery',
+    });
+
+    const order = await zrOrder();
+    assert.equal((await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {})).status, 201);
+
+    await pushZr(zrEvent({
+      externalId: order.id, trackingNumber: `ZR-TRK-${uid()}`,
+      situation: { slug: 'unknown-to-us', name: 'Chez le livreur' },
+      state: { name: 'Chez le livreur' },
+    }));
+
+    const moved = await waitFor(async () => {
+      const { shipment } = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`)).body.data;
+      return shipment?.crmStatus === 'out_for_delivery' ? shipment : null;
+    }, { label: 'the tenant own mapping applied' });
+    assert.ok(moved);
+  });
+
+  test('the scheduled poll counts a ZR parcel as skipped, not polled', async () => {
+    // Reporting a healthy sweep over parcels nobody actually asked about is the
+    // same class of lie as a fabricated tracking number.
+    //
+    // In its OWN tenant, deliberately: the poll takes a batch of 25 inside one
+    // 15-second transaction, and running it against a tenant that has
+    // accumulated three dozen parcels from every other test in this file makes
+    // the assertion depend on how much unrelated work the batch happened to
+    // pick up. Here the batch is exactly one parcel and the number means what
+    // it says.
+    const solo = await makeErpTenant('zr-poll');
+    const code = `zp${uid()}`;
+    assert.equal((await solo.manager.api('POST', '/api/erp/carriers', {
+      name: 'ZR Express', code, adapter: 'zr',
+      apiUrl, apiKey: API_KEY, secretKey: TENANT_UUID,
+    })).status, 201);
+
+    reset();
+    const order = (await solo.manager.api('POST', '/api/erp/orders', {
+      client: 'Solo ZR', phone: phone(), wilaya: 'Alger', commune: 'Bab Ezzouar',
+      price: 5000, carrierCode: code,
+    })).body.data;
+    assert.equal((await solo.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {})).status, 201);
+
+    await solo.manager.api('PUT', '/api/erp/settings', { trackingPollMinutes: 1 });
+    const r = await solo.manager.api('POST', '/api/erp/jobs/tracking-poll', {});
+    assert.equal(r.status, 200);
+    assert.deepEqual(
+      { polled: r.body.data.polled, skipped: r.body.data.skipped, failed: r.body.data.failed },
+      { polled: 0, skipped: 1, failed: 0 },
+      'the one ZR parcel must be reported as skipped, not polled',
+    );
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * The keyword fallback — a defect found while measuring LP.5
+ * -------------------------------------------------------------------------- */
+
+describe('an unmapped carrier status is read the way the ERP read it', () => {
+  test('"Sorti en livraison" is OUT FOR DELIVERY, not delivered', async () => {
+    // Found while porting ZR. `guessStatus` tested `/livr|deliver/` FIRST, and
+    // "Sorti en livraison" contains "livr" — so an unmapped carrier reporting a
+    // parcel that had just left the depot settled the order as DELIVERED:
+    // deliveryOutcome written, client lifetime spend moved, product revenue
+    // moved, delivered pay earned, none of it reversible because settlement is
+    // permanent by design. Reachable from the one path that deliberately keeps
+    // this fallback — a webhook PUSHED for a carrier with no registered adapter
+    // (D-LP.2). BUG-02 arriving from the other direction.
+    const code = `gs${uid()}`;
+    const carrier = (await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Says it plainly', code, adapter: 'mock',
+    })).body.data;
+
+    const order = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Not delivered yet', phone: phone(), price: 4200, carrierCode: code,
+    })).body.data;
+    assert.equal((await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {})).status, 201);
+    const tracking = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`))
+      .body.data.shipment.trackingNumber;
+
+    // The carrier loses its adapter, so the keyword fallback is what reads this.
+    await setCarrierAdapter(acme.tenantId, carrier.id, 'yalidine');
+
+    const tenantSlug = await slugOf(acme.tenantId);
+    const res = await fetch(`${BASE}/api/erp/webhooks/${tenantSlug}/delivery`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ trackingNumber: tracking, status: 'Sorti en livraison' }),
+    });
+    assert.equal(res.status, 200);
+
+    const moved = await waitFor(async () => {
+      const { shipment } = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`)).body.data;
+      return shipment?.crmStatus === 'out_for_delivery' ? shipment : null;
+    }, { label: 'out_for_delivery, not delivered' });
+    assert.ok(moved);
+
+    const back = (await acme.manager.api('GET', `/api/erp/orders/${order.id}`)).body.data;
+    assert.ok(!back.deliveryOutcome, 'a parcel that left the depot has not been delivered');
+  });
+
+  test('a refusal the carrier spells out is a refusal, not "pending"', async () => {
+    // The port dropped the `refus|rejected` branch from the fallback entirely,
+    // so every unmapped refusal resolved to "pending" — and a refused parcel is
+    // one of the states that must raise a follow-up task.
+    const code = `rf${uid()}`;
+    const carrier = (await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Refuses plainly', code, adapter: 'mock',
+    })).body.data;
+
+    const order = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: 'Refused parcel', phone: phone(), price: 3300, carrierCode: code,
+    })).body.data;
+    assert.equal((await acme.manager.api('POST', `/api/erp/orders/${order.id}/shipment`, {})).status, 201);
+    const tracking = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`))
+      .body.data.shipment.trackingNumber;
+
+    await setCarrierAdapter(acme.tenantId, carrier.id, 'yalidine');
+
+    const tenantSlug = await slugOf(acme.tenantId);
+    await fetch(`${BASE}/api/erp/webhooks/${tenantSlug}/delivery`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ trackingNumber: tracking, status: 'Colis refuse par le client' }),
+    });
+
+    const moved = await waitFor(async () => {
+      const { shipment } = (await acme.manager.api('GET', `/api/erp/orders/${order.id}/shipment`)).body.data;
+      return shipment?.crmStatus === 'refused' ? shipment : null;
+    }, { label: 'a refused parcel' });
+    assert.ok(moved);
   });
 });

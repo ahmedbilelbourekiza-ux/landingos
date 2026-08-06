@@ -106,6 +106,13 @@ export default async function ErpCarriersScreen() {
 
   const adapters = listAdapters().map((a) => ({ value: a.key, label: a.label }));
 
+  // Where a carrier pushes delivery updates. Built from the tenant slug, which
+  // is the same shape `/api/erp/webhooks/[tenant]/delivery` routes on (D-05.5)
+  // and is not a secret — it is in every storefront URL already. Shown because
+  // a webhook secret nobody can pair with an address configures nothing, and
+  // the legacy CRM generated this string on the carrier form for that reason.
+  const webhookUrl = `/api/erp/webhooks/${session.tenant?.slug ?? ""}/delivery`;
+
   return (
     <ConsoleShell session={session} productId="erp">
       <h1 className="text-xl font-semibold">{t("erp.carriers.title")}</h1>
@@ -213,6 +220,7 @@ export default async function ErpCarriersScreen() {
                 active={c.active !== false}
                 // Whether, never what. The value is still not selected.
                 hasCredentials={configured.has(c.id)}
+                webhookUrl={webhookUrl}
                 mappings={mappings.get(c.id) ?? []}
                 crmStatuses={crmStatuses}
                 errors={errors}

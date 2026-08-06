@@ -43,6 +43,16 @@ const ERROR_KEYS: Record<string, string> = {
   // Its own message rather than the generic one, because this refusal names
   // something the reader can go and fix: the order has no carrier to book with.
   NO_CARRIER: "common.error.noCarrier",
+  // The five ways a carrier can refuse, and they are FIVE because each one has a
+  // different fix: change the carrier's integration, correct the address on the
+  // order, correct what was sent, wait, or stop asking a carrier that only
+  // pushes. LP.2 shipped `UNKNOWN_ADAPTER` with no entry here, so the screen
+  // showed "that did not work" for a refusal that names its own cause.
+  UNKNOWN_ADAPTER: "common.error.unknownAdapter",
+  ADDRESS_UNRESOLVED: "common.error.addressUnresolved",
+  CARRIER_REJECTED: "common.error.carrierRejected",
+  CARRIER_UNREACHABLE: "common.error.carrierUnreachable",
+  CARRIER_NO_POLLING: "common.error.carrierNoPolling",
   INTERNAL_ERROR: "common.error.internal",
   // Not from the server — the request never arrived. Worth its own wording
   // because "nothing was saved" is certain here and merely likely otherwise.

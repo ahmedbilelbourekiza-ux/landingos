@@ -91,14 +91,23 @@ production blocker in its own right.
 
 **117 features compared** (101 in the first pass, 14 added by the second, 2 surfaced while implementing LP.4).
 
-| Class | Count | Share |
-|---|---|---|
-| ✅ IDENTICAL | 52 | 44% |
-| 🔵 IMPROVED | 6 | 5% |
-| 🟡 PARTIAL | 20 | 17% |
-| 🔴 MISSING | 39 | 33% |
+| Class | Count | Share | Measured |
+|---|---|---|---|
+| ✅ IDENTICAL | 52 | 44% | at the second pass, `9d1f887` |
+| 🔵 IMPROVED | 6 | 5% | |
+| 🟡 PARTIAL | 20 | 17% | |
+| 🔴 MISSING | 39 | 33% | |
 
-**Verdict: the platform cannot replace the legacy CRM in production today.**
+**These counts are the second pass's and have deliberately NOT been re-derived
+slice by slice.** Five slices have landed since (LP.1–LP.5) and each records what
+it closed in its own card; re-scoring the whole board after every slice invites
+the failure §0b exists to name — a number that moves while the workflow behind it
+has not been re-measured. **The board is re-measured in one pass, after LP.6**,
+which is also the moment Tier 1 ends.
+
+**Verdict: the platform cannot replace the legacy CRM in production today.** The
+remaining Tier 1 blocker is **order export** — a confirmed order still cannot
+leave the building except through a carrier that has an adapter, and one does.
 
 The **domain layer** — the business rules, the ledger, the settlement chain, the
 assignment rules, the jobs — is at or above parity and in several places is
@@ -108,8 +117,8 @@ into an operator's working day.
 
 | Blocker | Why it blocks production |
 |---|---|
-| **No real carrier adapter** | Only `mock` is registered. Not one parcel can be booked with ZR Express, Ecom, or anyone else. The legacy system's 479-line ZR adapter (live territory resolution, Svix webhooks, outbound parcel creation) has no equivalent. *(Half-fixed in LP.2: it now refuses instead of fabricating a tracking number.)* |
-| **No pagination, anywhere** | Every screen shows the first 50–100 rows and there is no way to reach row 101. Found in the second pass. |
+| ~~**No real carrier adapter**~~ | *(Fixed in LP.2 + LP.5. `zr` is registered and books real parcels — territory resolution, Svix webhooks, outbound creation. `ecom` remains, at Tier 3 slice 22.)* |
+| ~~**No pagination, anywhere**~~ | *(Fixed in LP.3.)* |
 | **No product editing** | *(Fixed in LP.1.)* |
 | **No export** | Orders reach carriers by Excel file in the legacy system (ZR / Ecom / Ecotrac formats). There is no CSV or XLSX anywhere on the platform. Confirmed orders cannot leave. |
 | ~~Cannot create an order~~ | *(Fixed in LP.4.)* |
@@ -183,7 +192,7 @@ Legend: ✅ identical · 🔵 improved · 🟡 partial · 🔴 missing
 |---|---|---|---|---|
 | C1 | Carrier CRUD | `/api/providers` × 5 | `/api/erp/carriers` × 5 | ✅ |
 | C2 | Adapter registry | `GET /api/providers/adapters` | `GET /api/erp/carriers?adapters=true` | ✅ |
-| C3 | **Real carrier adapters** | `zr` (479 ln, live territory resolution + outbound parcels), `ecom` (211 ln), `zr-webhook`, `mock`; 12 keys declared | **`mock` only** | 🟡 |
+| C3 | **Real carrier adapters** | `zr` (479 ln, live territory resolution + outbound parcels), `ecom` (211 ln), `zr-webhook`, `mock`; 12 keys declared | **`mock` + `zr`** (LP.5) — `zr` is stricter than the legacy on commune scoping (D-LP.5.2) and fails closed on Svix. `ecom` and `zr-webhook` remain. | 🟡 |
 | C4 | **Test connection** | `POST /api/providers/:id/test` — live or structural, writes `lastTestAt`/`lastTestOk` + a log | — (columns rendered, never written) | 🔴 |
 | C5 | **Sync now** | `POST /api/providers/:id/sync` — re-poll every shipment for this carrier | — | 🔴 |
 | C6 | **Integration logs** | `GET /api/providers/:id/logs`, `db.logIntegration` on every adapter interaction | `IntegrationLog` model exists, **zero callers** | 🔴 |
@@ -349,7 +358,7 @@ ledger and the sales history.
 
 ---
 
-### R2 · Real carrier adapters — 🟡 PARTIAL
+### R2 · Real carrier adapters — 🟡 PARTIAL *(ZR done — LP.2 + LP.5)*
 **Legacy:** four working adapters. `zr.js` (479 lines) books real parcels against
 ZR Express: dynamic wilaya/commune territory resolution via
 `POST /territories/search`, Svix webhook envelope handling, `X-Tenant`/`X-Api-Key`
@@ -357,19 +366,24 @@ auth, a 20-entry status map, and a deliberate throw with a French message when a
 address cannot be resolved. `ecom.js` (211 lines) does the same for Ecom Delivery.
 `zr-webhook.js` handles the older inbound-only integration. Twelve adapter keys
 are offered in the UI.
-**Now:** `ADAPTERS = { mock }` (`lib/erp/carriers.ts:153`). `getAdapter` falls
-back to `mock` for every key, so a carrier configured as `zr` silently books a
-`MOCK…` tracking number.
-**Missing:** every real adapter, and the fallback is dangerous — it fabricates a
-tracking number instead of refusing.
-**Business impact:** **Critical — this alone blocks production.** No parcel can
-reach a real carrier. Worse than an error: the mock returns success, so the order
-shows a tracking number that does not exist.
-**Complexity:** **L** per adapter (ZR is the largest). **S** to make `getAdapter`
-refuse an unknown key instead of silently mocking.
-**Dependencies:** R3 (test connection) is how anyone would verify credentials.
-**Recommendation:** land the *refusal* first (S, prevents fake tracking numbers),
-then ZR, then Ecom.
+**Now:** `ADAPTERS = { mock, zr }`. `getAdapter` returns **null** for an
+unregistered key (LP.2) and `zr` books real parcels (LP.5) — territory
+resolution at booking time, `X-Tenant`/`X-Api-Key` auth, the 20-entry status
+map, Svix webhooks, and a refusal naming the wilaya or commune it could not
+resolve.
+**Still missing:** `ecom` (211 ln) and `zr-webhook`.
+**Three places the platform is now stricter than the ERP**, each recorded as a
+decision rather than as a port: the commune must belong to the resolved wilaya
+(**D-LP.5.2** — the ERP's "ignoring parentId, rare but safe" fallback books a
+parcel to the right name in the wrong province); the Svix check **fails closed**
+(the ERP's returned *accept* for a missing header, a missing secret and from its
+own `catch` — SEC-04); and the carrier call happens **outside the request
+transaction** (**D-LP.5.1**), because booking is triggered by a confirmation and
+a 15-second transaction timeout would have rolled that confirmation back.
+**Complexity:** **M** for Ecom, which now has a contract, a stub-server test
+pattern and the three-phase shape to follow.
+**Dependencies:** R3 (test connection) is how anyone would verify credentials
+without booking a parcel.
 
 ---
 
@@ -658,7 +672,7 @@ control**; status mappings can be added but never removed.
 
 ---
 
-## 3b. Second-pass findings — the sixteen the route inventory could not see
+## 3b. Second-pass findings — the sixteen the route inventory could not see, plus N17
 
 Each of these has no missing endpoint behind it, which is why counting routes
 missed all of them.
@@ -681,6 +695,7 @@ missed all of them.
 | **N15** | **Price breakdown at order entry** | the new-order modal captures unit price, discount and shipping and DERIVES the total (`calcTotal()`), so a manually-entered order carries the same breakdown a storefront order does | `CreateOrder` accepts a flat `price` only. The four breakdown columns exist and are `MANAGER_WRITABLE` — reachable by a `PATCH` immediately after, never at creation | 🟡 |
 | **N16** | **Create/edit authorization agree on a field** | one rule per field | `price` and `carrierCode` are manager-only in `buildPatch` and **ungated in `CreateOrder`** — an agent may set a price on a new order and may not change it a second later. One of the two is wrong; deciding which is a authorization change, not a UI one | 🟡 |
 | **N14** | **Live follow-up countdown** | ticks every 15s in place, and re-sorts the moment a task goes overdue | a formatted due date, static | 🟡 |
+| **N17** | **The scheduled poll still calls a carrier inside a transaction** | in-process `setInterval`, no transaction at all | LP.5 moved booking and the manual refresh out (D-LP.5.1); `pollCarriers` was left in, bounded by `POLL_BATCH = 25`. It writes nothing a person is waiting on, and **neither registered adapter reaches a network from there** — ZR declares `canPoll: false` and `planRefresh` refuses first. Moving it out means `runJob` stops receiving a bound `db` and opens a binding per parcel: a change to the job runner and both of its routes. **Grouped with Tier 3 slice 22 (the Ecom adapter)**, the first registered carrier that can be polled. | *(not a legacy gap — recorded so it is not rediscovered)* |
 
 **Not present in either system, so not a gap:** global keyboard shortcuts, and
 custom context menus. Neither the legacy SPA nor the agent PWA has any — the only
@@ -742,7 +757,9 @@ the items above.
 | **Money as `Decimal`** | 37 columns, none `double precision`. The legacy is `REAL` throughout. |
 | **Atomic client counters** | `increment` in SQL vs the legacy's read-modify-write, which loses updates on two concurrent webhooks for the same customer. |
 | **The assignment rules (D-06.5/6/7)** | The legacy cleared `overdueFlaggedAt` on reassignment while measuring the deadline from `createdAt`, so one ignored order walked the whole roster in minutes, counting a miss against every agent. |
-| **Contract tests that attack boundaries** | 462 of them. The legacy has 298 and a different character. |
+| **Contract tests that attack boundaries** | 512 of them. The legacy has 298 and a different character. |
+| **A carrier never shares a transaction with the work that triggered it** (D-LP.5.1) | Added by LP.5. The legacy called its carrier from a request with no transaction at all, so it never had this problem *or* the guarantees around it; this platform has both — a booking cannot roll back the confirmation that caused it, and one parcel per order is enforced by the database rather than by a `findFirst`. |
+| **A carrier that cannot be asked says so** | `canPoll: false` on ZR makes "ask the carrier" answer `CARRIER_NO_POLLING`. The legacy's `getTracking` returned `[]`, which reads as "no news" — a different fact, and the one an operator acts on. |
 
 ### 6.4 Where BOTH are weak — two decisions to re-open
 
@@ -806,8 +823,10 @@ completeness work; that was wrong, and the shared primitives (pager, filter bar,
 notification provider) are architectural dependencies of almost everything below
 them, which is the fourth axis saying the same thing.
 
-**Two slices are done.** LP.1 (product editing) and LP.2 (carrier adapter
-refusal) close R1 and half of R2.
+**Five slices are done.** LP.1 (product editing, R1), LP.2 (carrier adapter
+refusal) and LP.5 (the real ZR Express adapter) together close R1 and the ZR
+half of R2; LP.3 closes N1/N7/N8/B1 and LP.4 closes N6. **Tier 1 is one slice
+from complete** — order export (R4) is all that remains in it.
 
 ### Tier 1 — production blockers (nothing ships without these)
 
@@ -815,10 +834,10 @@ refusal) close R1 and half of R2.
 |---|---|---|---|---|
 | ~~1~~ | ~~Product editing~~ | R1 | S | **DONE — LP.1** |
 | ~~2a~~ | ~~Carrier adapter refusal~~ | R2 | S | **DONE — LP.2** |
-| **3** | **List pagination + filter bar + search** (shared `<Pager>` / `<FilterBar>`) | N1, N7, N8, B1 | M | **Now first.** Row 51 does not exist today; that is worse than the PERF-02 bug it replaced. Every later screen depends on these two primitives, so building them now is also the cheapest ordering (axis 4). |
-| **4** | **Create an order from the console** | N6 | S | A phone order cannot be entered at all. The route and its validation already exist; this is a form. |
-| **5** | **The real ZR Express adapter** | R2 (rest) | L | Not one parcel can be booked with a real carrier. Deliberately *after* 3 and 4: it is the highest-risk slice in the roadmap (network I/O inside a 15s transaction, territory resolution), and 3–4 are low-risk and unblock daily work immediately (axis 5). |
-| **6** | **Order export (CSV → ZR / Ecom / Ecotrac + performance report)** | R4 | M | Until every carrier has an adapter, Excel is the only way a confirmed order leaves the building. |
+| ~~3~~ | ~~List pagination + filter bar + search~~ | N1, N7, N8, B1 | M | **DONE — LP.3** |
+| ~~4~~ | ~~Create an order from the console~~ | N6 | S | **DONE — LP.4** |
+| ~~5~~ | ~~The real ZR Express adapter~~ | R2 (ZR) | L | **DONE — LP.5.** The risk the ordering was worried about was real and was not the adapter: the carrier call sat inside a 15s transaction that a confirmation depended on. D-LP.5.1 is that fix. |
+| **6** | **Order export (CSV → ZR / Ecom / Ecotrac + performance report)** | R4 | M | **The last Tier 1 blocker.** Until every carrier has an adapter, Excel is the only way a confirmed order leaves the building — and most Algerian carriers have no API at all. |
 
 ### Tier 2 — daily operator productivity
 
