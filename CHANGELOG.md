@@ -12,6 +12,117 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.13 Analytics — the number this business is managed by
+
+[Opus 5]
+Date: 6 August 2026
+Summary: `GET /api/erp/analytics` and `/console/erp/analytics` are new, and the
+dashboard gets back the three reaction-time figures it traded away.
+`test/erp/analytics.test.ts` is new at **19/19**; access 72 → **73**. Closes
+**R6**, **K1**, **N18** and **N20**.
+
+#### The confirmation rate was computed nowhere on this platform
+
+Not on the dashboard, not on any screen, not in any route. It is the number a
+COD call centre is MANAGED by — how many of the people who ordered actually
+agreed when somebody phoned — and the legacy leads its dashboard with it and
+recomputes it across seven dimensions. Two agents with a 40% rate and a 75% rate
+looked identical on every screen that existed.
+
+#### Seven breakdowns, each a `groupBy` rather than a browser
+
+Status · sales channel · product · wilaya · agent · **marketer/source** ·
+delivery status, each with orders, confirmed, confirmation rate (with a bar),
+cancellation rate and confirmed value. The legacy downloads the whole order book
+into the browser and buckets it in JavaScript — PERF-02, and the reason its
+analytics screen stops being usable past a few thousand orders. Here each
+dimension is three indexed aggregates.
+
+**N20 closes with the marketer table.** `marketer` and `source` are written by
+the channel webhooks and were **read by nothing**, so a business that BUYS its
+orders could not tell which campaign paid for itself.
+
+#### Three properties that are easy to get wrong in plausible-looking ways
+
+- **Orders are counted by creation, parcels by settlement.** A parcel ordered in
+  March and delivered in April belongs to March's order count and April's
+  delivered count. Folding either into the other gives a month that cannot be
+  reconciled against anything. The legacy makes the same split deliberately.
+- **N19 — both revenue figures are reported and NEITHER is called "revenue".**
+  Confirmed value is what customers agreed to on the phone; delivered value is
+  what the carrier actually paid. Under cash on delivery those are different
+  numbers, the platform was right to sum the second, and reporting only one is
+  what makes somebody comparing the two systems file a bug against the correct
+  one. The page says so, in a sentence, under the tiles.
+- **Never called is not "pending".** An order with three failed attempts is being
+  worked and one with none is being ignored; a status count cannot tell them
+  apart. It asks the `calls` relation rather than a denormalised counter no
+  column maintains.
+
+#### Who sees whose numbers — two gates, two questions
+
+The route is `erp:orders:read` and the rows are RECORD-SCOPED by the same
+`scopedWhere` the list and the export use, so an agent gets the analytics of
+their own queue — including their own confirmation rate, which is what they are
+measured on. The **by-agent** table needs `erp:agents:manage` and is withheld
+otherwise: a league table of colleagues' rates is supervision data, the same rule
+LP.6 applies to its `agents` export format and `notifySuspiciousCall` applies to
+the agent it is about. The screen applies both gates itself, because a nav item
+is a hint and the URL is typeable.
+
+#### The dashboard gets its reaction time back (N18)
+
+The confirmation rate under the confirmed count, a **never called** tile, and an
+**overdue banner** — a banner rather than a tile, because a count of orders
+nobody has phoned within the company's own `alertMinutes` is a queue that needs
+draining, not furniture that reads zero all day. The threshold is the tenant's
+`alertMinutes`, the same setting the queue screen's badge uses; two screens with
+two thresholds would disagree about the same order. In-delivery, delivered and
+customers stay — they were a genuine gain and this is not a rollback.
+
+#### The window is the order list's own query string
+
+`orderFilters` unchanged: `range=`, `since`/`until`, `status`, `wilaya`, the rest.
+So "the confirmation rate for Alger last week" is the analytics view of a filter
+somebody already applied on the list, and the two cannot disagree about what that
+window contained (D-LP.3).
+
+#### Files
+
+New: `src/lib/erp/analytics.ts`, `src/app/api/erp/analytics/route.ts`,
+`src/app/console/erp/analytics/page.tsx`, `test/erp/analytics.test.ts`.
+
+Changed: `src/app/console/erp/page.tsx`,
+`packages/product-registry/src/manifests.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (+19 keys each),
+`test/erp/access.test.ts`.
+
+#### Migration
+
+None. No schema change — every figure is an aggregate over columns that already
+existed, two of which had never been read.
+
+#### Risk
+
+**Low.** Purely additive: one new route, one new screen, three additions to a
+dashboard. The heaviest query is seven dimensions × three aggregates, run
+sequentially on the one interactive transaction rather than concurrently, for the
+reason the payroll roster loop is sequential.
+
+#### Verified
+
+build clean · analytics 19/19 (new) · access 73/73 · screens 130/130 ·
+orders 40/40 · notifications 41/41 · finance 38/38 · listing 30/30 ·
+catalog 55/55 · i18n 18/18.
+
+**And read off the running console against the demo tenant:** 8 orders,
+**37.5% confirmation rate**, 12.5% cancellation, 21,400 DA confirmed against
+4,200 DA delivered, a 50% delivery rate over two settled parcels, and all seven
+breakdown tables rendering. The dashboard shows the rate beside the count and a
+live overdue banner naming the company's own 60-minute threshold.
+
+---
+
 ### LP.7 The notification provider — the console consumes its own transport
 
 [Opus 5]

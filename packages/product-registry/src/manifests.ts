@@ -84,6 +84,13 @@ export const erp: ProductManifest = {
     { id: 'shipments', titleKey: 'erp.nav.shipments', path: 'shipments', icon: 'truck', permission: 'erp:shipments:write' },
     { id: 'carriers', titleKey: 'erp.nav.carriers', path: 'carriers', icon: 'route', permission: 'erp:shipments:write' },
     { id: 'follow-up', titleKey: 'erp.nav.followUp', path: 'follow-up', icon: 'bell-ring', permission: 'erp:orders:write' },
+    // LP.13. Gated on `erp:orders:read`, which every member holds — deliberately:
+    // the rows are RECORD-SCOPED, so an agent gets the analytics of their own
+    // queue (their own confirmation rate, which is what they are measured on)
+    // and a manager gets the book. The by-agent table needs `erp:agents:manage`
+    // and is withheld inside the screen, because a league table of colleagues is
+    // supervision data — the same rule LP.6 applies to its `agents` export.
+    { id: 'analytics', titleKey: 'erp.nav.analytics', path: 'analytics', icon: 'bar-chart-3', permission: 'erp:orders:read' },
     { id: 'finance', titleKey: 'erp.nav.finance', path: 'finance', icon: 'line-chart', permission: 'erp:finance:read' },
     // LP.16d. The legacy served this as a standalone HTML file with no
     // authorization on the page at all; here it is its own screen behind the

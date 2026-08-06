@@ -61,6 +61,8 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   ['GET', '/api/erp/orders'],
   ['POST', '/api/erp/orders'],
   ['GET', '/api/erp/orders/stats'],
+  // LP.13. The confirmation rate and six other breakdowns of the order book.
+  ['GET', '/api/erp/analytics'],
   ['POST', '/api/erp/orders/bulk'],
   // LP.6. Both methods, because they take their input from different places —
   // a query string and a body — and a gate is easy to add to one of two

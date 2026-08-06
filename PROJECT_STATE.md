@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.7: the notification provider*
+**Branch:** `master` · **Last commit:** *LP.13: analytics*
 **Working tree:** clean, all work committed.
 
 ---
@@ -59,6 +59,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.6** order export (CSV: ZR / Ecom / Ecotrac + report) | R4 | **DONE** — export 31 (new), screens 123→130, access 65→68 |
 | **LP.16** the profit/loss calculator, all four steps | R9, N23, half of R20 | **DONE** — finance 38 (new), calc 20 (new), delivery 61→64, access 68→72 |
 | **LP.7** the notification provider (bell, badge, panel, toast, live refresh) | N2, N3, L1, L2 | **DONE** — notifications 33→41, orders 38→40 |
+| **LP.13** analytics + the dashboard's reaction-time figures | R6, K1, N18, N20 | **DONE** — analytics 19 (new), access 72→73 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -457,9 +458,10 @@ domain at a time.
 | assignment — new, confirmed and overdue orders | assign 25/25 |
 | notifications: storage, audience, badge, the live stream, Web Push (M-16) **and the console that consumes them (LP.7)** | notifications 41/41 |
 | the P&L department — proration, fixed costs, versions, roll-up, the calculator screen (LP.16) | finance 38/38 + calc 20/20 |
-| every surface, gated | access 72/72 |
+| the confirmation rate and six other breakdowns, plus the dashboard's reaction-time figures (LP.13) | analytics 19/19 |
+| every surface, gated | access 73/73 |
 
-**608/608** across FOURTEEN contract files, each verified on its own, plus
+**627/627** across FIFTEEN contract files, each verified on its own, plus
 **20/20** in `test/calc.test.ts` — the one PURE suite, which needs no server at
 all. Running several contract files back to back still trips the documented Neon
 connection limit; judge them per file.
@@ -614,6 +616,37 @@ closing half of §7 P3 and all of R20.
 
 **Confirmed as NOT gaps, twice now:** neither system has keyboard shortcuts,
 context menus, or a chart of any kind.
+
+### LP.13 — analytics, and the number that was computed nowhere
+
+**The confirmation rate did not exist on this platform.** Not on the dashboard,
+not on any screen, not in any route — while the legacy leads its dashboard with
+it and recomputes it across seven dimensions. It is what a COD call centre is
+managed by, and two agents at 40% and 75% looked identical on every screen.
+
+`GET /api/erp/analytics` + `/console/erp/analytics`: headline figures plus seven
+breakdowns (status · channel · product · wilaya · agent · **marketer/source** ·
+delivery status), each a `groupBy` rather than the legacy's whole-book-in-a-
+browser. **N20 closes here** — `marketer`/`source` were written by the channel
+webhooks and read by nothing, so ad attribution was uncomputable.
+
+**Three properties that are easy to get plausibly wrong:** orders count by
+`createdAt` and parcels by `deliveryOutcomeAt` (a March order delivered in April
+belongs to both months, in different columns); **N19 is answered by reporting
+BOTH revenue figures and calling neither of them "revenue"** — confirmed value is
+what was agreed, delivered value is what was collected, and the page says so;
+and "never called" asks the `calls` relation, because three failed attempts is
+not the same state as none and a status count cannot tell them apart.
+
+**Scoping is the list's.** `erp:orders:read` + `scopedWhere`, so an agent gets
+their own queue's analytics; the BY-AGENT table needs `erp:agents:manage`,
+because a league table of colleagues is supervision data (the rule LP.6 applies
+to its `agents` export).
+
+**The dashboard gets three of the four reaction-time figures back (N18):** the
+confirmation rate under the confirmed count, a never-called tile, and an overdue
+BANNER judged against the tenant's own `alertMinutes`. In-delivery, delivered and
+customers stay — they were a real gain.
 
 ### LP.7 — the notification provider, and the two defects it found
 

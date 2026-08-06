@@ -35,7 +35,8 @@
       "agents": "Agents",
       "automation": "Automation",
       "ai": "AI assistant",
-      "calculator": "Calculator"
+      "calculator": "Calculator",
+      "analytics": "Analytics"
     },
     "overview": {
       "title": "Overview",
@@ -47,7 +48,9 @@
       "customers": "Customers",
       "lowStock": "Low stock",
       "myQueue": "Your queue",
-      "wholeBook": "The whole order book"
+      "wholeBook": "The whole order book",
+      "overdue": "Orders nobody has called",
+      "overdueHint": "Waiting more than {minutes} minutes with no call logged."
     },
     "orders": {
       "title": "Orders",
@@ -433,6 +436,24 @@
       "aggregateMissing": "No saved sub-period records for this window — save the individual weeks or months first.",
       "aggregateFrom": "Rolled up from",
       "saveAggregate": "Save this roll-up as a record"
+    },
+    "analytics": {
+      "title": "Analytics",
+      "subtitle": "How many of the people who ordered actually agreed when somebody phoned.",
+      "orders": "Orders",
+      "confirmationRate": "Confirmation rate",
+      "cancellationRate": "Cancellation rate",
+      "confirmedValue": "Confirmed value",
+      "averageOrder": "Average order",
+      "delivered": "Parcels delivered",
+      "returned": "Parcels returned",
+      "deliveryRate": "Delivery rate",
+      "neverCalled": "Never called",
+      "channel": "Sales channel",
+      "marketer": "Marketer / source",
+      "deliveryStatus": "Delivery status",
+      "unknown": "Not recorded",
+      "revenueNote": "Confirmed value is what customers agreed to on the phone; delivered value is what the carrier actually paid. Under cash on delivery those are different numbers, and the gap between them is the one worth explaining."
     }
   },
   "status": {

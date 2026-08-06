@@ -79,10 +79,10 @@ notification surface, closed with **LP.7**, which is where Tier 2 opened.
   automation screen's type filter is untouched: it was the right rule and the
   editors were the gap. `defaultCarrierByChannel` also got its first READER
   (`planShipment`), so §8 N23 closes whole.
-- **The confirmation rate is computed NOWHERE.** Not on the dashboard, not
-  anywhere. It is the number a COD call centre is managed by, and the legacy
-  leads its dashboard with it. LEGACY_PARITY §8 N18 — it comes with the
-  analytics slice (Tier 3 #13), which is worth more than its tier says.
+- ~~**The confirmation rate is computed NOWHERE.**~~ **CLOSED — LP.13.**
+  `GET /api/erp/analytics` + `/console/erp/analytics`, seven breakdowns, and the
+  dashboard's reaction-time figures back (N18). `marketer`/`source` get their
+  first reader, so ad attribution is computable at last (N20).
 - **`/console/erp/ai` is a live 404** — the manifest ships an `ai` nav item and
   no screen exists. `screens.test.ts` lists eight screens and omits it.
 - **`IntegrationLog` has zero callers** — the model was migrated and nothing
@@ -300,7 +300,8 @@ order **[DONE LP.4]** · the real ZR adapter **[DONE LP.5]** · order export
 row actions + list density · (9) bulk actions completed · (10) client
 detail/edit/export · (11) sound + desktop notification preferences · (12) agent
 alerts, missed-counter reset, manager password reset, payroll report, audit view.
-**Tier 3 — business value:** (13) analytics · (14) carrier test/sync/logs ·
+**Tier 3 — business value:** (13) analytics **[DONE LP.13]** ·
+(14) carrier test/sync/logs ·
 (15) sales-channel screen · (16) profit calculator **[DONE LP.16]** ·
 (17) AI screen ·
 (18) product fields + variant editor · (19) CSV import · (20) channel webhooks ·
@@ -352,10 +353,10 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **598/598** across the FOURTEEN files: access 72 · orders 38 ·
+Expect **627/627** across the FIFTEEN files: access 73 · orders 40 ·
 validation 29 · listing 30 · catalog 55 · delivery 64 · integrations 29 ·
-order-split 8 · screens 130 · jobs 16 · assign 25 · notifications 33 ·
-export 31 · finance 38.
+order-split 8 · screens 130 · jobs 16 · assign 25 · notifications 41 ·
+export 31 · finance 38 · analytics 19.
 
 `test/calc.test.ts` (20) is the one PURE suite and needs **no server and no
 database** — the profit calculator's arithmetic, which is the highest-consequence

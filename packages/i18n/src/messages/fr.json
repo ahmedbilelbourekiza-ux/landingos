@@ -35,7 +35,8 @@
       "agents": "Agents",
       "automation": "Automatisation",
       "ai": "Assistant IA",
-      "calculator": "Calculateur"
+      "calculator": "Calculateur",
+      "analytics": "Analyses"
     },
     "overview": {
       "title": "Aperçu",
@@ -47,7 +48,9 @@
       "customers": "Clients",
       "lowStock": "Stock faible",
       "myQueue": "Votre file",
-      "wholeBook": "Tout le carnet"
+      "wholeBook": "Tout le carnet",
+      "overdue": "Commandes que personne n’a appelées",
+      "overdueHint": "En attente depuis plus de {minutes} minutes sans appel enregistré."
     },
     "orders": {
       "title": "Commandes",
@@ -433,6 +436,24 @@
       "aggregateMissing": "Aucun dossier de sous-période sauvegardé pour cette fenêtre — sauvegardez d’abord les semaines ou les mois.",
       "aggregateFrom": "Agrégé depuis",
       "saveAggregate": "Sauvegarder cet agrégat comme dossier"
+    },
+    "analytics": {
+      "title": "Analyses",
+      "subtitle": "Combien de clients ont réellement confirmé lorsqu’on les a appelés.",
+      "orders": "Commandes",
+      "confirmationRate": "Taux de confirmation",
+      "cancellationRate": "Taux d’annulation",
+      "confirmedValue": "Montant confirmé",
+      "averageOrder": "Panier moyen",
+      "delivered": "Colis livrés",
+      "returned": "Colis retournés",
+      "deliveryRate": "Taux de livraison",
+      "neverCalled": "Jamais appelées",
+      "channel": "Canal de vente",
+      "marketer": "Marketeur / source",
+      "deliveryStatus": "Statut de livraison",
+      "unknown": "Non renseigné",
+      "revenueNote": "Le montant confirmé est ce que les clients ont accepté au téléphone ; le montant livré est ce que le livreur a réellement payé. En paiement à la livraison ce sont deux nombres différents, et l’écart est celui qu’il faut expliquer."
     }
   },
   "status": {
