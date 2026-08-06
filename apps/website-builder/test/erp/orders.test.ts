@@ -2,7 +2,7 @@ import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  skip, phone, makeErpTenant, cleanup,
+  skip, phone, makeErpTenant, cleanup, stampReferenceWithoutCounter,
   contractTest as test,
 } from './helpers.ts';
 
@@ -379,5 +379,66 @@ describe('deleting an order', () => {
 
     const r = await acme.manager.api('GET', `/api/erp/clients?search=${number}`);
     assert.equal(r.body.data.items.length, 1, 'client history survives order deletion');
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * LP.7 — the reference counter has to survive data it did not mint
+ *
+ * Found by creating an order through the console in the seeded demo tenant:
+ * `POST /api/erp/orders` answered **500** with `P2002` on
+ * `(tenantId, reference)`. The seed writes ORD-0001…ORD-0006 directly and never
+ * touches `TenantSequence`, so the counter did not exist, the upsert started it
+ * at 1, and the first order anybody created collided — permanently, walking up
+ * through every seeded number on each retry.
+ *
+ * It is NOT a seed problem. Any path that writes a reference without going
+ * through `nextReference` leaves the counter behind the data: a migration, a
+ * restore, and the CSV import still on the roadmap. Catching the P2002
+ * afterwards is not available either — a unique violation aborts the whole
+ * Postgres transaction, and every caller is already inside the one `withTenant`
+ * opened — so the counter has to heal itself BEFORE the insert.
+ * -------------------------------------------------------------------------- */
+
+describe('order numbering survives references it did not mint', () => {
+  test('a tenant whose numbers were imported can still create an order', async () => {
+    const seeded = await makeErpTenant('refs');
+
+    const first = await seeded.manager.api('POST', '/api/erp/orders', {
+      client: 'Imported', phone: phone(), price: 1000,
+    });
+    assert.equal(first.status, 201);
+
+    // Exactly the state a seed, an import or a restore leaves behind: a
+    // reference the counter has never seen, and no counter row at all.
+    await stampReferenceWithoutCounter(seeded.tenantId, first.body.data.id, 'ORD-0099');
+
+    const next = await seeded.manager.api('POST', '/api/erp/orders', {
+      client: 'After the import', phone: phone(), price: 2000,
+    });
+    assert.equal(next.status, 201, 'this answered 500 with P2002 before LP.7');
+    assert.equal(next.body.data.reference, 'ORD-0100', 'and it continues from the data, not from 1');
+
+    // And the counter is a counter again, not a one-off repair.
+    const after = await seeded.manager.api('POST', '/api/erp/orders', {
+      client: 'And again', phone: phone(), price: 3000,
+    });
+    assert.equal(after.body.data.reference, 'ORD-0101');
+  });
+
+  test('a reference this scheme could not have minted does not move the counter', async () => {
+    // A company whose imported numbers are `INV/2024/17` must not have them
+    // parsed into something the counter jumps to. Only `ORD-<digits>` counts.
+    const other = await makeErpTenant('refs-alien');
+    const first = await other.manager.api('POST', '/api/erp/orders', {
+      client: 'Alien', phone: phone(), price: 1000,
+    });
+    await stampReferenceWithoutCounter(other.tenantId, first.body.data.id, 'INV/2024/17');
+
+    const next = await other.manager.api('POST', '/api/erp/orders', {
+      client: 'Next', phone: phone(), price: 2000,
+    });
+    assert.equal(next.status, 201);
+    assert.equal(next.body.data.reference, 'ORD-0001', 'nothing ORD-shaped existed to continue from');
   });
 });

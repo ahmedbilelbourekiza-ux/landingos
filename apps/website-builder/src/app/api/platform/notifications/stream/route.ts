@@ -4,7 +4,7 @@ import { withTenant } from "@landingos/db";
 
 import { apiError } from "@/lib/api/route";
 import { getConsoleSession } from "@/lib/console/session";
-import { since } from "@/lib/platform/notifications";
+import { since, newestNotificationId } from "@/lib/platform/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +81,30 @@ export async function GET(req: NextRequest) {
   for (const candidate of [headerId, queryId]) {
     if (candidate && /^\d+$/.test(candidate)) cursor = candidate;
   }
+  const resumed = Boolean(cursor);
+
+  /* A FRESH SUBSCRIPTION STARTS AT NOW, NOT AT THE BEGINNING — LP.7.
+   *
+   * An empty cursor used to mean "send everything", so the first poll delivered
+   * this account's whole backlog flagged as LIVE. It was invisible while nothing
+   * consumed the stream; the moment a provider toasted live arrivals, every page
+   * load produced a burst of toasts for old news.
+   *
+   * A client with no `Last-Event-ID` has just been server-rendered with the
+   * current state and is subscribing for what happens NEXT. History is one
+   * `GET /api/platform/notifications` away, which is what the panel does. A
+   * client that DID present a cursor is untouched — replay from it stays exact.
+   */
+  if (!resumed) {
+    try {
+      cursor = await withTenant(tenantId, (db) => newestNotificationId(db, userId));
+    } catch (error) {
+      // Starting from the beginning would be worse than starting slightly late,
+      // but neither is worth failing the connection over: the next tick catches
+      // up from wherever the cursor ends up.
+      console.error("[notifications] could not resolve the starting cursor", error);
+    }
+  }
 
   const encoder = new TextEncoder();
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -133,7 +157,9 @@ export async function GET(req: NextRequest) {
 
       // Anything missed while disconnected, flagged so a client can tell a
       // replay from a live event and de-duplicate by id.
-      if (cursor) await drain(true);
+      // Only a RESUMED connection has anything to catch up on. A fresh one
+      // was just given the current state by the page it is on.
+      if (resumed) await drain(true);
 
       timer = setInterval(() => void drain(false), POLL_MS);
       keepalive = setInterval(() => send(": ping\n\n"), KEEPALIVE_MS);

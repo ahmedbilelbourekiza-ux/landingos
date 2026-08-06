@@ -568,3 +568,23 @@ export async function setOrderExternalProduct(
     }),
   );
 }
+
+/**
+ * Put a chosen reference on an order and forget the counter — LP.7.
+ *
+ * The state every seeded, imported or restored tenant is in: references exist
+ * that `nextReference` never minted, so `TenantSequence` knows nothing about
+ * them. There is no route that produces it, because every route mints through
+ * the counter — which is exactly why it went unnoticed until an order was
+ * created by hand in the seeded demo tenant and answered 500.
+ */
+export async function stampReferenceWithoutCounter(
+  tenantId: string,
+  orderId: string,
+  reference: string,
+) {
+  await withTenant(tenantId, async (tx) => {
+    await (tx as any).fulfillmentOrder.update({ where: { id: orderId }, data: { reference } });
+    await (tx as any).tenantSequence.deleteMany({ where: { tenantId, name: 'order' } });
+  });
+}

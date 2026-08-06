@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.16: the profit/loss calculator*
+**Branch:** `master` · **Last commit:** *LP.7: the notification provider*
 **Working tree:** clean, all work committed.
 
 ---
@@ -58,7 +58,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.5** the real ZR Express adapter | R2 (rest) | **DONE** — delivery 39→61, screens 121→123 |
 | **LP.6** order export (CSV: ZR / Ecom / Ecotrac + report) | R4 | **DONE** — export 31 (new), screens 123→130, access 65→68 |
 | **LP.16** the profit/loss calculator, all four steps | R9, N23, half of R20 | **DONE** — finance 38 (new), calc 20 (new), delivery 61→64, access 68→72 |
-| **LP.7** the notification provider (bell, badge, toast, live refresh) | N2, N3, L1, L2 | **NEXT — Tier 2 opens here** |
+| **LP.7** the notification provider (bell, badge, panel, toast, live refresh) | N2, N3, L1, L2 | **DONE** — notifications 33→41, orders 38→40 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -455,11 +455,11 @@ domain at a time.
 | the order book as a file — ZR / Ecom / Ecotrac / report (LP.6) | export 31/31 |
 | the scheduled work (M-15), and the worker's tick both ways | jobs 16/16 |
 | assignment — new, confirmed and overdue orders | assign 25/25 |
-| notifications: storage, audience, badge, the live stream, Web Push (M-16) | notifications 29/29 |
+| notifications: storage, audience, badge, the live stream, Web Push (M-16) **and the console that consumes them (LP.7)** | notifications 41/41 |
 | the P&L department — proration, fixed costs, versions, roll-up, the calculator screen (LP.16) | finance 38/38 + calc 20/20 |
 | every surface, gated | access 72/72 |
 
-**598/598** across FOURTEEN contract files, each verified on its own, plus
+**608/608** across FOURTEEN contract files, each verified on its own, plus
 **20/20** in `test/calc.test.ts` — the one PURE suite, which needs no server at
 all. Running several contract files back to back still trips the documented Neon
 connection limit; judge them per file.
@@ -614,6 +614,42 @@ closing half of §7 P3 and all of R20.
 
 **Confirmed as NOT gaps, twice now:** neither system has keyboard shortcuts,
 context menus, or a chart of any kind.
+
+### LP.7 — the notification provider, and the two defects it found
+
+**M-16's entire transport had no consumer.** Storage, the audience resolved at
+write time, an SSE stream with exact replay, Web Push, a service worker, 33
+passing tests — and no bell, no badge, no panel, no toast anywhere in the
+console. A signed-in operator was never told anything.
+
+`components/console/notification-provider.tsx` is mounted **once**, in the shell,
+and owns exactly three things: the badge (whose count is the SERVER's, re-read on
+every render — an in-memory counter is wrong the moment a second tab marks
+something read), a toast per LIVE arrival (replayed frames do not toast; fifty on
+reconnect hide the one that matters), and a **debounced `router.refresh()`** so a
+burst of carrier events costs one re-render. It merges nothing into any list:
+that would be a second copy of the truth in the browser, and D-06.3 exists
+because a confirmed call is money.
+
+**Defect 1 — a fresh subscription replayed the whole backlog as LIVE.** An empty
+cursor meant "from the beginning", so every page load sent up to 50 historical
+notifications flagged `replayed: false`. Invisible while nothing consumed the
+stream; a burst of toasts for last week's news the moment something did. A client
+with no `Last-Event-ID` has just been server-rendered with the current state and
+is subscribing for what happens NEXT — `newestNotificationId()` starts it there,
+and a resumed connection is untouched.
+
+**Defect 2 — `POST /api/erp/orders` answered 500 in every seeded tenant.** Found
+by creating an order as `manager@demo.test`: `P2002` on `(tenantId, reference)`.
+The seed writes ORD-0001…ORD-0006 directly and never touches `TenantSequence`, so
+the counter started at 1 and the first console-created order collided —
+permanently, walking up through every seeded number. **Not a seed problem:** any
+path that writes a reference without `nextReference` leaves the counter behind
+(a migration, a restore, the CSV import still on the roadmap). Catching the P2002
+is not available — a unique violation aborts the whole Postgres transaction and
+every caller is already inside `withTenant`'s — so `nextReference` heals itself
+from the highest reference already in use, counting **only** references this
+scheme could have minted (`INV/2024/17` must not move it).
 
 ### LP.16 — the P&L calculator, and the four defects it closed
 

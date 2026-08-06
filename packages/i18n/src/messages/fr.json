@@ -614,5 +614,13 @@
     "emailTaken": "Un compte avec cet email existe déjà.",
     "invalidSlug": "L'adresse web doit être en lettres minuscules, chiffres et tirets.",
     "created": "Bienvenue ! Votre espace est prêt."
+  },
+  "notifications": {
+    "open": "Ouvrir les notifications",
+    "empty": "Rien pour le moment.",
+    "markAllRead": "Tout marquer comme lu",
+    "unread": "Non lues",
+    "live": "En direct",
+    "reconnecting": "Reconnexion…"
   }
 }

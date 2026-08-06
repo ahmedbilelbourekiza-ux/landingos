@@ -565,6 +565,44 @@ describe('the live stream', () => {
       await tab2.close();
     }
   });
+
+  test('a FRESH subscription starts at now, not at the beginning of the backlog', async () => {
+    // The defect the provider exposed. An empty cursor meant "send everything",
+    // so the first poll delivered this account's whole backlog flagged
+    // `replayed: false` — as LIVE. Invisible while nothing consumed the stream;
+    // the moment a provider toasts live arrivals, every page load produced a
+    // burst of toasts for last week's news and buried the one that mattered.
+    const listener = await makeMember(acme.tenantId, { role: 'ADMIN', jobRole: 'both' });
+
+    await newOrder();
+    await waitFor(async () => ((await feed(listener)).items.length ? true : null), {
+      label: 'a backlog to exist for this account',
+    });
+    const backlog = await feed(listener);
+    assert.ok(backlog.items.length > 0, 'the fixture needs a backlog to be meaningful');
+
+    const stream = await openStream(listener);
+    try {
+      // Longer than the stream's poll interval, so it has time to be wrong.
+      await new Promise((r) => setTimeout(r, 9000));
+      // `ids` rather than `events`: only a real notification carries an `id:`
+      // line, so this excludes the handshake frame without excluding anything
+      // the assertion is about.
+      assert.deepEqual(
+        stream.ids,
+        [],
+        'a fresh subscription was sent history it had already been rendered',
+      );
+
+      // And it is still LIVE — starting at now must not mean starting at never.
+      const order = await newOrder();
+      await waitFor(() => stream.events.find((e) => e.entityId === order.id) ?? null, {
+        label: 'a genuinely new notification', timeout: 25000,
+      });
+    } finally {
+      await stream.close();
+    }
+  });
 });
 
 describe('web push registration', () => {
@@ -734,5 +772,122 @@ describe('the console is installable', () => {
 
     const storefrontHtml = await (await fetch(`${BASE}/robots.txt`)).text();
     assert.ok(!storefrontHtml.includes('manifest.webmanifest'));
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * LP.7 — the consumer, which is what all of the above was missing
+ *
+ * Everything before this point proves the TRANSPORT works: rows are written, the
+ * audience is resolved at write time, the badge is per account, the stream
+ * replays exactly, a push can be received. None of it reached a person. There
+ * was no bell, no badge, no panel and no toast anywhere in the console, so a
+ * signed-in operator was never told anything — the largest piece of dead
+ * machinery in the repository, and the reason L1/L2 were corrected from
+ * "improved" to "missing" by the second pass.
+ * -------------------------------------------------------------------------- */
+
+describe('the console finally consumes its own notifications', () => {
+  const page = async (path: string, token: string) => {
+    const res = await fetch(BASE + path, {
+      redirect: 'manual',
+      headers: { cookie: `${SESSION_COOKIE}=${token}; locale=en` },
+    });
+    return { status: res.status, body: await res.text() };
+  };
+
+  test('every console page carries the bell — one subscription per session', async () => {
+    // It lives in the shell rather than on a screen. A provider per screen would
+    // be N EventSource connections per tab, and each one is a polling query
+    // against a table.
+    // NOT `/console` itself: with one product it redirects straight into it,
+    // which is a 307 with no body rather than a page that could carry a bell.
+    for (const path of ['/console/erp', '/console/erp/orders', '/console/settings']) {
+      const r = await page(path, acme.manager.token);
+      assert.equal(r.status, 200, path);
+      assert.match(r.body, /data-testid="notification-bell"/, `no bell on ${path}`);
+    }
+  });
+
+  test('the badge is the SERVER’s count, not a number the browser kept', async () => {
+    // The defect the M-16 audit found in the ERP: an in-memory counter is wrong
+    // the moment a second tab marks something read, wrong after a reconnect that
+    // replays, and wrong for anything raised while the tab was closed. So the
+    // count is rendered by the server and re-read on every render of the shell.
+    const before = await feed(acme.manager);
+
+    await newOrder();
+    await waitFor(async () => {
+      const now = await feed(acme.manager);
+      return now.unread > before.unread ? now : null;
+    }, { label: 'a new-order notification' });
+
+    const after = await feed(acme.manager);
+    const r = await page('/console/erp', acme.manager.token);
+    assert.match(
+      r.body,
+      new RegExp(`data-unread="${after.unread}"`),
+      'the rendered badge disagrees with the API that owns the count',
+    );
+  });
+
+  test('a person with nothing unread gets no badge at all, not a zero', async () => {
+    const quiet = await makeMember(acme.tenantId, { role: 'VIEWER' });
+    const r = await page('/console/erp', quiet.token);
+    assert.match(r.body, /data-testid="notification-bell"/);
+    assert.doesNotMatch(r.body, /data-testid="notification-badge"/);
+  });
+
+  test('the toast region is announced, so it reaches somebody on the phone', async () => {
+    // An operator whose attention is on a call is exactly who this is for, and a
+    // silently-appearing box reaches nobody using a screen reader.
+    const r = await page('/console/erp', acme.manager.token);
+    assert.match(r.body, /data-testid="notification-toasts"/);
+    assert.match(r.body, /aria-live="polite"/);
+  });
+
+  test('the signed-out console has no bell and no stream', async () => {
+    const r = await fetch(`${BASE}/console/login`);
+    const body = await r.text();
+    assert.doesNotMatch(body, /notification-bell/);
+  });
+
+  test('the stream itself refuses an anonymous subscriber', async () => {
+    // The provider opens this on mount for whoever is signed in. If it answered
+    // anything to a caller with no session, every console tab would be a hole.
+    const r = await fetch(`${BASE}/api/platform/notifications/stream`);
+    assert.equal(r.status, 401);
+    await r.body?.cancel();
+  });
+
+  test('opening the panel marks read only up to what was displayed', async () => {
+    // The behaviour the panel depends on, asserted through the API the panel
+    // calls: a notification arriving between the render and the click must stay
+    // unread rather than being swallowed.
+    const watcher = await makeMember(acme.tenantId, { role: 'ADMIN', jobRole: 'both' });
+
+    await newOrder();
+    await waitFor(async () => ((await feed(watcher)).unread > 0 ? true : null), {
+      label: 'a first notification',
+    });
+    const first = await feed(watcher);
+    const displayed = first.items[0].id;
+
+    // A second one arrives after the panel rendered.
+    await newOrder();
+    await waitFor(async () => {
+      const now = await feed(watcher);
+      return now.items[0] && now.items[0].id !== displayed ? true : null;
+    }, { label: 'a second notification' });
+
+    const marked = await watcher.api('POST', '/api/platform/notifications/read', {
+      upToId: displayed,
+    });
+    assert.equal(marked.status, 200);
+    assert.ok(marked.body.data.unread >= 1, 'the newer one must still be unread');
+
+    const after = await feed(watcher);
+    const older = after.items.find((i) => i.id === displayed);
+    assert.equal(older?.read, true, 'and everything up to what was shown is read');
   });
 });

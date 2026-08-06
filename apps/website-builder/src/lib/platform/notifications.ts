@@ -309,6 +309,35 @@ export async function unreadCount(db: TenantDb, userId: string): Promise<number>
 }
 
 /**
+ * The newest id this account has, or `""`.
+ *
+ * WHERE A FRESH SUBSCRIPTION STARTS — LP.7, and a defect its consumer exposed.
+ *
+ * The stream took an empty cursor to mean "from the beginning", so a tab opening
+ * with no `Last-Event-ID` was sent its whole backlog (up to the 50-row bound) on
+ * the first poll, flagged `replayed: false` — as LIVE. With nothing consuming
+ * the stream that was invisible; with a provider that toasts live arrivals, every
+ * page load produced a burst of toasts for last week's news, and the one that
+ * mattered was buried in it.
+ *
+ * A client with no `Last-Event-ID` has just been server-rendered with the current
+ * state — the badge, the list, the screen. What it is subscribing FOR is what
+ * happens next. Anything historical is one `GET /api/platform/notifications`
+ * away and is what the panel already does.
+ *
+ * A client that DID hold a cursor is unaffected: replay from it is exact, which
+ * is the property `Last-Event-ID` exists to give.
+ */
+export async function newestNotificationId(db: TenantDb, userId: string): Promise<string> {
+  const row = await db.notification.findFirst({
+    where: { targetUserId: userId },
+    orderBy: { id: "desc" },
+    select: { id: true },
+  });
+  return row ? row.id.toString() : "";
+}
+
+/**
  * Mark this account's notifications read, up to and including `upToId`.
  *
  * `upToId` is the newest id the client has actually DISPLAYED. Passing it —

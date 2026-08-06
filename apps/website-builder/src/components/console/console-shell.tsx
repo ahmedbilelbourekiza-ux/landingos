@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { withTenant } from "@landingos/db";
 import { productRegistry } from "@landingos/product-registry";
 import type { ConsoleSession } from "@/lib/console/session";
+import { unreadCount } from "@/lib/platform/notifications";
 
 import { ProductSwitcher } from "./product-switcher";
 import { TenantSwitcher } from "./tenant-switcher";
 import { LocaleSwitcher } from "./locale-switcher";
 import { ConsoleNav } from "./console-nav";
 import { SignOutButton } from "./sign-out-button";
+import { NotificationProvider } from "./notification-provider";
 
 /* =============================================================================
  * The console shell — one frame for every product.
@@ -40,6 +43,27 @@ export async function ConsoleShell({
   const t = await getTranslations();
   const product = productId ? productRegistry.get(productId) : undefined;
   const nav = product ? productRegistry.navFor(product.id, session.permissions) : [];
+
+  /* LP.7. THE BADGE COUNT IS THE SERVER'S, re-read on every render of the shell
+     — which is every console page, and which the provider's debounced
+     `router.refresh()` re-triggers when anything arrives. An in-memory counter
+     in the browser is wrong the moment a second tab marks something read, wrong
+     after a reconnect that replays, and wrong for anything raised while the tab
+     was closed. That is the defect the M-16 audit found in the ERP.
+
+     Skipped entirely without an active tenant: `Notification` is RLS-scoped and
+     there is nothing to bind. A person still choosing a company has no feed. */
+  const unread = session.auth
+    ? await withTenant(session.auth.tenantId, (db) => unreadCount(db, session.user.id))
+    : 0;
+
+  /* Product id → translated name, resolved HERE so the provider holds no
+     registry and no catalogue. A notification is cross-product by construction
+     (one feed per person, every product they use), so the toast has to be able
+     to say which one raised it. */
+  const productNames = Object.fromEntries(
+    productRegistry.list().map((p) => [p.id, t(p.nameKey)]),
+  );
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -101,6 +125,26 @@ export async function ConsoleShell({
             label={t("common.switchTenant")}
           />
           <div className="flex items-center gap-2">
+            {/* ONE subscription per session, not per screen: this shell is on
+                every console page, and a provider per screen would open N
+                streams per tab — each of which is a polling query. */}
+            {session.auth && (
+              <NotificationProvider
+                unread={unread}
+                productNames={productNames}
+                strings={{
+                  title: t("common.notifications"),
+                  open: t("notifications.open"),
+                  close: t("common.cancel"),
+                  empty: t("notifications.empty"),
+                  markAllRead: t("notifications.markAllRead"),
+                  unreadLabel: t("notifications.unread"),
+                  live: t("notifications.live"),
+                  reconnecting: t("notifications.reconnecting"),
+                  loading: t("common.loading"),
+                }}
+              />
+            )}
             <LocaleSwitcher label={t("common.language")} />
             <span className="text-sm text-muted-foreground">{session.user.name}</span>
           </div>

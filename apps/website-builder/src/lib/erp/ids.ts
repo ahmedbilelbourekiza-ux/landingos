@@ -65,13 +65,80 @@ export async function nextReference(
   tenantId: string,
   name: SequenceName,
 ): Promise<string> {
+  /* THE COUNTER MUST NOT START AT 1 IN A TENANT THAT ALREADY HAS REFERENCES.
+   *
+   * Found by creating an order through the console in the seeded demo tenant:
+   * `POST /api/erp/orders` answered **500** with `P2002` on
+   * `(tenantId, reference)`. The seed writes `ORD-0001`…`ORD-0006` directly and
+   * never touches `TenantSequence`, so the counter did not exist, the upsert's
+   * `create` branch started at 1, and the very first console-created order in
+   * that company collided — permanently, because the next attempt produces 2,
+   * then 3, walking up through every seeded number.
+   *
+   * IT IS NOT A SEED PROBLEM. Any path that writes a reference without going
+   * through this function leaves the counter behind the data: a data migration,
+   * a restore into a fresh row, and the CSV import that is still on the roadmap.
+   * The seeds are fixed too, but the counter has to be able to heal itself or
+   * the next such path re-breaks order creation.
+   *
+   * CATCHING THE P2002 AFTERWARDS IS NOT AVAILABLE. A unique violation aborts
+   * the whole Postgres transaction, and every caller here is already inside the
+   * interactive transaction `withTenant` opened — so the recovery has to happen
+   * BEFORE the insert, which is what this does.
+   *
+   * The race is closed by the upsert itself: two callers may both see no
+   * counter and both compute the same start, but one INSERT wins and the other
+   * conflicts into `update`, which increments. Neither observes a stale value.
+   */
+  const existing = await db.tenantSequence.findUnique({
+    where: { tenantId_name: { tenantId, name } },
+    select: { value: true },
+  });
+
+  const start = existing ? 1 : (await highestExisting(db, name)) + 1;
+
   const row = await db.tenantSequence.upsert({
     where: { tenantId_name: { tenantId, name } },
-    create: { tenantId, name, value: 1 },
+    create: { tenantId, name, value: start },
     update: { value: { increment: 1 } },
     select: { value: true },
   });
   return `${PREFIX[name]}-${String(row.value).padStart(WIDTH[name], "0")}`;
+}
+
+/**
+ * The largest number already in use for this counter, or 0.
+ *
+ * Read ONLY when the counter row is absent — the once-per-tenant case — so the
+ * ordinary path stays a single atomic statement. It deliberately does not fall
+ * back to `count()`: D-05.2 removed counting precisely because deleted rows make
+ * a count smaller than the highest number in use, and that is the collision this
+ * whole function exists to prevent.
+ */
+async function highestExisting(db: TenantDb, name: SequenceName): Promise<number> {
+  const prefix = `${PREFIX[name]}-`;
+  const rows =
+    name === "order"
+      ? await db.fulfillmentOrder.findMany({
+          where: { reference: { startsWith: prefix } },
+          select: { reference: true },
+        })
+      : await db.catalogProduct.findMany({
+          where: { reference: { startsWith: prefix } },
+          select: { reference: true },
+        });
+
+  let highest = 0;
+  for (const row of rows) {
+    // Only a reference this scheme could have MINTED counts. A tenant whose
+    // imported numbers are `ORD-2024-A` must not push the counter to something
+    // that number happened to parse as.
+    const suffix = row.reference?.slice(prefix.length) ?? "";
+    if (!/^\d+$/.test(suffix)) continue;
+    const value = Number(suffix);
+    if (Number.isSafeInteger(value) && value > highest) highest = value;
+  }
+  return highest;
 }
 
 /** The prefix a given counter produces. Exported so tests can assert the shape. */

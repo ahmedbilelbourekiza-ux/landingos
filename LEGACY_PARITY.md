@@ -716,8 +716,8 @@ missed all of them.
 | # | Feature | Legacy | Platform | Status |
 |---|---|---|---|---|
 | **N1** | **List pagination** | client-side paging on clients; everything else rendered in full | **nothing, anywhere** — first 50–100 rows, no next | 🔴 |
-| **N2** | **Live console updates** | every SSE event re-fetches and re-renders the affected screen; the changed row flashes for 3s (`hl-flash`) | the console re-renders only after the **viewer's own** action (`router.refresh()`). Another agent's confirmation, a carrier webhook, a new order — none reach an open screen | 🔴 |
-| **N3** | **Notification bell, badge and panel** | header bell, unread count from the server, 200-entry panel, read watermark advanced on open | none | 🔴 |
+| **N2** | **Live console updates** | every SSE event re-fetches and re-renders the affected screen; the changed row flashes for 3s (`hl-flash`) | the console re-renders only after the **viewer's own** action (`router.refresh()`). Another agent's confirmation, a carrier webhook, a new order — none reach an open screen | ✅ **CLOSED — LP.7**: one `<NotificationProvider>` in the shell, a debounced `router.refresh()` (500 ms) so a burst of carrier events costs one re-render. The row flash (N22) is still open. |
+| **N3** | **Notification bell, badge and panel** | header bell, unread count from the server, 200-entry panel, read watermark advanced on open | none | ✅ **CLOSED — LP.7**: bell, server-counted badge, a 50-row panel, and a read watermark advanced to the newest row actually DISPLAYED. |
 | **N4** | **Notification sounds** | six distinct Web Audio signatures — `new_order` (ka-ching), `abandoned`, `assignment`, `manipulation` (siren), `delivery`, `followup` — with a per-type toggle and a volume, persisted in `localStorage` | none | 🔴 |
 | **N5** | **Desktop notifications** | `Notification` API on every event, tagged by order id so they collapse | none | 🔴 |
 | **N6** | **Create an order from the console** | "New order" button + modal on the main screen | **no control** (route exists) | 🔴 |
@@ -885,7 +885,7 @@ from complete** — order export (R4) is all that remains in it.
 
 | # | Slice | Restores | Size | Why here |
 |---|---|---|---|---|
-| **7** | **The notification provider** — bell, badge, panel, toast, debounced live refresh | N2, N3, L1, L2 | M | **NEXT (LP.7).** The whole M-16 transport has no consumer — the last of §0b's six blockers, and the only one left. This is one client component plus a badge, and it turns 33 tested-but-dead endpoints into the operator's live loop. Architecture in §6.4(a); the implementation notes are in NEXT_STEPS. |
+| ~~7~~ | ~~The notification provider~~ — bell, badge, panel, toast, debounced live refresh | N2, N3, L1, L2 | M | **DONE — LP.7.** The last of §0b's six blockers. It also found two defects in shipped code that only a consumer could reach: a fresh subscription replayed the whole backlog as LIVE, and `POST /api/erp/orders` answered 500 in every seeded tenant. |
 | **8** | **Inline row actions + list density** — agent, carrier, express, status on the row | N9, N10 | M | Halves the clicks on the two highest-frequency operations in the building. Depends on 3. |
 | **9** | **Bulk actions completed** — classify, assignFollowup, createShipments, sendToDelivery | R7 | M | `createShipments` in bulk is the highest-volume manager action there is. Depends on 5 to be worth anything. |
 | **10** | **Client detail, correction, export** | R5 (part) | M | The registry is the business's most valuable asset and is read-only. Depends on 3 for search. |

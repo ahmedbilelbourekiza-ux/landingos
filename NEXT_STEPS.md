@@ -42,15 +42,15 @@ none of which may be traded back.
 3. **No filter form or search box on any list.** `orderFilters` supports nine
    filters — richer than the legacy's four — reachable only by hand-typing a
    query string. Only `/console/erp/queue` has a form.
-4. **No notification surface.** M-16's transport (SSE with exact replay, Web
-   Push, service worker, 33 tests) has **no consumer**. No bell, no badge, no
-   toast, no sound, no live refresh. An operator is never told anything.
+4. ~~**No notification surface.**~~ *(Closed by LP.7 — a bell, a badge, a panel,
+   a toast and a debounced `router.refresh()` in the console shell. Sound and
+   desktop notifications are Tier 2 #11 and hang off the same provider.)*
 5. ~~**No real carrier adapter.**~~ *(Closed by LP.5 — `zr` books real parcels.)*
 6. ~~**No export.**~~ *(Closed by LP.6 — CSV for ZR / Ecom / Ecotrac plus the
    performance report, from the order list, carrying its filters.)*
 
-**Blockers 1, 2, 3, 5 and 6 are closed. TIER 1 IS COMPLETE.** What remains is
-blocker 4 — **no notification surface** — which is where Tier 2 starts.
+**ALL SIX BLOCKERS ARE CLOSED.** Tier 1 finished with LP.6; blocker 4, the
+notification surface, closed with **LP.7**, which is where Tier 2 opened.
 
 ### Two decisions re-opened by the second pass
 
@@ -201,7 +201,29 @@ are subtracted in the banner and omitted from the POST. Incidents now go into
 `productCosts`, and the calc suite asserts the record's derived net profit equals
 the screen's total.
 
-### THE NEXT SLICE — LP.7, the notification provider (Tier 2 opens)
+### LP.7 — DONE. The notification provider (Tier 2 opened here)
+
+**Implemented and verified.** notifications 33 → **41**, orders 38 → **40**.
+`components/console/notification-provider.tsx` is mounted once in the shell and
+owns the badge (server-counted), a toast per live arrival, and a debounced
+`router.refresh()`. Every bullet below was honoured; the design was not changed.
+
+**Two defects in shipped code were found by building the consumer**, and neither
+was reachable any other way:
+
+1. **A fresh subscription replayed the whole backlog as LIVE** — an empty cursor
+   meant "from the beginning", so every page load would have produced a burst of
+   toasts for old news. A client with no `Last-Event-ID` now starts at the newest
+   existing id; a resumed one is untouched and replay stays exact.
+2. **`POST /api/erp/orders` answered 500 in every seeded tenant** — `P2002` on
+   `(tenantId, reference)`, because the seed writes references directly and never
+   advances `TenantSequence`. `nextReference` now heals itself from the highest
+   reference already in use, counting only references it could have minted.
+
+**The next slice is Tier 2 #8–#12**, and #11 (sound + desktop notification
+preferences on `ProductSetting`) hangs directly off this provider.
+
+### The design LP.7 was built to — preserved
 
 **The largest piece of dead machinery in the repo.** M-16 built storage, the
 audience decided at write time, an SSE stream with exact replay from

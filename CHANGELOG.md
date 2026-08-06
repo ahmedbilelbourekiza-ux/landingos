@@ -12,6 +12,144 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.7 The notification provider — the console consumes its own transport
+
+[Opus 5]
+Date: 6 August 2026
+Summary: M-16's entire transport gets its first consumer. A bell, a badge, a
+panel and a toast in the console shell, plus a debounced `router.refresh()` that
+makes the console live. notifications 33 → **41**, orders 38 → **40**. **Two
+defects in shipped code were found by building the consumer**, and neither could
+have been found any other way.
+
+#### The dead machinery, and why it stayed dead
+
+M-16 landed in three slices — storage with the audience resolved once at write
+time, a live SSE stream with exact replay from `Last-Event-ID`, Web Push and a
+service worker — with **33 contract tests**. Every one of them passed. Nothing in
+the console called any of it. There was no bell, no badge, no panel and no
+toast, so a signed-in operator was never told anything: not that an order
+arrived, not that a parcel came back, not that a follow-up escalated. The second
+pass corrected L1 and L2 from 🔵 IMPROVED to 🔴 MISSING for exactly this reason,
+and NEXT_STEPS called it the largest piece of dead machinery in the repository.
+
+#### What the provider owns — three things, and no more
+
+`src/components/console/notification-provider.tsx`, mounted once in
+`console-shell.tsx`:
+
+- **The unread badge, whose count is the SERVER'S.** `unreadCount()` is read in
+  the shell on every render and passed as a prop. It is deliberately not an
+  in-memory counter incremented per arriving event: that counter is wrong the
+  moment a second tab marks something read, wrong after a reconnect that
+  replays, and wrong for anything raised while the tab was closed — which is the
+  exact defect the M-16 audit found in the ERP.
+- **A toast per LIVE arrival.** Replayed frames do not toast: they are the
+  catch-up for a dropped connection, and fifty toasts on reconnect hide the one
+  that matters. They still count toward the badge and still appear in the panel.
+- **A debounced `router.refresh()` (500 ms).** This is the whole live-console
+  story and the whole performance story at once. A carrier replaying a backlog
+  produces dozens of events in a second, and each refresh re-renders a server
+  tree that runs real queries.
+
+**It does not merge an arriving notification into anything on screen.** That
+would be a second copy of the truth living in the browser, and D-06.3 exists
+because a confirmed call is money. The server re-renders and the screen shows
+what the database holds.
+
+**One subscription per session, not per screen** — the shell is on every console
+page, and a provider per screen is N EventSource connections per tab, each of
+which is a polling query. **And it is not ERP-shaped:**
+`/api/platform/notifications` is one feed per person across every product, so a
+row carries its `product` and the toast says which one raised it.
+
+#### Defect 1 — a fresh subscription replayed the whole backlog AS LIVE
+
+The stream took an empty cursor to mean "from the beginning", so a tab opening
+with no `Last-Event-ID` was sent this account's entire backlog (up to the 50-row
+bound) on its first poll, flagged `replayed: false`.
+
+With nothing consuming the stream that was invisible. The moment a provider
+toasted live arrivals it became a burst of toasts for last week's news **on every
+page load**, with the one that mattered buried in it.
+
+A client with no `Last-Event-ID` has just been server-rendered with the current
+state — badge, list, screen — and is subscribing for what happens NEXT. History
+is one `GET /api/platform/notifications` away and is what the panel already does.
+`newestNotificationId()` is new; a resumed connection is untouched, so replay
+from a real cursor stays exact.
+
+#### Defect 2 — `POST /api/erp/orders` answered 500 in every seeded tenant
+
+Found by creating an order through the console as `manager@demo.test`:
+**`P2002` on `(tenantId, reference)`, a 500.**
+
+The demo seed writes `ORD-0001`…`ORD-0006` directly and never touches
+`TenantSequence`. So the counter did not exist, the upsert's `create` branch
+started it at 1, and the very first order anybody created through the console
+collided — permanently, because the next attempt produces 2, then 3, walking up
+through every seeded number.
+
+**It is not a seed problem.** Any path that writes a reference without going
+through `nextReference` leaves the counter behind its data: a migration, a
+restore, and the CSV import still on the roadmap (Tier 3 #19) would each do it.
+And catching the `P2002` afterwards is not available — a unique violation aborts
+the whole Postgres transaction, and every caller is already inside the one
+`withTenant` opened, which is why NEXT_STEPS says not to catch it per-insert. So
+the counter heals itself BEFORE the insert: when the row is absent it starts from
+the highest reference already in use rather than from 1.
+
+**Only a reference this scheme could have MINTED counts.** A company whose
+imported numbers are `INV/2024/17` must not have them parsed into something the
+counter jumps to, and a test asserts that one leaves the counter at ORD-0001.
+The race is closed by the upsert itself: two callers may both compute the same
+start, but one INSERT wins and the other conflicts into `update`, which
+increments — neither observes a stale value. `seed-demo.ts` sets the counter too,
+because a seed that leaves its own tenant in a state the application has to
+repair is lying about what it produced.
+
+#### Files
+
+New: `src/components/console/notification-provider.tsx`.
+
+Changed: `src/components/console/console-shell.tsx` (the badge count, the
+product-name map, and the provider itself),
+`src/app/api/platform/notifications/stream/route.ts`,
+`src/lib/platform/notifications.ts` (`newestNotificationId`),
+`src/lib/erp/ids.ts` (the self-healing counter),
+`packages/db/scripts/seed-demo.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (+6 keys each),
+`test/erp/{notifications,orders,helpers}.test.ts`.
+
+#### Migration
+
+None. No schema change.
+
+#### Risk
+
+**Low.** The provider is additive and renders only for a session with an active
+tenant. The stream change makes a fresh subscription send strictly less than
+before — a client that wants history has always had the list endpoint — and a
+resumed one is byte-identical. The counter change adds one indexed read per
+tenant on the first reference ever minted through it, and nothing afterwards.
+
+#### Verified
+
+build clean · notifications 41/41 · orders 40/40 · screens 130/130 ·
+access 72/72 · listing 30/30 · catalog 55/55 · finance 38/38 · jobs 16/16 ·
+assign 25/25 · console-shell 13/13 · team 56/56 · billing 19/19 · signup 10/10 ·
+i18n 18/18.
+
+**And driven by hand in a browser, which is how both defects were found.**
+Signed in as `manager@demo.test`: a page load now produces **zero** stale toasts
+where it produced a burst; creating an order answers **201 with `ORD-0007`**
+where it answered 500; and with the tab left open and untouched, a second order
+produced a live toast — *"New order ORD-0008 · Toast Probe — 0555636763 ·
+Gestion des commandes"* — **within 700 ms**, with the badge moving 6 → 7 with no
+reload.
+
+---
+
 ### LP.16 The profit/loss calculator — every gap LP.0c measured, closed
 
 [Opus 5]

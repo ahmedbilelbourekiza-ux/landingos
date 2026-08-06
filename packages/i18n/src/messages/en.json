@@ -614,5 +614,13 @@
     "emailTaken": "An account with that email already exists.",
     "invalidSlug": "The web address must be lowercase letters, digits and hyphens.",
     "created": "Welcome! Your workspace is ready."
+  },
+  "notifications": {
+    "open": "Open notifications",
+    "empty": "Nothing yet.",
+    "markAllRead": "Mark all read",
+    "unread": "Unread",
+    "live": "Live",
+    "reconnecting": "Reconnecting…"
   }
 }

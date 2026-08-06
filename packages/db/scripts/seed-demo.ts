@@ -332,6 +332,25 @@ async function main() {
       orderIds[o.reference] = row.id;
     }
 
+    /* ADVANCE THE COUNTER PAST WHAT WAS JUST WRITTEN.
+     *
+     * These references are set directly rather than minted by `nextReference`,
+     * so `TenantSequence` knows nothing about them. Without this, the first
+     * order created through the console in this tenant asks the counter for a
+     * number, gets 1, and collides with ORD-0001 — a 500, permanently, walking
+     * up through every seeded number on each retry. It was found by creating an
+     * order in this very tenant.
+     *
+     * `nextReference` heals itself from the existing maximum now, so this is
+     * belt and braces — but a seed that leaves its own tenant in a state the
+     * application has to repair is a seed that is lying about what it produced.
+     */
+    await anyTx.tenantSequence.upsert({
+      where: { tenantId_name: { tenantId: tenant.id, name: 'order' } },
+      create: { tenantId: tenant.id, name: 'order', value: orders.length },
+      update: { value: orders.length },
+    });
+
     // --- Shipments + tracking events (for the in-transit and delivered orders)
     const withTracking = [
       { ref: 'ORD-0002', status: 'created', events: [{ s: 'created', d: 'Parcel registered' }] },
