@@ -64,7 +64,7 @@ blocker 4 — **no notification surface** — which is where Tier 2 starts.
   nothing and is the difference between a dropped 3G connection showing a stale
   screen and showing nothing. Worth revisiting with that narrower scope.
 
-### Four defects in shipped code
+### Five defects in shipped code
 
 - **A product with a `™` in its name reports ZERO revenue.** `sales-summary`
   matches its orders with `where: { product: product.name }` — exact string
@@ -74,8 +74,13 @@ blocker 4 — **no notification surface** — which is where Tier 2 starts.
 - **Every saved P&L record is missing its fixed costs.** `fixedCosts` is a
   declared setting that `prorate-fixed` sums and **nothing writes** — the
   automation screen correctly excludes array settings and no other screen offers
-  one — so the prorated figure is always zero. §7 P3; slice 16b.
-
+  one — so the prorated figure is always zero. §7 P3; slice 16b. **The same
+  missing pattern hides `defaultCarrierByChannel`** — one structured-settings
+  editor closes both (§8 N23).
+- **The confirmation rate is computed NOWHERE.** Not on the dashboard, not
+  anywhere. It is the number a COD call centre is managed by, and the legacy
+  leads its dashboard with it. LEGACY_PARITY §8 N18 — it comes with the
+  analytics slice (Tier 3 #13), which is worth more than its tier says.
 - **`/console/erp/ai` is a live 404** — the manifest ships an `ai` nav item and
   no screen exists. `screens.test.ts` lists eight screens and omits it.
 - **`IntegrationLog` has zero callers** — the model was migrated and nothing
@@ -222,6 +227,18 @@ The architecture is already proposed and reviewed — LEGACY_PARITY §6.4(a):
   off the same provider, behind a preference on `ProductSetting` rather than
   `localStorage` — so it follows the person between devices, which is the one
   thing the legacy got wrong here.
+
+### One slice the third pass added, which did not exist before it
+
+**A structured-settings editor** — `S`, and it closes two live defects at once.
+`fixedCosts` (an array) and `defaultCarrierByChannel` (an object) are both
+declared in `SETTINGS_SCHEMA`, both validated, both READ by real code, and
+neither is reachable by any control: `/console/erp/automation` builds its
+controls by filtering `spec.type !== "object" && spec.type !== "array"`, which is
+**the right rule** and was chosen deliberately so a structured setting added
+later cannot render as a checkbox. The fix is a list editor and a map editor, not
+a change to that filter. Until it lands, every saved P&L record is missing its
+rent and the order form cannot preselect a channel's carrier. §8 N23, §7 P3, R20.
 
 ### And one slice out of order, if the defects above are judged urgent
 

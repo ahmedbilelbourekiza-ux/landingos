@@ -107,12 +107,17 @@ re-measure**: the whole board is due one full pass, at the level of workflows an
 not routes, before Tier 2 is called finished.
 
 **Verdict: TIER 1 IS COMPLETE, and the platform still cannot replace the legacy
-CRM in production — for one reason that is now the whole of it.** An operator can
-enter a phone order, find it, correct a product's cost, book a real parcel with
-ZR Express and hand a day's confirmed orders to a carrier with no API. What they
-still cannot do is **be told anything**: M-16's entire transport has no consumer,
-so nothing reaches a signed-in person until they reload. That is Tier 2's first
-slice and the last of §0b's six blockers.
+CRM in production — for two reasons that the third pass (§8) narrowed it to.** An
+operator can enter a phone order, find it, correct a product's cost, book a real
+parcel with ZR Express and hand a day's confirmed orders to a carrier with no
+API. What they still cannot do is **be told anything** — M-16's entire transport
+has no consumer, so nothing reaches a signed-in person until they reload — and
+they cannot **see the confirmation rate**, which is the number this business is
+managed by and which no platform screen computes anywhere.
+
+**§8 is the module-by-module third pass**, walking every department and every
+cross-cutting dimension. **§7 is the profit/loss calculator**, measured end to
+end. Read both before planning Tier 2 or Tier 3.
 
 The **domain layer** — the business rules, the ledger, the settlement chain, the
 assignment rules, the jobs — is at or above parity and in several places is
@@ -703,7 +708,7 @@ control**; status mappings can be added but never removed.
 
 ---
 
-## 3b. Second-pass findings — the sixteen the route inventory could not see, plus N17
+## 3b. Findings the route inventory could not see — the second pass (N1–N16), plus N17 (LP.5) and N18–N23 (the third pass, §8)
 
 Each of these has no missing endpoint behind it, which is why counting routes
 missed all of them.
@@ -726,6 +731,12 @@ missed all of them.
 | **N15** | **Price breakdown at order entry** | the new-order modal captures unit price, discount and shipping and DERIVES the total (`calcTotal()`), so a manually-entered order carries the same breakdown a storefront order does | `CreateOrder` accepts a flat `price` only. The four breakdown columns exist and are `MANAGER_WRITABLE` — reachable by a `PATCH` immediately after, never at creation | 🟡 |
 | **N16** | **Create/edit authorization agree on a field** | one rule per field | `price` and `carrierCode` are manager-only in `buildPatch` and **ungated in `CreateOrder`** — an agent may set a price on a new order and may not change it a second later. One of the two is wrong; deciding which is a authorization change, not a UI one | 🟡 |
 | **N14** | **Live follow-up countdown** | ticks every 15s in place, and re-sorts the moment a task goes overdue | a formatted due date, static | 🟡 |
+| **N18** | **The dashboard's reaction-time numbers** | total · confirmed **+ confirmation rate %** · pending · **never called** · revenue, plus an **overdue banner with a count** shown only when > 0 | pending · confirmed · in delivery · delivered · customers · revenue. The **confirmation rate is computed nowhere on the platform**, and the never-called count and the overdue banner are gone. In-delivery / delivered / customers are a genuine gain on the delivery side — this is a trade, and the four that went are the four with the shortest reaction time. Found in the third pass (§8.2). | 🟡 |
+| **N19** | **The two dashboards can never agree** | revenue = **confirmed** orders | revenue = **delivered** orders. The platform is RIGHT — under cash on delivery a phone confirmation is not a sale, which `settleOutcome` says in its own comment — and the numbers will therefore never match. Recorded because somebody comparing them will file a bug against the correct one. | 🔵 |
+| **N20** | **Seven analytics breakdowns from one function** | `tbl(title, keyFn, valueLabel)` called seven times — status · channel · product · wilaya · confirming agent · **marketer/source** · delivery status — each with orders / confirmed / conf-rate (with a bar) / canc-rate / revenue | none. Every one is a `groupBy` over `FulfillmentOrder`. **`marketer` and `source` are populated by the channel webhooks and read by nothing**, so ad attribution is uncomputable today. | 🔴 |
+| **N21** | **Order-row density, measured** | 14 facts: order number · **type badge** (draft/abandoned/normal) · **note badge with the note as its tooltip** · **fake badge** · **overdue tag with a pulsing dot** · store logo + name + brand + platform · date **and** time · customer · phone · wilaya + commune · **variant thumbnail** · qty · unit price · delivery cost · discount · total · status · agent · carrier | 8: reference · customer + phone · destination · product · total · status · call count · date. **The four that decide what to do next are all missing** — overdue, called, noted, flagged. The call count is the one equivalent and answers a weaker question: three failed calls and three callbacks look identical. | 🟡 |
+| **N22** | **The changed row flashes** | `hl-flash`, a 3s animation on the row or card that just moved — on the list and the board | the page re-renders and marks nothing. One CSS class plus knowing which id moved, which LP.7 will be carrying anyway. | 🔴 |
+| **N23** | **Two structured settings have no editor** | both edited on their own screens (`fixedCosts` on the calculator, the default-carrier map on Stores) | `fixedCosts` and `defaultCarrierByChannel` are declared, validated and READ by real code, and the automation screen correctly excludes `array`/`object` by type — so **both are unreachable by any control.** One missing pattern, not two bugs: `fixedCosts` means every saved P&L is missing its rent (§7 P3) and `defaultCarrierByChannel` means the order form cannot preselect a channel's carrier (R20). **S**, and it closes both. | 🔴 |
 | **N17** | **The scheduled poll still calls a carrier inside a transaction** | in-process `setInterval`, no transaction at all | LP.5 moved booking and the manual refresh out (D-LP.5.1); `pollCarriers` was left in, bounded by `POLL_BATCH = 25`. It writes nothing a person is waiting on, and **neither registered adapter reaches a network from there** — ZR declares `canPoll: false` and `planRefresh` refuses first. Moving it out means `runJob` stops receiving a bound `db` and opens a binding per parcel: a change to the job runner and both of its routes. **Grouped with Tier 3 slice 22 (the Ecom adapter)**, the first registered carrier that can be polled. | *(not a legacy gap — recorded so it is not rediscovered)* |
 
 **Not present in either system, so not a gap:** global keyboard shortcuts, and
@@ -1182,3 +1193,315 @@ forced by the measurements, not by preference:
 **16a is worth pulling forward on its own merits.** P2 is a defect in shipped
 code with no calculator anywhere near it: a product whose name carries a `™`
 reports zero revenue on `/console/erp/products` today.
+
+---
+
+## 8. Third pass — module by module, after Tier 1 — LP.0d
+
+**Measured 6 August 2026 from `20b52cb`,** with Tier 1 complete. **No code was
+written.**
+
+### 8.0 What this pass is for, and how it differs from the two before it
+
+The first pass counted **routes** and got five verdicts wrong. The second counted
+**workflows** and found fourteen features no route inventory could see. This one
+walks **module by module** and asks a different question again: *for this
+department, what does a person's day look like on each side?* — UI, UX,
+workflow, business rules, permissions, reports, calculations, filters, exports,
+search, background jobs, validation, edge cases, density, navigation,
+discoverability.
+
+**The honest limit of this pass, stated up front:** it re-measured every module
+listed below against source on both sides, but it did not re-derive the 117-row
+scoreboard in §1. Where a verdict changes, it says so here and the row is
+corrected in place. Where nothing changed, this section does not repeat §2.
+
+### 8.1 The module map
+
+Fifteen legacy screens, twelve platform ERP screens plus five platform-owned
+ones. The mapping is not one-to-one and the differences are the story.
+
+| Legacy screen | Platform | |
+|---|---|---|
+| `page-orders` | `/console/erp/orders` + `/orders/[id]` | 🟡 density, inline actions |
+| `page-clients` | `/console/erp/clients` | 🟡 list only |
+| `page-products` | `/console/erp/products` | ✅ (editing restored, LP.1) |
+| `page-suivi` | `/console/erp/follow-up` | ✅ |
+| `page-delivery` | `/console/erp/carriers` **+** `/shipments` | 🔵 split into two, and better for it |
+| `page-agents` | `/console/erp/agents` | 🟡 |
+| `page-settings` | `/console/erp/automation` **+** `/console/settings/*` | 🔵 the platform half is the shell's |
+| `page-export` | the export panel on `/orders` | 🔵 (LP.6 — carries the list's filters) |
+| `page-stores` | — | 🔴 **API exists, no screen, no nav item** |
+| `page-analytics` | — | 🔴 |
+| `page-alerts` | — | 🔴 |
+| `page-import` | — | 🔴 |
+| `page-calculator` | — | 🔴 (measured in §7) |
+| `page-ai-chat` | — | 🔴 **nav item → 404** |
+| `page-ai-settings` | — | 🔴 **same nav item** |
+| *(none)* | `/console/erp` overview | platform-only |
+| *(none — `agent.html`)* | `/console/erp/queue` | 🔵 the best screen on either side |
+
+**Five legacy screens have no platform equivalent at all**, and one platform nav
+item leads to a 404. That is the shape of what is left.
+
+### 8.2 Module by module
+
+#### Dashboard / overview — 🟡
+
+| | Legacy `renderStats` | Platform `/console/erp` |
+|---|---|---|
+| tiles | total · confirmed **+ rate %** · pending · **never called** · revenue | pending · confirmed · in delivery · delivered · customers · revenue |
+| alert | **an overdue banner with a count**, shown only when > 0 | — |
+| revenue basis | **confirmed** orders | **delivered** orders |
+| scoping | none (one company) | `orderScope` — an agent's tiles are their own queue |
+
+**N18 — the three numbers a call centre is actually run on are gone.** The
+**confirmation rate** is the headline figure of this entire business and no
+platform screen computes it anywhere. The **never-called count** and the
+**overdue banner** are the two that tell a supervisor to act right now. The
+platform gained in-delivery, delivered and customers, which are genuinely better
+on the delivery side — this is a trade, not a regression across the board, and
+the four that went are the four with the shortest reaction time.
+
+**N19 — the two dashboards will never agree, and that is deliberate.** Legacy
+revenue sums **confirmed** orders; the platform sums **delivered** ones. The
+platform is right — its own `settleOutcome` says "under cash on delivery a phone
+confirmation is not a sale", and a large fraction of confirmed parcels are
+refused at the door. Recorded because somebody comparing the two will file a bug
+against the correct one.
+
+#### Orders — 🟡, and the gap is density and clicks, not capability
+
+Every mutation exists (6.3b) and the list is now paged, filtered, searchable
+(LP.3), creatable (LP.4) and exportable (LP.6). What remains is what a row
+*says* and how many clicks a change costs.
+
+**N21 — 14 facts per row against 8, measured from `renderOrders`.** The legacy
+row carries: order number · **type badge** (draft / abandoned / normal) · **note
+badge, with the note itself as the tooltip** · **fake badge** · **overdue tag with
+a pulsing dot** · store logo + store name + brand + platform · **date and time**
+· customer · phone · wilaya + commune · **variant thumbnail** · qty · unit price
+· delivery cost · discount · total · status · agent · carrier. The platform row
+carries reference · customer + phone · destination · product · total · status ·
+call count · date.
+
+The four that decide *what to do next* are all in the missing set: **is it
+overdue, has anyone called, is there a note, is it flagged fake.** The call count
+is the platform's one equivalent and it answers a weaker question — three calls
+that all failed and three that ended in a callback look identical.
+
+**N22 — the changed row flashes for three seconds** (`hl-flash`, a 3s CSS
+animation) after any update, on the list and on the board. The platform
+re-renders the whole page and marks nothing. That is the *feedback* half of §6.2
+and it is one CSS class plus knowing which id moved — which the notification
+provider (LP.7) will be carrying anyway.
+
+**Two view modes, persisted.** `setView('list'|'board')` writes
+`localStorage.crm_view`; `renderBoardView` groups cards by status. The board is
+already recorded as Tier 4 #25; the *persistence* of a view choice is the part
+worth keeping in mind when it lands.
+
+**Inline row actions** (agent select, carrier select, express toggle, status
+select — three changes without leaving the list) remain N9, Tier 2 #8.
+
+#### Confirmation — the agent's working loop — 🔵
+
+`/console/erp/queue` is the best screen on either side and this pass does not
+change that. It was built from `agent.html` rather than from the API, which is
+exactly why. Tap-to-dial as a real `tel:` anchor, the eight result buttons, the
+five note types, the overdue badge against the tenant's own `alertMinutes`, a
+filter form that works without JavaScript, the parcel line and the follow-up
+panel.
+
+**What the agent PWA still has that the platform does not** is not a screen: it
+is **notifications, sounds and an offline shell** (N3, N4, N5, N13). An agent on
+an Algerian mobile network with a dropped connection sees nothing rather than a
+stale screen.
+
+#### Delivery, carriers and shipments — 🔵
+
+The legacy has one `page-delivery` mixing provider CRUD with the auto-shipment
+settings. The platform splits it: `/carriers` is configuration, `/shipments` is
+the parcel book, and the automation keys live on `/automation`. That split is
+better and should stay.
+
+At parity or above after LP.2 and LP.5: adapter refusal, the real ZR Express
+adapter, the poll as an idempotent job with `lastPolledAt`, settlement from the
+carrier's own event time, one ingest path for the poll and the webhook.
+
+**Still missing:** test connection · sync now · integration logs (R3, and
+`IntegrationLog` still has **zero callers** while the carriers screen renders
+`lastTestAt` / `lastTestOk`, columns nothing writes) · status-mapping delete
+(C7) · the Ecom adapter · `zr-webhook`.
+
+#### Inventory and products — ✅ / 🟡
+
+FIFO lots, the movement ledger, manual adjustment with a reason, low-stock,
+per-product sales summary and stock movement on confirm/cancel are all present
+and the platform's ledger discipline is stronger. Editing was restored in LP.1.
+
+**Still missing:** the variant editor, `niche` / `category` / `supplier` columns,
+and three create-form fields (R12). **And §7 P2** — `sales-summary` matches
+orders by exact product name, so one invisible character means a product reports
+zero revenue on a screen that already ships.
+
+#### Customers / clients / CRM — 🟡, and this is the largest untouched module
+
+The registry is a searchable, paged list and **nothing else**: no detail view, no
+order history per customer, no correction, no import, no export. The schema
+carries five `imported*` columns and `Client.address` for features that do not
+exist. In a COD business the customer registry is the asset repeat-purchase
+campaigns run on. R5, Tier 2 #10.
+
+The **filters** gap is specific: the legacy filters clients by search, sort,
+wilaya, product, niche, store, minOrders, minDelivered, since, until — ten. The
+platform offers search and a wilaya/commune option list. `niche` needs R12's
+column; the rest are columns that already exist.
+
+#### Follow-up — ✅ / 🟡
+
+Buckets, the scoped task list, resolution, tasks raised from carrier events,
+auto-assign on confirm, escalation and the overdue sweep are all present, and
+the jobs are idempotent where the legacy's were in-process timers.
+
+**Missing:** manual assignment (H6, R13) and the **live countdown** (N14) — the
+legacy ticks every 15s in place and re-sorts the moment a task goes overdue;
+the platform renders a formatted due date that is wrong a minute later.
+
+#### Agents, team and roles — ✅ / 🔵 / 🟡
+
+Roster, pay rates, job role, days off, suspend/reactivate, payroll and
+auto-suspend are present. The platform's role model is strictly better: five
+roles with a ceiling, `OWNER` immutable, suspension effective on the next
+request, and inviting a person is a platform action (M-02) rather than a product
+one.
+
+**Missing:** reset the missed-order counter (R14 — the counter only ever rises
+and auto-suspends at threshold, so this gets *worse with uptime*), manager
+password reset (R15), the payroll report modal (N11), and the per-agent
+suspicious-call column.
+
+#### Notifications — 🔴, unchanged and now the only Tier 1-shaped gap left
+
+The transport is complete and better than the legacy's — audience resolved at
+write time, one row per recipient, an SSE stream correct on ten instances with
+exact replay, Web Push, a service worker, 33 tests — and **nothing consumes any
+of it.** No bell, no badge, no panel, no toast, no sound, no live refresh. LP.7.
+
+#### Finance, statistics and reports — 🔴, measured in §7
+
+Charges, saved P&L records and proration exist. The calculator, `versions`,
+`aggregate`, a fixed-cost editor and the analytics screen do not — and §7 found
+that `sales-summary` cannot feed a calculator, `prorate-fixed` computes a
+different number, and `fixedCosts` has no editor so every saved record is missing
+its rent.
+
+**N20 — the analytics screen is one function called seven times.** `tbl(title,
+keyFn, valueLabel)` buckets the filtered orders by a key and renders orders /
+confirmed / **confirmation rate with a bar** / cancellation rate / revenue, over
+**status · delivery channel · product · wilaya · confirming agent ·
+marketer/source · delivery status**, above seven headline cards (total, conf
+rate, canc rate, revenue, **average order value**, delivered colis + their
+revenue, returned colis).
+
+Every one of those is a `groupBy` over `FulfillmentOrder` on the platform and
+none exists. The **marketer/source** breakdown is the one with no story at all:
+both columns are populated by the channel webhooks and nothing anywhere reads
+them, so ad attribution is uncomputable today.
+
+#### Automations and settings — ✅, with one shared defect
+
+`SETTINGS_SCHEMA` is at parity: **17 keys, identical types and bounds**, minus
+the legacy's internal backfill marker and with `defaultCarrierByStore` renamed
+`defaultCarrierByChannel`. The cross-field work-hours rule is present. The
+platform's are per-tenant, which the legacy had no concept of.
+
+**N23 — the two structured settings have no editor, and it is one missing
+pattern rather than two bugs.** The automation screen builds controls by
+filtering `spec.type !== "object" && spec.type !== "array"` — the right rule,
+chosen so a structured setting added later is excluded automatically instead of
+rendering as a checkbox. The consequence is that **both** structured keys are
+unreachable: `fixedCosts` (§7 P3 — every saved P&L missing its fixed costs) and
+`defaultCarrierByChannel` (R20 — the order form cannot preselect a channel's
+carrier). One slice that adds a list editor and a map editor closes both.
+
+#### Sales channels — 🔴
+
+Full CRUD API, contract tests, **no screen and no nav item**. A tenant cannot
+connect a Shopify store through the console at all, and the webhook URL is
+generated on create and never shown again. Also missing: the platform adapter
+registry, per-platform parsing (`shopify` HMAC, `lightfunnels`), test connection,
+logs, and three inbound webhooks (lead-capture, product, Shopify HMAC). R8, R19.
+
+#### AI — 🔴, and one item is a defect rather than a gap
+
+`ai/providers` and `ai/agents` are GET+POST only; chat, chat stream and deep
+insights are deliberate 501s (deployment configuration, gated first, correctly
+documented). **The manifest ships an `ai` nav item and there is no
+`console/erp/ai` page, so an owner clicking AI in their own product's navigation
+gets a 404** — and `screens.test.ts` enumerates the screens it knows about and
+does not include it, so nothing catches it. A broken nav item in a shipped
+product is a defect regardless of what sits behind it. **S** to fix: a screen
+that manages providers and agents and states the assistant's status.
+
+#### Import and printing — 🔴
+
+CSV import is a whole screen: a drop zone, a five-row preview table, and dedup by
+external id. Label printing opens a window and prints a table of the selected
+orders. Neither exists. R17, and LP.6 deliberately did not pull printing forward.
+
+### 8.3 The dimensions that cut across every module
+
+| Dimension | Where it stands after Tier 1 |
+|---|---|
+| **Search** | ✅ Orders, clients and products have boxes (LP.3) and the API's `search` spans reference, client, phone, normalised phone, product, external name and tracking number — richer than the legacy's three fields. |
+| **Filters** | ✅ for orders (nine, all with controls). 🟡 for clients (two of ten). 🔴 for shipments and follow-up beyond the basics. |
+| **Bulk actions** | 🟡 4 of 8: status, delete, assign, export (LP.6). Missing: classify, assignFollowup, **createShipments** — the highest-volume manager action there is — and sendToDelivery. |
+| **KPIs** | 🔴 The confirmation rate, cancellation rate, average order value and every per-agent/per-wilaya rate are computed nowhere. |
+| **Charts** | 🔴 Neither system has a chart. The legacy's "bar" is a div width inside a table cell. **Not a gap** — recorded so nobody builds a charting layer to reach parity. |
+| **Density** | 🟡 8 facts against 14, and the four that set priority are the missing ones (N21). |
+| **Navigation** | 🔵 The platform's is registry-driven, permission-filtered and product-agnostic; the legacy's is a hardcoded list. **One live 404.** |
+| **Discoverability** | 🔵 after LP.3/LP.6 — filters and exports are controls now, not query strings. 🔴 for the five modules with no screen. |
+| **Keyboard shortcuts** | **Neither system has any.** Re-confirmed this pass: the only key handlers on either side are Enter-to-submit on three inputs. Not a gap. |
+| **Context menus** | **Neither system has any.** Not a gap. |
+| **Productivity tools** | 🟡 The clicks table in §6.1 still holds for reassign and carrier changes (2 → 4); entering an order, finding one and reaching row 60 are all fixed. |
+| **Mobile** | 🟡 The legacy has a list/board switch persisted in `localStorage` and a mobile-first agent PWA; the platform's queue screen is the mobile surface and the manager tables are not card-switched. **Not measured against a real device** — nothing is deployed. |
+| **Offline** | 🔴 N13, and the decision is re-opened in §6.4(c): a shell-only cache leaks nothing and is the difference between a dropped connection showing a stale screen and showing nothing. |
+| **Background jobs** | 🔵 All three of the legacy's in-process loops are idempotent jobs driven by a worker, plus the carrier poll. One documented limitation (N17). |
+| **Validation** | 🔵 Zod at every edge, named refusal codes, and a settings validator at parity. The platform refuses by name where the legacy dropped fields silently (D-LP.1). |
+| **Permissions** | 🔵 Three gates in order, entitlement first, SENSITIVE on the customer registry and the books, and a control rendered only where the API accepts it (D-06.2). The legacy has two roles. |
+| **Shared components** | 🔵 Eighteen in `components/console` + eleven ERP write surfaces, all typed, all taking translated strings as props. The legacy has none — every screen re-renders HTML strings. |
+
+### 8.4 What this pass changes
+
+**Nothing in §2 is downgraded.** Three rows are corrected upward by Tier 1
+(B14 export ✅, C3 partial→ZR done, B1/B3 closed) and are already amended in
+place. The new findings are **N18–N23**, all recorded in §3b.
+
+**The verdict is unchanged and its cause has narrowed to one thing.** After six
+slices an operator can enter a phone order, find it, correct a product's cost,
+book a real parcel and hand a day's orders to a carrier. They still cannot **be
+told anything**, and they still cannot see the confirmation rate — the number the
+business is managed by.
+
+### 8.5 The roadmap after this pass
+
+Tier 2 and Tier 3 stand as ordered, with three adjustments the measurements
+force:
+
+1. **LP.7 (notification provider) stays first.** It is the last of §0b's six
+   blockers and every "live" behaviour hangs off it.
+2. **Analytics (Tier 3 #13) is worth more than its tier says.** The confirmation
+   rate is not a report — it is the number a call centre is run on, it is absent
+   from the dashboard as well as from the missing screen, and every breakdown is
+   a `groupBy` over one table. It carries K1 (the four missing headline figures)
+   with it.
+3. **One slice should be added and it did not exist before this pass: a
+   structured-settings editor.** `fixedCosts` and `defaultCarrierByChannel` are
+   both declared, validated, read by real code and unreachable by any control.
+   It is **S**, it closes half of §7 P3 and all of R20, and until it lands every
+   saved P&L record is missing its fixed costs.
+
+And the two defects §7 found remain the strongest candidates for jumping the
+queue, because both are wrong answers on screens that already ship: the exact
+product-name match (§7 P2) and the fixed-cost editor above.

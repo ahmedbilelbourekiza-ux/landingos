@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.0c: the profit/loss calculator, measured*
+**Branch:** `master` · **Last commit:** *LP.0d: the third pass — module by module*
 **Working tree:** clean, all work committed.
 
 ---
@@ -570,6 +570,40 @@ the notification provider (LP.7)**, which is the largest single piece of dead
 machinery in the repo: M-16's whole transport (storage, audience, SSE with exact
 replay, Web Push, service worker, 33 tests) has **no consumer in the console**.
 An operator is still never told anything.
+
+### LP.0d — the third pass, module by module (`LEGACY_PARITY` §8)
+
+Every department and every cross-cutting dimension walked on both sides with
+Tier 1 complete. No code changed. **Five legacy screens still have no platform
+equivalent** — Stores, Analytics, Alerts, Import, the profit calculator — and
+**one platform nav item leads to a 404** (`ai`). Six findings, N18–N23.
+
+**N18 is the one that matters: the confirmation rate is computed nowhere on the
+platform.** The legacy leads its dashboard with it and its analytics screen
+recomputes it across seven dimensions; it is the number a COD call centre is
+managed by. The dashboard also lost the never-called count and the overdue
+banner — the two with the shortest reaction time — while gaining in-delivery,
+delivered and customers. A trade, not a plain regression, and the four that went
+are the four somebody acts on within the hour.
+
+**N19, so nobody "fixes" the right answer:** legacy revenue sums CONFIRMED
+orders, the platform sums DELIVERED ones. The platform is correct (a COD
+confirmation is not a sale) and the two will never agree.
+
+**N20** `marketer` and `source` are written by the channel webhooks and read by
+nothing — **ad attribution is uncomputable today**. **N21** the order row carries
+8 facts against 14, and the four missing are exactly the four that decide what to
+do next: overdue, called, noted, flagged. **N22** the legacy flashes the changed
+row for 3s; the platform marks nothing.
+
+**N23 produces new work.** `fixedCosts` and `defaultCarrierByChannel` are
+declared, validated and read by real code, and the automation screen excludes
+`array`/`object` settings **by type — the right rule**, so both are unreachable
+by any control. One missing pattern: a list editor and a map editor, **S**,
+closing half of §7 P3 and all of R20.
+
+**Confirmed as NOT gaps, twice now:** neither system has keyboard shortcuts,
+context menus, or a chart of any kind.
 
 ### LP.0c — the P&L calculator measured, and two defects it found
 

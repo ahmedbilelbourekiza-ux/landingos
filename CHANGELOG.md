@@ -12,6 +12,94 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.0d The third pass — module by module, after Tier 1
+
+[Opus 5]
+Date: 6 August 2026
+Summary: `LEGACY_PARITY.md` **§8** is new — every department and every
+cross-cutting dimension walked on both sides, with Tier 1 complete. **No code was
+written.** Six findings (**N18–N23**), one new slice that did not exist before,
+and the verdict narrowed from "the consumer layer" to two named things.
+
+#### A third instrument, because the first two answered different questions
+
+The first pass counted **routes** and got five verdicts wrong. The second counted
+**workflows** and found fourteen features no route inventory could see. This one
+asks, per module: *what does a person's day look like on each side?*
+
+**Five legacy screens still have no platform equivalent** — Stores, Analytics,
+Alerts, Import, the profit calculator — and **one platform nav item leads to a
+404** (`ai`). That is the shape of what is left, and it is smaller than the
+scoreboard suggests, because the twelve screens that do exist are at or above
+parity on rules, permissions, validation and jobs.
+
+#### The finding that matters most
+
+**N18 — the confirmation rate is computed nowhere on the platform.** The legacy
+dashboard leads with it; its analytics screen recomputes it per status, channel,
+product, wilaya, agent, marketer and delivery status. It is the number a COD call
+centre is *managed by* — and the platform has neither the tile nor the screen.
+Alongside it the dashboard lost the **never-called count** and the **overdue
+banner**, which are the two with the shortest reaction time. The platform gained
+in-delivery, delivered and customers, so this is a trade rather than a plain
+regression — but the four that went are the four somebody acts on within the
+hour.
+
+**N19, recorded so nobody "fixes" the right answer:** legacy revenue sums
+**confirmed** orders and the platform sums **delivered** ones. The platform is
+correct — under cash on delivery a phone confirmation is not a sale, which
+`settleOutcome` says in its own comment — and the two dashboards will therefore
+never agree.
+
+#### The rest
+
+**N20** the analytics screen is one function called seven times, and
+`marketer`/`source` are written by the channel webhooks and read by nothing, so
+**ad attribution is uncomputable today**. **N21** the order row: 14 facts against
+8, measured field by field, and the four missing ones are exactly the four that
+decide what to do next — overdue, called, noted, flagged. **N22** the changed row
+flashes for three seconds; the platform re-renders and marks nothing.
+
+**N23 is the one that produces new work.** `fixedCosts` and
+`defaultCarrierByChannel` are both declared, validated and read by real code, and
+the automation screen excludes `array`/`object` settings **by type — which is the
+right rule**, chosen deliberately so a structured setting added later cannot
+render as a checkbox. The consequence is that both are unreachable by any
+control. It is one missing pattern rather than two bugs: a list editor and a map
+editor, **S**, closing half of §7 P3 and all of R20.
+
+#### Three things confirmed as NOT gaps
+
+**Keyboard shortcuts and context menus: neither system has any** — re-confirmed a
+second time, because a reader arriving at a parity report looks for them. The
+only key handlers on either side are Enter-to-submit on three inputs. **And
+neither system has a chart**: the legacy's "bar" is a div width inside a table
+cell. Recorded so nobody builds a charting layer to reach parity.
+
+#### What it changes in the roadmap
+
+LP.7 (the notification provider) stays first. **Analytics is worth more than its
+Tier 3 position says** — the confirmation rate is absent from the dashboard as
+well as from the missing screen, and every breakdown is a `groupBy` over one
+table. And a **structured-settings editor** is added as a slice that did not
+exist before this pass.
+
+#### Files
+`LEGACY_PARITY.md` (§8 new; N18–N23 added to §3b, which is retitled as the single
+findings index; §1's verdict narrowed), `PROJECT_STATE.md`, `NEXT_STEPS.md`,
+`CHANGELOG.md`.
+
+#### Migration
+None.
+
+#### Risk
+None — no code changed. What it removes is the risk of Tier 2 being planned
+against §2's scoreboard, which counts features rather than departments and does
+not say that five whole screens are absent or that the business's headline metric
+is computed nowhere.
+
+---
+
 ### LP.0c The Profit/Loss calculator, measured — and two defects it found
 
 [Opus 5]
