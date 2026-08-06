@@ -57,6 +57,12 @@ export const erp: ProductManifest = {
     // Sensitive (D-05.1): this is every customer's name, phone number, address
     // and lifetime spend. No role grants it implicitly.
     'erp:clients:read',
+    // LP.10. Sensitive for the same reason and by the same rule: correcting a
+    // customer's address changes where a courier drives, and somebody who may
+    // not READ the registry must not be able to WRITE it. It buys the four
+    // fields with no reliable automatic source — name, wilaya, commune,
+    // address — and never a lifetime counter.
+    'erp:clients:write',
     'erp:shipments:write',
     // Sensitive (D-05.1): the company's profit and loss.
     'erp:finance:read',

@@ -223,9 +223,26 @@ was reachable any other way:
    advances `TenantSequence`. `nextReference` now heals itself from the highest
    reference already in use, counting only references it could have minted.
 
-**#8 and #9 are DONE.** The next slices are Tier 2 #10 and #11 — and #11
+**#8, #9 and #10 are DONE.** The next Tier 2 slice is #11 — which
 (sound + desktop notification preferences on `ProductSetting`) hangs directly off
 this provider.
+
+### LP.10 — DONE. The registry stops being read-only (R5, 3 of 4)
+
+**Implemented and verified.** `test/erp/registry.test.ts` is new at **21/21**;
+access 84 → **87**. Detail route + screen, correction, export, and the filters
+from one to eight.
+
+**Three things to carry forward:**
+
+- **`erp:clients:write` is SENSITIVE.** Anything else that writes customer PII
+  should use it rather than inventing a second gate.
+- **`clientHistoryPhones` returns `null` vs `[]` and they mean different
+  things.** Any future filter that correlates through order history must keep
+  that distinction or it silently ignores itself.
+- **The import (R5's fourth feature) is slice 19** and shares its parser with the
+  order import. `importedSource`/`importedAt` and the five `imported*` counters
+  are already rendered by the detail screen, so the writer has a reader waiting.
 
 ### LP.9 — DONE. The bulk bar finishes the job (R7, half of R13)
 
@@ -346,7 +363,8 @@ order **[DONE LP.4]** · the real ZR adapter **[DONE LP.5]** · order export
 **[DONE LP.6]**. **TIER 1 IS COMPLETE.**
 **Tier 2 — operator productivity:** (7) the notification provider **[DONE LP.7]** ·
 (8) inline row actions + list density **[DONE LP.8]** · (9) bulk actions
-completed **[DONE LP.9]** · (10) client detail/edit/export · (11) sound + desktop notification
+completed **[DONE LP.9]** · (10) client detail/edit/export **[DONE LP.10]** ·
+(11) sound + desktop notification
 preferences · (12) agent alerts, missed-counter reset, manager password reset,
 payroll report, audit view **[DONE LP.12]**.
 **Tier 3 — business value:** (13) analytics **[DONE LP.13]** ·

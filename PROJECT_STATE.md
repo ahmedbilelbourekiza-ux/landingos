@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.9: the bulk bar finishes the job*
+**Branch:** `master` · **Last commit:** *LP.10: the registry stops being read-only*
 **Working tree:** clean, all work committed.
 
 ---
@@ -16,14 +16,14 @@ anything else.
 **Second pass, 6 August 2026 (from `9d1f887`): 115 features compared —
 52 identical · 6 improved · 18 partial · 39 missing.**
 
-**As of 7 August 2026, TIER 1 IS COMPLETE and THIRTEEN of the twenty-seven
-roadmap slices have landed** — LP.1–LP.9, LP.12, LP.13, LP.14, LP.16, LP.17.
+**As of 7 August 2026, TIER 1 IS COMPLETE and FOURTEEN of the twenty-seven
+roadmap slices have landed** — LP.1–LP.10, LP.12, LP.13, LP.14, LP.16, LP.17.
 Every production blocker §0b named is closed, as is every "computed, stored and
 shown nowhere" defect the three passes found.
 
-**Tier 2: 7, 8, 9 and 12 are in; 10 and 11 are not.**
+**Tier 2: 7, 8, 9, 10 and 12 are in; only 11 is not.**
 **Tier 3 is a third done: 13, 14, 16 and 17 are in; 15, 18, 19, 20, 21 and 22
-are not.** Parity is reached at the end of Tier 3, so **eight roadmap slices
+are not.** Parity is reached at the end of Tier 3, so **seven roadmap slices
 remain** — the full list is in `LEGACY_PARITY.md` §4 and every one still carries
 its own detail card in §3.
 
@@ -75,6 +75,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.12** missed-counter reset, the suspicious flag, payroll, the order audit trail, password reset | R11, R14, R15, N11, N12 | **DONE** — screens 130→140, team 56→62, access 82→84 |
 | **LP.8** inline row actions + list density + the changed-row flash | N9, N10, N21, N22 | **DONE** — screens 140→148 |
 | **LP.9** bulk classify / assignFollowup / createShipments / sendToDelivery | R7, half of R13 | **DONE** — orders 40→58, screens 148→152 |
+| **LP.10** client detail / correction / export / eight filters | R5 (3 of 4) | **DONE** — registry 21 (new), access 84→87 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -463,6 +464,7 @@ domain at a time.
 | Surface | Contract |
 |---|---|
 | orders (+ stats, **the seven bulk actions** LP.9, 6 per-order routes), clients, settings, audit | orders 58/58 · validation 29/29 · listing 30/30 |
+| the customer registry — one record, its history, its correction and its file (LP.10) | registry 21/21 |
 | products (incl. **editing**, LP.1 and the **normalised sales-summary match**, LP.16a), inventory, stock lots (incl. stock on confirm/cancel), agents, payroll (incl. `periodType`, LP.16b) | catalog 55/55 |
 | carriers (incl. **adapter refusal** LP.2, the **real ZR Express adapter** LP.5, and **test / sync / the integration log** LP.14), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 77/77 |
 | sales channels, inbound webhooks, AI, follow-up | integrations 29/29 |
@@ -475,9 +477,9 @@ domain at a time.
 | the P&L department — proration, fixed costs, versions, roll-up, the calculator screen (LP.16) | finance 38/38 + calc 20/20 |
 | the confirmation rate and six other breakdowns, plus the dashboard's reaction-time figures (LP.13) | analytics 19/19 |
 | the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
-| every surface, gated | access 84/84 |
+| every surface, gated | access 87/87 |
 
-**712/712** across SIXTEEN ERP contract files, each verified on its own, plus
+**736/736** across SEVENTEEN ERP contract files, each verified on its own, plus
 **91/91** platform contract (team 62 · billing 19 · signup 10) and **20/20** in
 `test/calc.test.ts` — the one PURE suite, which needs no server at all. Running
 several contract files back to back still trips the documented Neon connection
@@ -743,6 +745,40 @@ order read did not return them; the detail showed a bare pill and the list a bar
 badge. Marking an order fake is an accusation — it removes the order from the
 confirmed count and names a colleague — so "why" and "who says" are exactly the
 parts somebody disputes.
+
+### LP.10 — the customer registry stops being read-only
+
+**R5, three of its four features.** The registry is what repeat-purchase
+campaigns run on, and it was ONE SEARCHABLE LIST: no detail, no correction, no
+export, eight of the legacy's twelve filters missing — while the schema carried
+five `imported*` columns and an `address` for features that did not exist.
+
+**The rule the slice is built around: a counter is the sum of events.** `PATCH`
+writes four fields (`name`, `wilaya`, `commune`, `address`) and REFUSES every
+lifetime counter and every `imported*` column BY NAME (D-LP.1). `phone` is
+refused too and that is the load-bearing one — it is the identity key and every
+order joins to this record BY VALUE, so editing it would collide with another
+customer or silently detach the record from its own history.
+
+**`erp:clients:write` is new and SENSITIVE** (`*:clients:write` in
+`packages/auth/src/rbac.ts`). Correcting an address changes where a courier
+drives, and a role that could write the registry without reading it would be an
+incoherent grant.
+
+**Two of the eight filters are properties of the customer's ORDERS**, not of the
+client row — a customer buys many products from many channels over a lifetime.
+`clientHistoryPhones` resolves them to a phone set first, and `null` (no filter
+asked for) is deliberately different from `[]` (the filter matched no orders):
+collapsing them would return the whole registry for a filter that matched
+nothing.
+
+**`niche` is absent on purpose** — it needs `CatalogProduct.niche`, which slice
+18 adds. A filter over a column that does not exist is a control matching
+nothing.
+
+**The detail screen does not attach a parcel timeline per history row.** The
+legacy did, at two extra queries PER ORDER; forty orders was eighty round trips
+on a screen somebody opens to read a phone number.
 
 ### LP.14 — carriers: three columns nobody wrote, and a log nobody read
 
@@ -1607,7 +1643,7 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 712 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 736 | all pass against a running server |
 | `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
 | `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
@@ -1615,7 +1651,7 @@ fail without it, so check the counts, not just the exit code.
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1368** | green per suite |
+| **Total** | **1392** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

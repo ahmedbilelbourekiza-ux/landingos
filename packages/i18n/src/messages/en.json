@@ -130,7 +130,18 @@
       "average": "Average order",
       "lastOrder": "Last order",
       "none": "No customers yet",
-      "imported": "Imported"
+      "imported": "Imported",
+      "cancelled": "Cancelled",
+      "history": "Order history",
+      "minOrders": "Min orders",
+      "minDelivered": "Min delivered",
+      "editPanel": "Correct this record",
+      "editHint": "Only these four can be corrected by hand. Every lifetime counter is the sum of order events and cannot be edited.",
+      "name": "Name",
+      "address": "Address",
+      "exportTitle": "Export customers",
+      "exportHint": "The file contains exactly what the filters above select.",
+      "exportDownload": "Download CSV"
     },
     "products": {
       "title": "Products",

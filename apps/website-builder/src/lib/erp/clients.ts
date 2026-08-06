@@ -3,6 +3,9 @@ import "server-only";
 import { Prisma, type TenantDb } from "@landingos/db";
 
 import { normalizePhone } from "./phone";
+// Directive-free, like the same import in orders.ts: a control descriptor with
+// no behaviour, nameable from a server module and from the bar alike.
+import type { FilterField as FilterFieldSpec } from "@/components/console/filter-field";
 
 /* =============================================================================
  * The permanent customer registry.
@@ -185,4 +188,237 @@ export function withDerived<T extends { totalSpent: Prisma.Decimal; deliveredOrd
       ? client.totalSpent.dividedBy(client.deliveredOrders)
       : new Prisma.Decimal(0),
   };
+}
+
+/* =============================================================================
+ * LP.10 / R5 — the registry stops being read-only
+ *
+ * Until this slice the customer registry was ONE SEARCHABLE LIST and nothing
+ * else: no detail, no correction, no export, and eight of the legacy's twelve
+ * filters missing. It is the most valuable asset in a COD business — repeat
+ * purchase campaigns run on it — and the schema was already carrying five
+ * `imported*` columns and an `address` for features that did not exist, which is
+ * a standing invitation to assume they work.
+ * ========================================================================== */
+
+/**
+ * Every filter the registry accepts, in the module that validates them.
+ *
+ * The same rule as `orderFilters` (D-LP.3): a screen with its own list of
+ * fields is a second vocabulary that goes stale the moment a filter is added,
+ * and it shows up not as an error but as a capability nobody can find.
+ *
+ * TWO OF THE LEGACY'S ARE NOT HERE, each for a stated reason:
+ *
+ *   - `niche` needs `CatalogProduct.niche`, which is not a column on this
+ *     platform yet (R12, roadmap slice 18). A filter over a field that does not
+ *     exist is a control that matches nothing.
+ *   - `sort` is a separate concern and stays where sorting belongs.
+ *
+ * The legacy's `store` IS here, under the platform's own name
+ * `salesChannelName`, because that is the denormalised column the channel
+ * webhooks write.
+ *
+ * `product` and `salesChannelName` correlate against the customer's ENTIRE order
+ * history rather than a column on the client, because a customer buys many
+ * products from many channels over a lifetime and no single value on the client
+ * row could be right. The legacy joined `orders.phoneNormalized = clients.phone`
+ * and so does this — see `clientHistoryPhones`.
+ */
+export function clientFilters(params: URLSearchParams): Prisma.ClientWhereInput {
+  const get = (k: string) => params.get(k)?.trim() || undefined;
+  const and: Prisma.ClientWhereInput[] = [];
+
+  const search = get("search");
+  if (search) and.push(clientFilter(search));
+
+  const wilaya = get("wilaya");
+  if (wilaya) and.push({ wilaya });
+
+  const minOrders = Number(get("minOrders"));
+  if (Number.isFinite(minOrders) && minOrders > 0) and.push({ totalOrders: { gte: minOrders } });
+
+  const minDelivered = Number(get("minDelivered"));
+  if (Number.isFinite(minDelivered) && minDelivered > 0) {
+    and.push({ deliveredOrders: { gte: minDelivered } });
+  }
+
+  // Bounded on `lastOrderAt`, as the legacy did: "customers who have bought in
+  // the last thirty days" is the campaign question. `createdAt` would answer
+  // "customers whose RECORD was created", which is a different set entirely for
+  // a registry that can be populated by import.
+  const since = get("since");
+  const until = get("until");
+  if (since || until) {
+    and.push({
+      lastOrderAt: {
+        ...(since ? { gte: clientBound(since) } : {}),
+        ...(until ? { lte: clientBound(until, true) } : {}),
+      },
+    });
+  }
+
+  return and.length === 0 ? {} : and.length === 1 ? and[0] : { AND: and };
+}
+
+/** Both shapes the two callers send, exactly as `orderFilters` accepts. */
+function clientBound(value: string, endOfDay = false): Date {
+  if (/^\d+$/.test(value)) return new Date(Number(value));
+  const [y, m, d] = value.split("-").map(Number);
+  if (!y || !m || !d) return new Date(Number(value));
+  return endOfDay ? new Date(y, m - 1, d, 23, 59, 59, 999) : new Date(y, m - 1, d);
+}
+
+/**
+ * The order-history filters, which cannot be expressed on `Client` at all.
+ *
+ * `product` and `salesChannelName` are properties of a customer's ORDERS, and
+ * `Client` carries no relation to `FulfillmentOrder` — the join is by
+ * normalised phone, which Prisma cannot express as a relation filter. So they
+ * resolve to a phone set first and are ANDed into the client query.
+ *
+ * Returns `null` when neither is asked for. The caller must not add a phone
+ * predicate over every number in the tenant just because it could.
+ */
+export async function clientHistoryPhones(
+  db: TenantDb,
+  params: URLSearchParams,
+): Promise<string[] | null> {
+  const get = (k: string) => params.get(k)?.trim() || undefined;
+  const product = get("product");
+  const channel = get("salesChannelName");
+  if (!product && !channel) return null;
+
+  const rows = await db.fulfillmentOrder.findMany({
+    where: {
+      ...(product ? { product: { contains: product, mode: "insensitive" } } : {}),
+      ...(channel ? { salesChannelName: channel } : {}),
+      phoneNormalized: { not: null },
+    },
+    distinct: ["phoneNormalized"],
+    select: { phoneNormalized: true },
+  });
+  return rows.map((r) => r.phoneNormalized!).filter(Boolean);
+}
+
+/**
+ * The controls the client filter bar offers.
+ *
+ * Beside `clientFilters` for the reason `orderFilterFields` is beside
+ * `orderFilters`, and the test asserts it in both directions: every offered
+ * control names a key `clientFilters` (or `clientHistoryPhones`) reads, and each
+ * offered value narrows a real list.
+ */
+export function clientFilterFields(opts: {
+  readonly t: (key: string) => string;
+  readonly wilayas: readonly { value: string; label: string }[];
+  readonly channels: readonly { value: string; label: string }[];
+}): FilterFieldSpec[] {
+  const { t } = opts;
+  const fields: FilterFieldSpec[] = [
+    { name: "search", label: t("erp.filters.search"), kind: "text", wide: true },
+    { name: "wilaya", label: t("erp.orders.wilaya"), kind: "select", options: opts.wilayas },
+    { name: "product", label: t("erp.orders.product"), kind: "text" },
+  ];
+  if (opts.channels.length) {
+    fields.push({
+      name: "salesChannelName",
+      label: t("erp.row.channel"),
+      kind: "select",
+      options: opts.channels,
+    });
+  }
+  fields.push(
+    { name: "minOrders", label: t("erp.clients.minOrders"), kind: "text" },
+    { name: "minDelivered", label: t("erp.clients.minDelivered"), kind: "text" },
+    { name: "since", label: t("erp.filters.from"), kind: "date" },
+    { name: "until", label: t("erp.filters.to"), kind: "date" },
+  );
+  return fields;
+}
+
+/**
+ * What a manager may correct by hand, and nothing else.
+ *
+ * THE LIFETIME COUNTERS ARE NOT HERE AND MUST NEVER BE. They move only through
+ * `syncClientFromOrder`, one order event at a time; a hand-edited
+ * `deliveredOrders` is a number with no events behind it, and this whole
+ * registry rests on the claim that every counter is the sum of things that
+ * actually happened. Neither are the `imported*` columns: an import is a record
+ * of what a spreadsheet said, and editing it makes it a record of nothing.
+ *
+ * `phone` is absent too, and that is the load-bearing one — it is the identity
+ * key (`@@unique([tenantId, phone])`). Editing it would either collide with
+ * another customer or silently detach this record from every order carrying the
+ * old number, because the join is by value.
+ */
+const CLIENT_EDITABLE = ["name", "wilaya", "commune", "address"] as const;
+
+/** A named 422, never a silent drop — the D-LP.1 rule. */
+export const CLIENT_UNEDITABLE = [
+  "phone", "phoneDisplay",
+  "totalOrders", "confirmedOrders", "cancelledOrders", "deliveredOrders", "totalSpent",
+  "importedTotalOrders", "importedConfirmedOrders", "importedCancelledOrders",
+  "importedDeliveredOrders", "importedTotalSpent", "importedSource", "importedAt",
+] as const;
+
+export interface ClientPatchResult {
+  readonly data: Prisma.ClientUpdateInput;
+  /** A field the caller believed they were setting. Refused by name. */
+  readonly refused: string | null;
+}
+
+export function buildClientPatch(body: unknown): ClientPatchResult {
+  const input = (body ?? {}) as Record<string, unknown>;
+
+  // Refused rather than dropped, for D-LP.1's reason: a caller sending
+  // `totalSpent` believes they are correcting a customer's lifetime spend, and
+  // a 200 that does nothing is worse than a refusal that names the field.
+  for (const field of CLIENT_UNEDITABLE) {
+    if (input[field] !== undefined) return { data: {}, refused: field };
+  }
+
+  const data: Record<string, unknown> = {};
+  for (const field of CLIENT_EDITABLE) {
+    const value = input[field];
+    if (value === undefined) continue;
+    data[field] = value === null ? null : String(value).trim();
+  }
+  return { data: data as Prisma.ClientUpdateInput, refused: null };
+}
+
+/**
+ * One customer's complete order history.
+ *
+ * Joined by normalised phone, which is the same key `syncClientFromOrder` uses
+ * to maintain the counters — so the history and the counters cannot describe
+ * different sets of orders.
+ *
+ * The parcel timeline the legacy attached per order is deliberately NOT here.
+ * Its version issued two extra queries PER ORDER (the carrier name and the event
+ * list), so a customer with forty orders cost eighty round trips on a screen
+ * somebody opens to read a phone number. The delivery outcome and the tracking
+ * number are already on the order row, and the order detail — one click away —
+ * has the full timeline.
+ */
+export const CLIENT_HISTORY_SELECT = {
+  id: true, reference: true, createdAt: true,
+  product: true, productVariant: true, quantity: true, price: true,
+  status: true, deliveryOutcome: true, deliveryStatus: true, trackingNumber: true,
+  carrierCode: true, agentUserId: true, followupUserId: true,
+  salesChannelName: true, platform: true, brand: true,
+} satisfies Prisma.FulfillmentOrderSelect;
+
+export async function clientOrderHistory(db: TenantDb, phone: string, take = 200) {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return [];
+  return db.fulfillmentOrder.findMany({
+    where: { phoneNormalized: normalized },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    // Bounded. A registry entry for a wholesaler can carry hundreds of orders
+    // and this is a screen, not an export — the export is the unbounded answer
+    // and it has its own named limit.
+    take,
+    select: CLIENT_HISTORY_SELECT,
+  });
 }

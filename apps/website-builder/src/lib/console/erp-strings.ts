@@ -13,6 +13,8 @@ import type {
 import type { CalculatorStrings } from "@/components/console/erp/profit-calculator";
 import type { AiStrings } from "@/components/console/erp/ai-write";
 import type { RowActionStrings } from "@/components/console/erp/order-row-actions";
+import type { ClientEditStrings } from "@/components/console/erp/client-write";
+import type { ClientExportStrings } from "@/components/console/erp/client-export";
 
 /* =============================================================================
  * The ERP's write-control labels, resolved once per screen.
@@ -398,5 +400,35 @@ export function rowActionStrings(t: (key: string) => string): RowActionStrings {
     noCarrier: t("erp.row.noCarrier"),
     express: t("erp.row.expressShort"),
     quickActions: t("erp.row.quickActions"),
+  };
+}
+
+/**
+ * The customer-record correction form's labels — LP.10.
+ *
+ * `editHint` is not decoration. The counters sit directly above this form and
+ * look editable; saying they are not, on the page, is cheaper than letting an
+ * operator discover it as a 422 (and the route does refuse them by name).
+ */
+export function clientEditStrings(t: (key: string) => string): ClientEditStrings {
+  return {
+    saving: t("common.saving"),
+    panel: t("erp.clients.editPanel"),
+    name: t("erp.clients.name"),
+    wilaya: t("erp.orders.wilaya"),
+    commune: t("erp.orders.commune"),
+    address: t("erp.clients.address"),
+    save: t("common.save"),
+    hint: t("erp.clients.editHint"),
+  };
+}
+
+/** The registry export link's labels — LP.10. */
+export function clientExportStrings(t: (key: string) => string): ClientExportStrings {
+  return {
+    title: t("erp.clients.exportTitle"),
+    hint: t("erp.clients.exportHint"),
+    download: t("erp.clients.exportDownload"),
+    inView: t("erp.export.inViewCount"),
   };
 }

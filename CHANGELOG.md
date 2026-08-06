@@ -12,6 +12,129 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.10 The customer registry stops being read-only
+
+[Opus 5]
+Date: 7 August 2026
+Summary: R5 (three of its four features) — the detail route and screen, the
+correction, the export, and the eight filters that were missing.
+`test/erp/registry.test.ts` is new at **21/21**; access 84 → **87**.
+
+#### R5 — the most valuable asset in the business could be read and nothing else
+
+A COD business runs its repeat-purchase campaigns out of the customer registry.
+The platform had ONE searchable list: no detail route, no detail screen, no
+correction, no export, and eight of the legacy's twelve filters missing — while
+the schema carried five `imported*` columns and an `address` for features that
+did not exist, which is a standing invitation to assume they work.
+
+Four surfaces land: `GET /api/erp/clients/[id]` (the record plus its complete
+order history), `PATCH` (the four correctable fields),
+`GET /api/erp/clients/export` (the list as a CSV) and
+`/console/erp/clients/[id]`.
+
+#### The rule this slice is built around: a counter is the sum of events
+
+`PATCH` writes exactly four fields — `name`, `wilaya`, `commune`, `address` —
+the ones with no reliable automatic source. An address is never captured by an
+order at all; a name or a wilaya arrives misspelled from a storefront and must be
+fixable without waiting for the customer to order again.
+
+**Every lifetime counter is refused BY NAME, not dropped** (D-LP.1). The registry
+rests entirely on the claim that `deliveredOrders` is how many times one of this
+customer's orders actually reached delivered; a hand-edited counter is a number
+with no events behind it. So are the `imported*` columns — an import is a record
+of what a spreadsheet said, and editing it makes it a record of nothing. A caller
+sending `totalSpent` believes they are setting a lifetime spend, and a 200 that
+silently does nothing is the same class of defect LP.1 fixed in `costPrice`.
+
+**`phone` is refused too, and that is the load-bearing one.** It is the identity
+key (`@@unique([tenantId, phone])`) and every order joins to this record BY
+VALUE. Editing it would either collide with another customer or silently detach
+the record from its own history.
+
+#### `erp:clients:write` is new, and SENSITIVE
+
+Added to the ERP manifest and to `SENSITIVE` as `*:clients:write`, beside the
+read. Correcting an address changes where a courier drives, and a role that could
+WRITE the registry without being able to READ it would be an incoherent grant. A
+MANAGER therefore does not hold it by role — only OWNER/ADMIN, or a named grant —
+and the correction form is rendered only where it holds (D-06.2), with a test
+that gives a MANAGER `erp:clients:read` alone and asserts they see the record and
+no form.
+
+#### The filters: one from eight, in the module that validates them
+
+`clientFilters` and `clientFilterFields` sit beside each other for the reason
+`orderFilterFields` sits beside `orderFilters` (D-LP.3). `wilaya`, `minOrders`,
+`minDelivered`, `since`, `until` are columns on `Client`; `product` and
+`salesChannelName` are **properties of the customer's ORDERS**, because a
+customer buys many products from many channels over a lifetime and no single
+value on the client row could be right. They resolve to a phone set first
+(`clientHistoryPhones`) and are ANDed in — the legacy did the same thing with an
+`EXISTS` subquery on `orders.phoneNormalized = clients.phone`.
+
+**`null` and `[]` are different answers there**, and the distinction is a real
+defect avoided: `null` means "no history filter was asked for", an empty array
+means "the filter matched no orders". Treating the second as the first would
+silently return the whole registry for a filter that matched nothing.
+
+**`niche` is deliberately absent** — it needs `CatalogProduct.niche`, which is
+not a column on this platform yet (R12, slice 18). A filter over a field that
+does not exist is a control that matches nothing.
+
+#### The export shares LP.6's writer, and that is not tidiness
+
+`toCsv` and `EXPORT_LIMIT` carry the two spreadsheet properties that are security
+rather than polish: a cell beginning `=`, `+`, `-` or `@` is a FORMULA to Excel —
+and a customer name arrives from a storefront, typed by a stranger — and the file
+needs a UTF-8 BOM or every accented wilaya opens as mojibake. **The BOM test
+asserts bytes**, because `Response.text()` strips one by specification and the
+obvious assertion cannot fail.
+
+D-LP.6.2 applies unchanged: the export IS the list, through the same
+`clientFilters` and `clientHistoryPhones`, which is why the link lives on the
+list rather than on a screen of its own. It carries the legacy's own column
+names — including the three `Imported *` ones, so an old-CRM import is not
+invisible in the export.
+
+#### What the detail screen deliberately does NOT do
+
+The legacy attached a full parcel timeline to every row of a customer's history,
+which cost **two extra queries PER ORDER** (the carrier name and the event list).
+A customer with forty orders was eighty round trips on a screen somebody opens to
+read a phone number. The delivery outcome and the tracking number are on the
+order row already, and the order detail — one click away — has the whole
+timeline.
+
+The history is also bounded at 200. A registry entry for a wholesaler can carry
+hundreds of orders; this is a screen, and the export is the unbounded answer.
+
+#### Files
+
+- `apps/website-builder/src/app/api/erp/clients/[id]/route.ts` — new
+- `apps/website-builder/src/app/api/erp/clients/export/route.ts` — new
+- `apps/website-builder/src/app/console/erp/clients/[id]/page.tsx` — new
+- `apps/website-builder/src/components/console/erp/client-write.tsx` — new
+- `apps/website-builder/src/components/console/erp/client-export.tsx` — new
+- `apps/website-builder/src/lib/erp/clients.ts` — filters, patch, history
+- `apps/website-builder/src/app/api/erp/clients/route.ts`
+- `apps/website-builder/src/app/console/erp/clients/page.tsx`
+- `apps/website-builder/src/lib/console/erp-strings.ts`
+- `packages/product-registry/src/manifests.ts` — `erp:clients:write`
+- `packages/auth/src/rbac.ts` — `*:clients:write` is SENSITIVE
+- `packages/i18n/src/messages/{ar,en,fr}.json` — `erp.clients.*`, 10 keys × 3
+- `apps/website-builder/test/erp/registry.test.ts` — new, 21 tests
+- `apps/website-builder/test/erp/access.test.ts` — 3 new surfaces
+
+**Migration:** none. `erp:clients:write` is a new permission nobody holds yet;
+an OWNER and an ADMIN get it by role glob, everybody else by grant.
+
+**Risk:** low. Every write is confined to four columns by an allow-list, and the
+counters the registry's value depends on are refused rather than filtered.
+
+---
+
 ### LP.9 The bulk bar finishes the job — and a reason nobody could read
 
 [Opus 5]

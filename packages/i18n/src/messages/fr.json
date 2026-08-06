@@ -130,7 +130,18 @@
       "average": "Panier moyen",
       "lastOrder": "Dernière commande",
       "none": "Aucun client",
-      "imported": "Importé"
+      "imported": "Importé",
+      "cancelled": "Annulées",
+      "history": "Historique des commandes",
+      "minOrders": "Commandes min.",
+      "minDelivered": "Livraisons min.",
+      "editPanel": "Corriger cette fiche",
+      "editHint": "Seuls ces quatre champs se corrigent à la main. Chaque compteur à vie est la somme d'événements de commande et n'est pas modifiable.",
+      "name": "Nom",
+      "address": "Adresse",
+      "exportTitle": "Exporter les clients",
+      "exportHint": "Le fichier contient exactement ce que les filtres ci-dessus sélectionnent.",
+      "exportDownload": "Télécharger le CSV"
     },
     "products": {
       "title": "Produits",

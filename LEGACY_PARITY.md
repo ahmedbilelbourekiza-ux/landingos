@@ -452,15 +452,19 @@ deliberately not pulled forward.
 
 ---
 
-### R5 · Client detail, correction, import and export — 🔴 MISSING (4 features)
+### R5 · Client detail, correction, import and export — 🟡 PARTIAL *(3 of 4 done — LP.10; the import is slice 19)*
 **Legacy:** `GET /api/clients/:id` returns the client plus their complete order
 history. `PUT /api/clients/:id` corrects name/wilaya/commune/address without ever
 touching the lifetime counters. `POST /import/preview` and `/import` take
 browser-parsed CSV/Excel rows and merge them, recording `importedSource` and
 `importedAt`. `exportClients()` downloads the filtered list.
-**Now:** a single searchable list. No detail route, no detail screen, no update
-route, no import, no export.
-**Missing:** four routes, one screen, two controls.
+**Now (LP.10):** `GET`/`PATCH /api/erp/clients/[id]`,
+`GET /api/erp/clients/export`, `/console/erp/clients/[id]`, and eight filters in
+place of one. The correction writes four fields and refuses every lifetime
+counter BY NAME — including `phone`, which is the identity key. `erp:clients:write`
+is a new SENSITIVE permission.
+**Still missing:** the IMPORT half (`/import/preview` and `/import`), which is
+roadmap slice 19 and shares its parser with the order import.
 **Business impact:** **High.** The customer registry is the most valuable asset in
 a COD business — it is what repeat-purchase campaigns run on. Today it can be
 read and nothing else. The schema is already carrying five `imported*` columns and
@@ -893,7 +897,7 @@ from complete** — order export (R4) is all that remains in it.
 | ~~7~~ | ~~The notification provider~~ — bell, badge, panel, toast, debounced live refresh | N2, N3, L1, L2 | M | **DONE — LP.7.** The last of §0b's six blockers. It also found two defects in shipped code that only a consumer could reach: a fresh subscription replayed the whole backlog as LIVE, and `POST /api/erp/orders` answered 500 in every seeded tenant. |
 | ~~8~~ | ~~Inline row actions + list density~~ | N9, N10, N21, N22 | M | **DONE — LP.8.** All four controls call `PATCH /orders/[id]`, so a status moved from the list reserves stock and books a parcel like any other door into `confirmed`. The density half closes N21 whole and N22 with it. Found and fixed a defect it introduced: the control div carried its own `data-order-id` and the LP.3 paging tests count rows by that attribute — every count doubled. |
 | ~~9~~ | ~~Bulk actions completed~~ | R7, half of R13 | M | **DONE — LP.9.** All four, each gated the way its single-order route is — which exposed a drift: bulk `classify` was STRICTER than `POST /orders/[id]/classify`. Booking is a second phase after the commit (D-LP.5.1), bounded at 50 and refused by name above it. It also found a defect: `fakeReason`/`fakeResponsible`/`fakeAt` were written since Phase 5 and read back by nothing. |
-| **10** | **Client detail, correction, export** | R5 (part) | M | The registry is the business's most valuable asset and is read-only. Depends on 3 for search. |
+| ~~10~~ | ~~Client detail, correction, export~~ | R5 (3 of 4) | M | **DONE — LP.10.** The detail route and screen, the correction (four fields; every counter refused BY NAME), the export sharing LP.6's writer, and the filters from one to eight. `erp:clients:write` is new and SENSITIVE. The import is slice 19. |
 | **11** | **Sound + desktop notification preferences** (on `ProductSetting`) | N4, N5 | S | Hangs off 7. In a call centre nobody watches the screen; the ka-ching is the alert. |
 | ~~12~~ | ~~Agent alerts · missed-counter reset · manager password reset · payroll report · audit view~~ | R11, R14, R15, N11, N12 | S ×5 | **DONE — LP.12.** The alerts screen became a FILTER (`suspicious=true`) plus a roster count, deliberately: one filter vocabulary (D-LP.3) beats a screen that can only ever show everything flagged. N12 also closed a defect underneath it — **no order mutation wrote an audit row at all**, so there was nothing to render. |
 

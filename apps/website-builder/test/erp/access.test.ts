@@ -70,6 +70,11 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   ['GET', '/api/erp/orders/export?format=zr'],
   ['POST', '/api/erp/orders/export'],
   ['GET', '/api/erp/clients'],
+  // LP.10. The registry stops being read-only: one record with its whole order
+  // history, the four correctable fields, and the list as a file.
+  ['GET', '/api/erp/clients/nonexistent'],
+  ['PATCH', '/api/erp/clients/nonexistent'],
+  ['GET', '/api/erp/clients/export'],
   ['GET', '/api/erp/products'],
   // A made-up id is fine: the inventory asserts the route is CLOSED, and an
   // unauthenticated caller must never get far enough for the id to be resolved.

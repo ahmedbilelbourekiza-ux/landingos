@@ -1,13 +1,18 @@
+import Link from "next/link";
+
 import { withTenant } from "@landingos/db";
 import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { FilterBar } from "@/components/console/filter-bar";
 import { Pager } from "@/components/console/pager";
-import { filterStrings, pagerStrings } from "@/lib/console/erp-strings";
+import { filterStrings, pagerStrings, clientExportStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
-import { CLIENT_SELECT, clientFilter, withDerived } from "@/lib/erp/clients";
+import { ClientExportPanel } from "@/components/console/erp/client-export";
+import {
+  CLIENT_SELECT, clientFilters, clientHistoryPhones, clientFilterFields, withDerived,
+} from "@/lib/erp/clients";
 import { seesWholeBook } from "@/lib/erp/scope";
 import { notFound } from "next/navigation";
 
@@ -48,22 +53,45 @@ export default async function ErpClientsScreen({
     if (typeof v === "string") params.set(k, v);
   }
   const page = Math.max(1, Number(params.get("page")) || 1);
-  const where = clientFilter(params.get("search") ?? undefined);
-
-  const { clients, total } = await withTenant(session.auth!.tenantId, async (db) => {
-    const total = await db.client.count({ where });
-    const safePage = Math.min(page, Math.max(1, Math.ceil(total / PAGE_SIZE)));
-    return {
-      total,
-      clients: await db.client.findMany({
-        where,
-        orderBy: [{ lastOrderAt: "desc" }, { id: "desc" }],
-        skip: (safePage - 1) * PAGE_SIZE,
-        take: PAGE_SIZE,
-        select: CLIENT_SELECT,
-      }),
-    };
-  });
+  const { clients, total, wilayas, channels } = await withTenant(
+    session.auth!.tenantId,
+    async (db) => {
+      // The order-history filters first: `product` and `salesChannelName` are
+      // properties of a customer's ORDERS and `Client` has no relation to reach
+      // them through. Same functions the API uses, so the screen, the API and
+      // the export cannot disagree about what a filter meant (D-LP.6.2).
+      const phones = await clientHistoryPhones(db, params);
+      const where = {
+        ...clientFilters(params),
+        ...(phones === null ? {} : { phone: { in: phones } }),
+      };
+      const total = await db.client.count({ where });
+      const safePage = Math.min(page, Math.max(1, Math.ceil(total / PAGE_SIZE)));
+      return {
+        total,
+        clients: await db.client.findMany({
+          where,
+          orderBy: [{ lastOrderAt: "desc" }, { id: "desc" }],
+          skip: (safePage - 1) * PAGE_SIZE,
+          take: PAGE_SIZE,
+          select: CLIENT_SELECT,
+        }),
+        // Real values, never a hardcoded list: a dropdown offering all 58
+        // provinces when a company ships to six is a worse filter than one
+        // offering the six. The legacy derived both the same way.
+        wilayas: await db.client.groupBy({
+          by: ["wilaya"],
+          orderBy: { wilaya: "asc" },
+          _count: { _all: true },
+        }),
+        channels: await db.fulfillmentOrder.groupBy({
+          by: ["salesChannelName"],
+          orderBy: { salesChannelName: "asc" },
+          _count: { _all: true },
+        }),
+      };
+    },
+  );
 
   const currency = session.tenant!.currency;
 
@@ -71,30 +99,56 @@ export default async function ErpClientsScreen({
     <ConsoleShell session={session} productId="erp">
       <h1 className="text-xl font-semibold">{t("erp.clients.title")}</h1>
 
-      {/* The API has accepted `?search=` since Phase 5 and no screen ever
-          offered a box for it, so the registry was a list you could only read
-          from the top. One field, the same `clientFilter` the route uses. */}
+      {/* LP.10 widened this from one control to eight, built from
+          `clientFilterFields` — which lives beside `clientFilters` for the
+          reason `orderFilterFields` lives beside `orderFilters` (D-LP.3). A bar
+          with its own list of fields is a second vocabulary that goes stale the
+          moment a filter is added to the API, and it shows up not as an error
+          but as a capability nobody can find. */}
       <FilterBar
         basePath="/console/erp/clients"
         params={params}
-        fields={[{ name: "search", label: t("erp.filters.search"), kind: "text", wide: true }]}
+        fields={clientFilterFields({
+          t,
+          wilayas: wilayas
+            .map((w) => String(w.wilaya ?? ""))
+            .filter(Boolean)
+            .map((value) => ({ value, label: value })),
+          channels: channels
+            .map((c) => String(c.salesChannelName ?? ""))
+            .filter(Boolean)
+            .map((value) => ({ value, label: value })),
+        })}
         s={filterStrings(t)}
         testId="erp-clients-filters"
       />
+
+      {/* The file IS the list, carrying the same query string (D-LP.6.2), which
+          is why it lives here rather than on a screen of its own. */}
+      <ClientExportPanel params={params} s={clientExportStrings(t)} total={total} />
 
       <DataTable
         testId="erp-clients-table"
         empty={t("erp.clients.none")}
         rows={clients.map(withDerived)}
         rowKey={(c) => c.id}
-        rowAttrs={(c) => ({ "data-client-id": c.id })}
+        rowAttrs={(c) => ({ "data-client-id": c.id, "data-flash-id": c.id })}
         columns={[
           {
             id: "customer",
             header: t("erp.clients.title"),
             cell: (c) => (
               <>
-                <span className="font-medium">{c.name || "—"}</span>
+                {/* LP.10 — the row opens the record. Before this slice the
+                    registry could be READ and nothing else: "what has this
+                    person bought, and did it arrive" meant searching the order
+                    list by phone number and reading the rows. */}
+                <Link
+                  href={`/console/erp/clients/${c.id}`}
+                  className="font-medium underline-offset-2 hover:underline"
+                >
+                  {c.name || c.phoneDisplay || c.phone}
+                </Link>
                 <span className="mt-0.5 block font-mono text-xs text-muted-foreground" dir="ltr">
                   {c.phoneDisplay || c.phone}
                 </span>

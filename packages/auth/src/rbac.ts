@@ -79,6 +79,10 @@ const ROLE_PATTERNS: Record<TenantRole, readonly string[]> = {
 const SENSITIVE = [
   '*:agents:manage',
   '*:clients:read',
+  // LP.10. Writing the customer registry is at least as sensitive as reading
+  // it, and a role that could correct an address without being able to see the
+  // list would be an incoherent grant.
+  '*:clients:write',
   '*:finance:read',
   'platform:billing:*',
   'platform:team:*',
