@@ -198,6 +198,8 @@
       "fakeReason": "Motif",
       "fakeResponsible": "Responsable",
       "editPanel": "Modifier la commande",
+      "editProduct": "Modifier un produit",
+      "description": "Description",
       "editManagerFields": "Responsable uniquement",
       "reassignPanel": "Affectation",
       "assignedAgent": "Agent de confirmation",

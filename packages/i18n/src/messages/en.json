@@ -198,6 +198,8 @@
       "fakeReason": "Reason",
       "fakeResponsible": "Who is responsible",
       "editPanel": "Edit the order",
+      "editProduct": "Edit a product",
+      "description": "Description",
       "editManagerFields": "Manager only",
       "reassignPanel": "Assignment",
       "assignedAgent": "Confirmation agent",

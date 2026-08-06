@@ -64,6 +64,9 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   ['POST', '/api/erp/orders/bulk'],
   ['GET', '/api/erp/clients'],
   ['GET', '/api/erp/products'],
+  // A made-up id is fine: the inventory asserts the route is CLOSED, and an
+  // unauthenticated caller must never get far enough for the id to be resolved.
+  ['PATCH', '/api/erp/products/nonexistent'],
   ['GET', '/api/erp/inventory/low-stock'],
   ['GET', '/api/erp/carriers'],
   ['GET', '/api/erp/sales-channels'],
@@ -150,6 +153,9 @@ describe('an agent cannot do a manager’s job', () => {
     ['GET', '/api/erp/agents/payroll'],
     ['POST', '/api/erp/financial-records', { periodType: 'week', startDate: 1, endDate: 2 }],
     ['POST', '/api/erp/products', { name: 'nope' }],
+    // Gated before the id is resolved, so a nonexistent one still answers 403
+    // rather than 404 — the permission is checked first, on purpose.
+    ['PATCH', '/api/erp/products/nonexistent', { price: '1' }],
   ];
 
   for (const [method, path, body] of MANAGER_ONLY) {

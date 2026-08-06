@@ -752,11 +752,59 @@ describe('the catalogue can be added to and archived', () => {
     assert.equal(r.status, 200, 'the catalogue is readable by role glob');
     assert.ok(!/data-testid="erp-product-create"/.test(r.body));
     assert.ok(!/data-testid="product-archive"/.test(r.body));
+    assert.ok(!/data-testid="erp-product-edit"/.test(r.body));
 
     assert.equal(
       (await acme.agent.api('POST', '/api/erp/products', { name: 'Nope' })).status,
       403,
     );
+  });
+
+  test('a manager gets the edit panel, holding what the server stored', async () => {
+    // The panel's boxes are keyed on the server's values (D-06.3), so they must
+    // be in the HTML rather than fetched after mount — a value that only exists
+    // once JavaScript runs is unassertable here and unreadable to assistive
+    // tech until somebody clicks.
+    const name = `Editable ${uid()}`;
+    await acme.manager.api('POST', '/api/erp/products', {
+      name, sku: `sku-${uid()}`, price: 1200, costPrice: 700, packagingCost: 25,
+    });
+
+    const r = await html('/console/erp/products', acme.manager.token);
+    assert.match(r.body, /data-testid="erp-product-edit"/);
+    assert.match(r.body, /data-testid="product-edit-submit"/);
+    assert.match(r.body, /id="edit-costPrice"/, 'the cost basis must be correctable');
+    // The panel edits one product at a time and the picker is server-rendered,
+    // so the new product is an OPTION; the boxes hold whichever is selected.
+    assert.ok(r.body.includes(`>${name}</option>`), 'the product is offered for editing');
+    assert.match(
+      r.body,
+      /id="edit-name"[^>]*value="[^"]+"/,
+      'the boxes are prefilled from the database, not left blank',
+    );
+  });
+
+  test('the archived view offers the edit panel too', async () => {
+    // Archiving means "stop selling it", not "freeze it", and the route accepts
+    // the edit either way — so withholding the control would hide a write the
+    // API allows (D-06.2, the converse half).
+    const id = (await acme.manager.api('POST', '/api/erp/products', {
+      name: `Archived editable ${uid()}`, costPrice: 500,
+    })).body.data.id as string;
+    assert.equal((await acme.manager.api('DELETE', `/api/erp/products/${id}`)).status, 200);
+
+    const r = await html('/console/erp/products?archived=true', acme.manager.token);
+    assert.match(r.body, /data-testid="erp-product-edit"/);
+  });
+
+  test('the edit panel offers no stock box, because the API refuses one', async () => {
+    // D-06.2 in the other direction: a control the route would refuse is worse
+    // than a missing one, because pressing it teaches the wrong model of where
+    // stock comes from.
+    await acme.manager.api('POST', '/api/erp/products', { name: `No stock box ${uid()}` });
+    const r = await html('/console/erp/products', acme.manager.token);
+    assert.ok(!/id="edit-stock"/.test(r.body), 'stock moves through the ledger, not a form box');
+    assert.ok(!/id="edit-variants"/.test(r.body));
   });
 });
 

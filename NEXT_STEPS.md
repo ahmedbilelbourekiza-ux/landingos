@@ -39,10 +39,50 @@ ordered by business value.
   reads or writes it. `Carrier.lastTestAt`/`lastSyncAt`/`lastTestOk` are
   rendered by the carriers screen and written by nothing.
 
+### Done so far
+
+**LP.1 — product editing (R1).** `PATCH /api/erp/products/[id]` plus the edit
+panel on `/console/erp/products`. catalog 40 → **55**, screens 96 → **99**,
+access 63 → **65**. `CatalogProductEvent.field/oldValue/newValue` get their
+first writer: one row per CHANGED field (`price_change`, `cost_change`,
+`packaging_cost_change`, `brand_changed`), money compared as a `Decimal` so
+`2000` and `2000.00` record nothing.
+
+**D-LP.1:** the route **refuses** `stock` and `variants` with a named 422 rather
+than dropping them. Stock is owned by the movement ledger — `applyMovement`
+writes the level and its reason together, and that pairing is why the cost basis
+can be trusted. Answering 200 while ignoring a `stock` field would be the same
+defect this slice fixed in `costPrice`.
+
+### THE NEXT SLICE — LP.2, carrier adapters
+
+**Start with the refusal, it is half a day and it stops a silent wrong answer.**
+`getAdapter` in `src/lib/erp/carriers.ts:165` returns `mock` for ANY
+unregistered key. A tenant configuring a carrier as `zr` gets a fabricated
+`MOCK…` tracking number and a success response — worse than an error, because
+the order then shows a tracking number that does not exist and nobody looks
+again. Refuse an unknown adapter at booking time, name it in the error, and give
+`listAdapters` the honest list.
+
+Then the real adapter. `apps/erp/lib/providers/zr.js` is 479 lines: territory
+resolution against `POST /territories/search` (no static wilaya→UUID map),
+`X-Tenant` + `X-Api-Key` auth, a Svix webhook envelope, a 20-entry status map,
+and a deliberate throw with a readable message when an address cannot be
+resolved — which the ERP's caller catches and surfaces as `shipment_failed`
+rather than booking a parcel to the wrong place. Read that file before writing
+anything; the territory rule is the part that is not obvious.
+
+**Note the transaction limit before starting** (NEXT_STEPS §2b(4)): the carrier
+call happens inside the transaction `withTenant` opened, whose timeout is 15s. A
+real adapter over the network is exactly the case that makes this bite. Doing
+the HTTP outside the transaction and ingesting inside it is the shape to move
+to.
+
 ### The order of work (LEGACY_PARITY.md §4)
 
-**Tier 1 — production blockers:** (1) product editing · (2) adapter refusal then
-the ZR adapter · (3) order export · (4) carrier test/sync/logs.
+**Tier 1 — production blockers:** (1) product editing **[DONE — LP.1]** ·
+(2) adapter refusal then the ZR adapter · (3) order export ·
+(4) carrier test/sync/logs.
 **Tier 2 — daily operations:** (5) client detail/edit/export · (6) analytics
 screen · (7) bulk actions completed · (8) agent alerts + missed-counter reset +
 manager password reset · (9) sales-channel screen.
@@ -96,9 +136,9 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **435/435** across the TWELVE files: access 63 · orders 38 ·
-validation 29 · listing 25 · catalog 40 · delivery 33 · integrations 29 ·
-order-split 8 · screens 96 · jobs 16 · assign 25 · notifications 33.
+Expect **455/455** across the TWELVE files: access 65 · orders 38 ·
+validation 29 · listing 25 · catalog 55 · delivery 33 · integrations 29 ·
+order-split 8 · screens 99 · jobs 16 · assign 25 · notifications 33.
 
 The platform contract suite lives beside it and runs the same way — **56/56**
 (team management 7.1a + invitation acceptance 7.1b + team screen 7.1c):

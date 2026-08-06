@@ -12,6 +12,116 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.1 Product editing — the correction that was never possible
+
+[Opus 5]
+Date: 6 August 2026
+Summary: `PATCH /api/erp/products/[id]` and the edit panel on
+`/console/erp/products`. **Tier 1, slice 1** of the LEGACY_PARITY roadmap.
+catalog **40 → 55**, screens **96 → 99**, access **63 → 65**. Restores R1.
+
+#### What was wrong
+
+`products/[id]/route.ts` exported `GET` and `DELETE` and nothing else, so a
+product could be created and archived and **never corrected**. The legacy ERP
+had `PUT /api/products/:id` and the port dropped it. Nothing caught that,
+because a contract test attacks routes that exist and a route that is simply
+absent has nothing to fail.
+
+It mattered most for money. `costPrice` and `packagingCost` are the cost basis
+every FIFO lot draws from, what delivered-order pay is computed against, what
+`/sales-summary` reports and what every saved P&L record is built on. A typo at
+creation was permanent, and it made every profit figure derived from it **wrong
+rather than absent** — the failure mode this codebase already records twice in
+the create path. Archive-and-recreate was the only workaround and it orphans
+the movement ledger.
+
+#### PATCH, not the ERP's PUT
+
+Same reasoning as `PATCH /api/erp/orders/[id]`: a whole-resource write means a
+console that reads the row, edits one box and sends the object back rewrites
+every column, which is how a masked secret gets written over a real one
+elsewhere here. A patch of named fields cannot do that, and a test asserts an
+unnamed field survives.
+
+#### D-LP.1 — `stock` and `variants` are REFUSED, which is stricter than the ERP
+
+The ERP's PUT recomputed the flat `stock` column from whatever the caller sent.
+On the platform stock is owned by the movement ledger: `applyMovement` writes
+the level and its reason in one transaction, and that pairing is the only reason
+the cost basis can be trusted. An edit that set a level directly would move
+stock with no movement row behind it.
+
+Both are **named refusals (422), not silently dropped fields**. A caller sending
+`stock` believes they are setting a level, and answering 200 while doing nothing
+is precisely the failure this whole slice exists to stop happening to
+`costPrice`. Levels move through `/inventory/adjust` and `/stock-lots`; the
+variant editor is its own surface (LEGACY_PARITY R12).
+
+#### The timeline records what changed, not that a save happened
+
+`CatalogProductEvent` has carried `field`, `oldValue` and `newValue` since M-03
+and no route had ever written them. Ported from `saveProduct` in
+`apps/erp/lib/db.js`, one row per **changed** field: `price_change`,
+`cost_change`, `packaging_cost_change`, `brand_changed`. A save that changes
+nothing writes nothing — a timeline that records every save is a timeline
+nobody reads.
+
+Money is compared through the `Decimal`, not the string and not the float:
+`2000` and `2000.00` are the same price and must not produce an event. Tested
+both ways. `supplier_changed` is in the ERP's set and absent here because
+`CatalogProduct` has no `supplier` column yet; it lands with the column (R12).
+
+#### An invalid batch changes nothing at all
+
+`buildProductPatch` returns on the first problem, so a request carrying one good
+field and one bad one stores neither. Same rule `validateSettings` holds, and
+for the same reason: half-applying a rejected request is worse than refusing
+it — the caller is told it failed and half of it happened anyway.
+
+An EMPTY patch is a successful no-op, not a 422. A form that submits only what
+somebody touched sends nothing when they touched nothing.
+
+#### The screen
+
+`ProductEditPanel` follows the panel this file already had: a server-rendered
+product picker, then the fields for the selected product. The field descriptors
+are built on the SERVER from `EditField`, and the inner component is keyed on
+`editFingerprint` — so a save refreshes the page and the boxes come back holding
+what was **stored**, not what was typed (D-06.3). The picker sits outside that
+key, so a save does not throw away the selection.
+
+Offered on the archived view too: archiving means "stop selling it", not "freeze
+it", the route accepts the edit either way, and withholding a control the API
+accepts is the converse half of D-06.2. There is no `stock` box and no variant
+list, because the route refuses both — a control the API cannot honour is worse
+than a missing one. Money is `inputMode="decimal"`, never `type="number"`.
+
+#### Files
+`src/lib/erp/catalog.ts` (new — `buildProductPatch`, `productChangeEvents`),
+`src/app/api/erp/products/[id]/route.ts` (+PATCH),
+`src/components/console/erp/catalog-write.tsx` (+`ProductEditPanel`,
+`ProductEditFields`, `EditableProduct`, four `CatalogStrings` keys),
+`src/lib/console/erp-strings.ts`, `src/app/console/erp/products/page.tsx`,
+`test/erp/{catalog,screens,access}.test.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (`erp.write.editProduct`,
+`erp.write.description`).
+
+#### Migration
+None. Every column this writes already existed, including the three on
+`CatalogProductEvent` that had no writer.
+
+#### Risk
+A product's commercial fields are now mutable by anyone holding
+`erp:products:write`, which is what the ERP always allowed. The two fields that
+could have corrupted the ledger are refused rather than accepted, and every
+change to a money field leaves a row nobody can edit or delete.
+
+**Verified live:** catalog 55/55 · screens 99/99 · access 65/65 · listing 25/25 ·
+console-shell 13/13 · i18n 18/18. Build clean.
+
+---
+
 ### LP.0 The feature gap report — measuring the legacy CRM against the platform
 
 [Opus 5]

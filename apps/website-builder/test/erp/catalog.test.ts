@@ -125,6 +125,195 @@ describe('a catalog product carries its cost basis', () => {
 });
 
 /* -----------------------------------------------------------------------------
+ * Correcting a product — the legacy `PUT /api/products/:id`, restored.
+ *
+ * This whole block exists because the port dropped the edit path and nothing
+ * noticed: a contract test attacks routes that exist, and a route that is
+ * simply absent has nothing to fail. Until now a product could be created and
+ * archived and never fixed, which for `costPrice` means every profit figure
+ * derived from it stays wrong rather than becoming absent.
+ * -------------------------------------------------------------------------- */
+
+describe('a product can be corrected after it exists', () => {
+  const history = async (id: string) =>
+    (await acme.manager.api('GET', `/api/erp/products/${id}/history`)).body.data.items as
+      Array<{ eventType: string; field: string | null; oldValue: string | null; newValue: string | null }>;
+
+  test('a field is changed and the stored value comes back', async () => {
+    const product = await newProduct();
+    const r = await acme.manager.api('PATCH', `/api/erp/products/${product.id}`, {
+      name: 'Corrected Shoe', sku: 'FIXED-1',
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.data.name, 'Corrected Shoe');
+    assert.equal(r.body.data.sku, 'FIXED-1');
+
+    const again = await acme.manager.api('GET', `/api/erp/products/${product.id}`);
+    assert.equal(again.body.data.name, 'Corrected Shoe', 'and it was actually stored');
+  });
+
+  test('a field the patch did not name is left alone', async () => {
+    // The reason this is PATCH and not the ERP's PUT. A whole-resource write
+    // means a console that reads the row, edits one box and sends the object
+    // back rewrites every column — which is how a masked secret gets written
+    // over a real one elsewhere in this codebase.
+    const product = await newProduct();
+    await acme.manager.api('PATCH', `/api/erp/products/${product.id}`, { name: 'Only the name' });
+
+    const after = (await acme.manager.api('GET', `/api/erp/products/${product.id}`)).body.data;
+    assert.equal(String(after.costPrice), '2000', 'the cost basis must survive an unrelated edit');
+    assert.equal(String(after.packagingCost), '100');
+    assert.equal(after.sku, product.sku);
+  });
+
+  test('the cost basis can be corrected, and the timeline says exactly what changed', async () => {
+    const product = await newProduct();
+    const r = await acme.manager.api('PATCH', `/api/erp/products/${product.id}`, {
+      price: '5500', costPrice: '2100',
+    });
+    assert.equal(r.status, 200);
+    assert.equal(String(r.body.data.costPrice), '2100');
+
+    const events = await history(product.id);
+    const cost = events.find((e) => e.eventType === 'cost_change');
+    assert.ok(cost, 'a cost correction must leave a record');
+    assert.equal(cost.field, 'costPrice');
+    assert.equal(cost.oldValue, '2000');
+    assert.equal(cost.newValue, '2100');
+
+    const price = events.find((e) => e.eventType === 'price_change');
+    assert.ok(price, 'and so must a price correction');
+    assert.equal(price.oldValue, '5000');
+    assert.equal(price.newValue, '5500');
+  });
+
+  test('a field that did not change records nothing', async () => {
+    // The ERP logged one event per CHANGED field rather than one per submitted
+    // one. A timeline that records every save is a timeline nobody reads.
+    const product = await newProduct();
+    const before = (await history(product.id)).length;
+    await acme.manager.api('PATCH', `/api/erp/products/${product.id}`, {
+      price: '5000', costPrice: '2000', name: 'Test Shoe renamed',
+    });
+    assert.equal((await history(product.id)).length, before,
+      'the same price and cost, plus an untracked field, is not a change');
+  });
+
+  test('money is compared as a decimal, not as text', async () => {
+    // `2000` and `2000.00` are the same price. Comparing the string form would
+    // record a change that never happened; comparing the float form would
+    // eventually miss one that did (M-06).
+    const product = await newProduct();
+    const before = (await history(product.id)).length;
+    await acme.manager.api('PATCH', `/api/erp/products/${product.id}`, { costPrice: '2000.00' });
+    assert.equal((await history(product.id)).length, before);
+  });
+
+  test('stock is refused, because a level without a reason is not a level (D-LP.1)', async () => {
+    // The ERP's PUT recomputed the stock column from whatever was sent. Here
+    // stock is owned by the movement ledger: `applyMovement` writes the level
+    // and its reason in one transaction, and that pairing is the only reason
+    // the cost basis can be trusted at all.
+    const product = await newProduct({ variants: [{ name: 'Solo', stock: 12 }] });
+    const r = await acme.manager.api('PATCH', `/api/erp/products/${product.id}`, { stock: 999 });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'INVALID_INPUT');
+
+    const inv = await acme.manager.api('GET', `/api/erp/products/${product.id}/inventory`);
+    assert.equal(inv.body.data.variants[0].stock, 12, 'and nothing moved');
+  });
+
+  test('variants are refused rather than half-honoured', async () => {
+    const product = await newProduct({ variants: [{ name: 'Solo', stock: 12 }] });
+    const r = await acme.manager.api('PATCH', `/api/erp/products/${product.id}`, {
+      variants: [{ name: 'Solo', stock: 0 }],
+    });
+    assert.equal(r.status, 422);
+
+    const inv = await acme.manager.api('GET', `/api/erp/products/${product.id}/inventory`);
+    assert.equal(inv.body.data.variants[0].stock, 12);
+  });
+
+  test('an invalid batch changes nothing at all', async () => {
+    // Half-applying a rejected request is worse than refusing it: the caller is
+    // told it failed and half of it happened anyway. Same rule as the settings
+    // route, and it is why `buildProductPatch` returns on the first problem.
+    const product = await newProduct();
+    const r = await acme.manager.api('PATCH', `/api/erp/products/${product.id}`, {
+      name: 'Should not stick', costPrice: 'not-a-number',
+    });
+    assert.equal(r.status, 422);
+
+    const after = (await acme.manager.api('GET', `/api/erp/products/${product.id}`)).body.data;
+    assert.equal(after.name, product.name, 'the valid half must not have landed');
+  });
+
+  test('an empty name is refused', async () => {
+    const product = await newProduct();
+    const r = await acme.manager.api('PATCH', `/api/erp/products/${product.id}`, { name: '   ' });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'INVALID_INPUT');
+  });
+
+  test('a negative price is refused', async () => {
+    const product = await newProduct();
+    assert.equal(
+      (await acme.manager.api('PATCH', `/api/erp/products/${product.id}`, { price: '-1' })).status,
+      422,
+    );
+  });
+
+  test('an empty patch succeeds and does nothing', async () => {
+    // A form that submits only what somebody touched sends nothing when they
+    // touched nothing. Refusing that would make "save" fail for doing what was
+    // asked.
+    const product = await newProduct();
+    const before = (await history(product.id)).length;
+    const r = await acme.manager.api('PATCH', `/api/erp/products/${product.id}`, {});
+    assert.equal(r.status, 200);
+    assert.equal((await history(product.id)).length, before);
+  });
+
+  test('an archived product can still be corrected', async () => {
+    // Archiving means "stop selling it", not "freeze it". A wrong cost basis is
+    // usually found from a report about something nobody sells any more.
+    const product = await newProduct();
+    await acme.manager.api('DELETE', `/api/erp/products/${product.id}`);
+    const r = await acme.manager.api('PATCH', `/api/erp/products/${product.id}`, { costPrice: '2500' });
+    assert.equal(r.status, 200);
+    assert.equal(String(r.body.data.costPrice), '2500');
+    assert.equal(r.body.data.archived, true, 'and it stays archived');
+  });
+
+  test('an agent cannot correct a product', async () => {
+    const product = await newProduct();
+    const r = await acme.agent.api('PATCH', `/api/erp/products/${product.id}`, { price: '1' });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.error.code, 'FORBIDDEN');
+  });
+
+  test('another tenant’s product answers 404, not 403', async () => {
+    // 404 rather than 403 throughout: confirming a row exists elsewhere is
+    // itself information.
+    const beta = await makeErpTenant('catalog-edit-beta');
+    const theirs = (await beta.manager.api('POST', '/api/erp/products', {
+      name: 'Beta Only', price: 100, costPrice: 40,
+    })).body.data;
+
+    const r = await acme.manager.api('PATCH', `/api/erp/products/${theirs.id}`, { costPrice: '1' });
+    assert.equal(r.status, 404);
+
+    const still = await beta.manager.api('GET', `/api/erp/products/${theirs.id}`);
+    assert.equal(String(still.body.data.costPrice), '40', 'untouched');
+  });
+
+  test('a product that does not exist answers 404', async () => {
+    const r = await acme.manager.api('PATCH', '/api/erp/products/nonexistent', { price: '1' });
+    assert.equal(r.status, 404);
+  });
+});
+
+/* -----------------------------------------------------------------------------
  * Inventory — the FIFO ledger
  * -------------------------------------------------------------------------- */
 

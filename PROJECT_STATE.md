@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.0: the legacy parity gap report*
+**Branch:** `master` · **Last commit:** *LP.1: product editing*
 **Working tree:** clean, all work committed.
 
 ---
@@ -15,12 +15,32 @@ anything else.
 
 **101 features compared: 55 identical · 8 improved · 14 partial · 24 missing.**
 **The platform cannot replace the legacy CRM in production today.** Three hard
-blockers: no real carrier adapter (only `mock`, which fabricates tracking
-numbers), no product editing, no export of any kind. Plus a read-only client
-registry.
+blockers were found: no real carrier adapter (only `mock`, which fabricates
+tracking numbers), no product editing, no export of any kind. Plus a read-only
+client registry.
 
 Do not start Phase 8, do not add SaaS functionality, and do not redesign
 anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
+
+### Restoration progress
+
+| Slice | Restores | State |
+|---|---|---|
+| **LP.1** product editing | R1 | **DONE** — `PATCH /api/erp/products/[id]` + the edit panel, catalog 40→55 |
+| **LP.2** carrier adapter refusal, then the real ZR adapter | R2 | **NEXT** |
+| LP.3 order export (CSV: ZR / Ecom / Ecotrac + performance report) | R4 | to do |
+| LP.4 carrier test / sync / integration logs | R3, R20 | to do |
+
+### D-LP.1 — an edit never moves stock
+
+`PATCH /api/erp/products/[id]` **refuses** `stock` and `variants` with a named
+422 rather than accepting them. The ERP's `PUT` recomputed the stock column from
+whatever the caller sent; here stock is owned by the movement ledger, where
+`applyMovement` writes the level and its reason in one transaction — and that
+pairing is the only reason the cost basis can be trusted. Refusing by name
+rather than dropping silently is deliberate: a caller sending `stock` believes
+they are setting a level, and a 200 that does nothing is the same class of
+defect this slice existed to fix in `costPrice`.
 
 ---
 
@@ -244,17 +264,17 @@ domain at a time.
 | Surface | Contract |
 |---|---|
 | orders (+ stats, bulk, 6 per-order routes), clients, settings, audit | orders 38/38 · validation 29/29 · listing 25/25 |
-| products, inventory, stock lots (incl. stock on confirm/cancel), agents, payroll, finance | catalog 40/40 |
+| products (incl. **editing**, LP.1), inventory, stock lots (incl. stock on confirm/cancel), agents, payroll, finance | catalog 55/55 |
 | carriers, shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 33/33 |
 | sales channels, inbound webhooks, AI, follow-up | integrations 29/29 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
-| every ERP screen, read and write | screens 96/96 |
+| every ERP screen, read and write | screens 99/99 |
 | the scheduled work (M-15), and the worker's tick both ways | jobs 16/16 |
 | assignment — new, confirmed and overdue orders | assign 25/25 |
 | notifications: storage, audience, badge, the live stream, Web Push (M-16) | notifications 29/29 |
-| every surface, gated | access 63/63 |
+| every surface, gated | access 65/65 |
 
-**435/435**, each file verified on its own. Running several back to back still
+**455/455**, each file verified on its own. Running several back to back still
 trips the documented Neon connection limit — judge them per file.
 
 Three routes answer **501 by design**, and are not gaps: `POST /api/erp/agents`
@@ -348,12 +368,19 @@ stream and inbound carrier webhooks).
 restoration roadmap is in that file, §4, ordered by business value rather than
 by technical simplicity. Tier 1 is the four production blockers:
 
-| # | Slice | Size |
-|---|---|---|
-| 1 | Product editing — `PUT /api/erp/products/[id]` + the control | S |
-| 2 | Carrier adapter refusal, then the real ZR Express adapter | S then L |
-| 3 | Order export — CSV for ZR / Ecom / Ecotrac + the performance report | M |
-| 4 | Carrier test / sync / integration logs (`IntegrationLog`'s first caller) | M |
+| # | Slice | Size | State |
+|---|---|---|---|
+| 1 | Product editing — `PATCH /api/erp/products/[id]` + the control | S | **DONE (LP.1)** |
+| 2 | Carrier adapter refusal, then the real ZR Express adapter | S then L | **NEXT** |
+| 3 | Order export — CSV for ZR / Ecom / Ecotrac + the performance report | M | to do |
+| 4 | Carrier test / sync / integration logs (`IntegrationLog`'s first caller) | M | to do |
+
+**LP.2 starts with the refusal, not the adapter.** `getAdapter` in
+`src/lib/erp/carriers.ts` falls back to `mock` for any unregistered key, so a
+carrier configured as `zr` books a fabricated `MOCK…` tracking number and
+reports success. That half is small and stops a silent wrong answer; the real ZR
+Express adapter (`apps/erp/lib/providers/zr.js`, 479 lines — live territory
+resolution, Svix webhooks, outbound parcel creation) is the large half after it.
 
 Phase 8's two guarantees (`CSRF_ORIGIN` and rate limiting) remain owed and are
 Tier 4 of the same roadmap — the legacy system had both, so they are a parity
@@ -1009,14 +1036,14 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 435 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 455 | all pass against a running server |
 | `apps/website-builder` — platform contract | 85 | team (7.1) + billing (7.2) + signup (7.3), against a running server |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1065** | green per suite |
+| **Total** | **1085** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

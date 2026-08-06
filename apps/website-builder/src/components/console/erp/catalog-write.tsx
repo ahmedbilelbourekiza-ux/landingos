@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { useApiAction, ActionError, ActionButton } from "@/components/console/api-action";
 import type { ActionErrors } from "@/lib/console/action-errors";
+import type { EditField } from "@/components/console/edit-field";
 
 /* =============================================================================
  * The catalogue's and the stockroom's write controls — Phase 6.3c.
@@ -39,6 +40,10 @@ export interface CatalogStrings {
   readonly threshold: string;
   readonly stock: string;
   readonly create: string;
+  readonly editProduct: string;
+  readonly apply: string;
+  readonly cancel: string;
+  readonly description: string;
   readonly archive: string;
   readonly restore: string;
   readonly adjustPanel: string;
@@ -203,6 +208,175 @@ export function ProductCreatePanel({
           <ActionError message={error} />
         </>
       )}
+    </section>
+  );
+}
+
+/* -----------------------------------------------------------------------------
+ * Correcting a product
+ * -------------------------------------------------------------------------- */
+
+/** One product the edit panel can act on, described by the server. */
+export interface EditableProduct {
+  readonly id: string;
+  readonly label: string;
+  readonly fields: readonly EditField[];
+  /** `editFingerprint(fields)` — what the server currently holds. */
+  readonly fingerprint: string;
+}
+
+/**
+ * The fields for ONE product, remounted whenever the server's values change.
+ *
+ * Split out so the `key` can carry the fingerprint (D-06.3) without also
+ * resetting the product selector above it — a save refreshes the page, the
+ * fingerprint changes, and these boxes come back holding what was STORED rather
+ * than what was typed. `buildProductPatch` trims and normalises, so the two are
+ * not always the same string.
+ */
+function ProductEditFields({
+  product,
+  errors,
+  s,
+}: {
+  readonly product: EditableProduct;
+  readonly errors: ActionErrors;
+  readonly s: CatalogStrings;
+}) {
+  const { run, pending, error } = useApiAction(errors);
+  const [form, setForm] = useState<Record<string, string>>(() =>
+    Object.fromEntries(product.fields.map((f) => [f.name, f.value])),
+  );
+
+  const set = (name: string, value: string) => setForm((f) => ({ ...f, [name]: value }));
+
+  return (
+    <>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {product.fields.map((field) => {
+          const id = `edit-${field.name}`;
+          return (
+            <div key={field.name} className={field.kind === "textarea" ? "sm:col-span-2 lg:col-span-4" : ""}>
+              <label htmlFor={id} className="block text-xs text-muted-foreground">
+                {field.label}
+              </label>
+              {field.kind === "textarea" ? (
+                <textarea
+                  id={id} name={field.name} rows={2}
+                  value={form[field.name] ?? ""}
+                  onChange={(e) => set(field.name, e.target.value)}
+                  className={`mt-1 ${FIELD}`}
+                />
+              ) : (
+                <input
+                  id={id} name={field.name}
+                  // Money is text with a decimal keypad, never type="number" — a
+                  // number input hands back a JS float and these are Decimal
+                  // columns (M-06). A whole count is safe as a number input.
+                  {...(field.kind === "money"
+                    ? { inputMode: "decimal" as const, dir: "ltr" as const }
+                    : field.kind === "number"
+                      ? { type: "number", min: 0, dir: "ltr" as const }
+                      : {})}
+                  value={form[field.name] ?? ""}
+                  onChange={(e) => set(field.name, e.target.value)}
+                  className={`mt-1 ${FIELD}`}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-4">
+        <ActionButton
+          data-testid="product-edit-submit"
+          data-product-id={product.id}
+          pending={pending}
+          pendingLabel={s.saving}
+          variant="primary"
+          disabled={!(form.name ?? "").trim()}
+          onClick={() => void run("PATCH", `/api/erp/products/${product.id}`, form)}
+        >
+          {s.apply}
+        </ActionButton>
+      </div>
+
+      <ActionError message={error} />
+    </>
+  );
+}
+
+/**
+ * Correct a product that already exists.
+ *
+ * The ERP had this and the port lost it, so until now a product could be
+ * created and archived and never fixed — and `costPrice` is the basis every
+ * profit figure is computed from. See `lib/erp/catalog.ts`.
+ *
+ * `stock` is NOT offered, and its absence is the point: a level moves through
+ * the stockroom panels below, which write a movement row saying why. A box here
+ * would set a number with no reason behind it. `image` and the variant list are
+ * absent too — both need their own surface, and a control the API cannot
+ * honour is worse than a missing one.
+ */
+export function ProductEditPanel({
+  products,
+  errors,
+  s,
+}: {
+  readonly products: readonly EditableProduct[];
+  readonly errors: ActionErrors;
+  readonly s: CatalogStrings;
+}) {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState(products[0]?.id ?? "");
+
+  if (!products.length) return null;
+  const product = products.find((p) => p.id === selected) ?? products[0];
+
+  return (
+    <section className="mt-3 rounded-lg border border-border p-4" data-testid="erp-product-edit">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-medium">{s.editProduct}</h2>
+        <ActionButton
+          data-testid="product-edit-toggle"
+          pending={false}
+          pendingLabel={s.saving}
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+        >
+          {open ? s.cancel : s.editProduct}
+        </ActionButton>
+      </div>
+
+      {/* D-06.4: rendered always, hidden when closed. Mounting on click means
+          the offered vocabulary only exists after JavaScript runs, which no
+          contract test can assert and no screen reader can reach. */}
+      <div hidden={!open}>
+        <div className="mt-3">
+          <label htmlFor="edit-product" className="block text-xs text-muted-foreground">
+            {s.product}
+          </label>
+          <select
+            id="edit-product"
+            value={product.id}
+            onChange={(e) => setSelected(e.target.value)}
+            className={`mt-1 ${FIELD}`}
+          >
+            {products.map((p) => (
+              <option key={p.id} value={p.id}>{p.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <ProductEditFields
+          key={`${product.id}:${product.fingerprint}`}
+          product={product}
+          errors={errors}
+          s={s}
+        />
+      </div>
     </section>
   );
 }

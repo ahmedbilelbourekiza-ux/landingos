@@ -198,6 +198,8 @@
       "fakeReason": "السبب",
       "fakeResponsible": "المسؤول",
       "editPanel": "تعديل الطلبية",
+      "editProduct": "تعديل منتج",
+      "description": "الوصف",
       "editManagerFields": "للمسؤول فقط",
       "reassignPanel": "الإسناد",
       "assignedAgent": "وكيل التأكيد",

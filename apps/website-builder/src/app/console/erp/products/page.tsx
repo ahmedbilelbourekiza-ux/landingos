@@ -8,9 +8,12 @@ import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
 import {
   ProductCreatePanel,
+  ProductEditPanel,
   ProductRowActions,
   type CatalogStrings,
+  type EditableProduct,
 } from "@/components/console/erp/catalog-write";
+import { editFingerprint, type EditField } from "@/components/console/edit-field";
 import { catalogStrings } from "@/lib/console/erp-strings";
 import { inventoryView } from "@/lib/erp/inventory";
 
@@ -45,7 +48,7 @@ export default async function ErpProductsScreen({
       orderBy: [{ name: "asc" }, { id: "asc" }],
       take: 100,
       select: {
-        id: true, reference: true, name: true, sku: true,
+        id: true, reference: true, name: true, sku: true, brand: true, description: true,
         price: true, costPrice: true, packagingCost: true,
         stock: true, threshold: true, variants: true, archived: true,
       },
@@ -59,6 +62,31 @@ export default async function ErpProductsScreen({
   const mayWrite = can(session.auth!, "erp:products:write");
   const errors = actionErrors(t);
   const s: CatalogStrings = catalogStrings(t);
+
+  /* The edit panel's vocabulary, built on the server from the same rows the
+   * table renders. `PATCH /api/erp/products/[id]` accepts exactly these fields
+   * plus `image`; the image needs an uploader rather than a text box, so it is
+   * absent here deliberately rather than offered as a control that cannot work.
+   * Money reaches the client as the Decimal's STRING form — going through a JS
+   * number to build a form value would undo M-06 at the last step. */
+  const editable: readonly EditableProduct[] = products.map((p) => {
+    const fields: readonly EditField[] = [
+      { name: "name", label: t("erp.products.title"), value: p.name ?? "", kind: "text" },
+      { name: "sku", label: t("erp.products.sku"), value: p.sku ?? "", kind: "text" },
+      { name: "brand", label: t("erp.orders.brand"), value: p.brand ?? "", kind: "text" },
+      { name: "price", label: t("erp.products.price"), value: (p.price ?? 0).toString(), kind: "money" },
+      { name: "costPrice", label: t("erp.products.cost"), value: (p.costPrice ?? 0).toString(), kind: "money" },
+      { name: "packagingCost", label: t("erp.write.packaging"), value: (p.packagingCost ?? 0).toString(), kind: "money" },
+      { name: "threshold", label: t("erp.inventory.threshold"), value: String(p.threshold ?? 0), kind: "number" },
+      { name: "description", label: t("erp.write.description"), value: p.description ?? "", kind: "textarea" },
+    ];
+    return {
+      id: p.id,
+      label: p.name || p.reference || p.id,
+      fields,
+      fingerprint: editFingerprint(fields),
+    };
+  });
 
   return (
     <ConsoleShell session={session} productId="erp">
@@ -74,6 +102,13 @@ export default async function ErpProductsScreen({
       {/* Not on the archived view: creating a product from a list of things
           nobody sells any more would put the new row somewhere invisible. */}
       {mayWrite && !archived && <ProductCreatePanel errors={errors} s={s} />}
+
+      {/* Offered on BOTH views. Archiving means "stop selling it", not "freeze
+          it": a wrong cost basis is usually discovered from a report about a
+          product nobody sells any more, and the route accepts the edit either
+          way — so withholding the control here would hide a write the API
+          allows (D-06.2). */}
+      {mayWrite && <ProductEditPanel products={editable} errors={errors} s={s} />}
 
       <DataTable
         testId="erp-products-table"
