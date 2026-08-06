@@ -12,6 +12,92 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.0c The Profit/Loss calculator, measured — and two defects it found
+
+[Opus 5]
+Date: 6 August 2026
+Summary: `LEGACY_PARITY.md` **§7** is new — the 1,244-line legacy calculator read
+line by line against the platform's finance surface. **No code was written.**
+Seven gaps, two of them **defects live in shipped code with no calculator
+anywhere near them**, and R9's own sizing corrected.
+
+#### Why this was measured before it was built
+
+R9 said the calculator was "especially cheap to fix relative to its value"
+because "the API half is largely there". Measuring it says otherwise, and the
+distance between those two statements is the reason LP.0b exists: a route
+inventory sees four finance routes and concludes the backend is ready.
+
+**`GET /api/erp/products/[id]/sales-summary` is the whole reason the calculator
+can fill itself in, and it cannot answer two of the five questions the sync asks
+it.** `syncProductFromCRM` overwrites exactly five fields; the platform has no
+`returnedCount` and no `avgPackagingCost`, and its `avgBuyPrice` is
+`(unitCost + packagingCost) / units` where the legacy's is `unitCost / units`.
+The calculator multiplies BOTH by units, so filling one from the other **counts
+packaging twice** — and the resulting profit is wrong in the direction nobody
+investigates.
+
+#### The two defects, neither of which needs a calculator to hurt
+
+**A product with a `™` in its name reports zero revenue, today.**
+`sales-summary` matches its orders with `where: { product: product.name }` —
+exact string equality. The legacy matched by external product id first
+(`findProductByExternalId`) and then by a NORMALISED name that strips `™®©` and
+non-breaking spaces, collapses whitespace and lowercases. `/console/erp/products`
+already calls this route, so a catalogue product whose name differs from its
+orders by one invisible character shows `realCA: 0` and looks like a product
+nobody has ever bought. That is BUG-02's exact shape.
+
+**Every saved P&L record is missing its rent and salaries.** `fixedCosts` is a
+declared setting and `prorate-fixed` sums it; **nothing writes it.** The
+automation screen filters out `array` and `object` settings — which is the right
+rule and was chosen deliberately — and no other screen offers one, so
+`prorate-fixed` answers `{ monthlyTotal: "0", prorated: "0" }` for every tenant.
+Zero reads as "there are none". The legacy edits that list ON the calculator
+screen, which is why it never needed a general array editor.
+
+#### The finding that explains an "arbitrary" legacy rule
+
+The legacy prorates a month's fixed costs as **÷4 for a week, ×3 for a quarter,
+×12 for a year**; the platform uses `monthly / 30.44 × days` for everything. The
+legacy's rule looks careless and is not: `aggregate` builds a month by SUMMING
+four saved weekly records, so four weeks must tile into exactly one month.
+`4 × monthly/4 = monthly`; `4 × monthly/30.44×7 = 0.92 × monthly` — an 8%
+under-charge every aggregated month, a full month's rent per year. The
+platform's formula is the better answer for an arbitrary window and the wrong one
+for an aligned one; both are needed, keyed on `periodType`, **which the platform's
+route accepts and echoes back without using**. The calculator also sends
+`startDate`/`endDate` where that route reads `since`/`until`.
+
+#### What the slice becomes
+
+Tier 3 slice 16 stands and grows a prerequisite: **16a** `sales-summary`
+(returnedCount, packaging split out, the product match fixed) · **16b** a
+fixed-cost editor and `periodType`-aware proration · **16c** `versions` and
+`aggregate` · **16d** the screen. **16a is worth pulling forward on its own
+merits** — it is a wrong answer on a screen that already ships.
+
+Recorded in §7 alongside what the platform already does better and must keep:
+`Decimal` money where the calculator is `+(el.value)` end to end, a FIFO cost
+basis written in the same transaction as the level, `deliveryOutcome` actually
+written, and a finance surface that is SENSITIVE where the legacy calculator is a
+static HTML file with no authorization on the page at all.
+
+#### Files
+`LEGACY_PARITY.md` (§7 new; the R9 card marked superseded; two defects added to
+§1), `PROJECT_STATE.md`, `NEXT_STEPS.md`, `CHANGELOG.md`.
+
+#### Migration
+None.
+
+#### Risk
+None — no code changed. The risk it removes is that slice 16 would have been
+planned against R9's estimate, discovered `sales-summary` could not feed the
+screen, and either widened mid-slice or shipped a calculator whose sync
+double-counts packaging.
+
+---
+
 ### LP.6 The order book leaves the building — **Tier 1 is complete**
 
 [Opus 5]

@@ -130,6 +130,18 @@ into an operator's working day.
 | **No notification surface** | The whole M-16 transport exists with no consumer. An operator is never told anything. Found in the second pass. |
 | **No client management** | The registry is a read-only list. No detail view, no correction, no import — although `Client.importedTotalOrders` / `importedSource` / `importedAt` exist in the schema, unused. |
 
+**Two defects found by the LP.0c measurement (§7), both live in shipped code:**
+
+- **A product whose name carries a `™`, a non-breaking space or different casing
+  from its orders reports ZERO revenue.** `sales-summary` matches on
+  `where: { product: product.name }` — exact string equality — where the legacy
+  matched by external product id first and then by a normalised name.
+  `/console/erp/products` renders that zero today. §7 P2.
+- **`fixedCosts` has no editor anywhere**, so `prorate-fixed` always answers
+  zero and **every saved P&L record is missing its rent and salaries**. The
+  setting is declared and summed; the automation screen correctly excludes
+  arrays, and nothing else offers one. §7 P3.
+
 Two further findings worth stating on their own:
 
 - **`/console/erp/ai` is a live 404.** The ERP manifest ships an `ai` nav item
@@ -504,6 +516,14 @@ R3 (test + logs).
 ---
 
 ### R9 · Profit/loss calculator, record versions and aggregation — 🔴 (3 features)
+
+> **Superseded by §7 (LP.0c), which measured it.** The card below stands except
+> for its last two lines: "the API half is largely there" is **wrong** —
+> `sales-summary` cannot answer two of the five questions the calculator's sync
+> asks it, `prorate-fixed` computes a different number from a formula that breaks
+> the tiling `aggregate` depends on, and `fixedCosts` has no editor anywhere so
+> the figure is always zero. §7 also found **two defects in shipped code** with no
+> calculator near them. Read §7 before planning this.
 **Legacy:** a 1,244-line calculator screen auto-filled from
 `/api/products/:id/sales-summary` (real units sold, returns, actual revenue) and
 `/api/financial-records/prorate-fixed`. `GET /versions` lists every save of the
@@ -868,7 +888,7 @@ from complete** — order export (R4) is all that remains in it.
 | **13** | Analytics screen + headline rates (confirmation, cancellation, AOV, delivered/returned) | R6, K1 | M |
 | **14** | Carrier test / sync / integration logs — `IntegrationLog`'s first caller | R3, R20 | M |
 | **15** | Sales-channel screen + platform adapter registry | R8 | M |
-| **16** | Profit/loss calculator + record versions + period aggregation | R9 | L |
+| **16** | Profit/loss calculator + record versions + period aggregation — **measured in §7 (LP.0c); four steps, 16a first** | R9 | L |
 | **17** | AI screen (fixes the live 404) + provider/agent CRUD | R10 | M |
 | **18** | Product fields, variant editor, `niche`/`category`/`supplier` | R12 | M |
 | **19** | Client + order CSV import | R5 (rest), R17 | M |
@@ -909,3 +929,256 @@ Carried over from the existing project conventions, and binding on every slice:
 - Money is `Decimal`, entered through `inputmode="decimal"`, never `type="number"`.
 - Every user-facing string is an i18n key, in all three catalogues.
 - A test that asserts a boundary is not relaxed to make a change pass.
+
+---
+
+## 7. The Profit/Loss calculator, measured end to end — LP.0c
+
+**Measured 6 August 2026 from `fbfe0f7`,** by reading
+`apps/erp/calculateur_profit_perte.html` (1,244 lines) line by line against
+`/console/erp/finance`, `lib/erp/settings.ts`, and the four finance routes.
+**No code was written.** This is R9's detail card replaced by a measurement.
+
+R9 called this "**High** business impact… the API half is largely there, which
+makes the absence of the consumer especially cheap to fix relative to its
+value". **That is wrong, and this section is why.** The API half is not largely
+there: two routes are missing outright, one computes a materially different
+number from the legacy's, one cannot be reached with the parameter names the
+calculator sends, and the single most important one — `sales-summary`, the whole
+reason the calculator can auto-fill itself — **cannot answer two of the five
+questions the sync asks it**. R9's size stands at **L**; its dependency list does
+not.
+
+### 7.1 What the calculator actually is
+
+Not a report. It is a **reconciliation tool between what the CRM thinks happened
+and what the delivery company actually paid**, and that gap is the whole point:
+the star field on every product block is `G — CA Réel reçu du Livreur`, the
+amount on the carrier's remittance statement. Everything else exists to explain
+the difference between that number and the theoretical one.
+
+One block per product, `A`–`G`, plus a business-level aggregate:
+
+| | Inputs | Derived |
+|---|---|---|
+| **A** sale | sell price, buy price | gross margin |
+| **B** ads | ad spend in **USD**, USD→DA rate | ads in DA, ads per unit, total unit cost |
+| **C** shipping | shipping cost, units sold | theoretical CA, profit per unit |
+| **D** returns | return cost, return count | returns total |
+| **E** exchanges | a **repeatable list**, each with its own cost | exchanges total, count |
+| **F** losses | lost/damaged unit cost, count | losses total |
+| **G** real CA | **what the carrier actually paid** | CA gap (theoretical − real), all costs |
+
+```
+incidents = ret_cost·ret_count + Σ exchanges + loss_cost·loss_count
+all_costs = buy·units + pack·units + ship·units + ads_da + incidents
+profit    = real_ca − all_costs                     ← per product
+grand     = Σ profit − (proratedFixedCosts + unexpectedCharges)   ← once, at the top
+```
+
+Six KPIs per product: **ROI** (profit / all costs), **profit per unit**,
+**break-even units** (`ceil(all_costs / (sell − total_unit_cost))`, `∞` when the
+unit does not cover itself), **return rate** (returns / (units + returns +
+exchanges)), **ads per unit**, **net margin %** (profit / real CA).
+
+**Fixed and unexpected costs are subtracted exactly once, at the aggregate**, and
+the source says so twice — adding a second product must not charge the rent
+twice. Any port that computes them inside a product block is wrong.
+
+### 7.2 The seven measured gaps
+
+| # | Gap | Verdict |
+|---|---|---|
+| **P1** | `sales-summary` cannot drive the sync — two of five fields missing, and one is folded into another | 🔴 |
+| **P2** | Product matching is exact string equality, with no normalisation and no external-id path | 🔴 **defect in shipped code** |
+| **P3** | `fixedCosts` has **no editor anywhere**, so the prorated figure is always zero | 🔴 **defect in shipped code** |
+| **P4** | Proration uses a different formula, and the difference breaks the tiling `aggregate` depends on | 🟡 |
+| **P5** | `GET /financial-records/versions` — missing | 🔴 |
+| **P6** | `GET /financial-records/aggregate` — missing | 🔴 |
+| **P7** | The calculator screen, the exchange list, USD ad spend, the six KPIs, the history panel and its Excel export | 🔴 |
+
+---
+
+#### P1 · `sales-summary` cannot answer what the sync asks
+
+`syncProductFromCRM(pid)` calls
+`GET /api/products/:id/sales-summary?since&until` and overwrites **exactly five
+fields**, leaving ads and everything else manual untouched:
+
+| Calculator field | Reads | Platform answers |
+|---|---|---|
+| `units_sold` | `deliveredCount` | ✅ (and also offers `deliveredUnits`) |
+| `ret_count` | `returnedCount` | 🔴 **not returned** |
+| `real_ca` | `realCA` | ✅ |
+| `buy_price` | `avgBuyPrice` | 🟡 **means something else** |
+| `pack_cost` | `avgPackagingCost` | 🔴 **not returned** |
+
+**`avgBuyPrice` is not the same number on the two sides.** The legacy tracks
+`costUnitTotal` and `costPackTotal` separately and returns
+`avgBuyPrice = costUnitTotal / units` and
+`avgPackagingCost = costPackTotal / units`. The platform returns
+`avgBuyPrice = (unitCost + packagingCost) / units` — packaging folded in.
+
+That matters because the calculator multiplies **both** by units:
+`all_costs = buy·units + pack·units + …`. Filling the platform's `avgBuyPrice`
+into the buy field and leaving the packaging field at its previous value
+**counts packaging twice**, and the resulting profit is wrong in the safe-looking
+direction (too low), which is the kind of error nobody investigates.
+
+`deliveredCount` is ORDERS, not units, and the calculator's per-unit arithmetic
+assumes that. The platform's extra `deliveredUnits` is a genuine improvement and
+must not be substituted for it without changing the maths.
+
+Also not echoed back: `productName`, `since`, `until`, and — the one worth
+having — **`costTrackedUnits` / `costFallbackUnits`**, which is how a manager
+learns what fraction of a cost basis came from real FIFO lots and what fraction
+fell back to today's flat price. A margin computed 80% from fallbacks is a guess,
+and the platform currently cannot say so.
+
+#### P2 · A product with a `™` in its name reports zero revenue
+
+The legacy resolves which orders belong to a product in two steps:
+
+1. by **external product id**, through `findProductByExternalId({ storeId,
+   platform, externalProductId })` — the channel's own link;
+2. otherwise by `normalizeProductNameForCalc(...)`, which strips `™®©` and
+   non-breaking spaces, collapses whitespace and lowercases.
+
+The platform does neither. `sales-summary` matches on
+`where: { product: product.name }` — **exact string equality**. So a catalogue
+product named `Montre™` (or `Montre ` with a trailing space, or `montre` where
+the storefront wrote `Montre`) matches no orders at all and reports
+`realCA: "0"`, `deliveredCount: 0`, `grossProfit: "0"`.
+
+This is BUG-02's shape exactly: every screen renders, every number is a real
+number, and the product has apparently never sold anything. It is live today on
+`/console/erp/products` — the sales-summary route already has callers — and it is
+**not** a calculator gap. It belongs to whichever slice touches `sales-summary`
+first, which is the calculator's.
+
+`FulfillmentOrder.externalProductId` exists and is written by the channel
+webhooks; nothing reads it.
+
+#### P3 · Fixed costs cannot be entered, so they are always zero
+
+`fixedCosts` is a declared setting (`settings.ts:54`, `type: "array"`), and
+`prorate-fixed` sums it. **Nothing writes it.** The automation screen builds its
+controls by filtering `spec.type !== "object" && spec.type !== "array"` — which
+is the right rule, deliberately chosen so a structured setting added later is
+excluded automatically rather than rendering as a checkbox — and `fixedCosts` is
+an array.
+
+So `GET /api/erp/financial-records/prorate-fixed` returns
+`{ monthlyTotal: "0", prorated: "0" }` for every tenant, always, and **every P&L
+record saved through `/console/erp/finance` is missing its rent and salaries.**
+The number is not absent; it is zero, which reads as "there are none".
+
+The legacy stores the same list in its settings and edits it **on the calculator
+screen** (`renderFixedList` / `addFixedCost` / `saveFixedCosts`), which is why it
+never needed a general array editor.
+
+#### P4 · The proration formulas differ, and the difference is not rounding
+
+| Period | Legacy `prorateMonthlyAmount` | Platform |
+|---|---|---|
+| day | `monthly / daysInThatMonth` | `monthly / 30.44 × days` |
+| **week** | **`monthly / 4`** | `monthly / 30.44 × 7` = `monthly × 0.2300` |
+| **month** | **`monthly`** | `monthly / 30.44 × ~30.5` ≈ `monthly` |
+| **quarter** | **`monthly × 3`** | day-count |
+| **year** | **`monthly × 12`** | day-count |
+| custom | `monthly / 30.44 × days` | same |
+
+The platform applies the *custom* rule to everything. The legacy's ÷4 and ×3/×12
+look arbitrary and are not: **four saved weeks must tile into exactly one month**,
+because `aggregate` (P6) builds a month by SUMMING four saved weekly records
+rather than recomputing. `4 × monthly/4 = monthly`. The platform's rule gives
+`4 × 0.2300 × monthly = 0.92 × monthly` — an 8% under-charge of fixed costs on
+every aggregated month, growing to a full month's rent missing per year.
+
+The platform's rule is the better answer for an *arbitrary* window and the wrong
+one for an *aligned* one. Both are needed, keyed on `periodType` — which the
+platform's route currently accepts and **echoes back without using**.
+
+**And the parameter names do not match.** The calculator sends
+`?periodType=&startDate=&endDate=`; the platform route reads `since` and `until`
+and defaults to the last 30 days when they are absent. A port that changes
+nothing else would silently prorate the wrong window.
+
+#### P5 · `versions` — a correction overwrites history
+
+`GET /api/erp/financial-records/versions?periodType&startDate&endDate` lists
+**every save of the same period, in order**, so re-saving a corrected week keeps
+the original. The platform has `GET /financial-records` (list, filtered by
+`periodType`) and `POST` (append) — records are already append-only, so the DATA
+is there and there is no route that groups them by period. **S.**
+
+#### P6 · `aggregate` — the requirement's explicit fast path
+
+`GET /api/erp/financial-records/aggregate?periodType&startDate&endDate` rolls
+already-saved sub-period records up — `{quarter: 'month', year: 'month', month:
+'week'}` — sums the six cost columns, derives `netProfit` and `margin`, and
+returns `{ covered, subRecordsUsed, subPeriodType, … }` **without touching orders
+or inventory at all**. Its own comment cites the requirement: *"Monthly reports
+must automatically use the saved weekly records… Yearly reports must
+automatically use the saved monthly records."*
+
+Nothing is persisted until the manager POSTs it back with `source: 'aggregated'`,
+and `covered: false` names which sub-period is missing so a partial month is
+visible rather than silently short. The platform has neither the route nor the
+`source` distinction on any screen. **M.**
+
+#### P7 · The screen, and the six things only it has
+
+No calculator exists. Beyond the arithmetic, these have no equivalent anywhere:
+
+- **The exchange list** — a repeatable per-product list, each row its own cost.
+  Every other incident is a count × a unit cost; an exchange is not, because each
+  one costs what it costs.
+- **Ad spend in USD with an explicit rate.** Algerian advertisers buy in USD and
+  account in DA, and the rate moves. Recording the rate is what makes last
+  month's figure reproducible.
+- **The six KPIs**, of which **break-even units** is the one a manager acts on:
+  it answers "how many more do I have to sell before this product stops losing
+  money", and `∞` when the unit price does not cover the unit cost is the answer
+  that ends a product line.
+- **Calendar-aligned period presets** (`computeAlignedRange`) — Monday-to-Sunday
+  weeks, not rolling 7 days, for the tiling reason in P4. `orderFilters`'
+  `range=week` is a rolling window and is **not** the same vocabulary; the
+  calculator cannot reuse it.
+- **The history panel** (last 50 of the current period type) and **its Excel
+  export** (up to 500 records, 13 columns). LP.6 exported ORDERS; this is the
+  finance history and is separate.
+- **Two honest warnings**: saving a custom range warns that it can never be
+  aggregated later, and a failed aggregate says which sub-period records are
+  missing.
+
+### 7.3 What the platform already does better here, and must keep
+
+- **`Decimal` throughout.** The calculator is `+(el.value)` and `Number(...)`
+  end to end — every figure in it is a binary float, including money that gets
+  saved. The platform's finance columns are `numeric` (M-06) and
+  `financial-records` computes `netProfit` and `margin` as `Decimal`.
+- **The cost basis is the real FIFO lot cost**, on both sides — but the platform
+  reaches it through `InventoryMovement.unitCost` written in the same transaction
+  as the level (LP.1's reasoning), rather than through a parallel ledger.
+- **`deliveryOutcome` is written** (BUG-02). The whole calculator reads
+  delivered-only figures; on the legacy they were permanently zero until that
+  bug was fixed.
+- **`erp:finance:read` / `:write` are SENSITIVE** (D-05.1). The legacy calculator
+  is a static HTML file served with no authorization on the page at all.
+
+### 7.4 The slice this becomes
+
+**Tier 3, slice 16 stands, and it grows a prerequisite.** The order below is
+forced by the measurements, not by preference:
+
+| Step | Work | Size | Why first |
+|---|---|---|---|
+| **16a** | `sales-summary`: add `returnedCount`, split `avgPackagingCost` out of `avgBuyPrice`, echo `costTrackedUnits`/`costFallbackUnits`, and **fix the product match** (external id, then a normalised name) | **M** | P1 + P2. The calculator cannot auto-fill without it, and P2 is a live wrong answer on a screen that already ships. |
+| **16b** | A fixed-cost editor, and `prorate-fixed` honouring `periodType` with the legacy's aligned rules plus the day-count fallback | **S** | P3 + P4. Without it every saved record is missing its fixed costs, and with the wrong rule four weeks do not make a month. |
+| **16c** | `versions` and `aggregate` | **M** | P5 + P6. `aggregate` is the requirement's own fast path and depends on 16b's tiling. |
+| **16d** | The calculator screen | **L** | P7. Everything above is its input. |
+
+**16a is worth pulling forward on its own merits.** P2 is a defect in shipped
+code with no calculator anywhere near it: a product whose name carries a `™`
+reports zero revenue on `/console/erp/products` today.

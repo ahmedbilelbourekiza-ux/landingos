@@ -64,7 +64,17 @@ blocker 4 — **no notification surface** — which is where Tier 2 starts.
   nothing and is the difference between a dropped 3G connection showing a stale
   screen and showing nothing. Worth revisiting with that narrower scope.
 
-### Two defects in shipped code
+### Four defects in shipped code
+
+- **A product with a `™` in its name reports ZERO revenue.** `sales-summary`
+  matches its orders with `where: { product: product.name }` — exact string
+  equality — where the legacy matched by external product id then by a
+  NORMALISED name. `/console/erp/products` renders that zero today. LEGACY_PARITY
+  §7 P2; fix it in slice 16a.
+- **Every saved P&L record is missing its fixed costs.** `fixedCosts` is a
+  declared setting that `prorate-fixed` sums and **nothing writes** — the
+  automation screen correctly excludes array settings and no other screen offers
+  one — so the prorated figure is always zero. §7 P3; slice 16b.
 
 - **`/console/erp/ai` is a live 404** — the manifest ships an `ai` nav item and
   no screen exists. `screens.test.ts` lists eight screens and omits it.
@@ -212,6 +222,16 @@ The architecture is already proposed and reviewed — LEGACY_PARITY §6.4(a):
   off the same provider, behind a preference on `ProductSetting` rather than
   `localStorage` — so it follows the person between devices, which is the one
   thing the legacy got wrong here.
+
+### And one slice out of order, if the defects above are judged urgent
+
+**Slice 16a** (LEGACY_PARITY §7.4) is a Tier 3 step that fixes a Tier 1-shaped
+problem: `sales-summary`'s exact-string product match means a product whose name
+differs from its orders by one invisible character reports zero revenue on a
+screen that already ships. It is **M**, it is independent of everything else, and
+it is the prerequisite for the whole profit-calculator slice regardless of when
+that happens. Pulling it forward is a judgement call, not a roadmap change —
+record the decision either way.
 
 ### The order of work (LEGACY_PARITY.md §4)
 

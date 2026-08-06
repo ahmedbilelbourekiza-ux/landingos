@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.6: the order book leaves the building*
+**Branch:** `master` · **Last commit:** *LP.0c: the profit/loss calculator, measured*
 **Working tree:** clean, all work committed.
 
 ---
@@ -570,6 +570,37 @@ the notification provider (LP.7)**, which is the largest single piece of dead
 machinery in the repo: M-16's whole transport (storage, audience, SSE with exact
 replay, Web Push, service worker, 33 tests) has **no consumer in the console**.
 An operator is still never told anything.
+
+### LP.0c — the P&L calculator measured, and two defects it found
+
+**`LEGACY_PARITY.md` §7** is the 1,244-line legacy calculator read line by line
+against the platform's finance surface. No code changed. Seven gaps, and R9's
+"the API half is largely there" corrected: `sales-summary` **cannot answer two of
+the five questions** the calculator's sync asks it, and its `avgBuyPrice` folds
+packaging in where the legacy keeps it separate — so filling one from the other
+**double-counts packaging**.
+
+**Two defects live in shipped code, neither needing a calculator to hurt:**
+
+1. **A product whose name carries a `™`, a non-breaking space or different
+   casing from its orders reports ZERO revenue.** `sales-summary` matches with
+   `where: { product: product.name }` — exact string equality — where the legacy
+   matched by external product id first, then by a normalised name.
+   `/console/erp/products` renders that zero today. BUG-02's exact shape.
+2. **Every saved P&L record is missing its rent and salaries.** `fixedCosts` is
+   declared and summed by `prorate-fixed`, and **nothing writes it** — the
+   automation screen correctly excludes array settings and no other screen offers
+   one, so the prorated figure is always zero, which reads as "there are none".
+
+**And the finding that explains an "arbitrary" legacy rule:** the legacy prorates
+÷4 for a week and ×3/×12 for a quarter/year so that **four saved weeks tile into
+exactly one month**, because `aggregate` builds a month by summing them. The
+platform's `monthly/30.44×days` gives `0.92 × monthly` for four weeks — an 8%
+under-charge every aggregated month. Both formulas are needed, keyed on
+`periodType`, which the platform's route accepts and ignores.
+
+Slice 16 becomes four steps (§7.4), and **16a is worth pulling forward on its own
+merits** because defect 1 is a wrong answer on a screen that already ships.
 
 Phase 8's two guarantees (`CSRF_ORIGIN` and rate limiting) remain owed and are
 Tier 4 of the same roadmap — the legacy system had both, so they are a parity
