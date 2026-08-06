@@ -13,11 +13,36 @@ comparison of `apps/erp` (the legacy CRM) against the platform ERP was carried
 out on 6 August 2026 and is in **`LEGACY_PARITY.md`**. Read it before doing
 anything else.
 
-**101 features compared: 55 identical · 8 improved · 14 partial · 24 missing.**
-**The platform cannot replace the legacy CRM in production today.** Three hard
-blockers were found: no real carrier adapter (only `mock`, which fabricates
-tracking numbers), no product editing, no export of any kind. Plus a read-only
-client registry.
+**Second pass, 6 August 2026 (from `9d1f887`): 115 features compared —
+52 identical · 6 improved · 18 partial · 39 missing.** The platform cannot
+replace the legacy CRM in production today.
+
+**The first pass measured APIs, not workflows, and five verdicts did not
+survive.** A feature was marked ✅ when the endpoint existed and had contract
+tests; several of those endpoints have **no caller anywhere in the console** —
+the same defect the first pass caught in `IntegrationLog` and then failed to look
+for anywhere else.
+
+| Corrected | Why |
+|---|---|
+| notifications (L1, L2) 🔵 → **🔴** | M-16's whole transport — storage, audience, SSE with exact replay, Web Push, service worker, **33 tests** — has **no consumer in the console**. No bell, no badge, no toast. A signed-in operator is never told anything. |
+| Web Push (L3) ✅ → **🟡** | Sends, but there is no in-app surface at all, so push is the only possible channel — and VAPID is unset by default. |
+| create an order (B3) ✅ → **🔴** | `POST /api/erp/orders` is tested and has **no console control**. A phone order cannot be entered. |
+| list + filter (B1) ✅ → **🟡** | `orderFilters` supports nine filters, richer than the legacy's four, and the orders screen renders **no filter form**. |
+
+**And the finding that changes the verdict: there is no pagination anywhere in
+the console.** Every ERP screen is a hard-capped first-N read — orders 50,
+clients 50, products 100, shipments 100, follow-up 100 — with no next, no page
+number and no total. The legacy downloaded the whole book and filtered in the
+browser (slow, PERF-02); the platform fixed the query side properly and never
+built the navigation, so the data went from *slow to reach* to **impossible to
+reach**. Row 51 does not exist.
+
+The **domain layer is at or above parity** and in nine places is objectively
+better (LEGACY_PARITY §6.3) — query-side scoping, RLS, revocable sessions,
+idempotent jobs, write-time notification audiences, `Decimal` money, atomic
+client counters, the assignment rules, the contract-test discipline. **None of
+that may be traded back to restore the consumer layer.**
 
 Do not start Phase 8, do not add SaaS functionality, and do not redesign
 anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
@@ -26,11 +51,20 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 
 | Slice | Restores | State |
 |---|---|---|
-| **LP.1** product editing | R1 | **DONE** — `PATCH /api/erp/products/[id]` + the edit panel, catalog 40→55 |
-| **LP.2** unknown carrier adapter refused, not mocked | R2 (first half) | **DONE** — delivery 33→39, screens 99→100 |
-| **LP.3** the real ZR Express adapter | R2 (rest) | **NEXT** |
-| LP.4 order export (CSV: ZR / Ecom / Ecotrac + performance report) | R4 | to do |
-| LP.5 carrier test / sync / integration logs | R3, R20 | to do |
+| **LP.1** product editing | R1 | **DONE** — catalog 40→55 |
+| **LP.2** unknown carrier adapter refused, not mocked | R2 (half) | **DONE** — delivery 33→39, screens 99→100 |
+| **LP.3** list pagination + filter bar + search | N1, N7, N8, B1 | **NEXT** |
+| LP.4 create an order from the console | N6 | to do |
+| LP.5 the real ZR Express adapter | R2 (rest) | to do |
+| LP.6 order export (CSV: ZR / Ecom / Ecotrac + report) | R4 | to do |
+| LP.7 the notification provider (bell, badge, toast, live refresh) | N2, N3, L1, L2 | to do |
+
+**The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
+moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
+`<FilterBar>` primitives are an architectural dependency of most of what follows.
+The ZR adapter moved back one place deliberately — it is the highest-risk slice
+in the roadmap (network I/O inside a 15s transaction), and LP.3/LP.4 are low-risk
+and unblock daily work immediately.
 
 ### D-LP.2 — an unregistered adapter refuses, except when mapping a pushed status
 

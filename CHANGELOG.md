@@ -12,6 +12,120 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.0b The second pass — the first review measured APIs, not workflows
+
+[Opus 5]
+Date: 6 August 2026
+Summary: `LEGACY_PARITY.md` re-measured from `9d1f887` at the level of
+**workflows** rather than routes — the SPA's 4,949 lines of JavaScript, the agent
+PWA's live loop, the service worker, and every control on every screen.
+**101 → 115 features. Five pass-1 verdicts corrected, fourteen features found.**
+52 identical · 6 improved · 18 partial · 39 missing. No code changed.
+
+#### The systematic error in the first pass
+
+A feature was marked ✅ **when the endpoint existed and had contract tests.**
+Several of those endpoints have no caller anywhere in the console. The first pass
+caught exactly this in `IntegrationLog` — model migrated, zero callers — recorded
+it as a one-off finding, and then did not look for the pattern anywhere else. It
+is the dominant defect class in this port.
+
+| Corrected | Was | Now |
+|---|---|---|
+| L1 live notification feed | 🔵 | **🔴** — M-16's transport (storage, audience, SSE with exact replay, Web Push, service worker, **33 tests**) has no consumer. No bell, no badge, no panel, no toast. An operator is never told anything. |
+| L2 per-account read state | 🔵 | **🔴** — `unreadCount()` has no caller. |
+| L3 Web Push | ✅ | **🟡** — sends, but with no in-app surface it is the ONLY possible channel, and VAPID is unset by default. |
+| B3 create an order | ✅ | **🔴** — `POST /api/erp/orders` is tested and has no console control. A phone order cannot be entered. |
+| B1 list + filter | ✅ | **🟡** — `orderFilters` supports nine filters, richer than the legacy's four, and the orders screen renders no filter form. |
+
+#### The finding that changes the verdict
+
+**There is no pagination anywhere in the console.** Orders 50, clients 50,
+products 100, shipments 100, follow-up 100, queue 20 — no next, no page number,
+no total. The legacy downloaded the whole book and filtered in the browser, which
+is what PERF-02 was filed for; the platform fixed the query side properly (filter,
+scope and page all in SQL) **and never built the navigation on top of it**. The
+data went from *slow to reach* to *impossible to reach*. Row 51 does not exist.
+
+#### The other thirteen, none of which a route inventory could see
+
+Live console updates (the legacy re-renders on every SSE event and flashes the
+changed row); the notification bell/badge/panel; **six typed Web Audio sounds**
+with per-type toggles and a volume; desktop notifications; the order-list filter
+bar; a search box on any list; inline row actions (agent, carrier, express and
+status selects on the row itself); list information density (~14 facts per legacy
+row against 8); the payroll report; the audit-log view; the offline app shell;
+and the live follow-up countdown.
+
+**Explicitly NOT a gap:** global keyboard shortcuts and context menus. Neither
+system has any — the only key handlers in either client are Enter-to-submit on
+three inputs. Recorded so nobody goes looking for shortcuts that never existed.
+
+#### Workflow cost, measured
+
+| Operation | Legacy | Platform |
+|---|---|---|
+| Reassign an order | 2 clicks | 4 |
+| Change the carrier | 2 clicks | 4 |
+| "Pending orders in Alger from yesterday" | 3 clicks | impossible from the UI |
+| Enter a phone order | 2 clicks | impossible |
+| Learn a new order arrived | 0 — sound + toast + the row appears | never, until reload |
+| Reach the 60th order | 1 — scroll | impossible |
+
+One cause: **D-06.1 was applied without ever building the list-level controls**,
+so every mutation is a page navigation. The decision is right and does not
+require that cost — a control in a table row still calls the route.
+
+#### What the platform does better, recorded so it is not traded back
+
+Nine things, in LEGACY_PARITY §6.3: query-side filtering and scoping (PERF-02),
+three-layer tenant isolation, opaque revocable sessions, jobs out of the web
+process, notification audiences decided at write time, `Decimal` money, atomic
+client counters, the assignment rules that fix the ERP's `overdueFlaggedAt` bug,
+and the contract-test discipline itself. **None of it may be given up to restore
+the consumer layer.**
+
+#### Two decisions re-opened
+
+**Live updates.** Neither system has a working live console at scale — the legacy
+fans out from an in-process map (wrong on two instances, lost on deploy), the
+platform built the correct transport and stopped. Proposed: one
+`<NotificationProvider>` in the shell owning a badge, a toast, and a **debounced
+`router.refresh()`**, so a burst of carrier events costs one re-render. Keeps
+every D-06 rule — server-rendered truth, event-driven invalidation, no optimistic
+UI, no second write path.
+
+**The offline shell.** 6.6e closed this on "a cache keyed by URL survives signing
+out". That is true and too broad: a **shell-only** cache holds markup and CSS
+identical for every tenant, leaks nothing, and is the difference between a
+dropped 3G connection showing a stale screen and showing nothing — which is the
+normal case for a field agent. Recommended for revisit with that narrower scope.
+
+#### Roadmap re-ordered
+
+By: production blockers → daily operator productivity → business value →
+architectural dependencies → risk. Pagination moves to **first** (row 51 is
+unreachable, and the shared `<Pager>`/`<FilterBar>` are a dependency of most of
+what follows). The real ZR adapter moves back one place **deliberately**: it is
+the highest-risk slice in the roadmap — network I/O inside a 15s transaction —
+and the two slices ahead of it are low-risk and unblock daily work immediately.
+
+#### Files
+`LEGACY_PARITY.md` (§0b, §3b, §6 new; §1 and §4 rewritten; five rows corrected
+in place so no table disagrees with the corrections), `PROJECT_STATE.md`,
+`NEXT_STEPS.md`, `CHANGELOG.md`.
+
+#### Migration
+None.
+
+#### Risk
+None — no code changed. The risk this entry removes is the one it names: two
+slices had been implemented against a roadmap built on an API inventory, and the
+next one queued was the largest and riskiest while an operator still could not
+enter an order, find one, or be told that one had arrived.
+
+---
+
 ### LP.2 An unknown carrier adapter is refused, not mocked
 
 [Opus 5]

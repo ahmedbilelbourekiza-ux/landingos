@@ -36,27 +36,84 @@ Two things were confirmed before anything else:
 
 ---
 
+## 0b. Second pass — what the first pass got wrong
+
+**Re-measured 6 August 2026, from commit `9d1f887`.** The first pass compared
+**123 routes against 60 route files and 15 screens against 12**. That is an API
+inventory, and it is the wrong instrument for the question "can an operator do
+their job here". Read a second time at the level of *workflows* — the SPA's
+4,949 lines of JavaScript, the agent PWA's live loop, the service worker, and
+every control on every screen — five pass-1 verdicts do not survive, and twelve
+features were missed entirely because **no route was missing to point at them**.
+
+**The systematic error:** a feature was marked ✅ when the endpoint existed and
+had contract tests. Several of those endpoints have **no caller anywhere in the
+console**. That is the same defect the first pass caught in `IntegrationLog` and
+then failed to look for anywhere else.
+
+### Verdicts corrected
+
+| # | Was | Now | Why |
+|---|---|---|---|
+| **L1** live notification feed | 🔵 | **🔴** | M-16 built storage, audience, an SSE stream with exact replay, Web Push and a service worker — **33 contract tests** — and *nothing in the console consumes any of it*. No bell, no badge, no panel, no toast. `grep` for a consumer of `/api/platform/notifications` outside `app/api/` returns nothing. A signed-in operator sees no notification, ever. |
+| **L2** per-account read state | 🔵 | **🔴** | Same. `unreadCount()` exists in `lib/platform/notifications.ts` and has no caller. |
+| **L3** Web Push | ✅ | **🟡** | Sending works and the worker can receive it. There is no in-app surface at all, so push is the *only* way a notification can ever reach a person — and only if VAPID is configured, which it is not by default. |
+| **B3** create an order | ✅ | **🔴** | `POST /api/erp/orders` has contract tests and **no console control**. `grep` for `"/api/erp/orders"` in `components/` and `app/console/` returns nothing. A manager taking an order over the phone cannot enter it. The legacy has a "New order" button and modal on the main screen. |
+| **B1** list + filter | ✅ | **🟡** | `orderFilters` supports nine filters — *richer* than the legacy's four — and the orders screen **renders no filter form**. Only `/console/erp/queue` has one. A manager must hand-type query strings. |
+
+### The one that changes the verdict
+
+**There is no pagination anywhere in the console.** Every ERP screen is a
+hard-capped first-N read with no next, no previous, no page number and no total:
+
+| Screen | Cap |
+|---|---|
+| orders | 50 |
+| clients | 50 |
+| products | 100 |
+| inventory movements | 50 |
+| shipments | 100 |
+| follow-up | 100 |
+| finance / charges | 50 / 25 |
+| queue | 20 |
+
+The legacy downloaded the whole book and filtered in the browser — slow at 5,000
+orders, which is exactly what PERF-02 was filed for. The platform fixed the
+query side properly (filter, scope and page all in SQL) **and then never built
+the navigation**. So the data went from *slow to reach* to *impossible to
+reach*: with 51 orders, order 51 does not exist as far as the console is
+concerned. That is a worse outcome than the bug that was fixed, and it is a
+production blocker in its own right.
+
+---
+
 ## 1. Scoreboard
 
-**101 features compared.**
+**115 features compared** (101 in the first pass, 14 added by the second).
 
 | Class | Count | Share |
 |---|---|---|
-| ✅ IDENTICAL | 55 | 54% |
-| 🔵 IMPROVED | 8 | 8% |
-| 🟡 PARTIAL | 14 | 14% |
-| 🔴 MISSING | 24 | 24% |
+| ✅ IDENTICAL | 52 | 45% |
+| 🔵 IMPROVED | 6 | 5% |
+| 🟡 PARTIAL | 18 | 16% |
+| 🔴 MISSING | 39 | 34% |
 
 **Verdict: the platform cannot replace the legacy CRM in production today.**
 
-The order pipeline — the thing the business runs on — is at or above parity. What
-is missing clusters in four places, and three of them are *hard blockers*:
+The **domain layer** — the business rules, the ledger, the settlement chain, the
+assignment rules, the jobs — is at or above parity and in several places is
+objectively better than the legacy (see §6.3). What is missing is almost entirely
+the **consumer layer**: screens, controls and the live loop that turn those rules
+into an operator's working day.
 
 | Blocker | Why it blocks production |
 |---|---|
-| **No real carrier adapter** | Only `mock` is registered. Not one parcel can be booked with ZR Express, Ecom, or anyone else. The legacy system's 479-line ZR adapter (live territory resolution, Svix webhooks, outbound parcel creation) has no equivalent. |
-| **No product editing** | A product can be created and archived. It can never be corrected. A wrong price, cost, or threshold is permanent — and every profit figure derived from it is permanently wrong. |
+| **No real carrier adapter** | Only `mock` is registered. Not one parcel can be booked with ZR Express, Ecom, or anyone else. The legacy system's 479-line ZR adapter (live territory resolution, Svix webhooks, outbound parcel creation) has no equivalent. *(Half-fixed in LP.2: it now refuses instead of fabricating a tracking number.)* |
+| **No pagination, anywhere** | Every screen shows the first 50–100 rows and there is no way to reach row 101. Found in the second pass. |
+| **No product editing** | *(Fixed in LP.1.)* |
 | **No export** | Orders reach carriers by Excel file in the legacy system (ZR / Ecom / Ecotrac formats). There is no CSV or XLSX anywhere on the platform. Confirmed orders cannot leave. |
+| **Cannot create an order** | A phone order cannot be entered into the console at all. Found in the second pass. |
+| **No notification surface** | The whole M-16 transport exists with no consumer. An operator is never told anything. Found in the second pass. |
 | **No client management** | The registry is a read-only list. No detail view, no correction, no import — although `Client.importedTotalOrders` / `importedSource` / `importedAt` exist in the schema, unused. |
 
 Two further findings worth stating on their own:
@@ -101,9 +158,9 @@ Legend: ✅ identical · 🔵 improved · 🟡 partial · 🔴 missing
 
 | # | Feature | Legacy | Platform | Status |
 |---|---|---|---|---|
-| B1 | List + filter + paginate | `GET /api/orders` | same | ✅ |
+| B1 | List + filter + paginate | `GET /api/orders` + 4 filters, instant | 9 filters in `orderFilters`, **no filter form and no pager on the screen** (corrected in §0b) | 🟡 |
 | B2 | Stats | `GET /api/orders/stats` | same | ✅ |
-| B3 | Create | `POST /api/orders` | same | ✅ |
+| B3 | **Create** | `POST /api/orders`, "New order" button + modal | route exists, **no console control** (corrected in §0b) | 🔴 |
 | B4 | Edit | `PUT /api/orders/:id` | `PATCH` | ✅ |
 | B5 | Delete | `DELETE /api/orders/:id` | same | ✅ |
 | B6 | Call start / log result | `/call-start`, `/call` | same | ✅ |
@@ -251,9 +308,9 @@ Legend: ✅ identical · 🔵 improved · 🟡 partial · 🔴 missing
 
 | # | Feature | Legacy | Platform | Status |
 |---|---|---|---|---|
-| L1 | Live feed (SSE) | one writer per name, in-process | per-recipient rows, table-polled, exact replay (6.6c–d) | 🔵 |
-| L2 | Read state | global | per account | 🔵 |
-| L3 | Web Push | `web-push` | same + service worker (6.6e) | ✅ |
+| L1 | **Live feed (SSE)** | one writer per name, in-process; drives every screen refresh | the transport is better and **has no consumer in the console** (corrected in §0b) | 🔴 |
+| L2 | **Read state** | global, with a bell and a badge | per account, `unreadCount()` **has no caller** (corrected in §0b) | 🔴 |
+| L3 | Web Push | `web-push`, alongside an in-app bell | sending + worker work; **no in-app surface at all**, so push is the only channel (corrected in §0b) | 🟡 |
 | L4 | VAPID public key | `/api/push/vapid-public-key` | `GET /api/platform/push` | ✅ |
 
 ### M. Settings
@@ -601,55 +658,196 @@ control**; status mappings can be added but never removed.
 
 ---
 
+## 3b. Second-pass findings — the fourteen the route inventory could not see
+
+Each of these has no missing endpoint behind it, which is why counting routes
+missed all of them.
+
+| # | Feature | Legacy | Platform | Status |
+|---|---|---|---|---|
+| **N1** | **List pagination** | client-side paging on clients; everything else rendered in full | **nothing, anywhere** — first 50–100 rows, no next | 🔴 |
+| **N2** | **Live console updates** | every SSE event re-fetches and re-renders the affected screen; the changed row flashes for 3s (`hl-flash`) | the console re-renders only after the **viewer's own** action (`router.refresh()`). Another agent's confirmation, a carrier webhook, a new order — none reach an open screen | 🔴 |
+| **N3** | **Notification bell, badge and panel** | header bell, unread count from the server, 200-entry panel, read watermark advanced on open | none | 🔴 |
+| **N4** | **Notification sounds** | six distinct Web Audio signatures — `new_order` (ka-ching), `abandoned`, `assignment`, `manipulation` (siren), `delivery`, `followup` — with a per-type toggle and a volume, persisted in `localStorage` | none | 🔴 |
+| **N5** | **Desktop notifications** | `Notification` API on every event, tagged by order id so they collapse | none | 🔴 |
+| **N6** | **Create an order from the console** | "New order" button + modal on the main screen | **no control** (route exists) | 🔴 |
+| **N7** | **Filter bar on the order list** | status · agent · date preset (all/today/yesterday/week/month/**custom** with from–to) · search, all instant | `orderFilters` supports **nine** filters; the screen offers **none** | 🔴 |
+| **N8** | **Search box** | orders, clients (debounced, 8 more filters), products | the APIs accept `search`; **no screen has an input** | 🔴 |
+| **N9** | **Inline row actions** | board card carries agent select, carrier select, express toggle and status select — three changes without leaving the list | click into the detail page, once per order | 🔴 |
+| **N10** | **List information density** | per row: order type badge (draft/abandoned/normal), note badge with the note as a tooltip, fake badge, overdue tag with a pulsing dot, store logo + name + brand + platform, date **and** time, variant thumbnail, and qty / unit / delivery / discount / total | reference, customer, destination, product, total, status, call count, date — roughly a third of the information | 🟡 |
+| **N11** | **Payroll report** | modal from the agents screen | `/api/erp/agents/payroll` exists; **nothing renders it** | 🔴 |
+| **N12** | **Audit-log view** | investigation modal per order | `/api/erp/orders/[id]/audit` exists; the detail screen does not render it | 🔴 |
+| **N13** | **Offline app shell** | service worker precaches the agent shell; network-first with cache fallback, so a dropped 3G connection does not blank the screen | **deliberately none** — see §6.4, where that decision is re-opened | 🔴 |
+| **N14** | **Live follow-up countdown** | ticks every 15s in place, and re-sorts the moment a task goes overdue | a formatted due date, static | 🟡 |
+
+**Not present in either system, so not a gap:** global keyboard shortcuts, and
+custom context menus. Neither the legacy SPA nor the agent PWA has any — the only
+key handlers are Enter-to-submit on three inputs. Anyone reading this report
+looking for "the shortcuts we lost" should stop here: there were none.
+
+---
+
+## 6. The dimensions that are not features
+
+### 6.1 Workflow speed and clicks — the legacy wins, and it is not close
+
+Measured on the three highest-frequency operations in a COD call centre.
+
+| Operation | Legacy | Platform | Ratio |
+|---|---|---|---|
+| Reassign an order to another agent | 2 (open board → pick from the row's select) | 4 (open list → click order → open reassign panel → pick → save) | **2×** |
+| Change the carrier on an order | 2 (row select) | 4 | **2×** |
+| Find "pending orders in Alger from yesterday" | 3 (three dropdowns, instant) | **impossible from the UI** — hand-type `?status=pending&wilaya=Alger&since=…&until=…` | ∞ |
+| Enter a phone order | 2 (New order → save) | **impossible** | ∞ |
+| See that a new order arrived | 0 — sound + toast + the row appears | **never** — until the operator reloads | ∞ |
+| Reach the 60th order | 1 (scroll) | **impossible** | ∞ |
+
+The pattern is consistent and it has one cause: **D-06.1 — "a control calls the
+API route"** — was applied without ever building the *list-level* controls, so
+every mutation is a page navigation. That decision is right (it is what stops a
+second, untested write path) and it does not require the current cost: a control
+in a table row still calls the route.
+
+### 6.2 Cognitive load, density, hierarchy, discoverability
+
+- **Density.** One legacy list row carries ~14 facts; the platform's carries 8,
+  and drops the four that decide what to do next — is it overdue, has it been
+  called, is there a note, is it flagged. The agent's own queue screen (6.4) is
+  the exception and is *good*: it was built from `agent.html` rather than from
+  the API, which is precisely why.
+- **Hierarchy.** The legacy leads every row with the order number, the type badge
+  and the overdue state — the three things that decide priority. The platform
+  leads with the reference and sorts by date, so priority is not visible at all.
+- **Discoverability.** The platform's nine order filters are undiscoverable by
+  construction: they exist only as query-string keys. The legacy's four are three
+  dropdowns in the header.
+- **Feedback.** The legacy toasts on every action, flashes the changed row, and
+  plays a typed sound. The platform's `ActionButton` shows a busy state and then
+  the page re-renders — correct, but silent, and only for the actor.
+
+### 6.3 Where the platform is objectively better — and must not be traded back
+
+This list is as important as the gaps. None of it should be given up to restore
+the items above.
+
+| | Why it is better |
+|---|---|
+| **Query-side filtering and scoping** | The legacy downloaded the whole order book and filtered in JavaScript (PERF-02: 3,006 ms on 5,000 orders). The platform's filter, scope and page are all in SQL. The *only* thing missing is the navigation on top of it. |
+| **Tenant isolation** | Three layers with RLS `FORCE` and `WITH CHECK`. The legacy is single-company and has no concept. |
+| **Opaque, revocable sessions** | Suspension takes effect on the next request. |
+| **Jobs out of the web process** | The legacy ran the overdue sweep on an in-process `setInterval` — on two instances it double-counts every miss against an agent. The platform's are idempotent by column guard, driven by a worker. |
+| **Notification audience decided at write time** | One row per recipient, audience named by a PERMISSION and resolved with `can()`. The legacy interpreted a free-text audience at read time, which is where every notification bug in its audit lived. |
+| **Money as `Decimal`** | 37 columns, none `double precision`. The legacy is `REAL` throughout. |
+| **Atomic client counters** | `increment` in SQL vs the legacy's read-modify-write, which loses updates on two concurrent webhooks for the same customer. |
+| **The assignment rules (D-06.5/6/7)** | The legacy cleared `overdueFlaggedAt` on reassignment while measuring the deadline from `createdAt`, so one ignored order walked the whole roster in minutes, counting a miss against every agent. |
+| **Contract tests that attack boundaries** | 462 of them. The legacy has 298 and a different character. |
+
+### 6.4 Where BOTH are weak — two decisions to re-open
+
+**(a) Live updates.** The legacy fans out in-process from a module-level map:
+correct on one instance, wrong on two, and lost on every deploy. The platform
+built the right transport — a table-polled SSE stream with exact replay from
+`Last-Event-ID`, correct on ten instances — and then stopped. Neither system
+currently gives a scaled deployment a working live console.
+
+> **Proposed architecture.** One `<NotificationProvider>` in the console shell,
+> subscribing **once** per session to `/api/platform/notifications/stream`. It
+> owns three things and nothing else: the unread badge, a toast per arriving
+> notification, and a **debounced `router.refresh()`** (~500 ms) so a burst of
+> carrier events costs one re-render. Server-rendered truth, event-driven
+> invalidation — this keeps every D-06 rule intact (no optimistic UI, no second
+> write path) while removing the "silent until you reload" failure. Sounds and
+> desktop notifications hang off the same provider, behind a per-type preference
+> stored on `ProductSetting`, not `localStorage`, so it follows the person
+> between devices — the one thing the legacy got wrong here.
+
+**(b) List navigation.** The legacy renders everything (unusable at scale); the
+platform truncates silently (unusable at 51 rows).
+
+> **Proposed architecture.** A shared `<Pager>` and `<FilterBar>` in
+> `components/console`, both driven by the **same vocabulary the API validates
+> against** — `orderFilters` for orders, `clientFilter` for clients — exported
+> from the directive-free module the route already uses. One vocabulary, so a
+> filter added to the API appears in the UI instead of going stale. Cursor-based,
+> because `skip`/`take` at page 200 is a sequential scan. This is D-06.2's
+> principle applied to reads: *offer exactly what the endpoint accepts.*
+
+**(c) The offline shell — a decision worth re-opening, not just accepting.**
+6.6e recorded "no offline shell, deliberately: every console page is
+session-scoped, and a cache keyed by URL survives signing out." The reasoning is
+sound and the conclusion is too broad. The legacy agent PWA is used by field
+agents on Algerian mobile networks, and its worker is network-first with a cache
+fallback for the **shell only** — never for data. A shell-only cache leaks
+nothing (it is markup and CSS, identical for every tenant), and it is the
+difference between a dropped connection showing a stale screen and showing
+nothing. Recommend revisiting with that narrower scope rather than treating the
+whole idea as closed.
+
+---
+
 ## 4. Restoration roadmap — ordered by business value
 
-The order below is **not** easiest-first. It is "what stops this replacing the
-legacy CRM in production", then "what the business uses every day", then the rest.
-Slice sizes are chosen so each one compiles, tests and commits on its own.
+**Re-ordered by the second pass.** The priority axes, in the order the review
+asked for: (1) production blockers, (2) daily operator productivity, (3) business
+value, (4) architectural dependencies, (5) risk. The first pass ordered by
+business value alone and put a whole tier of *daily productivity* work behind
+completeness work; that was wrong, and the shared primitives (pager, filter bar,
+notification provider) are architectural dependencies of almost everything below
+them, which is the fourth axis saying the same thing.
+
+**Two slices are done.** LP.1 (product editing) and LP.2 (carrier adapter
+refusal) close R1 and half of R2.
 
 ### Tier 1 — production blockers (nothing ships without these)
 
-| # | Slice | Restores | Size | Why first |
+| # | Slice | Restores | Size | Why here |
 |---|---|---|---|---|
-| **1** | **Product editing** | R1 | S | A permanent wrong cost basis silently corrupts every money figure downstream. Smallest fix with the largest blast radius. |
-| **2** | **Carrier adapter refusal + real ZR adapter** | R2 | S then L | `mock` fabricating tracking numbers for a real carrier is worse than an error. Refuse first (S), then land ZR. |
-| **3** | **Order export (CSV → ZR / Ecom / Ecotrac + report)** | R4 | M | Until every carrier has an adapter, Excel is the only way a confirmed order leaves the building. |
-| **4** | **Carrier test / sync / integration logs** | R3, R20 | M | The only way a tenant can tell a credential is wrong before a customer does. Also gives `IntegrationLog` its first caller. |
+| ~~1~~ | ~~Product editing~~ | R1 | S | **DONE — LP.1** |
+| ~~2a~~ | ~~Carrier adapter refusal~~ | R2 | S | **DONE — LP.2** |
+| **3** | **List pagination + filter bar + search** (shared `<Pager>` / `<FilterBar>`) | N1, N7, N8, B1 | M | **Now first.** Row 51 does not exist today; that is worse than the PERF-02 bug it replaced. Every later screen depends on these two primitives, so building them now is also the cheapest ordering (axis 4). |
+| **4** | **Create an order from the console** | N6 | S | A phone order cannot be entered at all. The route and its validation already exist; this is a form. |
+| **5** | **The real ZR Express adapter** | R2 (rest) | L | Not one parcel can be booked with a real carrier. Deliberately *after* 3 and 4: it is the highest-risk slice in the roadmap (network I/O inside a 15s transaction, territory resolution), and 3–4 are low-risk and unblock daily work immediately (axis 5). |
+| **6** | **Order export (CSV → ZR / Ecom / Ecotrac + performance report)** | R4 | M | Until every carrier has an adapter, Excel is the only way a confirmed order leaves the building. |
 
-### Tier 2 — daily operations
+### Tier 2 — daily operator productivity
 
 | # | Slice | Restores | Size | Why here |
 |---|---|---|---|---|
-| **5** | **Client detail, correction, export** | R5 (part) | M | The registry is the business's most valuable asset and is currently read-only. |
-| **6** | **Analytics screen + headline rates** | R6 | M | Confirmation rate per agent and per wilaya is how the call centre is run. |
-| **7** | **Bulk actions completed** | R7 | M | `createShipments` in bulk is the highest-volume manager action there is. |
-| **8** | **Agent alerts + missed-counter reset + manager password reset** | R11, R14, R15 | S ×3 | Three small, independent operational traps. R14 gets worse with uptime. |
-| **9** | **Sales-channel screen + adapter registry** | R8 | M | A tenant cannot connect a store today; the API is unreachable from the console. |
+| **7** | **The notification provider** — bell, badge, panel, toast, debounced live refresh | N2, N3, L1, L2 | M | The whole M-16 transport has no consumer. This is one client component plus a badge, and it turns 33 tested-but-dead endpoints into the operator's live loop. Architecture in §6.4(a). |
+| **8** | **Inline row actions + list density** — agent, carrier, express, status on the row | N9, N10 | M | Halves the clicks on the two highest-frequency operations in the building. Depends on 3. |
+| **9** | **Bulk actions completed** — classify, assignFollowup, createShipments, sendToDelivery | R7 | M | `createShipments` in bulk is the highest-volume manager action there is. Depends on 5 to be worth anything. |
+| **10** | **Client detail, correction, export** | R5 (part) | M | The registry is the business's most valuable asset and is read-only. Depends on 3 for search. |
+| **11** | **Sound + desktop notification preferences** (on `ProductSetting`) | N4, N5 | S | Hangs off 7. In a call centre nobody watches the screen; the ka-ching is the alert. |
+| **12** | **Agent alerts screen · missed-counter reset · manager password reset · payroll report · audit view** | R11, R14, R15, N11, N12 | S ×5 | Five small independent traps. R14 gets strictly worse with uptime — the counter only rises and auto-suspends at threshold with no way back. |
 
-### Tier 3 — completeness
+### Tier 3 — business value
 
 | # | Slice | Restores | Size |
 |---|---|---|---|
-| **10** | Profit/loss calculator + record versions + aggregation | R9 | L |
-| **11** | AI screen (fixes the 404) + provider/agent CRUD | R10 | M |
-| **12** | Product fields, variant editor, `niche`/`category`/`supplier` | R12 | M |
-| **13** | Manual follow-up assignment | R13 | S |
-| **14** | Client + order CSV import | R5 (rest), R17 (import) | M |
-| **15** | Channel webhooks: lead-capture, product, Shopify HMAC | R19 | M |
-| **16** | Ecom carrier adapter | R2 (rest) | M |
+| **13** | Analytics screen + headline rates (confirmation, cancellation, AOV, delivered/returned) | R6, K1 | M |
+| **14** | Carrier test / sync / integration logs — `IntegrationLog`'s first caller | R3, R20 | M |
+| **15** | Sales-channel screen + platform adapter registry | R8 | M |
+| **16** | Profit/loss calculator + record versions + period aggregation | R9 | L |
+| **17** | AI screen (fixes the live 404) + provider/agent CRUD | R10 | M |
+| **18** | Product fields, variant editor, `niche`/`category`/`supplier` | R12 | M |
+| **19** | Client + order CSV import | R5 (rest), R17 | M |
+| **20** | Channel webhooks: lead-capture, product, Shopify HMAC | R19 | M |
+| **21** | Manual follow-up assignment · live countdown | R13, N14 | S |
+| **22** | Ecom carrier adapter | R2 (rest) | M |
 
 ### Tier 4 — hardening and polish (overlaps Phase 8)
 
 | # | Slice | Restores | Size |
 |---|---|---|---|
-| **17** | Rate limiting + `CSRF_ORIGIN` | R16 | M |
-| **18** | Order board view, print labels | R17 (rest) | M |
-| **19** | Status vocabulary endpoints | R18 | S |
-| **20** | Real model calls for the AI assistant | R10 (rest) | L |
+| **23** | Rate limiting + `CSRF_ORIGIN` | R16 | M |
+| **24** | Offline shell for the queue screen — the re-opened decision, §6.4(c) | N13 | M |
+| **25** | Order board view, print labels | R17 (rest) | M |
+| **26** | Status vocabulary endpoints | R18 | S |
+| **27** | Real model calls for the AI assistant | R10 (rest) | L |
 
-**Parity is reached at the end of Tier 3.** Tier 4 is either Phase 8 work the
-legacy system happened to also have (17), preference (18, 19), or a deliberate
-deployment decision (20).
+**Parity is reached at the end of Tier 3.** Tier 4 is Phase 8 work the legacy
+happened to also have (23), a decision to revisit (24), preference (25, 26), or a
+deployment choice (27).
 
 ---
 

@@ -19,25 +19,55 @@ every partial and missing feature — what existed, what exists now, what is
 missing, business impact, complexity and dependencies. §4 is the roadmap,
 ordered by business value.
 
-### The three hard blockers
+### Second pass — the first pass measured APIs, not workflows
 
-1. **No real carrier adapter.** `ADAPTERS = { mock }` in `lib/erp/carriers.ts`,
-   and `getAdapter` falls back to `mock` for any unknown key — so a carrier
-   configured as `zr` books a fabricated tracking number and reports success.
-   The legacy `zr.js` is 479 lines of live ZR Express integration.
-2. **No product editing.** `products/[id]/route.ts` is `GET` + `DELETE`. A wrong
-   `costPrice` is permanent and it is the cost basis for FIFO lots, delivered
-   pay, `/sales-summary` and every P&L record.
-3. **No export.** No CSV or XLSX anywhere. The legacy Export screen (ZR / Ecom /
-   Ecotrac / performance report) is how confirmed orders reach a carrier.
+**Re-measured 6 August 2026 from `9d1f887`. 115 features: 52 identical ·
+6 improved · 18 partial · 39 missing.** Five pass-1 verdicts were corrected and
+fourteen features were found that no route inventory could have seen, because
+**nothing was missing from the API to point at them**.
 
-### Two defects in shipped code, found by the measurement
+**Read LEGACY_PARITY §0b and §6 before writing anything.** §6 covers the
+dimensions that are not features — clicks, density, hierarchy, discoverability,
+feedback — and §6.3 lists the nine places the platform is **objectively better**,
+none of which may be traded back.
+
+### The blockers, as they stand now
+
+1. **No pagination anywhere.** Every screen is a hard-capped first-N read (orders
+   50, clients 50, products 100, shipments 100, follow-up 100) with no next and
+   no total. Row 51 does not exist. The platform fixed the *query* side of
+   PERF-02 properly and never built the navigation on top of it.
+2. **Cannot create an order.** `POST /api/erp/orders` is contract-tested and has
+   **no console control**.
+3. **No filter form or search box on any list.** `orderFilters` supports nine
+   filters — richer than the legacy's four — reachable only by hand-typing a
+   query string. Only `/console/erp/queue` has a form.
+4. **No notification surface.** M-16's transport (SSE with exact replay, Web
+   Push, service worker, 33 tests) has **no consumer**. No bell, no badge, no
+   toast, no sound, no live refresh. An operator is never told anything.
+5. **No real carrier adapter.** LP.2 made it refuse instead of fabricating a
+   tracking number; the real ZR adapter is still owed.
+6. **No export.** No CSV or XLSX anywhere.
+
+### Two decisions re-opened by the second pass
+
+- **Live updates (LEGACY_PARITY §6.4a).** Neither system has a working live
+  console at scale — the legacy fans out in-process (wrong on two instances), the
+  platform built the correct transport and no consumer. The proposed shape is one
+  `<NotificationProvider>` in the shell owning a badge, a toast and a **debounced
+  `router.refresh()`**, which keeps every D-06 rule intact.
+- **The offline shell (§6.4c).** 6.6e closed this on "a cache keyed by URL
+  survives signing out". True, and too broad: a **shell-only** cache leaks
+  nothing and is the difference between a dropped 3G connection showing a stale
+  screen and showing nothing. Worth revisiting with that narrower scope.
+
+### Two defects in shipped code
 
 - **`/console/erp/ai` is a live 404** — the manifest ships an `ai` nav item and
   no screen exists. `screens.test.ts` lists eight screens and omits it.
 - **`IntegrationLog` has zero callers** — the model was migrated and nothing
-  reads or writes it. `Carrier.lastTestAt`/`lastSyncAt`/`lastTestOk` are
-  rendered by the carriers screen and written by nothing.
+  reads or writes it. `Carrier.lastTestAt`/`lastSyncAt`/`lastTestOk` are rendered
+  by the carriers screen and written by nothing.
 
 ### Done so far
 
@@ -66,51 +96,54 @@ screens 99 → **100**.
 fallback and is what the inbound delivery webhook uses — interpreting a status
 string cannot invent a parcel, and the carrier PUSHED that event.
 
-### THE NEXT SLICE — LP.3, the real ZR Express adapter
+### THE NEXT SLICE — LP.3, pagination + filters + search
 
-**Read `apps/erp/lib/providers/zr.js` end to end before writing anything.** It is
-479 lines and the territory rule is the part that is not obvious:
+**Two shared primitives in `components/console`, then wire the ERP lists to
+them.** This is first because row 51 is unreachable today, and because almost
+every later slice depends on these two components (LEGACY_PARITY §4, axis 4).
 
-- ZR identifies wilaya and commune by its OWN UUIDs, not the standard 1–58
-  Algerian wilaya numbers. Rather than maintain a 1,585-row map, `createShipment`
-  resolves them at booking time via `POST /territories/search`: find exactly one
-  wilaya-level territory by name, then a commune-level one whose `parentId` is
-  that wilaya's id.
-- If either step fails it **throws with a readable message** rather than booking a
-  parcel to the wrong address. The ERP's caller catches that, logs it and raises a
-  `shipment_failed` notification, so the order shows the exact reason. Port that
-  half too — a silent failure here is the same defect LP.2 just removed.
-- Auth is `X-Tenant` (the tenant UUID, stored in `secretKey`) plus `X-Api-Key`
-  (`apiKey`); the base URL is `apiUrl`. Webhooks arrive in a Svix envelope
-  (`svix-id`, `svix-timestamp`, `svix-signature`) as `{ eventType, occurredAt,
-  data }`.
-- The status map is 20 entries, English and French, and it feeds `mapStatus`.
+- **`<Pager>`** — cursor-based, not `skip`/`take`: at page 200 an offset is a
+  sequential scan, and the ERP's own `pagination()` helper already exists for the
+  API side. Renders next/previous as plain links carrying the cursor in the query
+  string, so it works before JavaScript and a contract test can assert it.
+- **`<FilterBar>`** — driven by **the same vocabulary the route validates
+  against**. `orderFilters` and `clientFilter` are already directive-free
+  modules; export their field descriptors and build the controls from them, so a
+  filter added to the API appears in the UI instead of going stale. This is
+  D-06.2 applied to reads: offer exactly what the endpoint accepts, no more and
+  no less. `/console/erp/queue` already has a hand-rolled version — replace it,
+  do not add a second.
 
-**The transaction limit is the thing that will bite** (§2b(4)): the carrier call
-happens inside the transaction `withTenant` opened, whose timeout is 15s. `mock`
-is synchronous so this has never mattered; a real HTTP client makes it the normal
-case. **Do the HTTP outside the transaction and ingest inside it** — that shape
-change belongs in this slice, not after it.
+Wire both into orders, clients and products first (the three lists with a search
+in the API), then the rest. Keep the date presets the legacy had — all / today /
+yesterday / this week / this month / **custom from–to** — because `orderFilters`
+already accepts `since`/`until` and a bare date pair is measurably slower to use.
 
-Register the adapter in `ADAPTERS` and it becomes selectable everywhere at once:
-`listAdapters` drives the carriers dropdown, `isKnownAdapter` drives the
-configuration gate, and the "integration unavailable" badge disappears from any
-row already naming `zr`.
+**Test it both ways, the same rule 6.3a established:** the offered filter set
+must equal what the endpoint accepts, and each offered value must then be
+exercised for real. A pager test must assert that page 2 holds rows page 1 did
+not, and that a filter survives paging — losing the filter on "next" is the
+classic defect here.
 
 ### The order of work (LEGACY_PARITY.md §4)
 
-**Tier 1 — production blockers:** (1) product editing **[DONE — LP.1]** ·
-(2a) adapter refusal **[DONE — LP.2]** · (2b) the real ZR adapter ·
-(3) order export · (4) carrier test/sync/logs.
-**Tier 2 — daily operations:** (5) client detail/edit/export · (6) analytics
-screen · (7) bulk actions completed · (8) agent alerts + missed-counter reset +
-manager password reset · (9) sales-channel screen.
-**Tier 3 — completeness:** (10) profit calculator + versions + aggregation ·
-(11) AI screen + provider/agent CRUD · (12) product fields + variant editor ·
-(13) manual follow-up assignment · (14) CSV import · (15) channel webhooks ·
-(16) Ecom adapter.
-**Tier 4 — hardening (overlaps Phase 8):** (17) rate limiting + `CSRF_ORIGIN` ·
-(18) board view + print · (19) status vocabulary endpoints · (20) real AI calls.
+**Re-ordered by the second pass.** Priority axes: production blockers → daily
+operator productivity → business value → architectural dependencies → risk.
+
+**Tier 1 — blockers:** product editing **[DONE LP.1]** · adapter refusal
+**[DONE LP.2]** · **(3) pagination + filters + search** · (4) create an order ·
+(5) the real ZR adapter · (6) order export.
+**Tier 2 — operator productivity:** (7) the notification provider · (8) inline
+row actions + list density · (9) bulk actions completed · (10) client
+detail/edit/export · (11) sound + desktop notification preferences · (12) agent
+alerts, missed-counter reset, manager password reset, payroll report, audit view.
+**Tier 3 — business value:** (13) analytics · (14) carrier test/sync/logs ·
+(15) sales-channel screen · (16) profit calculator · (17) AI screen ·
+(18) product fields + variant editor · (19) CSV import · (20) channel webhooks ·
+(21) manual follow-up assignment · (22) Ecom adapter.
+**Tier 4 — hardening:** (23) rate limiting + `CSRF_ORIGIN` · (24) the offline
+shell decision · (25) board view + print · (26) status vocabularies ·
+(27) real AI calls.
 
 **Parity is reached at the end of Tier 3.**
 
