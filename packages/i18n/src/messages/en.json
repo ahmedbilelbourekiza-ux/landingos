@@ -327,6 +327,29 @@
       "addressChange": "Address change",
       "clientInstructions": "Customer instructions",
       "other": "Something else"
+    },
+    "filters": {
+      "apply": "Apply",
+      "clear": "Clear",
+      "any": "Any",
+      "search": "Search",
+      "period": "Period",
+      "from": "From",
+      "to": "To",
+      "orderType": "Order type",
+      "typeNormal": "Normal",
+      "typeAbandoned": "Abandoned cart",
+      "classification": "Flag",
+      "fake": "Fake",
+      "outcome": "Delivery outcome",
+      "delivered": "Delivered",
+      "returned": "Returned",
+      "range": {
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "week": "Last 7 days",
+        "month": "Last 30 days"
+      }
     }
   },
   "status": {
@@ -396,7 +419,11 @@
       "invalidInput": "That value was not accepted.",
       "noCarrier": "No carrier is set on this order, so there is nothing to book with.",
       "internal": "Something went wrong. Nothing was saved."
-    }
+    },
+    "previous": "Previous",
+    "next": "Next",
+    "pagePosition": "Page {page} of {pages}",
+    "resultCount": "{total} results"
   },
   "join": {
     "title": "Join a workspace",

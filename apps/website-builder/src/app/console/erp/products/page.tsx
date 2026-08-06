@@ -3,6 +3,8 @@ import { can } from "@landingos/auth";
 import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { FilterBar } from "@/components/console/filter-bar";
+import { Pager } from "@/components/console/pager";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
@@ -14,10 +16,12 @@ import {
   type EditableProduct,
 } from "@/components/console/erp/catalog-write";
 import { editFingerprint, type EditField } from "@/components/console/edit-field";
-import { catalogStrings } from "@/lib/console/erp-strings";
+import { catalogStrings, filterStrings, pagerStrings } from "@/lib/console/erp-strings";
 import { inventoryView } from "@/lib/erp/inventory";
 
 export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 50;
 
 /* =============================================================================
  * The catalogue.
@@ -40,20 +44,47 @@ export default async function ErpProductsScreen({
   const { session, locale: raw, t } = await requireProduct("erp", "/console/erp/products");
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
 
-  const archived = (await searchParams).archived === "true";
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(await searchParams)) {
+    if (typeof v === "string") params.set(k, v);
+  }
+  const archived = params.get("archived") === "true";
+  const page = Math.max(1, Number(params.get("page")) || 1);
 
-  const products = await withTenant(session.auth!.tenantId, (db) =>
-    db.catalogProduct.findMany({
-      where: { archived },
+  // The same shape `GET /api/erp/products` builds, so the screen and the
+  // endpoint cannot disagree about what a search matches.
+  const search = params.get("search")?.trim();
+  const where = {
+    archived,
+    ...(search
+      ? {
+          OR: [
+            { name: { contains: search, mode: "insensitive" as const } },
+            { sku: { contains: search, mode: "insensitive" as const } },
+            { reference: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+
+  const { products, total } = await withTenant(session.auth!.tenantId, async (db) => {
+    const total = await db.catalogProduct.count({ where });
+    const safePage = Math.min(page, Math.max(1, Math.ceil(total / PAGE_SIZE)));
+    return {
+    total,
+    products: await db.catalogProduct.findMany({
+      where,
       orderBy: [{ name: "asc" }, { id: "asc" }],
-      take: 100,
+      skip: (safePage - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
       select: {
         id: true, reference: true, name: true, sku: true, brand: true, description: true,
         price: true, costPrice: true, packagingCost: true,
         stock: true, threshold: true, variants: true, archived: true,
       },
     }),
-  );
+    };
+  });
 
   const currency = session.tenant!.currency;
 
@@ -98,6 +129,14 @@ export default async function ErpProductsScreen({
           </span>
         )}
       </h1>
+
+      <FilterBar
+        basePath="/console/erp/products"
+        params={params}
+        fields={[{ name: "search", label: t("erp.filters.search"), kind: "text", wide: true }]}
+        s={filterStrings(t)}
+        testId="erp-products-filters"
+      />
 
       {/* Not on the archived view: creating a product from a list of things
           nobody sells any more would put the new row somewhere invisible. */}
@@ -206,6 +245,13 @@ export default async function ErpProductsScreen({
               ]
             : []),
         ]}
+      />
+      <Pager
+        basePath="/console/erp/products"
+        params={params}
+        info={{ page, pageSize: PAGE_SIZE, total }}
+        s={pagerStrings(t)}
+        testId="erp-products-pager"
       />
     </ConsoleShell>
   );

@@ -768,9 +768,18 @@ platform truncates silently (unusable at 51 rows).
 > `components/console`, both driven by the **same vocabulary the API validates
 > against** — `orderFilters` for orders, `clientFilter` for clients — exported
 > from the directive-free module the route already uses. One vocabulary, so a
-> filter added to the API appears in the UI instead of going stale. Cursor-based,
-> because `skip`/`take` at page 200 is a sequential scan. This is D-06.2's
-> principle applied to reads: *offer exactly what the endpoint accepts.*
+> filter added to the API appears in the UI instead of going stale. This is
+> D-06.2's principle applied to reads: *offer exactly what the endpoint accepts.*
+>
+> **Correction, made while implementing this as LP.3:** the proposal above said
+> *cursor-based, because `skip`/`take` at page 200 is a sequential scan*. That
+> was wrong on the decisive point. A cursor cannot show "page 3 of 27", and an
+> operator asking how many pending orders exist is asking a business question a
+> next-arrow cannot answer. More decisively, the API's own `pagination()` helper
+> is already `page`/`pageSize` — a screen paging by cursor would be a **second
+> vocabulary over the same rows**, which is the exact failure this whole section
+> is about. Shipped as offset paging with a total, matching the API. The deep-scan
+> cost is real and is bounded by the filter bar sitting next to it.
 
 **(c) The offline shell — a decision worth re-opening, not just accepting.**
 6.6e recorded "no offline shell, deliberately: every console page is

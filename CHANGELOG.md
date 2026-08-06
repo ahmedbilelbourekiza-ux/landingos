@@ -12,6 +12,118 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.3 The lists become navigable — pagination, filters and search
+
+[Opus 5]
+Date: 6 August 2026
+Summary: a shared `<Pager>` and `<FilterBar>`, and the ERP's lists wired to
+them. screens **100 → 112**, listing **25 → 30**. Restores N1, N7, N8 and the
+corrected B1 — the first Tier 1 slice from the re-ordered roadmap.
+
+#### What was wrong
+
+**Row 51 did not exist.** Every ERP screen was a hard-capped first-N read —
+orders 50, clients 50, products 100, shipments 100 — with no next, no page
+number and no total. The legacy CRM downloaded the whole book and filtered in
+the browser, which is slow at 5,000 rows and is what PERF-02 was filed for; the
+platform fixed the query side properly and then never built the navigation on
+top of it. The data went from *slow to reach* to *impossible to reach*, which is
+a worse outcome than the bug that was fixed.
+
+**And nine filters had no controls.** `orderFilters` accepts status, agent,
+follow-up agent, wilaya, channel, order type, classification, delivery outcome
+and a date window — richer than the four the legacy had — reachable only by
+hand-writing a query string. A capability nobody can find is not a capability.
+The `search` the clients and products APIs accept had no box either.
+
+#### Offset paging, not a cursor — a correction to this project's own proposal
+
+LEGACY_PARITY §6.4(b) proposed cursor paging "because `skip`/`take` at page 200
+is a sequential scan". That was wrong on the decisive point, and the report now
+records the correction rather than the platform shipping something worse to
+match it. A cursor cannot show **"page 3 of 27"**, and an operator asking how
+many pending orders exist is asking a business question a next-arrow cannot
+answer. More decisively: the API's `pagination()` helper is already
+`page`/`pageSize`, so a screen paging by cursor would be a **second vocabulary
+over the same rows** — the exact failure this slice exists to remove. The deep
+scan is real and is bounded by the filter bar sitting beside it.
+
+#### The vocabulary lives with the validator
+
+`orderFilterFields` is exported from `lib/erp/orders.ts`, the same module as
+`orderFilters`. A bar with its own list of fields is a second vocabulary that
+goes stale the moment a filter is added — showing up not as an error but as a
+capability nobody can find, which is the defect being fixed. **A test asserts it
+both ways**: every offered control names a key `orderFilters` reads, and each
+offered value is then exercised for real.
+
+`agentUserId` is offered only to somebody who sees the whole book. `scopedWhere`
+ANDs the scope in regardless, so for an agent the control could not change
+anything — and a control that cannot work teaches the wrong model of what they
+are allowed to see.
+
+#### Named date windows, resolved in ONE place
+
+`range=today|yesterday|week|month` joins `orderFilters` itself rather than being
+turned into timestamps by the page. Had the screen done its own arithmetic, the
+screen and an export would eventually disagree about what "today" contained.
+Explicit `since`/`until` still win, and an unknown range is **ignored, not
+refused** — a stale bookmark must render the list, the same rule `orderSort`
+already applies to an unknown sort column.
+
+`toBound` accepts both shapes a caller can send. The API's callers have always
+sent epoch milliseconds; `<input type="date">` sends `YYYY-MM-DD`, and
+`Number("2026-08-06")` is `NaN` — so the bar's own values would have produced an
+Invalid Date and a query nobody could explain. `until` as a calendar date
+resolves to end-of-day, because `lte 2026-08-06T00:00` silently drops a day's
+orders and that is a figure somebody would then report.
+
+#### Two defects the tests caught, and two assertions that were wrong
+
+The page is **clamped to the real last page**: following a stale bookmark to
+page 99 shows the last page, not an empty table — an empty table reads as "no
+matches", which is a lie about the data. And the filter form carries a hidden
+empty `page`, so applying a filter from page 3 cannot land on nothing.
+
+Two of the new tests failed first and **both were the test, not the code**, which
+is worth recording because the instinct is to "fix" the implementation:
+
+- *"paging cannot widen an agent's scope"* expected an agent to see zero rows.
+  They legitimately see **unassigned** orders — `orderScope`'s rule, so unclaimed
+  work can be picked up. Rewritten to assert the real property: orders belonging
+  to *another agent* are absent from every page, and the manager can reach them.
+- *"a product search narrows the catalogue"* counted `data-product-id`, which is
+  also carried by the row's archive button and the edit panel's submit. It was
+  counting controls, not rows.
+
+#### Files
+`src/components/console/{pager.tsx,filter-bar.tsx,filter-field.ts}` (new),
+`src/lib/erp/orders.ts` (`DATE_RANGES`, `toBound`, `rangeBounds`,
+`orderFilterFields`, `range` in `orderFilters`),
+`src/lib/console/erp-strings.ts` (`pagerStrings`, `filterStrings`),
+`src/app/console/erp/{orders,clients,products,shipments}/page.tsx`,
+`test/erp/{screens,listing}.test.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (`common.previous/next/pagePosition/
+resultCount`, the `erp.filters` category).
+
+#### Migration
+None. Every filter this exposes was already implemented and tested; `range` is
+additive and no existing caller changes.
+
+#### Risk
+**A count query per list page.** It runs against an index that already exists
+(`@@index([tenantId, createdAt])` and friends) and buys the total an operator
+needs. **A deep offset is a scan**, mitigated by the filter bar rather than by a
+cursor — see the correction above. Nothing that worked before changes shape:
+`since`/`until` still accept epoch milliseconds, and a screen with no `?page=`
+renders exactly as it did.
+
+**Verified live:** screens 112/112 · listing 30/30 · orders 38/38 ·
+catalog 55/55 · access 65/65 · delivery 39/39 · validation 29/29 · i18n 18/18.
+Build clean.
+
+---
+
 ### LP.0b The second pass — the first review measured APIs, not workflows
 
 [Opus 5]

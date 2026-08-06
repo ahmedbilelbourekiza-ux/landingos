@@ -2,6 +2,8 @@ import type { CatalogStrings } from "@/components/console/erp/catalog-write";
 import type { CarrierStrings } from "@/components/console/erp/carrier-write";
 import type { FinanceStrings } from "@/components/console/erp/finance-write";
 import type { AgentStrings } from "@/components/console/erp/agent-write";
+import type { PagerStrings } from "@/components/console/pager";
+import type { FilterStrings } from "@/components/console/filter-bar";
 
 /* =============================================================================
  * The ERP's write-control labels, resolved once per screen.
@@ -121,5 +123,31 @@ export function agentStrings(t: (key: string) => string): AgentStrings {
       t("erp.write.day0"), t("erp.write.day1"), t("erp.write.day2"), t("erp.write.day3"),
       t("erp.write.day4"), t("erp.write.day5"), t("erp.write.day6"),
     ],
+  };
+}
+
+/* -----------------------------------------------------------------------------
+ * Shared list chrome — LP.3
+ *
+ * Not ERP-specific despite the file: a pager and a filter bar are console
+ * furniture, and the builder's lists want the same two bundles. They live here
+ * because this is where the console's string bundles already are, and moving
+ * the file is a rename nobody needs today.
+ * -------------------------------------------------------------------------- */
+
+export function pagerStrings(t: (key: string) => string): PagerStrings {
+  return {
+    previous: t("common.previous"),
+    next: t("common.next"),
+    position: t("common.pagePosition"),
+    total: t("common.resultCount"),
+  };
+}
+
+export function filterStrings(t: (key: string) => string): FilterStrings {
+  return {
+    apply: t("erp.filters.apply"),
+    clear: t("erp.filters.clear"),
+    any: t("erp.filters.any"),
   };
 }

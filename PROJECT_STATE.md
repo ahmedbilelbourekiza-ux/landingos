@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.2: an unknown carrier adapter is refused*
+**Branch:** `master` · **Last commit:** *LP.3: the lists become navigable*
 **Working tree:** clean, all work committed.
 
 ---
@@ -53,8 +53,8 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 |---|---|---|
 | **LP.1** product editing | R1 | **DONE** — catalog 40→55 |
 | **LP.2** unknown carrier adapter refused, not mocked | R2 (half) | **DONE** — delivery 33→39, screens 99→100 |
-| **LP.3** list pagination + filter bar + search | N1, N7, N8, B1 | **NEXT** |
-| LP.4 create an order from the console | N6 | to do |
+| **LP.3** list pagination + filter bar + search | N1, N7, N8, B1 | **DONE** — screens 100→112, listing 25→30 |
+| **LP.4** create an order from the console | N6 | **NEXT** |
 | LP.5 the real ZR Express adapter | R2 (rest) | to do |
 | LP.6 order export (CSV: ZR / Ecom / Ecotrac + report) | R4 | to do |
 | LP.7 the notification provider (bell, badge, toast, live refresh) | N2, N3, L1, L2 | to do |
@@ -65,6 +65,26 @@ moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
 The ZR adapter moved back one place deliberately — it is the highest-risk slice
 in the roadmap (network I/O inside a 15s transaction), and LP.3/LP.4 are low-risk
 and unblock daily work immediately.
+
+### D-LP.3 — one filter vocabulary, and offset paging with a total
+
+`orderFilterFields` lives in the same module as `orderFilters`. A filter bar with
+its own list of fields is a second vocabulary: it goes stale the moment a filter
+is added to the API, and it shows up not as an error but as a capability nobody
+can find. The screens test asserts it **both ways** — every offered control names
+a key the filter function reads, and each offered value then narrows a real list.
+
+**Paging is offset, not a cursor, and that reverses this project's own earlier
+proposal** (LEGACY_PARITY §6.4b). A cursor cannot answer "page 3 of 27", and the
+API's `pagination()` helper is already `page`/`pageSize` — paging the screens by
+cursor would be a second vocabulary over the same rows, which is the failure the
+paragraph above exists to prevent. The deep-scan cost is real and is bounded by
+the filter bar beside it.
+
+Named date windows (`range=today|yesterday|week|month`) resolve **inside**
+`orderFilters`, never on a page: a screen doing its own arithmetic would
+eventually disagree with an export about what "today" contained. An unknown range
+is ignored rather than refused, like an unknown sort column.
 
 ### D-LP.2 — an unregistered adapter refuses, except when mapping a pushed status
 
@@ -316,18 +336,18 @@ domain at a time.
 
 | Surface | Contract |
 |---|---|
-| orders (+ stats, bulk, 6 per-order routes), clients, settings, audit | orders 38/38 · validation 29/29 · listing 25/25 |
+| orders (+ stats, bulk, 6 per-order routes), clients, settings, audit | orders 38/38 · validation 29/29 · listing 30/30 |
 | products (incl. **editing**, LP.1), inventory, stock lots (incl. stock on confirm/cancel), agents, payroll, finance | catalog 55/55 |
 | carriers (incl. **adapter refusal**, LP.2), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 39/39 |
 | sales channels, inbound webhooks, AI, follow-up | integrations 29/29 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
-| every ERP screen, read and write | screens 100/100 |
+| every ERP screen, read and write (incl. **paging and filters**, LP.3) | screens 112/112 |
 | the scheduled work (M-15), and the worker's tick both ways | jobs 16/16 |
 | assignment — new, confirmed and overdue orders | assign 25/25 |
 | notifications: storage, audience, badge, the live stream, Web Push (M-16) | notifications 29/29 |
 | every surface, gated | access 65/65 |
 
-**462/462**, each file verified on its own. Running several back to back still
+**479/479**, each file verified on its own. Running several back to back still
 trips the documented Neon connection limit — judge them per file.
 
 Three routes answer **501 by design**, and are not gaps: `POST /api/erp/agents`
@@ -1090,14 +1110,14 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 462 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 479 | all pass against a running server |
 | `apps/website-builder` — platform contract | 85 | team (7.1) + billing (7.2) + signup (7.3), against a running server |
 | `packages/auth` | 36 | all pass |
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1092** | green per suite |
+| **Total** | **1109** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

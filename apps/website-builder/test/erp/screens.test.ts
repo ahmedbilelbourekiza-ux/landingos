@@ -718,6 +718,209 @@ describe('the parcel can be booked from the order it belongs to', () => {
   });
 });
 
+/* -----------------------------------------------------------------------------
+ * LP.3 — the lists are navigable
+ *
+ * Every ERP screen was a hard-capped first-N read with no next, no page number
+ * and no total: row 51 did not exist as far as the console was concerned. And
+ * `orderFilters` accepted nine filters that had no control anywhere, so the
+ * answer to "pending orders in Alger from yesterday" was to hand-write a URL.
+ *
+ * The load-bearing test in here is `a filter survives paging` — losing the
+ * filter on "next" is the classic defect in a pager and it is invisible in
+ * review, because page 1 always looks right.
+ * -------------------------------------------------------------------------- */
+
+describe('a list can be paged and filtered', () => {
+  let bulk: Awaited<ReturnType<typeof makeErpTenant>>;
+  const PAGE = 50;
+  const EXTRA = 4;                       // enough to spill onto page 2
+  let alger = '';
+
+  before(async () => {
+    if (skip) return;
+    bulk = await makeErpTenant('paging');
+    alger = `Alger-${uid()}`;
+    // Sequential on purpose: the fixture is the point of the test, and firing
+    // 54 concurrent creates at the free-tier database is how the documented
+    // P1001 shows up as a "pager bug".
+    for (let i = 0; i < PAGE + EXTRA; i += 1) {
+      await bulk.manager.api('POST', '/api/erp/orders', {
+        client: `Pager ${i}`, phone: phone(), price: 1000,
+        wilaya: i < 3 ? alger : 'Oran',
+      });
+    }
+  });
+
+  const rowsOf = (body: string) => (body.match(/data-order-id="/g) ?? []).length;
+  const idsOf = (body: string) =>
+    [...body.matchAll(/data-order-id="([^"]+)"/g)].map((m) => m[1]);
+
+  test('page one holds a full page and offers a next', async () => {
+    const r = await html('/console/erp/orders', bulk.manager.token);
+    assert.equal(r.status, 200);
+    assert.equal(rowsOf(r.body), PAGE, 'a full page');
+    assert.match(r.body, /data-testid="erp-orders-pager"/);
+    assert.match(r.body, /data-testid="erp-orders-pager-next"/, 'there is more to see');
+    assert.match(r.body, /data-testid="erp-orders-pager-prev-disabled"/, 'and nothing before it');
+    assert.match(r.body, new RegExp(`data-total="${PAGE + EXTRA}"`), 'the total is stated');
+  });
+
+  test('page two holds the rows page one did not', async () => {
+    // The whole point. Before LP.3 these rows were unreachable from the console
+    // by any means — there was no control and no query parameter that worked.
+    const one = await html('/console/erp/orders', bulk.manager.token);
+    const two = await html('/console/erp/orders?page=2', bulk.manager.token);
+    assert.equal(two.status, 200);
+    assert.equal(rowsOf(two.body), EXTRA);
+
+    const first = new Set(idsOf(one.body));
+    const second = idsOf(two.body);
+    assert.ok(second.length > 0);
+    assert.ok(second.every((id) => !first.has(id)), 'no row may appear on both pages');
+    assert.match(two.body, /data-testid="erp-orders-pager-next-disabled"/, 'and that is the end');
+  });
+
+  test('a filter survives paging, and paging resets on apply', async () => {
+    // Losing the filter on "next" is the classic pager defect and it is
+    // invisible in review because page 1 looks right. Asserted by reading the
+    // link the pager actually renders.
+    const r = await html(`/console/erp/orders?wilaya=${alger}`, bulk.manager.token);
+    assert.equal(rowsOf(r.body), 3, 'the filter reached the query');
+    assert.ok(
+      !/data-testid="erp-orders-pager-next"[^>]*>/.test(r.body),
+      'three results is one page',
+    );
+
+    // And the form carries an empty `page`, so applying a filter from page 3
+    // cannot land on an empty table that reads as "no matches".
+    assert.match(r.body, /<input type="hidden" name="page" value=""/);
+  });
+
+  test('a stale bookmark past the end shows the last page, not an empty table', async () => {
+    // An empty table reads as "no matches", which is a lie about the data.
+    const r = await html('/console/erp/orders?page=99', bulk.manager.token);
+    assert.equal(r.status, 200);
+    assert.equal(rowsOf(r.body), EXTRA, 'clamped to the real last page');
+  });
+
+  test('the filter bar offers exactly what orderFilters reads', async () => {
+    // Both directions, the rule 6.3a established. A control for a key the
+    // endpoint ignores is a lie; a key with no control is what this slice was
+    // built to fix.
+    const r = await html('/console/erp/orders', bulk.manager.token);
+    for (const name of [
+      'search', 'status', 'agentUserId', 'wilaya', 'orderType',
+      'classification', 'deliveryOutcome', 'range', 'since', 'until',
+    ]) {
+      assert.match(r.body, new RegExp(`id="filter-${name}"`), `${name} must have a control`);
+    }
+  });
+
+  test('every offered filter value actually narrows the list', async () => {
+    // The other half: an option that matches nothing because the value is wrong
+    // renders perfectly and does nothing.
+    const all = rowsOf((await html('/console/erp/orders', bulk.manager.token)).body);
+    const pending = await html('/console/erp/orders?status=pending', bulk.manager.token);
+    assert.ok(rowsOf(pending.body) > 0 && rowsOf(pending.body) <= all);
+
+    const none = await html('/console/erp/orders?status=delivered', bulk.manager.token);
+    assert.equal(rowsOf(none.body), 0, 'and a status nothing holds returns nothing');
+  });
+
+  test('a named date range narrows to the same window the API would', async () => {
+    // Resolved inside `orderFilters`, so the screen and the endpoint cannot
+    // disagree about what "today" contained.
+    const today = await html('/console/erp/orders?range=today', bulk.manager.token);
+    assert.equal(rowsOf(today.body), PAGE, 'everything was created just now');
+
+    const yesterday = await html('/console/erp/orders?range=yesterday', bulk.manager.token);
+    assert.equal(rowsOf(yesterday.body), 0, 'and none of it yesterday');
+  });
+
+  test('an unknown range is ignored rather than refused', async () => {
+    // A stale bookmark carrying a range that no longer exists must render the
+    // list, the same way `orderSort` treats an unknown sort column.
+    const r = await html('/console/erp/orders?range=fortnight', bulk.manager.token);
+    assert.equal(r.status, 200);
+    assert.equal(rowsOf(r.body), PAGE);
+  });
+
+  test('the agent filter is not offered to somebody who cannot use it', async () => {
+    // `scopedWhere` ANDs the scope in regardless, so for an agent the control
+    // could not change anything — and a control that cannot work teaches the
+    // wrong model of what they are allowed to see.
+    const r = await html('/console/erp/orders', bulk.agent.token);
+    assert.equal(r.status, 200);
+    assert.ok(!/id="filter-agentUserId"/.test(r.body));
+    assert.match(r.body, /id="filter-status"/, 'but their own filters are there');
+  });
+
+  test('paging cannot widen an agent’s scope', async () => {
+    // The attack the pager makes newly possible: a second page is a SECOND
+    // query, and a scope applied only to the first would leak the rest.
+    //
+    // The fixture orders are unassigned, and an agent may see those — that is
+    // `orderScope`'s rule so unclaimed work can be picked up. So the leak has to
+    // be tested against orders that belong to SOMEBODY ELSE.
+    const theirs: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const created = await bulk.manager.api('POST', '/api/erp/orders', {
+        client: `Not yours ${i}`, phone: phone(), price: 1000,
+        agentUserId: bulk.other.userId,
+      });
+      theirs.push(created.body.data.id);
+    }
+
+    for (const page of ['', '?page=2', '?page=3']) {
+      const r = await html(`/console/erp/orders${page}`, bulk.agent.token);
+      assert.equal(r.status, 200);
+      const seen = new Set(idsOf(r.body));
+      for (const id of theirs) {
+        assert.ok(!seen.has(id), `page "${page || '1'}" leaked a colleague's order`);
+      }
+    }
+
+    // And the manager, who does see the whole book, can reach them — otherwise
+    // this test passes against a screen that shows nobody anything.
+    const asManager = [
+      ...idsOf((await html('/console/erp/orders', bulk.manager.token)).body),
+      ...idsOf((await html('/console/erp/orders?page=2', bulk.manager.token)).body),
+    ];
+    assert.ok(theirs.every((id) => asManager.includes(id)), 'the manager sees them');
+  });
+
+  test('clients and products are paged and searchable too', async () => {
+    const c = await html('/console/erp/clients', bulk.manager.token);
+    assert.match(c.body, /data-testid="erp-clients-pager"/);
+    assert.match(c.body, /id="filter-search"/);
+
+    const p = await html('/console/erp/products', bulk.manager.token);
+    assert.match(p.body, /data-testid="erp-products-pager"/);
+    assert.match(p.body, /id="filter-search"/);
+
+    const s = await html('/console/erp/shipments', bulk.manager.token);
+    assert.match(s.body, /data-testid="erp-shipments-pager"/);
+  });
+
+  test('a product search narrows the catalogue', async () => {
+    const name = `Findable ${uid()}`;
+    const other = `Hidden ${uid()}`;
+    await bulk.manager.api('POST', '/api/erp/products', { name, price: 10 });
+    await bulk.manager.api('POST', '/api/erp/products', { name: other, price: 10 });
+
+    const r = await html(
+      `/console/erp/products?search=${encodeURIComponent(name)}`, bulk.manager.token,
+    );
+    assert.equal(r.status, 200);
+    // Asserted on the NAMES, not on a count of `data-product-id`: that attribute
+    // is also carried by the row's archive button and by the edit panel's submit,
+    // so counting it counts controls rather than rows.
+    assert.ok(r.body.includes(name), 'the match is shown');
+    assert.ok(!r.body.includes(other), 'and the one that does not match is not');
+  });
+});
+
 describe('the catalogue can be added to and archived', () => {
   test('a manager gets the create panel and a per-row archive control', async () => {
     await acme.manager.api('POST', '/api/erp/products', {

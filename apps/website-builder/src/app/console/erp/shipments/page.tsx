@@ -5,6 +5,8 @@ import { resolveStatus, toneVars } from "@landingos/ui";
 import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { Pager } from "@/components/console/pager";
+import { pagerStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable, StatusPill } from "@/components/console/data-table";
 
@@ -19,20 +21,38 @@ export const dynamic = "force-dynamic";
  * tone tokens; the carrier's original wording lives on the order's timeline,
  * where there is room for it.
  */
-export default async function ErpShipmentsScreen() {
+const PAGE_SIZE = 50;
+
+export default async function ErpShipmentsScreen({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { session, locale: raw, t } = await requireProduct("erp", "/console/erp/shipments");
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
 
-  const shipments = await withTenant(session.auth!.tenantId, (db) =>
-    db.shipment.findMany({
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(await searchParams)) {
+    if (typeof v === "string") params.set(k, v);
+  }
+  const page = Math.max(1, Number(params.get("page")) || 1);
+
+  const { shipments, total } = await withTenant(session.auth!.tenantId, async (db) => {
+    const total = await db.shipment.count();
+    const safePage = Math.min(page, Math.max(1, Math.ceil(total / PAGE_SIZE)));
+    return {
+    total,
+    shipments: await db.shipment.findMany({
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-      take: 100,
+      skip: (safePage - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
       select: {
         id: true, orderId: true, trackingNumber: true, crmStatus: true, updatedAt: true,
         carrier: { select: { name: true } },
       },
     }),
-  );
+    };
+  });
 
   return (
     <ConsoleShell session={session} productId="erp">
@@ -85,6 +105,13 @@ export default async function ErpShipmentsScreen() {
             ),
           },
         ]}
+      />
+      <Pager
+        basePath="/console/erp/shipments"
+        params={params}
+        info={{ page, pageSize: PAGE_SIZE, total }}
+        s={pagerStrings(t)}
+        testId="erp-shipments-pager"
       />
     </ConsoleShell>
   );

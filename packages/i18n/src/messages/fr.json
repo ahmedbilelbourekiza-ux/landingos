@@ -327,6 +327,29 @@
       "addressChange": "Changement d'adresse",
       "clientInstructions": "Consignes du client",
       "other": "Autre"
+    },
+    "filters": {
+      "apply": "Appliquer",
+      "clear": "Effacer",
+      "any": "Tous",
+      "search": "Rechercher",
+      "period": "Période",
+      "from": "Du",
+      "to": "Au",
+      "orderType": "Type de commande",
+      "typeNormal": "Normale",
+      "typeAbandoned": "Panier abandonné",
+      "classification": "Signalement",
+      "fake": "Fausse",
+      "outcome": "Résultat de livraison",
+      "delivered": "Livrée",
+      "returned": "Retournée",
+      "range": {
+        "today": "Aujourd’hui",
+        "yesterday": "Hier",
+        "week": "7 derniers jours",
+        "month": "30 derniers jours"
+      }
     }
   },
   "status": {
@@ -396,7 +419,11 @@
       "invalidInput": "Cette valeur n'a pas été acceptée.",
       "noCarrier": "Aucun transporteur n'est défini sur cette commande, il n'y a donc rien à expédier.",
       "internal": "Une erreur est survenue. Rien n'a été enregistré."
-    }
+    },
+    "previous": "Précédent",
+    "next": "Suivant",
+    "pagePosition": "Page {page} sur {pages}",
+    "resultCount": "{total} résultats"
   },
   "join": {
     "title": "Rejoindre un espace de travail",

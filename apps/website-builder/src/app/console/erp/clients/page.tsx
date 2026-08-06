@@ -2,6 +2,9 @@ import { withTenant } from "@landingos/db";
 import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { FilterBar } from "@/components/console/filter-bar";
+import { Pager } from "@/components/console/pager";
+import { filterStrings, pagerStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
 import { CLIENT_SELECT, clientFilter, withDerived } from "@/lib/erp/clients";
@@ -40,21 +43,44 @@ export default async function ErpClientsScreen({
   // copy of the rule.
   if (!seesWholeBook(session)) notFound();
 
-  const search = (await searchParams).search;
-  const clients = await withTenant(session.auth!.tenantId, (db) =>
-    db.client.findMany({
-      where: clientFilter(typeof search === "string" ? search : undefined),
-      orderBy: [{ lastOrderAt: "desc" }, { id: "desc" }],
-      take: PAGE_SIZE,
-      select: CLIENT_SELECT,
-    }),
-  );
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(await searchParams)) {
+    if (typeof v === "string") params.set(k, v);
+  }
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const where = clientFilter(params.get("search") ?? undefined);
+
+  const { clients, total } = await withTenant(session.auth!.tenantId, async (db) => {
+    const total = await db.client.count({ where });
+    const safePage = Math.min(page, Math.max(1, Math.ceil(total / PAGE_SIZE)));
+    return {
+      total,
+      clients: await db.client.findMany({
+        where,
+        orderBy: [{ lastOrderAt: "desc" }, { id: "desc" }],
+        skip: (safePage - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+        select: CLIENT_SELECT,
+      }),
+    };
+  });
 
   const currency = session.tenant!.currency;
 
   return (
     <ConsoleShell session={session} productId="erp">
       <h1 className="text-xl font-semibold">{t("erp.clients.title")}</h1>
+
+      {/* The API has accepted `?search=` since Phase 5 and no screen ever
+          offered a box for it, so the registry was a list you could only read
+          from the top. One field, the same `clientFilter` the route uses. */}
+      <FilterBar
+        basePath="/console/erp/clients"
+        params={params}
+        fields={[{ name: "search", label: t("erp.filters.search"), kind: "text", wide: true }]}
+        s={filterStrings(t)}
+        testId="erp-clients-filters"
+      />
 
       <DataTable
         testId="erp-clients-table"
@@ -142,6 +168,13 @@ export default async function ErpClientsScreen({
               ),
           },
         ]}
+      />
+      <Pager
+        basePath="/console/erp/clients"
+        params={params}
+        info={{ page, pageSize: PAGE_SIZE, total }}
+        s={pagerStrings(t)}
+        testId="erp-clients-pager"
       />
     </ConsoleShell>
   );

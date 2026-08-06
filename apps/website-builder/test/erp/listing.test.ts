@@ -158,6 +158,61 @@ describe('filtering', () => {
     assert.ok(data.items.every((o: { createdAt: string }) => new Date(o.createdAt).getTime() >= since));
   });
 
+  test('a date bound is accepted as epoch ms OR as a calendar date (LP.3)', async () => {
+    // The API's callers have always sent epoch milliseconds. The filter bar's
+    // `<input type="date">` sends `YYYY-MM-DD`, and `Number("2026-08-06")` is
+    // NaN — so before LP.3 the bar's own values would have produced an Invalid
+    // Date and a query nobody could explain. Both shapes, one parser.
+    const now = new Date();
+    const iso = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    const byDate = await list(`since=${iso(now)}&pageSize=100`);
+    const byEpoch = await list(
+      `since=${new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()}&pageSize=100`,
+    );
+    assert.equal(byDate.total, byEpoch.total, 'the two spellings must mean the same window');
+    assert.ok(byDate.total > 0, 'and today is not empty');
+  });
+
+  test('`until` as a calendar date includes that whole day', async () => {
+    // `lte 2026-08-06T00:00` silently drops a day's orders, which is a figure a
+    // manager would then report. The legacy appended T23:59:59.999 for the same
+    // reason.
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const data = await list(`until=${today}&pageSize=100`);
+    assert.ok(data.total > 0, 'orders created today must fall inside "until today"');
+  });
+
+  test('a named range resolves in the SAME function the screen reads (LP.3)', async () => {
+    // The whole reason `range` is resolved inside `orderFilters` rather than on
+    // the page: a screen doing its own arithmetic would eventually disagree
+    // with an export about what "today" contained.
+    const today = await list('range=today&pageSize=100');
+    assert.ok(today.total > 0);
+
+    const yesterday = await list('range=yesterday&pageSize=100');
+    assert.equal(yesterday.total, 0, 'nothing in this fixture was created yesterday');
+
+    const week = await list('range=week&pageSize=100');
+    assert.ok(week.total >= today.total, 'a wider window cannot hold fewer');
+  });
+
+  test('an unknown range is ignored, not refused', async () => {
+    // Same rule as an unknown sort column: a stale bookmark renders the list.
+    const all = await list('pageSize=100');
+    const bogus = await list('range=fortnight&pageSize=100');
+    assert.equal(bogus.total, all.total);
+  });
+
+  test('an explicit bound beats a named range', async () => {
+    // A caller who states both means the bound. Asserted because the opposite
+    // precedence looks equally reasonable in review and is wrong.
+    const data = await list(`range=yesterday&since=${Date.now() - 10 * 60000}&pageSize=100`);
+    assert.ok(data.total > 0, 'the explicit `since` must win over `range=yesterday`');
+  });
+
   test('search matches client, phone, id and product', async () => {
     assert.ok((await list('search=Findable&pageSize=100')).total >= 12, 'by client name');
     assert.ok((await list('search=0555100005&pageSize=100')).total >= 1, 'by phone');

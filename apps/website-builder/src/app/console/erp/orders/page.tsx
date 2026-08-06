@@ -9,9 +9,16 @@ import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable, StatusPill } from "@/components/console/data-table";
+import { FilterBar } from "@/components/console/filter-bar";
+import { Pager } from "@/components/console/pager";
+import type { FilterField } from "@/components/console/filter-field";
 import { OrderBulkBar, type BulkStrings } from "@/components/console/erp/order-bulk";
+import { filterStrings, pagerStrings } from "@/lib/console/erp-strings";
 import { scopedWhere, seesWholeBook } from "@/lib/erp/scope";
-import { orderFilters, orderSort, ORDER_LIST_SELECT, ORDER_STATUSES } from "@/lib/erp/orders";
+import {
+  orderFilters, orderSort, orderFilterFields,
+  ORDER_LIST_SELECT, ORDER_STATUSES,
+} from "@/lib/erp/orders";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +39,11 @@ export const dynamic = "force-dynamic";
  *
  * The filters are read from the URL through the SAME `orderFilters` the API
  * uses, so the screen and the endpoint cannot interpret `?status=` differently.
+ * LP.3 made them REACHABLE: nine filters existed here and none had a control,
+ * so the answer to "pending orders in Alger from yesterday" was to hand-write a
+ * URL. The bar is built from `orderFilterFields`, which lives in the same module
+ * as `orderFilters` — one vocabulary, so a filter added to the API gets a
+ * control instead of going stale.
  * ========================================================================== */
 
 const PAGE_SIZE = 50;
@@ -51,10 +63,22 @@ export default async function ErpOrdersScreen({
 
   const managesBook = seesWholeBook(session);
 
-  const { orders, members } = await withTenant(session.auth!.tenantId, async (db) => ({
+  // Clamped to the real last page. Following a stale bookmark to page 40 of a
+  // list that now has three must not show an empty table — an empty table reads
+  // as "no matches", which is a lie about the data.
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const where = scopedWhere(session, orderFilters(params));
+
+  const { orders, total, members } = await withTenant(session.auth!.tenantId, async (db) => {
+    const total = await db.fulfillmentOrder.count({ where });
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const safePage = Math.min(page, pages);
+    return {
+    total,
     orders: await db.fulfillmentOrder.findMany({
-      where: scopedWhere(session, orderFilters(params)),
+      where,
       orderBy: orderSort(params.get("sort"), params.get("dir")),
+      skip: (safePage - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: ORDER_LIST_SELECT,
     }),
@@ -66,7 +90,8 @@ export default async function ErpOrdersScreen({
           select: { userId: true, user: { select: { name: true, email: true } } },
         })
       : [],
-  }));
+    };
+  });
 
   const currency = session.tenant!.currency;
 
@@ -202,9 +227,43 @@ export default async function ErpOrdersScreen({
       />
   );
 
+  /* Built from the same module the route validates against. `agentUserId` is
+     offered only to somebody who already sees the whole book — `scopedWhere`
+     ANDs the scope in regardless, so the control would be a filter that cannot
+     change anything for an agent, which teaches the wrong model of what they
+     can see. */
+  const fields: readonly FilterField[] = orderFilterFields({
+    t,
+    statuses: ORDER_STATUSES.map((value) => ({
+      value,
+      label: t(resolveStatus("confirmation", value).labelKey),
+    })),
+    members: managesBook
+      ? members.map((m) => ({ value: m.userId, label: m.user.name || m.user.email }))
+      : undefined,
+  });
+
+  const pager = (
+    <Pager
+      basePath="/console/erp/orders"
+      params={params}
+      info={{ page, pageSize: PAGE_SIZE, total }}
+      s={pagerStrings(t)}
+      testId="erp-orders-pager"
+    />
+  );
+
   return (
     <ConsoleShell session={session} productId="erp">
       <h1 className="text-xl font-semibold">{t("erp.orders.title")}</h1>
+
+      <FilterBar
+        basePath="/console/erp/orders"
+        params={params}
+        fields={fields}
+        s={filterStrings(t)}
+        testId="erp-orders-filters"
+      />
 
       {mayWrite ? (
         <OrderBulkBar
@@ -225,6 +284,8 @@ export default async function ErpOrdersScreen({
       ) : (
         table
       )}
+
+      {pager}
     </ConsoleShell>
   );
 }

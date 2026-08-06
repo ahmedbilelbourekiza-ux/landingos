@@ -6,6 +6,10 @@ import { nextReference } from "./ids";
 import { normalizePhone } from "./phone";
 import { toDecimal } from "./serialize";
 import { syncClientFromOrder, type OrderStatsView } from "./clients";
+// A type-only import from a directive-free module. `FilterField` describes a
+// control; it carries no behaviour and no directive, so both this server module
+// and the client-free bar can name it.
+import type { FilterField as FilterFieldSpec } from "@/components/console/filter-field";
 
 /* =============================================================================
  * The order repository.
@@ -252,6 +256,76 @@ export function orderSort(
   return [{ [column]: direction }, { id: direction }];
 }
 
+/**
+ * The named date windows an operator actually asks for.
+ *
+ * The legacy CRM had exactly these five plus "custom", and they are the whole
+ * vocabulary of a call-centre day: what came in today, what is left from
+ * yesterday, how the week is going. `since`/`until` still work and still WIN,
+ * so nothing that used them changes.
+ *
+ * Resolved HERE rather than on the screen, and that is the load-bearing part.
+ * If the page turned `range=today` into a pair of timestamps itself, the screen
+ * and the API would interpret the same URL differently the first time one of
+ * them changed — and "differently" here means a manager and an export
+ * disagreeing about what "today" contained. One function, one answer.
+ */
+export const DATE_RANGES = ["today", "yesterday", "week", "month"] as const;
+export type DateRange = (typeof DATE_RANGES)[number];
+
+/**
+ * A date bound from either shape the two callers send.
+ *
+ * The API's callers send epoch milliseconds — that is what the ERP always sent
+ * and what `orderFilters` has always parsed. An `<input type="date">` sends
+ * `YYYY-MM-DD`, and `Number("2026-08-06")` is `NaN`, so the filter bar's own
+ * values would have produced an Invalid Date and a query nobody could explain.
+ * Both are accepted; neither caller had to change.
+ *
+ * `endOfDay` is why `until` is inclusive: a person choosing 6 August as the end
+ * of a range means the whole of the 6th, and `lte 2026-08-06T00:00` silently
+ * drops a day's orders. The legacy did the same thing by appending
+ * `T23:59:59.999`.
+ */
+function toBound(value: string, endOfDay = false): Date {
+  if (/^\d+$/.test(value)) return new Date(Number(value));
+  const [y, m, d] = value.split("-").map(Number);
+  if (!y || !m || !d) return new Date(Number(value));
+  return endOfDay ? new Date(y, m - 1, d, 23, 59, 59, 999) : new Date(y, m - 1, d);
+}
+
+/** Start-of-day in the server's zone; `null` for a value that names no window. */
+function rangeBounds(range: string, now = new Date()): { gte?: Date; lte?: Date } | null {
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const today = startOfDay(now);
+
+  switch (range) {
+    case "today":
+      return { gte: today };
+    case "yesterday": {
+      const from = new Date(today);
+      from.setDate(from.getDate() - 1);
+      // Exclusive of today, so "yesterday" is one day and not two.
+      return { gte: from, lte: new Date(today.getTime() - 1) };
+    }
+    case "week": {
+      const from = new Date(today);
+      from.setDate(from.getDate() - 6);
+      return { gte: from };
+    }
+    case "month": {
+      const from = new Date(today);
+      from.setDate(from.getDate() - 29);
+      return { gte: from };
+    }
+    default:
+      // Unknown values are IGNORED, not refused. A stale bookmark carrying a
+      // range that no longer exists should render the list, exactly as
+      // `orderSort` treats an unknown sort column.
+      return null;
+  }
+}
+
 /** Translate query parameters into a `where`. Every value is bound by Prisma. */
 export function orderFilters(params: URLSearchParams): Prisma.FulfillmentOrderWhereInput {
   const where: Prisma.FulfillmentOrderWhereInput = {};
@@ -274,13 +348,20 @@ export function orderFilters(params: URLSearchParams): Prisma.FulfillmentOrderWh
   const deliveryOutcome = get("deliveryOutcome");
   if (deliveryOutcome) where.deliveryOutcome = deliveryOutcome;
 
+  // Explicit bounds win over a named window: `since`/`until` are what the API's
+  // callers already send, and a caller who states both a range and a bound
+  // means the bound.
   const since = get("since");
   const until = get("until");
+  const range = get("range");
   if (since || until) {
     where.createdAt = {
-      ...(since ? { gte: new Date(Number(since)) } : {}),
-      ...(until ? { lte: new Date(Number(until)) } : {}),
+      ...(since ? { gte: toBound(since) } : {}),
+      ...(until ? { lte: toBound(until, true) } : {}),
     };
+  } else if (range) {
+    const bounds = rangeBounds(range);
+    if (bounds) where.createdAt = bounds;
   }
 
   const search = get("search");
@@ -303,6 +384,87 @@ export function orderFilters(params: URLSearchParams): Prisma.FulfillmentOrderWh
     ];
   }
   return where;
+}
+
+/**
+ * The controls a filter bar should offer, described HERE.
+ *
+ * In the same module as `orderFilters` and deliberately so: a bar with its own
+ * list of fields is a second vocabulary, and it goes stale the moment a filter
+ * is added to the API — showing up not as an error but as a capability nobody
+ * can find. Every `name` below is a key `orderFilters` reads, and the test for
+ * this slice asserts that in both directions.
+ *
+ * `agentUserId` is offered only when the caller sees the whole book.
+ * `scopedWhere` ANDs the scope in regardless, so for an agent the control would
+ * be one that cannot change anything — worse than absent, because pressing it
+ * teaches the wrong model of what they can see.
+ *
+ * Two of the nine are deliberately left off: `followupUserId` belongs to the
+ * follow-up screen's own bar, and `salesChannelId` needs the channel list,
+ * which this screen does not read. Both are named here rather than silently
+ * missing, so the next person adding them knows they were a choice.
+ */
+export function orderFilterFields(opts: {
+  readonly t: (key: string) => string;
+  readonly statuses: readonly { value: string; label: string }[];
+  readonly members?: readonly { value: string; label: string }[];
+}): FilterFieldSpec[] {
+  const { t } = opts;
+  const fields: FilterFieldSpec[] = [
+    { name: "search", label: t("erp.filters.search"), kind: "text", wide: true },
+    { name: "status", label: t("erp.orders.status"), kind: "select", options: opts.statuses },
+  ];
+
+  if (opts.members) {
+    fields.push({
+      name: "agentUserId",
+      label: t("erp.orders.agent"),
+      kind: "select",
+      options: opts.members,
+    });
+  }
+
+  fields.push(
+    { name: "wilaya", label: t("erp.orders.destination"), kind: "text" },
+    {
+      name: "orderType",
+      label: t("erp.filters.orderType"),
+      kind: "select",
+      options: [
+        { value: "normal", label: t("erp.filters.typeNormal") },
+        { value: "abandoned", label: t("erp.filters.typeAbandoned") },
+      ],
+    },
+    {
+      name: "classification",
+      label: t("erp.filters.classification"),
+      kind: "select",
+      options: [{ value: "fake", label: t("erp.filters.fake") }],
+    },
+    {
+      name: "deliveryOutcome",
+      label: t("erp.filters.outcome"),
+      kind: "select",
+      options: [
+        { value: "delivered", label: t("erp.filters.delivered") },
+        { value: "returned", label: t("erp.filters.returned") },
+      ],
+    },
+    {
+      name: "range",
+      label: t("erp.filters.period"),
+      kind: "select",
+      options: DATE_RANGES.map((value) => ({ value, label: t(`erp.filters.range.${value}`) })),
+    },
+    // Kept alongside the presets rather than hidden behind a "custom" choice.
+    // The legacy hid them and it costs a click for the one case — a date range
+    // somebody was given — where the operator already knows both ends.
+    { name: "since", label: t("erp.filters.from"), kind: "date" },
+    { name: "until", label: t("erp.filters.to"), kind: "date" },
+  );
+
+  return fields;
 }
 
 /* -----------------------------------------------------------------------------

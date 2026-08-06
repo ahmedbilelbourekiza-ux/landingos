@@ -96,34 +96,43 @@ screens 99 → **100**.
 fallback and is what the inbound delivery webhook uses — interpreting a status
 string cannot invent a parcel, and the carrier PUSHED that event.
 
-### THE NEXT SLICE — LP.3, pagination + filters + search
+**LP.3 — the lists became navigable (N1, N7, N8, B1).** Shared `<Pager>` and
+`<FilterBar>` in `components/console`, wired into orders, clients, products and
+shipments. Row 51 exists now. `orderFilters` gained `range=today|yesterday|week|
+month` and `toBound`, which accepts both epoch milliseconds and `YYYY-MM-DD`.
+screens 100 → **112**, listing 25 → **30**.
 
-**Two shared primitives in `components/console`, then wire the ERP lists to
-them.** This is first because row 51 is unreachable today, and because almost
-every later slice depends on these two components (LEGACY_PARITY §4, axis 4).
+**D-LP.3:** the filter vocabulary lives in the module that validates it
+(`orderFilterFields` beside `orderFilters`), and paging is **offset with a
+total, not a cursor** — reversing this project's own earlier proposal, because a
+cursor cannot answer "page 3 of 27" and the API's `pagination()` helper is
+already `page`/`pageSize`.
 
-- **`<Pager>`** — cursor-based, not `skip`/`take`: at page 200 an offset is a
-  sequential scan, and the ERP's own `pagination()` helper already exists for the
-  API side. Renders next/previous as plain links carrying the cursor in the query
-  string, so it works before JavaScript and a contract test can assert it.
-- **`<FilterBar>`** — driven by **the same vocabulary the route validates
-  against**. `orderFilters` and `clientFilter` are already directive-free
-  modules; export their field descriptors and build the controls from them, so a
-  filter added to the API appears in the UI instead of going stale. This is
-  D-06.2 applied to reads: offer exactly what the endpoint accepts, no more and
-  no less. `/console/erp/queue` already has a hand-rolled version — replace it,
-  do not add a second.
+### THE NEXT SLICE — LP.4, creating an order from the console
 
-Wire both into orders, clients and products first (the three lists with a search
-in the API), then the rest. Keep the date presets the legacy had — all / today /
-yesterday / this week / this month / **custom from–to** — because `orderFilters`
-already accepts `since`/`until` and a bare date pair is measurably slower to use.
+**The smallest remaining production blocker.** `POST /api/erp/orders` is
+contract-tested, validated, wired to `syncClientFromOrder` and to
+`autoAssignOnCreate` — and no control calls it, so a manager taking an order over
+the phone cannot enter it. The legacy CRM opens a modal from the main screen.
 
-**Test it both ways, the same rule 6.3a established:** the offered filter set
-must equal what the endpoint accepts, and each offered value must then be
-exercised for real. A pager test must assert that page 2 holds rows page 1 did
-not, and that a filter survives paging — losing the filter on "next" is the
-classic defect here.
+- A panel on `/console/erp/orders`, the shape `ProductCreatePanel` already
+  demonstrates: rendered only where `can(session, "erp:orders:write")` (D-06.2),
+  calling the route (D-06.1), no optimistic UI (D-06.3), collapsible via `hidden`
+  rather than unmounted (D-06.4).
+- **Take the field vocabulary from the route's own zod schema**, not from a
+  fresh list. The create route validates a specific set and `buildPatch`
+  normalises the phone; a form with its own idea of the fields is the second
+  vocabulary LP.3 just finished removing elsewhere.
+- **Money is `inputmode="decimal"`, never `type="number"`** — these are `Decimal`
+  columns (M-06).
+- `wilaya`/`commune` are free text on the ERP side today. The platform has
+  `Wilaya`/`Baladia` reference tables the storefront already uses; wiring them
+  here is tempting and is **not** this slice — it changes what the column means
+  and belongs with the client-detail work (LP roadmap Tier 2).
+- Watch the side effects: creating an order can auto-assign an agent and, on a
+  tenant with `autoCreateShipment`, book a parcel. Both already have tests; the
+  new one to write is that the control's success path leaves the list showing the
+  new row (`router.refresh()`), which is what D-06.3 buys.
 
 ### The order of work (LEGACY_PARITY.md §4)
 
@@ -131,8 +140,8 @@ classic defect here.
 operator productivity → business value → architectural dependencies → risk.
 
 **Tier 1 — blockers:** product editing **[DONE LP.1]** · adapter refusal
-**[DONE LP.2]** · **(3) pagination + filters + search** · (4) create an order ·
-(5) the real ZR adapter · (6) order export.
+**[DONE LP.2]** · pagination + filters + search **[DONE LP.3]** ·
+**(4) create an order** · (5) the real ZR adapter · (6) order export.
 **Tier 2 — operator productivity:** (7) the notification provider · (8) inline
 row actions + list density · (9) bulk actions completed · (10) client
 detail/edit/export · (11) sound + desktop notification preferences · (12) agent
@@ -188,9 +197,9 @@ a skip into a failure, from `apps/website-builder`:
 ERP_CONTRACT=strict node --env-file=.env --test --test-concurrency=1 "test/erp/access.test.ts"
 ```
 
-Expect **462/462** across the TWELVE files: access 65 · orders 38 ·
-validation 29 · listing 25 · catalog 55 · delivery 39 · integrations 29 ·
-order-split 8 · screens 100 · jobs 16 · assign 25 · notifications 33.
+Expect **479/479** across the TWELVE files: access 65 · orders 38 ·
+validation 29 · listing 30 · catalog 55 · delivery 39 · integrations 29 ·
+order-split 8 · screens 112 · jobs 16 · assign 25 · notifications 33.
 
 The platform contract suite lives beside it and runs the same way — **56/56**
 (team management 7.1a + invitation acceptance 7.1b + team screen 7.1c):

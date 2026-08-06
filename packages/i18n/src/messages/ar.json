@@ -327,6 +327,29 @@
       "addressChange": "تغيير العنوان",
       "clientInstructions": "تعليمات من العميل",
       "other": "أخرى"
+    },
+    "filters": {
+      "apply": "تطبيق",
+      "clear": "مسح",
+      "any": "الكل",
+      "search": "بحث",
+      "period": "الفترة",
+      "from": "من",
+      "to": "إلى",
+      "orderType": "نوع الطلب",
+      "typeNormal": "عادي",
+      "typeAbandoned": "سلة متروكة",
+      "classification": "تصنيف",
+      "fake": "وهمي",
+      "outcome": "نتيجة التوصيل",
+      "delivered": "تم التسليم",
+      "returned": "مُرجَع",
+      "range": {
+        "today": "اليوم",
+        "yesterday": "أمس",
+        "week": "آخر 7 أيام",
+        "month": "آخر 30 يوماً"
+      }
     }
   },
   "status": {
@@ -396,7 +419,11 @@
       "invalidInput": "هذه القيمة غير مقبولة.",
       "noCarrier": "لا توجد شركة توصيل محددة لهذه الطلبية، فلا شيء يمكن حجزه.",
       "internal": "حدث خطأ. لم يُحفظ أي شيء."
-    }
+    },
+    "previous": "السابق",
+    "next": "التالي",
+    "pagePosition": "الصفحة {page} من {pages}",
+    "resultCount": "{total} نتيجة"
   },
   "join": {
     "title": "الانضمام إلى مساحة عمل",
