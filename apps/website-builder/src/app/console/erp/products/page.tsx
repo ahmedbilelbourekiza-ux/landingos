@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { withTenant } from "@landingos/db";
+import { toneVars } from "@landingos/ui";
 import { can } from "@landingos/auth";
 import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
@@ -26,6 +27,7 @@ import {
   catalogStrings, filterStrings, pagerStrings, variantEditorStrings,
 } from "@/lib/console/erp-strings";
 import { inventoryView } from "@/lib/erp/inventory";
+import { duplicateProductNames } from "@/lib/erp/product-stats";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +77,7 @@ export default async function ErpProductsScreen({
       : {}),
   };
 
-  const { products, total } = await withTenant(session.auth!.tenantId, async (db) => {
+  const { products, total, ambiguous } = await withTenant(session.auth!.tenantId, async (db) => {
     const total = await db.catalogProduct.count({ where });
     const safePage = Math.min(page, Math.max(1, Math.ceil(total / PAGE_SIZE)));
     return {
@@ -93,6 +95,14 @@ export default async function ErpProductsScreen({
         niche: true, category: true, supplier: true, optionDefs: true, image: true,
       },
     }),
+    /* The audit's finding, from driving a real order through the running
+       console: two catalogue rows answering to one normalised name means an
+       order naming it can be attributed to neither — the counters stay still
+       and `/sales-summary` would count its revenue twice, once per row. It is
+       refused rather than guessed (D-LP.5.2's rule), and this is the reader
+       that makes it fixable: the rows are marked where somebody can rename
+       one. */
+    ambiguous: await duplicateProductNames(db),
     };
   });
 
@@ -236,6 +246,16 @@ export default async function ErpProductsScreen({
                 >
                   {p.name || "—"}
                 </Link>
+                {ambiguous.has(p.id) && (
+                  <span
+                    data-badge="ambiguous-name"
+                    title={t("erp.products.ambiguousHint")}
+                    className="ms-2 rounded-full border px-1.5 py-0.5 text-[10px]"
+                    style={toneVars("danger")}
+                  >
+                    {t("erp.products.ambiguous")}
+                  </span>
+                )}
                 <span className="mt-0.5 block font-mono text-xs text-muted-foreground" dir="ltr">
                   {p.reference ?? ""}
                 </span>

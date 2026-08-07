@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *AUDIT.2: the list that could not catch its own mistake*
+**Branch:** `master` · **Last commit:** *AUDIT.3: a duplicated product name*
 **Working tree:** clean, all work committed.
 
 ---
@@ -87,6 +87,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.22** the Ecom Delivery adapter + the poll leaves the transaction | R2 (rest), N17 | **DONE — TIER 3 COMPLETE** — delivery 77→88 |
 | **AUDIT.1** the independent audit: 7 findings, all writer/reader mismatches | — | **DONE** — screens 152→167 |
 | **AUDIT.2** the access inventory derives itself from the route files | — | **DONE** — access 95→201 |
+| **AUDIT.3** a duplicated product name attributes to neither row, visibly | — | **DONE** — screens 167→169 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -480,7 +481,7 @@ domain at a time.
 | carriers (incl. **adapter refusal** LP.2, the **real ZR Express adapter** LP.5, **test / sync / the integration log** LP.14, and the **Ecom Delivery adapter** LP.22), shipments, delivery settlement, the follow-up producer, the tracking poll (**outside the transaction since LP.22**) | delivery 88/88 |
 | sales channels (incl. the **screen, the adapter registry, test / logs and per-platform parsing**, LP.15), inbound webhooks (incl. **lead capture, product sync and topic routing**, LP.20), AI, follow-up (incl. **manual assignment**, LP.21) | integrations 75/75 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
-| every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4, the **ZR configuration surface** LP.5, the **export panel** LP.6, the accountability surface LP.12, the **inline row actions + density** LP.8, the **completed bulk bar** LP.9 and the **product record** AUDIT.1) | screens 167/167 |
+| every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4, the **ZR configuration surface** LP.5, the **export panel** LP.6, the accountability surface LP.12, the **inline row actions + density** LP.8, the **completed bulk bar** LP.9 and the **product record** AUDIT.1/3) | screens 169/169 |
 | the order book as a file — ZR / Ecom / Ecotrac / report (LP.6) | export 31/31 |
 | a spreadsheet coming IN — customers and orders, with a preview (LP.19) | import 25/25 |
 | the scheduled work (M-15), and the worker's tick both ways | jobs 16/16 |
@@ -491,7 +492,7 @@ domain at a time.
 | the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
 | every surface, gated — **derived from the route files**, not listed by hand | access 201/201 |
 
-**967/967** across EIGHTEEN ERP contract files, each verified on its own, plus
+**969/969** across EIGHTEEN ERP contract files, each verified on its own, plus
 **91/91** platform contract (team 62 · billing 19 · signup 10) and **20/20** in
 `test/calc.test.ts` — the one PURE suite, which needs no server at all. Running
 several contract files back to back still trips the documented Neon connection
@@ -1006,6 +1007,32 @@ claim (`lastPolledAt`) is committed in its own short transaction BEFORE the
 network call, and both callers changed as N17 predicted: the route runs it
 through `afterCommit`, the worker's tick no longer wraps it. There is still
 exactly one ingest path — the poll composes `refreshShipmentForOrder`.
+
+### AUDIT.3 — a duplicated product name, found by driving a real order
+
+**The only finding no test could have made.** AUDIT.1's contract tests passed
+167/167; the counters were then exercised against the RUNNING server — sign up,
+create a product, place an order, confirm it — and the product still read
+`totalOrders: 0`. They had landed on a different row with the same name. Every
+test creates its own tenant with one product per name, so no test could see it.
+
+`resolveProduct` did what the legacy does and took the FIRST matching row. Two
+rows answering to one normalised name is what an import produces, what a
+duplicate entry produces, and what listing two colours as two products produces
+— and the loser reads zero forever with nothing to explain it. In
+`/sales-summary` it is worse: both rows claim the same orders and the P&L counts
+the revenue twice.
+
+**Refused rather than guessed**, which is D-LP.5.2 and D-LP.22.2 in a third
+place. It cannot refuse the ORDER — a sale must not fail over a catalogue
+tidiness problem — so the counters do not move and BOTH rows are marked on the
+products screen, where somebody can rename one. A counter that silently does not
+move is the same defect as one that silently moves to the wrong row; the badge is
+what makes it neither.
+
+**Worth carrying forward as a method, not just a fix:** the contract suite is
+green and the live console was not. Every slice from here should end with a real
+action through the running app.
 
 ### AUDIT.2 — the list that could not catch the mistake it existed for
 
@@ -1925,7 +1952,7 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 967 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 969 | all pass against a running server |
 | `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
 | `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
@@ -1933,7 +1960,7 @@ fail without it, so check the counts, not just the exit code.
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1623** | green per suite |
+| **Total** | **1625** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

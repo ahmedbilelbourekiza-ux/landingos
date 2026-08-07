@@ -102,8 +102,66 @@ async function resolveProduct(
   const candidates = await db.catalogProduct.findMany({
     select: { id: true, name: true },
   });
-  const found = candidates.find((p) => normalizeProductName(p.name) === normalized);
-  return found ? { id: found.id } : null;
+  const matches = candidates.filter((p) => normalizeProductName(p.name) === normalized);
+
+  /* AMBIGUITY IS REFUSED, NOT GUESSED — found by driving a real order through
+   * the running console rather than by a test.
+   *
+   * The legacy does `products.find(...)` and takes the FIRST row whose
+   * normalised name matches. Two catalogue rows called "Montre" — which is what
+   * an import, a duplicate entry or two colours listed as products produce —
+   * means every order's revenue and every lifetime counter lands silently on
+   * whichever was created first. The other product reads zero forever and
+   * nobody can tell why.
+   *
+   * It is D-LP.5.2 and D-LP.22.2 in a third place: a resolution that could be
+   * one of two is refused rather than guessed, because the wrong answer looks
+   * exactly like the right one.
+   *
+   * IT CANNOT REFUSE THE ORDER, though. A sale must not fail over a catalogue
+   * tidiness problem, so the counters simply do not move and the products
+   * screen marks BOTH rows as ambiguous — which is where somebody can fix it,
+   * by renaming one. `duplicateProductNames` is that reader. */
+  if (matches.length !== 1) {
+    if (matches.length > 1) {
+      console.warn(
+        `[erp] "${order.product}" matches ${matches.length} catalogue products; lifetime counters not attributed`,
+      );
+    }
+    return null;
+  }
+  return { id: matches[0].id };
+}
+
+/**
+ * The normalised names that more than one catalogue row answers to.
+ *
+ * The reader for the ambiguity above, and for the same ambiguity in
+ * `/sales-summary` — where it is worse, because that direction asks "which
+ * orders are mine" per product, so BOTH rows claim the same revenue and the
+ * P&L double-counts it.
+ *
+ * Returns the ids, so a screen can mark the rows rather than describe the
+ * problem in the abstract.
+ */
+export async function duplicateProductNames(db: TenantDb): Promise<Set<string>> {
+  const rows = await db.catalogProduct.findMany({
+    where: { archived: false },
+    select: { id: true, name: true },
+  });
+
+  const byName = new Map<string, string[]>();
+  for (const row of rows) {
+    const key = normalizeProductName(row.name);
+    if (!key) continue;
+    byName.set(key, [...(byName.get(key) ?? []), row.id]);
+  }
+
+  const ambiguous = new Set<string>();
+  for (const ids of byName.values()) {
+    if (ids.length > 1) for (const id of ids) ambiguous.add(id);
+  }
+  return ambiguous;
 }
 
 /**

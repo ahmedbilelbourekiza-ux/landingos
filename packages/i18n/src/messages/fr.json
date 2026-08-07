@@ -159,7 +159,9 @@
       "channels": "Vendu via",
       "noChannels": "Lié à aucun canal de vente.",
       "timeline": "Chronologie",
-      "noEvents": "Rien n'a encore changé sur ce produit."
+      "noEvents": "Rien n'a encore changé sur ce produit.",
+      "ambiguous": "Nom en double",
+      "ambiguousHint": "Deux fiches produit répondent à ce nom : une commande qui le nomme ne peut être attribuée ni à l'une ni à l'autre — ses compteurs à vie ne bougent pas et le résumé des ventes compterait son chiffre deux fois. Renommez-en une."
     },
     "inventory": {
       "title": "Inventaire",

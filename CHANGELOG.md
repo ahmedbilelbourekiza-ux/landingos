@@ -12,6 +12,72 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### AUDIT.3 A duplicated product name, found by driving a real order
+
+[Opus 5]
+Date: 7 August 2026
+Summary: the audit's ninth finding, and the only one no test could have found —
+it took placing an order through the running console. screens 167 → **169**.
+
+#### How it was found, which is the point
+
+AUDIT.1's contract tests passed 167/167. The counters were then exercised
+against the live server by signing up a tenant, creating a product, placing an
+order and confirming it — and the product still read `totalOrders: 0`.
+
+The counters were working perfectly. They had landed on a DIFFERENT product with
+the same name, created a minute earlier by a curl that had errored on its
+response parsing and succeeded on the server. Every test creates its own tenant
+with one product per name, so no test could see it.
+
+#### The defect
+
+`resolveProduct` did what the legacy does —
+`products.find(p => normalize(p.name) === normalize(order.product))` — and took
+**the first row that matched.**
+
+Two catalogue rows answering to one normalised name is not exotic: it is what an
+import produces, what a duplicate entry produces, and what listing two colours as
+two products produces. When it happens, every order's lifetime counters land
+silently on whichever row was created first, and the other reads zero forever
+with nothing to explain it.
+
+**The same ambiguity is worse in `/sales-summary`,** because that direction asks
+"which orders are mine" per product: BOTH rows claim the same orders, and the
+P&L counts that revenue twice.
+
+#### The fix — the rule this project already has, in a third place
+
+D-LP.5.2 (ZR's commune), D-LP.22.2 (Ecom's wilaya) and LP.16a (the exclusive
+channel link) all say the same thing: **a resolution that could be one of two is
+refused rather than guessed, because the wrong answer looks exactly like the
+right one.**
+
+So an ambiguous name attributes to NEITHER row. It cannot refuse the ORDER —
+a sale must not fail over a catalogue tidiness problem — so the counters simply
+do not move, and **both rows are marked on the products screen**, which is where
+somebody can fix it by renaming one. A counter that silently does not move is
+the same class of defect as one that silently moves to the wrong row; the badge
+is what makes it neither.
+
+The badge carries the consequence in its tooltip rather than just the word
+"duplicate": an order naming it is attributed to neither, and the sales summary
+would count its revenue twice.
+
+#### Files
+
+- `apps/website-builder/src/lib/erp/product-stats.ts` — refuse on ambiguity,
+  plus `duplicateProductNames` as the reader
+- `apps/website-builder/src/app/console/erp/products/page.tsx`
+- `packages/i18n/src/messages/{ar,en,fr}.json` — 2 keys × 3
+- `apps/website-builder/test/erp/screens.test.ts` — 2 regression tests, one of
+  which asserts the badge CLEARS after a rename
+
+**Migration:** none. **Risk:** low, and it is a narrowing: a name that resolved
+to an arbitrary row now resolves to none, which is visible instead of silent.
+
+---
+
 ### AUDIT.2 The list that could not catch the mistake it existed for
 
 [Opus 5]

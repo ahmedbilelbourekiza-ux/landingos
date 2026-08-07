@@ -2590,3 +2590,62 @@ describe('the AI provider vocabulary is ONE list (audit)', () => {
     assert.match(r.body, /generativelanguage\.googleapis\.com|api\.openai\.com/);
   });
 });
+
+describe('a duplicated product name is refused, not guessed (audit)', () => {
+  test('an order naming two products attributes to NEITHER, and both rows say so', async () => {
+    // Found by driving a real order through the running console, not by a
+    // test: the legacy takes the FIRST row whose normalised name matches, so
+    // two catalogue rows called "Montre" send every order's revenue silently to
+    // whichever was created first — and the other reads zero forever.
+    const staged = await makeErpTenant(`dupe-${uid()}`);
+    const name = `Ambiguous ${uid()}`;
+    const first = (await staged.manager.api('POST', '/api/erp/products', {
+      name, price: 1000,
+    })).body.data.id;
+    const second = (await staged.manager.api('POST', '/api/erp/products', {
+      // The same product to a person, and to `normalizeProductName`.
+      name: `${name}\u2122`, price: 1000,
+    })).body.data.id;
+
+    await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Ambiguous Buyer', phone: phone(), price: 1000, product: name,
+    });
+
+    for (const id of [first, second]) {
+      const p = (await staged.manager.api('GET', `/api/erp/products/${id}`)).body.data;
+      assert.equal(p.totalOrders, 0, 'an ambiguous name must attribute to neither row');
+    }
+
+    const r = await html('/console/erp/products', staged.manager.token);
+    assert.equal(r.status, 200);
+    // Marked where somebody can fix it, because a counter that silently does
+    // not move is the same class of defect as one that silently moves to the
+    // wrong row.
+    assert.equal(
+      (r.body.match(/data-badge="ambiguous-name"/g) ?? []).length, 2,
+      'both rows must be marked',
+    );
+  });
+
+  test('renaming one of them makes the other attributable again', async () => {
+    const staged = await makeErpTenant(`undupe-${uid()}`);
+    const name = `Fixable ${uid()}`;
+    const keep = (await staged.manager.api('POST', '/api/erp/products', {
+      name, price: 500,
+    })).body.data.id;
+    const clash = (await staged.manager.api('POST', '/api/erp/products', {
+      name, price: 500,
+    })).body.data.id;
+
+    await staged.manager.api('PATCH', `/api/erp/products/${clash}`, { name: `${name} Two` });
+    await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Now Clear', phone: phone(), price: 500, product: name,
+    });
+
+    const p = (await staged.manager.api('GET', `/api/erp/products/${keep}`)).body.data;
+    assert.equal(p.totalOrders, 1, 'the ambiguity was the only thing stopping attribution');
+
+    const r = await html('/console/erp/products', staged.manager.token);
+    assert.ok(!/data-badge="ambiguous-name"/.test(r.body), 'the badge must clear');
+  });
+});
