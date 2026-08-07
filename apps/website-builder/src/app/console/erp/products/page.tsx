@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { withTenant } from "@landingos/db";
 import { can } from "@landingos/auth";
 import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
@@ -224,7 +226,16 @@ export default async function ErpProductsScreen({
             header: t("erp.products.title"),
             cell: (p) => (
               <>
-                <span className="font-medium">{p.name || "—"}</span>
+                {/* The audit's finding: the product's lifetime counters, its
+                    event timeline and the channels it is linked to were all
+                    written and read by nothing. The row opens the record that
+                    shows them. */}
+                <Link
+                  href={`/console/erp/products/${p.id}`}
+                  className="font-medium underline-offset-2 hover:underline"
+                >
+                  {p.name || "—"}
+                </Link>
                 <span className="mt-0.5 block font-mono text-xs text-muted-foreground" dir="ltr">
                   {p.reference ?? ""}
                 </span>

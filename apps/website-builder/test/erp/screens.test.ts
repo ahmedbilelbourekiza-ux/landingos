@@ -2279,3 +2279,314 @@ describe('the bulk bar offers the four restored actions (LP.9 / R7)', () => {
     assert.match(withCarrier.body, /data-testid="bulk-send-to-delivery"/);
   });
 });
+
+/* =============================================================================
+ * THE AUDIT — a product's lifetime counters, its timeline, and its channels
+ *
+ * All three were written and read by nothing, on the same record:
+ *
+ *   - the COUNTERS said "maintained by the order pipeline" in the schema since
+ *     M-06, were returned by `GET /products`, and were maintained by nothing.
+ *     The port brought `syncClientFromOrder` across and left
+ *     `upsertProductStatsFromOrder` behind, so every product reported zero
+ *     orders and zero revenue for the life of the platform. BUG-02's shape.
+ *   - `CatalogProductEvent` had three writers and no console reader.
+ *   - `CatalogProductLink` decides revenue attribution (LP.16a) and nothing
+ *     showed which channels a product was linked to.
+ * ========================================================================== */
+
+describe('a product’s lifetime counters are maintained (audit)', () => {
+  test('an order increments totalOrders, and confirming increments confirmed', async () => {
+    const staged = await makeErpTenant(`pstat-${uid()}`);
+    const name = `Counted ${uid()}`;
+    const product = (await staged.manager.api('POST', '/api/erp/products', {
+      name, price: 5000, costPrice: 2000,
+    })).body.data.id;
+
+    const before = (await staged.manager.api('GET', `/api/erp/products/${product}`)).body.data;
+    assert.equal(before.totalOrders, 0);
+
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Buyer', phone: phone(), price: 5000, product: name,
+    })).body.data.id;
+
+    const afterCreate = (await staged.manager.api('GET', `/api/erp/products/${product}`)).body.data;
+    assert.equal(afterCreate.totalOrders, 1, 'the counters were maintained by nothing before this fix');
+    assert.equal(afterCreate.confirmedOrders, 0);
+    assert.ok(afterCreate.firstOrderAt, 'firstOrderAt must be stamped');
+
+    await staged.manager.api('PATCH', `/api/erp/orders/${order}`, { status: 'confirmed' });
+    const afterConfirm = (await staged.manager.api('GET', `/api/erp/products/${product}`)).body.data;
+    assert.equal(afterConfirm.confirmedOrders, 1);
+    assert.equal(afterConfirm.totalOrders, 1, 'a status change is not a second order');
+  });
+
+  test('they are LIFETIME EVENT counts — cancelling after confirming increments both', async () => {
+    // The property that is easy to "fix" into something wrong: making them
+    // agree with a live COUNT(*) destroys the history the manager asked for.
+    const staged = await makeErpTenant(`pevent-${uid()}`);
+    const name = `Lifetime ${uid()}`;
+    const product = (await staged.manager.api('POST', '/api/erp/products', {
+      name, price: 1000,
+    })).body.data.id;
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Changed Mind', phone: phone(), price: 1000, product: name,
+    })).body.data.id;
+
+    await staged.manager.api('PATCH', `/api/erp/orders/${order}`, { status: 'confirmed' });
+    await staged.manager.api('PATCH', `/api/erp/orders/${order}`, { status: 'cancelled' });
+
+    const after = (await staged.manager.api('GET', `/api/erp/products/${product}`)).body.data;
+    assert.equal(after.confirmedOrders, 1, 'a confirmation that was later cancelled still happened');
+    assert.equal(after.cancelledOrders, 1);
+  });
+
+  test('revenue counts DELIVERED value, not confirmed (N19)', async () => {
+    // Under cash on delivery a phone confirmation is not a sale.
+    const staged = await makeErpTenant(`prev-${uid()}`);
+    const code = `mk${uid()}`;
+    const carrier = await staged.manager.api('POST', '/api/erp/carriers', {
+      name: 'Mock', code, adapter: 'mock', apiEnabled: true,
+    });
+    await staged.manager.api('POST', `/api/erp/carriers/${carrier.body.data.id}/default`, {});
+    await staged.manager.api('PUT', '/api/erp/settings', { autoCreateShipment: true });
+
+    const name = `Revenue ${uid()}`;
+    const product = (await staged.manager.api('POST', '/api/erp/products', {
+      name, price: 4000,
+    })).body.data.id;
+
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Payer', phone: phone(), price: 4000, product: name, carrierCode: code,
+    })).body.data.id;
+    await staged.manager.api('POST', `/api/erp/orders/${order}/call-start`, {});
+    await staged.manager.api('POST', `/api/erp/orders/${order}/call`, { result: 'confirmed' });
+
+    const confirmed = (await staged.manager.api('GET', `/api/erp/products/${product}`)).body.data;
+    assert.equal(String(confirmed.totalRevenue), '0', 'a confirmation is not money');
+
+    // Walk the mock parcel to delivered.
+    for (let i = 0; i < 8; i += 1) {
+      await staged.manager.api('POST', `/api/erp/orders/${order}/shipment/refresh`, {});
+      const o = (await staged.manager.api('GET', `/api/erp/orders/${order}`)).body.data;
+      if (o.deliveryOutcome === 'delivered') break;
+    }
+
+    const delivered = (await staged.manager.api('GET', `/api/erp/products/${product}`)).body.data;
+    assert.equal(delivered.deliveredOrders, 1, 'settlement must move the product counters too');
+    assert.equal(String(delivered.totalRevenue), '4000');
+  });
+
+  test('a product name with a ™ still matches — the counters use product-match', async () => {
+    // The defect LP.16a found on `sales-summary` applies identically here: an
+    // exact string compare would leave a trademarked product at zero forever.
+    const staged = await makeErpTenant(`ptm-${uid()}`);
+    const name = `Montre™ ${uid()}`;
+    const product = (await staged.manager.api('POST', '/api/erp/products', {
+      name, price: 3000,
+    })).body.data.id;
+
+    await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Trademark', phone: phone(), price: 3000,
+      // The order carries the name WITHOUT the symbol, as a phone agent types it.
+      product: name.replace('™', ''),
+    });
+
+    const after = (await staged.manager.api('GET', `/api/erp/products/${product}`)).body.data;
+    assert.equal(after.totalOrders, 1, 'a ™ cost the product its whole history');
+  });
+
+  test('an order naming no product moves nothing', async () => {
+    // `product: undefined` is not a filter in Prisma, which is how a NAMELESS
+    // catalogue row once reported the whole book's revenue (LP.16a).
+    const staged = await makeErpTenant(`pnone-${uid()}`);
+    const product = (await staged.manager.api('POST', '/api/erp/products', {
+      name: `Untouched ${uid()}`, price: 100,
+    })).body.data.id;
+
+    await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'No Product', phone: phone(), price: 100,
+    });
+
+    const after = (await staged.manager.api('GET', `/api/erp/products/${product}`)).body.data;
+    assert.equal(after.totalOrders, 0);
+  });
+
+  test('deleting an order never walks the counters back', async () => {
+    // A product's sales history outlives any individual order.
+    const staged = await makeErpTenant(`pdel-${uid()}`);
+    const name = `Deleted ${uid()}`;
+    const product = (await staged.manager.api('POST', '/api/erp/products', {
+      name, price: 700,
+    })).body.data.id;
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Gone', phone: phone(), price: 700, product: name,
+    })).body.data.id;
+
+    await staged.manager.api('DELETE', `/api/erp/orders/${order}`);
+    const after = (await staged.manager.api('GET', `/api/erp/products/${product}`)).body.data;
+    assert.equal(after.totalOrders, 1, 'deleting an order reversed a lifetime counter');
+  });
+});
+
+describe('a product’s record has a screen (audit)', () => {
+  test('the timeline, the counters and the channels all render', async () => {
+    const staged = await makeErpTenant(`pui-${uid()}`);
+    const name = `Screened ${uid()}`;
+    const product = (await staged.manager.api('POST', '/api/erp/products', {
+      name, price: 1000, costPrice: 400,
+    })).body.data.id;
+    // An edit, so the timeline has something in it — `CatalogProductEvent` had
+    // three writers and no reader before this.
+    await staged.manager.api('PATCH', `/api/erp/products/${product}`, { costPrice: 550 });
+
+    const r = await html(`/console/erp/products/${product}`, staged.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="product-stats"/);
+    assert.match(r.body, /data-testid="product-timeline"/);
+    assert.match(r.body, /data-event-type="cost_change"/, 'the timeline rendered no event');
+    // The old value and the new one side by side — "cost changed" is not a
+    // record, "400 → 550" is.
+    assert.match(r.body, /550/);
+  });
+
+  test('the product list links to it', async () => {
+    const staged = await makeErpTenant(`plink-${uid()}`);
+    const product = (await staged.manager.api('POST', '/api/erp/products', {
+      name: `Linked ${uid()}`, price: 100,
+    })).body.data.id;
+
+    const r = await html('/console/erp/products', staged.manager.token);
+    assert.match(r.body, new RegExp(`/console/erp/products/${product}`));
+  });
+
+  test('another tenant’s product is a 404', async () => {
+    const beta = await makeErpTenant(`pbeta-${uid()}`);
+    const theirs = (await beta.manager.api('POST', '/api/erp/products', {
+      name: 'Beta Product', price: 10,
+    })).body.data.id;
+    const r = await html(`/console/erp/products/${theirs}`, acme.manager.token);
+    assert.equal(r.status, 404);
+  });
+});
+
+/* =============================================================================
+ * THE AUDIT — three more readers and writers that did not meet
+ * ========================================================================== */
+
+describe('the overdue-follow-up badge reads the TASK, not a dead column (audit)', () => {
+  test('it appears for an order whose follow-up task is overdue', async () => {
+    // LP.8 rendered this from `FulfillmentOrder.callReminderStatus`, and
+    // nothing on this platform writes that column — the resolve route says so
+    // in its own comment. The badge could never appear.
+    const staged = await makeErpTenant(`fubadge-${uid()}`);
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Waiting', phone: phone(), price: 1000,
+    })).body.data.id;
+
+    const before = await html('/console/erp/orders', staged.manager.token);
+    assert.ok(!/data-badge="followup-overdue"/.test(before.body), 'nothing is overdue yet');
+
+    await makeFollowupTask(staged.tenantId, {
+      orderId: order,
+      agentUserId: staged.agent.userId,
+      // Already expired, so the sweep escalates it on the next run.
+      dueAt: new Date(Date.now() - 60 * 60 * 1000),
+    });
+    await staged.manager.api('POST', '/api/erp/jobs/followup-escalation', {});
+
+    const after = await html('/console/erp/orders', staged.manager.token);
+    assert.match(
+      after.body, /data-badge="followup-overdue"/,
+      'the badge is driven by FollowupTask now, and must actually appear',
+    );
+  });
+});
+
+describe('a period saved twice says which version is current (audit)', () => {
+  test('the older save is marked superseded', async () => {
+    // `FinancialRecord` is append-only, which is P5's whole point — and the
+    // finance table listed both saves as two equally authoritative lines.
+    const staged = await makeErpTenant(`fver-${uid()}`);
+    const period = {
+      periodType: 'week',
+      startDate: Date.UTC(2026, 0, 5),
+      endDate: Date.UTC(2026, 0, 11),
+    };
+
+    const first = await staged.manager.api('POST', '/api/erp/financial-records', {
+      ...period, revenue: 100000, productCosts: 40000,
+    });
+    assert.equal(first.status, 201, JSON.stringify(first.body));
+    const second = await staged.manager.api('POST', '/api/erp/financial-records', {
+      ...period, revenue: 90000, productCosts: 40000,
+    });
+    assert.equal(second.status, 201);
+
+    const r = await html('/console/erp/finance', staged.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-badge="superseded"/, 'the older save is not marked');
+    assert.match(
+      r.body, new RegExp(`data-record-id="${second.body.data.id}" data-current="true"`),
+      'the newest save must be the current one',
+    );
+    assert.match(
+      r.body, new RegExp(`data-record-id="${first.body.data.id}" data-current="false"`),
+    );
+    assert.match(r.body, /data-testid="finance-versions-hint"/);
+  });
+
+  test('and the versions route agrees with the screen', async () => {
+    const staged = await makeErpTenant(`fver2-${uid()}`);
+    const period = {
+      periodType: 'month',
+      startDate: Date.UTC(2026, 1, 1),
+      endDate: Date.UTC(2026, 1, 28),
+    };
+    await staged.manager.api('POST', '/api/erp/financial-records', { ...period, revenue: 1 });
+    await staged.manager.api('POST', '/api/erp/financial-records', { ...period, revenue: 2 });
+
+    const versions = await staged.manager.api(
+      'GET',
+      `/api/erp/financial-records/versions?periodType=month&startDate=${period.startDate}&endDate=${period.endDate}`,
+    );
+    assert.equal(versions.status, 200);
+    assert.equal(versions.body.data.total, 2, 'both saves are kept');
+  });
+});
+
+describe('the AI provider vocabulary is ONE list (audit)', () => {
+  test('every type the form offers is one the route accepts', async () => {
+    // Two copies of the same three strings, with a comment claiming otherwise.
+    // A type added to one and not the other fails silently — the D-LP.3 shape.
+    const r = await html('/console/erp/ai', acme.manager.token);
+    assert.equal(r.status, 200);
+
+    const offered = [...r.body.matchAll(/<option value="([a-z-]+)"[^>]*>/g)]
+      .map((m) => m[1])
+      .filter((v) => ['openai-compat', 'gemini', 'anthropic'].includes(v));
+    assert.ok(offered.length > 0, 'the form offers no provider type at all');
+
+    for (const type of new Set(offered)) {
+      const created = await acme.manager.api('POST', '/api/erp/ai/providers', {
+        name: `Probe ${type} ${uid()}`, type,
+      });
+      assert.equal(created.status, 201, `the form offers "${type}" and the route refuses it`);
+    }
+  });
+
+  test('a type the list does not carry is still refused', async () => {
+    const r = await acme.manager.api('POST', '/api/erp/ai/providers', {
+      name: 'Nonsense', type: 'llama-cpp',
+    });
+    assert.equal(r.status, 422);
+  });
+
+  test('the form suggests a base URL and a model, which it had none of', async () => {
+    // An operator configuring Gemini was shown an empty box and had to know the
+    // URL from memory — a field somebody looks up in another tab is one they
+    // get wrong, and a wrong base URL fails at CHAT time.
+    const r = await html('/console/erp/ai', acme.manager.token);
+    assert.match(r.body, /generativelanguage\.googleapis\.com|api\.openai\.com/);
+  });
+});

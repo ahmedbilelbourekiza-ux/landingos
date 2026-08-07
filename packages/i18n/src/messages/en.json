@@ -155,7 +155,11 @@
       "archived": "Archived",
       "niche": "Niche",
       "category": "Category",
-      "supplier": "Supplier"
+      "supplier": "Supplier",
+      "channels": "Sold through",
+      "noChannels": "Not linked to any sales channel.",
+      "timeline": "Timeline",
+      "noEvents": "Nothing has changed on this product yet."
     },
     "inventory": {
       "title": "Inventory",
@@ -236,7 +240,11 @@
       "saved": "Saved",
       "none": "No records saved yet",
       "charges": "One-off expenses",
-      "appendOnly": "Records are kept forever, never edited"
+      "appendOnly": "Records are kept forever, never edited",
+      "superseded": "Superseded",
+      "current": "Current",
+      "versionsHint": "A period saved more than once keeps every version. The newest is what the business runs on; the ones under it are what it used to say — almost always a parcel that came back after the first calculation.",
+      "version": "Version"
     },
     "agents": {
       "title": "Agents",

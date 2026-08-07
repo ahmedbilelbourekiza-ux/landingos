@@ -265,11 +265,37 @@ model CatalogProduct {
   threshold Int? @default(0)
   archived  Boolean @default(false)
 
-  // Denormalized lifetime counters, maintained by the order pipeline.
+  // Denormalized lifetime counters, maintained by the order pipeline —
+  // `syncProductStatsFromOrder`, the mirror of `syncClientFromOrder`.
+  //
+  // THE AUDIT FOUND THESE WERE MAINTAINED BY NOTHING. The comment above said
+  // "maintained by the order pipeline" from M-06, `PRODUCT_SELECT` returned
+  // them, and no code anywhere wrote one — so every product reported
+  // `totalOrders: 0` and `totalRevenue: 0` forever. It is BUG-02's shape: a
+  // figure the schema promises, an API that serves it, and no writer.
+  //
+  // They are LIFETIME EVENT COUNTS, exactly like the client's: `confirmedOrders`
+  // is how many times one of this product's orders has ever reached confirmed,
+  // and it does not go back down when one is later cancelled — that cancellation
+  // is its own event and increments `cancelledOrders`. Making them agree with a
+  // live COUNT(*) looks like a bug fix and destroys the history.
+  //
+  // `totalRevenue` counts DELIVERED value, not confirmed (N19): under cash on
+  // delivery a phone confirmation is not a sale.
+  //
+  // The legacy also keeps `totalProfit`, computed from the FIFO lots each order
+  // actually consumed. It is deliberately NOT a column here: it depends on the
+  // cost basis at the time of sale, `/sales-summary` already answers it
+  // period-accurately from the movement ledger, and a denormalised lifetime
+  // profit would be a second answer that drifts the first time a lot is
+  // corrected.
   totalOrders     Int      @default(0)
+  confirmedOrders Int      @default(0)
   cancelledOrders Int      @default(0)
+  deliveredOrders Int      @default(0)
   totalRevenue    Decimal  @default(0)
   firstOrderAt    DateTime?
+  lastOrderAt     DateTime?
 
   links     CatalogProductLink[]
   events    CatalogProductEvent[]

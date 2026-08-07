@@ -155,7 +155,11 @@
       "archived": "Archivé",
       "niche": "Niche",
       "category": "Catégorie",
-      "supplier": "Fournisseur"
+      "supplier": "Fournisseur",
+      "channels": "Vendu via",
+      "noChannels": "Lié à aucun canal de vente.",
+      "timeline": "Chronologie",
+      "noEvents": "Rien n'a encore changé sur ce produit."
     },
     "inventory": {
       "title": "Inventaire",
@@ -236,7 +240,11 @@
       "saved": "Enregistré le",
       "none": "Aucun enregistrement",
       "charges": "Dépenses ponctuelles",
-      "appendOnly": "Les enregistrements sont conservés, jamais modifiés"
+      "appendOnly": "Les enregistrements sont conservés, jamais modifiés",
+      "superseded": "Remplacée",
+      "current": "Actuelle",
+      "versionsHint": "Une période enregistrée plusieurs fois conserve chaque version. La plus récente fait foi ; celles en dessous sont ce qu'elle disait avant — presque toujours un colis revenu après le premier calcul.",
+      "version": "Version"
     },
     "agents": {
       "title": "Agents",

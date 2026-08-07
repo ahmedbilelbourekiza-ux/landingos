@@ -14,6 +14,7 @@ import {
   type TrackingEvent,
 } from "./carriers";
 import { syncClientFromOrder } from "./clients";
+import { syncProductStatsFromOrder } from "./product-stats";
 import { raiseFollowupTask } from "./followup";
 import { notifyDeliveryUpdate, notifyFollowupRaised, notifyShipmentFailed } from "./notify";
 import { readSettings } from "./settings";
@@ -513,6 +514,11 @@ async function settleOutcome(
     select: {
       deliveryOutcome: true, status: true, price: true, phone: true,
       client: true, wilaya: true, commune: true, createdAt: true,
+      // The audit's finding: the PRODUCT's lifetime counters move on this
+      // transition too, and this is the door that settles a delivery. Its
+      // sibling `syncClientFromOrder` was already here; the product half was
+      // never ported at all.
+      product: true, externalProductId: true, salesChannelId: true, platform: true,
     },
   });
   if (!order || order.deliveryOutcome) return;
@@ -540,6 +546,13 @@ async function settleOutcome(
   await syncClientFromOrder(
     db,
     tenantId,
+    { ...order, deliveryOutcome: null },
+    { ...order, deliveryOutcome: terminal.crmStatus },
+  );
+  // And the product's, on the same two states, so a delivered parcel moves
+  // both ledgers or neither.
+  await syncProductStatsFromOrder(
+    db,
     { ...order, deliveryOutcome: null },
     { ...order, deliveryOutcome: terminal.crmStatus },
   );

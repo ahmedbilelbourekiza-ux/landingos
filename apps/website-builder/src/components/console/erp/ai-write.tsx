@@ -67,11 +67,27 @@ export function ProviderCreatePanel({
 }: {
   readonly errors: ActionErrors;
   readonly s: AiStrings;
-  /** The route's own enum, so a type it would refuse cannot be offered. */
-  readonly types: readonly string[];
+  /** The route's own list — literally the same import (`AI_PROVIDER_KEYS` is
+   *  derived from this), so a type it would refuse cannot be offered. The
+   *  audit found these were two separate copies. */
+  readonly types: readonly { key: string; label: string; baseUrl: string; model: string }[];
 }) {
   const { run, pending, error } = useApiAction(errors);
-  const blank = { name: "", type: types[0] ?? "openai-compat", baseUrl: "", apiKey: "", defaultModel: "" };
+  /* Prefilled from the chosen type's preset, which the legacy publishes and
+   * this had nothing for: an operator configuring Gemini was shown an empty
+   * base-URL box and had to know the URL from memory. A field somebody looks up
+   * in another tab is a field they get wrong, and a wrong base URL fails at
+   * CHAT time rather than at configuration time. They are suggestions — every
+   * box stays editable, which is what makes one entry serve OpenAI, GLM,
+   * DeepSeek, OpenRouter and a local Ollama. */
+  const first = types[0];
+  const blank = {
+    name: "",
+    type: first?.key ?? "openai-compat",
+    baseUrl: first?.baseUrl ?? "",
+    apiKey: "",
+    defaultModel: first?.model ?? "",
+  };
   const [f, setF] = useState(blank);
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
 
@@ -85,8 +101,30 @@ export function ProviderCreatePanel({
         </div>
         <div>
           <label htmlFor="ai-p-type" className="block text-xs text-muted-foreground">{s.type}</label>
-          <select id="ai-p-type" value={f.type} onChange={(e) => set("type", e.target.value)} className={`mt-1 ${FIELD}`}>
-            {types.map((t) => <option key={t} value={t}>{t}</option>)}
+          <select
+            id="ai-p-type"
+            value={f.type}
+            onChange={(e) => {
+              const chosen = types.find((t) => t.key === e.target.value);
+              // Switching type replaces the SUGGESTIONS only where the person
+              // has not typed over them — retyping a base URL because you
+              // changed your mind about the brand is the annoyance this
+              // prefill exists to remove, and clobbering a real value would be
+              // a worse one.
+              setF((p) => ({
+                ...p,
+                type: e.target.value,
+                baseUrl: types.some((t) => t.baseUrl === p.baseUrl) || !p.baseUrl
+                  ? (chosen?.baseUrl ?? "")
+                  : p.baseUrl,
+                defaultModel: types.some((t) => t.model === p.defaultModel) || !p.defaultModel
+                  ? (chosen?.model ?? "")
+                  : p.defaultModel,
+              }));
+            }}
+            className={`mt-1 ${FIELD}`}
+          >
+            {types.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
           </select>
         </div>
         <div>

@@ -12,6 +12,171 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### AUDIT.1 Four writers and four readers that never met
+
+[Opus 5]
+Date: 7 August 2026
+Summary: the independent engineering audit, read module by module from
+`apps/erp` rather than from the roadmap. Seven findings, all of one shape and
+all fixed here. screens 152 → **167**.
+
+#### What the audit looked for, and why it found this
+
+Every parity pass so far has measured FEATURES. This one enumerated the legacy's
+125 routes and 15 screens against the platform's, then walked the schema asking
+a different question: **which columns does something write that nothing reads,
+and which does something read that nothing writes?**
+
+That is the shape of every serious defect this project has found — BUG-02
+(`deliveryOutcome` read in eight places, written in none), `IntegrationLog`
+(migrated with its indexes, no caller), `OrderCall.suspicious` (computed, shown
+nowhere), `fakeReason` (written since Phase 5, read back by nothing). Seven more
+were there.
+
+#### AUDIT-5 — the biggest: a product's lifetime counters were maintained by nothing
+
+`CatalogProduct.totalOrders`, `cancelledOrders`, `totalRevenue` and
+`firstOrderAt` have existed since M-06 under the schema comment *"denormalized
+lifetime counters, maintained by the order pipeline"*. `PRODUCT_SELECT` returns
+all four from `GET /api/erp/products`.
+
+**Nothing has ever written one.** The port brought `upsertClientFromOrder` across
+as `syncClientFromOrder` and left `upsertProductStatsFromOrder` behind, so every
+product on this platform has reported zero orders and zero revenue for its whole
+life. Nothing errored, every number was a real number, and a product that had
+sold two hundred units said it had sold none. BUG-02 exactly.
+
+`lib/erp/product-stats.ts` is the writer, called from `createOrder`,
+`updateOrder` and `settleOutcome` — the same three doors `syncClientFromOrder`
+already used, in the same transactions, so the two ledgers can never describe
+different events. Three columns were added so the set is coherent
+(`confirmedOrders`, `deliveredOrders`, `lastOrderAt`).
+
+**`totalProfit` is deliberately NOT a column**, though the legacy has one. It
+depends on the cost basis at the time of sale, `/sales-summary` already answers
+it period-accurately from the movement ledger, and a denormalised lifetime profit
+would be a second answer that drifts the first time a lot is corrected.
+
+**Which product an order is goes through `product-match.ts`** — the channel's
+`CatalogProductLink` first and exclusively, then a normalised name. Using the
+same resolver the revenue attribution uses is what stops the counters and
+`/sales-summary` disagreeing, and it means a product called `Montre™` is not left
+at zero forever (LP.16a's defect, which an exact string compare here would have
+reintroduced).
+
+**`lastOrderAt` only moves forward and `firstOrderAt` only backward**, because
+LP.19's import arrives with older `createdAt` values than rows already present.
+
+#### AUDIT-3, AUDIT-6 — and the two other things on the same record
+
+`CatalogProductEvent` has three writers (LP.1's four field events, LP.18's
+`variants_changed`) and `GET /products/[id]/history` serves them; **no screen
+rendered one.** It is the permanent record of what a cost basis used to be —
+the only way to answer "why is last quarter's margin different from this one's".
+
+`CatalogProductLink` decides revenue attribution FIRST and EXCLUSIVELY (LP.16a)
+and is created by LP.20's product webhook; nothing showed which channels a
+product was linked to, so a mis-linked product was invisible until its revenue
+appeared on the wrong row.
+
+`/console/erp/products/[id]` renders all three, which is the shape the legacy's
+own product modal has: they are the same question asked three ways.
+
+#### AUDIT-7 — a badge that could never appear, introduced by LP.8
+
+LP.8 rendered the overdue-follow-up badge from
+`FulfillmentOrder.callReminderStatus`. **Nothing on this platform writes that
+column** — `POST /followup/tasks/[id]/resolve` says so in its own comment
+("NO SECOND MARKER… nothing on this platform reads `callReminderStatus` at
+all"), which was true when it was written and stopped being true when LP.8 added
+a reader.
+
+Fixed in the direction that decision already chose: `FollowupTask` IS the record,
+so the badge asks the record. One more bounded page-scoped query beside the two
+LP.8 added. `callReminderStatus` and `callReminderDue` are named in
+`ORDER_LIST_SELECT` as dead, so the next reader knows before adding one.
+
+#### AUDIT-4 — an append-only table that looked like a flat list
+
+`FinancialRecord` is insert-only, which is P5's whole point: saving a period
+twice keeps both rows, and `GET /financial-records/versions` (LP.16c) answers
+"what did this week say before". **That route had no reader**, and the finance
+table listed every row flat — two saves of one week as two adjacent, equally
+authoritative lines, with nothing saying which one the business runs on.
+
+The older rows are marked superseded, computed from the ordering the table
+already has rather than by calling `versions` (a second query would be a second
+answer to a question this list has already sorted itself into), and the screen
+states WHY a period has two versions: almost always a parcel that came back
+after the first calculation.
+
+#### AUDIT-1, AUDIT-2 — a vocabulary that had quietly grown a second copy
+
+`POST /api/erp/ai/providers` validated
+`z.enum(["openai-compat", "gemini", "anthropic"])`, and
+`console/erp/ai/page.tsx` declared its own identical `PROVIDER_TYPES` — under a
+comment on the component reading *"the route's own enum, so a type it would
+refuse cannot be offered"*, which was the intent and not what the code did. It is
+the D-LP.3 defect in a place nobody had looked: silent the moment one of the two
+changes.
+
+`lib/erp/ai-providers.ts` is the one list, and it carries the **presets** the
+legacy publishes (`GET /api/ai/providers/presets/:type`) and this had nothing
+for: an operator configuring Gemini was shown an empty base-URL box and had to
+know `generativelanguage.googleapis.com/v1beta` from memory. A field somebody
+looks up in another tab is a field they get wrong, and a wrong base URL fails at
+CHAT time rather than at configuration time. They are suggestions, not silent
+defaults — switching type replaces them only where the person has not typed over
+them.
+
+#### What the audit checked and found NOT to be gaps
+
+- Every one of the legacy's **15 screens** has a platform home, including the
+  three that became something else deliberately: Alerts → the `suspicious=true`
+  filter (LP.12), Export → the panel on the order list (D-LP.6.2), Import → the
+  panels on the client and order lists (LP.19).
+- **Every settings key** in the legacy's `DEFAULT_SETTINGS` exists in
+  `SETTINGS_SCHEMA`, validated and with a control.
+- The legacy's **three job loops** are a subset of the platform's four.
+- `GET /api/erp/inventory/low-stock` has no console caller, and correctly: the
+  inventory screen computes the same answer through the same `inventoryView`,
+  which is the established server-component pattern rather than a second rule.
+- `GET /api/erp/orders/stats` likewise — the overview needs six figures that
+  route does not carry, so it reads its own, scoped by the same `orderScope`.
+- `GET /api/statuses` and `/api/delivery/statuses` are genuinely absent and are
+  Tier 4 slice 26 (R18) — the vocabularies reach every screen as props, and the
+  routes matter only to a future external client.
+
+#### Files
+
+- `packages/db/prisma/schema/erp.prisma` — three counter columns
+- `apps/website-builder/src/lib/erp/product-stats.ts` — new
+- `apps/website-builder/src/lib/erp/ai-providers.ts` — new
+- `apps/website-builder/src/app/console/erp/products/[id]/page.tsx` — new
+- `apps/website-builder/src/lib/erp/orders.ts`, `shipments.ts`
+- `apps/website-builder/src/app/console/erp/{orders,products,finance,ai}/page.tsx`
+- `apps/website-builder/src/app/api/erp/{products,ai/providers}/route.ts`
+- `apps/website-builder/src/components/console/erp/ai-write.tsx`
+- `packages/i18n/src/messages/{ar,en,fr}.json` — 8 keys × 3
+- `apps/website-builder/test/erp/screens.test.ts` — 15 new tests
+
+**Migration:** three nullable/defaulted columns on `CatalogProduct`, applied with
+`prisma db push`. Additive.
+
+**Backfill: NOT done, deliberately.** The counters start from now. They are
+LIFETIME EVENT counts — "how many times has an order of this product ever reached
+confirmed" — and a backfill from current state would produce a different number
+from the events (an order confirmed and then cancelled contributes to both
+counters, and only the second is still visible). A wrong history that looks
+authoritative is worse than one that visibly starts today. `/sales-summary`
+answers the period questions from the order book directly and is unaffected.
+
+**Risk:** medium. Every order write now resolves a catalogue product, which is
+one indexed read plus a bounded catalogue scan for the name fallback — the same
+work `/sales-summary` already does per product, moved to once per order write.
+
+---
+
 ### LP.22 The Ecom adapter, and the poll finally leaves the transaction — **TIER 3 IS COMPLETE**
 
 [Opus 5]

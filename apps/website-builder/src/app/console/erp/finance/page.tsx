@@ -64,6 +64,30 @@ export default async function ErpFinanceScreen() {
   const currency = session.tenant!.currency;
   const money = (v: { toString(): string }) => formatMoney(v.toString(), locale, currency);
 
+  /* THE AUDIT'S FINDING. `FinancialRecord` is append-only, so saving a period
+   * twice keeps BOTH rows — which is the whole point of P5, and
+   * `GET /financial-records/versions` answers "what did this week say before".
+   * That route had no reader, and this table listed every row flat: two saves
+   * of the same week appeared as two adjacent, equally authoritative lines, and
+   * nothing said which one the business runs on.
+   *
+   * Computed here rather than by calling `versions`, and deliberately: the rows
+   * are already ordered `startDate desc, createdAt desc`, so the FIRST row for a
+   * period is the current one and every later row for the same period is
+   * superseded. A second query would be a second answer to a question this list
+   * has already sorted itself into.
+   *
+   * The difference between two versions is almost always a parcel that came
+   * back after the first calculation — the single most common thing a manager
+   * needs explained, and the reason the older row is kept rather than updated. */
+  const seenPeriods = new Set<string>();
+  const versioned = records.map((r) => {
+    const key = `${r.periodType}:${r.startDate.getTime()}:${r.endDate.getTime()}`;
+    const current = !seenPeriods.has(key);
+    seenPeriods.add(key);
+    return { ...r, current };
+  });
+
   /* Phase 6.3d. Reading the books is `erp:finance:read` (checked above via
      seesWholeBook's sibling gate); WRITING them is `erp:finance:write`, and the
      two are separate permissions on purpose — an accountant may be given the
@@ -87,12 +111,19 @@ export default async function ErpFinanceScreen() {
           made. */}
       {mayWrite && <RecordSavePanel errors={errors} s={s} periodTypes={periodTypes} />}
 
+      <p className="mt-2 text-xs text-muted-foreground" data-testid="finance-versions-hint">
+        {t("erp.finance.versionsHint")}
+      </p>
+
       <DataTable
         testId="erp-finance-table"
         empty={t("erp.finance.none")}
-        rows={records}
+        rows={versioned}
         rowKey={(r) => r.id}
-        rowAttrs={(r) => ({ "data-record-id": r.id })}
+        rowAttrs={(r) => ({
+          "data-record-id": r.id,
+          "data-current": r.current ? "true" : "false",
+        })}
         columns={[
           {
             id: "period",
@@ -100,6 +131,17 @@ export default async function ErpFinanceScreen() {
             cell: (r) => (
               <>
                 <span className="font-medium">{r.periodType}</span>
+                {/* Said on the row. A superseded record is not wrong — it is
+                    what the period USED to say — but a manager reading two
+                    lines for one week needs to know which is which. */}
+                {!r.current && (
+                  <span
+                    data-badge="superseded"
+                    className="ms-2 rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                  >
+                    {t("erp.finance.superseded")}
+                  </span>
+                )}
                 <span className="mt-0.5 block text-xs text-muted-foreground">
                   {formatDate(r.startDate, locale)} → {formatDate(r.endDate, locale)}
                 </span>

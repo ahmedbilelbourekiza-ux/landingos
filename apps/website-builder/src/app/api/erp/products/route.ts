@@ -13,7 +13,8 @@ export const PRODUCT_SELECT = {
   price: true, costPrice: true, packagingCost: true,
   variants: true, optionDefs: true, image: true,
   stock: true, threshold: true, archived: true,
-  totalOrders: true, cancelledOrders: true, totalRevenue: true, firstOrderAt: true,
+  totalOrders: true, confirmedOrders: true, cancelledOrders: true,
+  deliveredOrders: true, totalRevenue: true, firstOrderAt: true, lastOrderAt: true,
   createdAt: true,
 } as const;
 

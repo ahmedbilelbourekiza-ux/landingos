@@ -78,7 +78,10 @@ export default async function ErpOrdersScreen({
   const page = Math.max(1, Number(params.get("page")) || 1);
   const where = scopedWhere(session, orderFilters(params));
 
-  const { orders, total, members, carriers, confirmedCount, alertMinutes, flagged, notes } =
+  const {
+    orders, total, members, carriers, confirmedCount, alertMinutes, flagged, notes,
+    followupOverdue,
+  } =
     await withTenant(session.auth!.tenantId, async (db) => {
     const total = await db.fulfillmentOrder.count({ where });
     const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -105,7 +108,7 @@ export default async function ErpOrdersScreen({
      * suspicious calls it carries; the note query takes the newest note per
      * order the same way the queue screen already does. */
     const ids = orders.map((o) => o.id);
-    const [flaggedRows, noteRows] = ids.length
+    const [flaggedRows, noteRows, overdueTasks] = ids.length
       ? await Promise.all([
           db.orderCall.findMany({
             where: { orderId: { in: ids }, suspicious: true },
@@ -118,8 +121,24 @@ export default async function ErpOrdersScreen({
             orderBy: [{ orderId: "asc" }, { time: "desc" }],
             select: { orderId: true, note: true },
           }),
+          /* THE AUDIT'S FINDING. LP.8 rendered the overdue-follow-up badge from
+           * `FulfillmentOrder.callReminderStatus`, and **nothing on this
+           * platform writes that column** — `POST /followup/tasks/[id]/resolve`
+           * says so in its own comment ("NO SECOND MARKER... nothing on this
+           * platform reads `callReminderStatus` at all"), which was true when it
+           * was written and stopped being true when LP.8 added a reader.
+           *
+           * The badge could therefore never appear. The fix is the direction
+           * that decision already chose: `FollowupTask` IS the record, so the
+           * badge asks the record rather than a duplicated column. Bounded to
+           * the page's ids, like the two queries above. */
+          db.followupTask.findMany({
+            where: { orderId: { in: ids }, status: "overdue" },
+            distinct: ["orderId"],
+            select: { orderId: true },
+          }),
         ])
-      : [[], []];
+      : [[], [], []];
 
     return {
     total,
@@ -127,6 +146,7 @@ export default async function ErpOrdersScreen({
     alertMinutes: Number((await readSettings(db)).alertMinutes) || 60,
     flagged: new Set(flaggedRows.map((r) => r.orderId)),
     notes: new Map(noteRows.map((r) => [r.orderId, r.note as string])),
+    followupOverdue: new Set(overdueTasks.map((r) => r.orderId)),
     // Same rule as the order detail: only for a caller who already sees the
     // whole book, because assigning in bulk is refused for anybody else.
     members: managesBook
@@ -453,7 +473,7 @@ export default async function ErpOrdersScreen({
                       {o.trackingNumber}
                     </span>
                   )}
-                  {o.callReminderStatus === "overdue" && (
+                  {followupOverdue.has(o.id) && (
                     <span className="mt-1 block">
                       {badge("followup-overdue", t("erp.followUp.escalation"), "danger")}
                     </span>

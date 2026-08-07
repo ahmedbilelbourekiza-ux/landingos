@@ -7,6 +7,7 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { aiStrings } from "@/lib/console/erp-strings";
+import { AI_PROVIDER_TYPES } from "@/lib/erp/ai-providers";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
 import {
@@ -43,7 +44,10 @@ export const dynamic = "force-dynamic";
  * per-token charges. The page checks both itself rather than trusting the nav.
  * ========================================================================== */
 
-const PROVIDER_TYPES = ["openai-compat", "gemini", "anthropic"] as const;
+/* The audit's finding: this was a second copy of the route's enum, and the
+ * component's own comment said otherwise. One list now, in
+ * `lib/erp/ai-providers.ts`, which also carries the base-URL and model
+ * suggestions the legacy publishes and this had nothing for. */
 const AGENT_ROLES = [
   "general", "manager", "sales", "confirmation", "delivery", "analytics", "support",
 ] as const;
@@ -148,7 +152,7 @@ export default async function ErpAiScreen() {
       {mayConfigure && (
         <>
           <h2 className="mt-8 text-sm font-medium">{t("erp.ai.providers")}</h2>
-          <ProviderCreatePanel errors={errors} s={s} types={PROVIDER_TYPES} />
+          <ProviderCreatePanel errors={errors} s={s} types={AI_PROVIDER_TYPES} />
 
           <DataTable
             testId="ai-providers-table"

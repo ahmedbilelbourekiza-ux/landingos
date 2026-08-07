@@ -6,6 +6,7 @@ import { nextReference } from "./ids";
 import { normalizePhone } from "./phone";
 import { toDecimal } from "./serialize";
 import { syncClientFromOrder, type OrderStatsView } from "./clients";
+import { syncProductStatsFromOrder } from "./product-stats";
 // A type-only import from a directive-free module. `FilterField` describes a
 // control; it carries no behaviour and no directive, so both this server module
 // and the client-free bar can name it.
@@ -256,7 +257,14 @@ export const ORDER_LIST_SELECT = {
    * columns the channel webhooks already write. Reading them here rather than
    * joining `SalesChannel` per row is why they are denormalised at all. */
   unitPrice: true, subtotal: true, discount: true, shippingCost: true,
-  expressDelivery: true, callReminderStatus: true,
+  expressDelivery: true,
+  /* `callReminderStatus` and `callReminderDue` are NOT selected, and are not
+   * read anywhere: the audit found LP.8 rendering a badge from the first of
+   * them while **nothing on this platform writes either**. `FollowupTask` is
+   * the record — `POST /followup/tasks/[id]/resolve` states that decision — so
+   * the order list asks the task. The two columns survive from the ERP's schema
+   * and are dead; they are named here so the next reader knows before adding
+   * one. */
   salesChannelName: true, platform: true, brand: true,
   /* LP.9 — WHY an order is flagged, not only THAT it is.
    *
@@ -597,6 +605,13 @@ export function orderFilterFields(opts: {
 const STATS_VIEW = {
   status: true, deliveryOutcome: true, price: true,
   phone: true, client: true, wilaya: true, commune: true, createdAt: true,
+  /* The audit's finding. `CatalogProduct`'s lifetime counters said
+   * "maintained by the order pipeline" and were maintained by nothing, so
+   * every product reported zero orders and zero revenue. These four are what
+   * `syncProductStatsFromOrder` needs to decide WHICH product an order is —
+   * through `product-match.ts`, so the counters and the revenue attribution
+   * cannot disagree. */
+  product: true, externalProductId: true, salesChannelId: true, platform: true,
 } satisfies Prisma.FulfillmentOrderSelect;
 
 /**
@@ -619,6 +634,7 @@ export async function createOrder(
     select: { ...STATS_VIEW, id: true },
   });
   await syncClientFromOrder(db, tenantId, null, created);
+  await syncProductStatsFromOrder(db, null, created);
   return created.id;
 }
 
@@ -647,7 +663,11 @@ export async function updateOrder(
   if (!touched) return;
 
   const after = await db.fulfillmentOrder.findUnique({ where: { id }, select: STATS_VIEW });
-  if (after) await syncClientFromOrder(db, tenantId, before as OrderStatsView, after);
+  if (!after) return;
+  await syncClientFromOrder(db, tenantId, before as OrderStatsView, after);
+  // The product's counters move on the same transitions the customer's do, and
+  // in the same transaction, so the two can never describe different events.
+  await syncProductStatsFromOrder(db, before, after);
 }
 
 /**
