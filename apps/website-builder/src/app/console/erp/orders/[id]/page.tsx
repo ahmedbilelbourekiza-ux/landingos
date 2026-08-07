@@ -9,6 +9,7 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { StatusPill } from "@/components/console/data-table";
 import {
   CallPanel,
@@ -283,55 +284,63 @@ export default async function ErpOrderDetail({
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <Link
-        href="/console/erp/orders"
-        className="text-sm text-muted-foreground underline-offset-2 hover:underline"
-      >
-        ← {t("erp.order.backToList")}
-      </Link>
-
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold">
-          {t("erp.order.title")}{" "}
-          <span className="font-mono text-base" dir="ltr">
-            {order.reference ?? ""}
-          </span>
-        </h1>
-        <StatusPill
-          status={order.status ?? "unknown"}
-          label={t(tone.labelKey)}
-          vars={toneVars(tone.tone)}
-        />
-        {order.classification === "fake" && (
+      {/* UI.22 — a real breadcrumb, replacing three different hand-written back
+          links: this screen's `← Back to list`, the client detail's own, and the
+          product detail's complete absence. The last crumb is where you are and
+          carries no href — a link to the page you are on is a control that does
+          nothing. */}
+      <PageHeader
+        breadcrumb={[
+          { label: t("erp.orders.title"), href: "/console/erp/orders" },
+          { label: order.reference ?? t("erp.order.title") },
+        ]}
+        title={
           <>
-            <span
-              data-testid="order-fake"
-              className="rounded-full border px-2 py-0.5 text-xs"
-              style={toneVars("danger")}
-            >
-              {t("erp.order.fake")}
+            {t("erp.order.title")}{" "}
+            <span className="font-mono text-base" dir="ltr">
+              {order.reference ?? ""}
             </span>
-            {/* LP.9 — WHY, and WHO SAYS. `fakeReason` and `fakeResponsible`
-                have been written by `POST /orders/[id]/classify` since Phase 5
-                and read back by nothing: the pill said an order was fake and
-                no screen said why. Marking an order fake removes it from the
-                confirmed count and names a colleague, so this is the part
-                somebody disputes. */}
-            {(order.fakeReason || order.fakeResponsible) && (
-              <span data-testid="order-fake-reason" className="text-xs text-muted-foreground">
-                {[order.fakeReason, order.fakeResponsible].filter(Boolean).join(" · ")}
-              </span>
+          </>
+        }
+        meta={
+          <>
+            <StatusPill
+              status={order.status ?? "unknown"}
+              label={t(tone.labelKey)}
+              vars={toneVars(tone.tone)}
+            />
+            {order.classification === "fake" && (
+              <>
+                <span
+                  data-testid="order-fake"
+                  className="rounded-full border px-2 py-0.5 text-xs font-medium"
+                  style={toneVars("danger")}
+                >
+                  {t("erp.order.fake")}
+                </span>
+                {/* LP.9 — WHY, and WHO SAYS. `fakeReason` and `fakeResponsible`
+                    have been written by `POST /orders/[id]/classify` since Phase
+                    5 and read back by nothing: the pill said an order was fake
+                    and no screen said why. Marking an order fake removes it from
+                    the confirmed count and names a colleague, so this is the
+                    part somebody disputes. */}
+                {(order.fakeReason || order.fakeResponsible) && (
+                  <span data-testid="order-fake-reason" className="text-xs text-muted-foreground">
+                    {[order.fakeReason, order.fakeResponsible].filter(Boolean).join(" · ")}
+                  </span>
+                )}
+              </>
             )}
           </>
-        )}
-      </div>
+        }
+      />
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-3">
         <section
-          className="rounded-lg border border-border p-4 lg:col-span-1"
+          className="rounded-lg border border-border bg-surface-raised p-4 lg:col-span-1"
           data-testid="order-customer"
         >
-          <h2 className="text-sm font-medium">{t("erp.order.customerCard")}</h2>
+          <h2 className="text-sm font-semibold tracking-tight">{t("erp.order.customerCard")}</h2>
           <p className="mt-2 font-medium">{order.client || "—"}</p>
           <p className="font-mono text-sm text-muted-foreground" dir="ltr">
             {order.phone}
@@ -357,10 +366,10 @@ export default async function ErpOrderDetail({
         </section>
 
         <section
-          className="rounded-lg border border-border p-4 lg:col-span-2"
+          className="rounded-lg border border-border bg-surface-raised p-4 lg:col-span-2"
           data-testid="order-summary"
         >
-          <h2 className="text-sm font-medium">{t("erp.orders.product")}</h2>
+          <h2 className="text-sm font-semibold tracking-tight">{t("erp.orders.product")}</h2>
           <p className="mt-2">
             {order.product || "—"}
             {order.productVariant ? ` · ${order.productVariant}` : ""}
@@ -501,8 +510,8 @@ export default async function ErpOrderDetail({
         </div>
       )}
 
-      <section className="mt-4 rounded-lg border border-border p-4" data-testid="order-attempts">
-        <h2 className="text-sm font-medium">
+      <section className="mt-4 rounded-lg border border-border bg-surface-raised p-4" data-testid="order-attempts">
+        <h2 className="text-sm font-semibold tracking-tight">
           {t("erp.order.attempts")}{" "}
           <span className="text-muted-foreground">
             {Math.max(0, ATTEMPT_SLOTS - attempts.length)} {t("erp.order.attemptsLeft")}
@@ -530,8 +539,8 @@ export default async function ErpOrderDetail({
         </ol>
       </section>
 
-      <section className="mt-4 rounded-lg border border-border p-4" data-testid="order-calls">
-        <h2 className="text-sm font-medium">{t("erp.order.history")}</h2>
+      <section className="mt-4 rounded-lg border border-border bg-surface-raised p-4" data-testid="order-calls">
+        <h2 className="text-sm font-semibold tracking-tight">{t("erp.order.history")}</h2>
         {calls.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">{t("erp.order.noCalls")}</p>
         ) : (
@@ -589,8 +598,8 @@ export default async function ErpOrderDetail({
           order is doing your job; seeing who else touched it is supervision, and
           the same distinction the analytics league table draws. */}
       {audit && (
-        <section className="mt-4 rounded-lg border border-border p-4" data-testid="order-audit">
-          <h2 className="text-sm font-medium">{t("erp.order.audit")}</h2>
+        <section className="mt-4 rounded-lg border border-border bg-surface-raised p-4" data-testid="order-audit">
+          <h2 className="text-sm font-semibold tracking-tight">{t("erp.order.audit")}</h2>
           {audit.length === 0 ? (
             <p className="mt-2 text-sm text-muted-foreground">{t("erp.order.auditEmpty")}</p>
           ) : (
@@ -609,8 +618,8 @@ export default async function ErpOrderDetail({
         </section>
       )}
 
-      <section className="mt-4 rounded-lg border border-border p-4" data-testid="order-shipment">
-        <h2 className="text-sm font-medium">{t("erp.order.shipment")}</h2>
+      <section className="mt-4 rounded-lg border border-border bg-surface-raised p-4" data-testid="order-shipment">
+        <h2 className="text-sm font-semibold tracking-tight">{t("erp.order.shipment")}</h2>
         {!shipment ? (
           <p className="mt-3 text-sm text-muted-foreground">{t("erp.order.noShipment")}</p>
         ) : (
@@ -629,7 +638,7 @@ export default async function ErpOrderDetail({
                 <dd>{t(resolveStatus("delivery", shipment.crmStatus ?? "").labelKey)}</dd>
               </div>
             </dl>
-            <h3 className="mt-4 text-xs font-medium text-muted-foreground">
+            <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {t("erp.order.timeline")}
             </h3>
             <ol className="mt-2 space-y-1 text-sm">

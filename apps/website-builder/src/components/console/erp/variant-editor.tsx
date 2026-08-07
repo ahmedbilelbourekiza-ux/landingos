@@ -90,15 +90,15 @@ export function VariantEditorPanel({
   const product = products.find((p) => p.id === selected) ?? products[0];
 
   return (
-    <section className="mt-3 rounded-lg border border-border p-4" data-testid="erp-variant-editor">
+    <section className="mt-3 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-variant-editor">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-medium">{s.panel}</h2>
+        <h2 className="text-sm font-semibold tracking-tight">{s.panel}</h2>
         <ActionButton
           data-testid="variant-editor-toggle"
+          aria-expanded={open}
           pending={false}
           pendingLabel={s.saving}
           onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
         >
           {s.panel}
         </ActionButton>

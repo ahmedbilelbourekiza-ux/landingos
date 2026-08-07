@@ -107,11 +107,11 @@ export function AgentRowActions({
       <div className="flex flex-wrap justify-end gap-2">
         <ActionButton
           data-testid="agent-edit-toggle"
+          aria-expanded={open}
           data-user-id={userId}
           pending={false}
           pendingLabel={s.saving}
           onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
         >
           {open ? s.cancel : s.edit}
         </ActionButton>

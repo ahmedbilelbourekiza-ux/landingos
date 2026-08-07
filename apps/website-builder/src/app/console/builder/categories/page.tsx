@@ -2,6 +2,7 @@ import { forTenant } from "@landingos/db";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export default async function BuilderCategoriesScreen() {
 
   return (
     <ConsoleShell session={session} productId="website-builder">
-      <h1 className="text-xl font-semibold">{t("builder.nav.categories")}</h1>
+      <PageHeader title={t("builder.nav.categories")} />
       <DataTable
         testId="categories-table"
         empty={t("common.empty")}

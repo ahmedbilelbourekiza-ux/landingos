@@ -6,6 +6,7 @@ import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { catalogStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import {
   StockAdjustPanel,
@@ -105,7 +106,7 @@ export default async function ErpInventoryScreen() {
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.inventory.title")}</h1>
+      <PageHeader title={t("erp.inventory.title")} />
 
       {mayWrite && (
         <>
@@ -114,7 +115,7 @@ export default async function ErpInventoryScreen() {
         </>
       )}
 
-      <h2 className="mt-6 text-sm font-medium">{t("erp.inventory.lowStock")}</h2>
+      <h2 className="mt-6 text-sm font-semibold tracking-tight">{t("erp.inventory.lowStock")}</h2>
       <DataTable
         testId="erp-low-stock-table"
         empty={t("erp.inventory.healthy")}
@@ -161,7 +162,7 @@ export default async function ErpInventoryScreen() {
         ]}
       />
 
-      <h2 className="mt-8 text-sm font-medium">{t("erp.inventory.movements")}</h2>
+      <h2 className="mt-8 text-sm font-semibold tracking-tight">{t("erp.inventory.movements")}</h2>
       <DataTable
         testId="erp-movements-table"
         empty={t("common.empty")}

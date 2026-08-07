@@ -78,7 +78,7 @@ export default async function ErpClientDetailScreen({
   const mayWrite = can(session.auth!, "erp:clients:write");
 
   const tile = (id: string, label: string, value: string) => (
-    <div key={id} data-tile={id} className="rounded-lg border border-border p-3">
+    <div key={id} data-tile={id} className="rounded-lg border border-border bg-surface-raised p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 text-lg font-semibold tabular-nums">{value}</div>
     </div>
@@ -130,7 +130,7 @@ export default async function ErpClientDetailScreen({
           data-testid="client-imported-block"
           className="mt-6 rounded-lg border border-dashed border-border p-4"
         >
-          <h2 className="text-sm font-medium">{t("erp.clients.imported")}</h2>
+          <h2 className="text-sm font-semibold tracking-tight">{t("erp.clients.imported")}</h2>
           <p className="mt-1 text-xs text-muted-foreground">
             {client.importedSource}
             {client.importedAt ? ` · ${formatDate(client.importedAt, locale)}` : ""}
@@ -158,7 +158,7 @@ export default async function ErpClientDetailScreen({
         />
       )}
 
-      <h2 className="mt-8 text-sm font-medium">{t("erp.clients.history")}</h2>
+      <h2 className="mt-8 text-sm font-semibold tracking-tight">{t("erp.clients.history")}</h2>
       <DataTable
         testId="client-history"
         empty={t("erp.orders.noneYet")}

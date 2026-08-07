@@ -8,6 +8,7 @@ import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { channelStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { ChannelCreatePanel, ChannelRowActions } from "@/components/console/erp/channel-write";
 import { listChannelPlatforms, getChannelAdapter } from "@/lib/erp/channel-adapters";
@@ -87,7 +88,7 @@ export default async function ErpChannelsScreen() {
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.channels.title")}</h1>
+      <PageHeader title={t("erp.channels.title")} />
 
       <ChannelCreatePanel
         errors={errors}

@@ -7,6 +7,7 @@ import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { FollowupAssign, Countdown } from "@/components/console/erp/followup-assign";
 import { followupAssignStrings, countdownStrings } from "@/lib/console/erp-strings";
@@ -93,7 +94,7 @@ export default async function ErpFollowUpScreen() {
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.followUp.title")}</h1>
+      <PageHeader title={t("erp.followUp.title")} />
 
       {counts && (
         <div className="mt-6 grid gap-3 sm:grid-cols-3 lg:grid-cols-5" data-testid="followup-buckets">
@@ -104,7 +105,7 @@ export default async function ErpFollowUpScreen() {
             ["problems", t("erp.followUp.problems"), counts.problems],
             ["escalation", t("erp.followUp.escalation"), counts.escalation],
           ].map(([id, label, value]) => (
-            <div key={String(id)} data-bucket={String(id)} className="rounded-lg border border-border p-4">
+            <div key={String(id)} data-bucket={String(id)} className="rounded-lg border border-border bg-surface-raised p-4">
               <span className="block text-xs text-muted-foreground">{label}</span>
               <span className="mt-1 block text-2xl font-semibold tabular-nums" dir="ltr">
                 {String(value)}

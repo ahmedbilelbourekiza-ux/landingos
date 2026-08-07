@@ -13,6 +13,7 @@ import {
   readFixedCostRows,
 } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { ProfitCalculator } from "@/components/console/erp/profit-calculator";
 import { FixedCostsEditor } from "@/components/console/erp/settings-structured";
@@ -144,8 +145,7 @@ export default async function ErpCalculatorScreen({
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.calculator.title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{t("erp.calculator.subtitle")}</p>
+      <PageHeader title={t("erp.calculator.title")} description={t("erp.calculator.subtitle")} />
 
       {/* The period. Links, not buttons — a calculation somebody is about to
           save should be linkable, survive a refresh and work before JavaScript,
@@ -227,7 +227,7 @@ export default async function ErpCalculatorScreen({
         />
       )}
 
-      <h2 className="mt-8 text-sm font-medium">{t("erp.calculator.history")}</h2>
+      <h2 className="mt-8 text-sm font-semibold tracking-tight">{t("erp.calculator.history")}</h2>
       <p className="mt-1 text-xs text-muted-foreground">{t("erp.calculator.historyHint")}</p>
 
       <div className="mt-2">

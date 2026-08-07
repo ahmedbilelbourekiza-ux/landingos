@@ -74,8 +74,8 @@ export function ChargeAddPanel({
   const [date, setDate] = useState("");
 
   return (
-    <section className="mt-6 rounded-lg border border-border p-4" data-testid="erp-charge-panel">
-      <h2 className="text-sm font-medium">{s.addCharge}</h2>
+    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-charge-panel">
+      <h2 className="text-sm font-semibold tracking-tight">{s.addCharge}</h2>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
         <div>
@@ -206,8 +206,8 @@ export function RecordSavePanel({
   const ordered = dated && dayToEpoch(f.endDate) >= dayToEpoch(f.startDate);
 
   return (
-    <section className="mt-6 rounded-lg border border-border p-4" data-testid="erp-record-panel">
-      <h2 className="text-sm font-medium">{s.savePanel}</h2>
+    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-record-panel">
+      <h2 className="text-sm font-semibold tracking-tight">{s.savePanel}</h2>
       {/* Said on the page: the total is the server's arithmetic, so two people
           reading the same period cannot see two answers. */}
       <p className="mt-1 text-xs text-muted-foreground">{s.derivedHint}</p>

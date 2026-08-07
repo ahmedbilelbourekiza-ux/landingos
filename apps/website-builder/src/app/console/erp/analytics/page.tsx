@@ -6,6 +6,7 @@ import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { orderFilters } from "@/lib/erp/orders";
 import { scopedWhere, seesWholeBook } from "@/lib/erp/scope";
@@ -153,17 +154,21 @@ export default async function ErpAnalyticsScreen({
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.analytics.title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {t("erp.analytics.subtitle")} ·{" "}
-        <span data-testid="erp-scope">
-          {seesWholeBook(session) ? t("erp.overview.wholeBook") : t("erp.overview.myQueue")}
-        </span>
-      </p>
+      <PageHeader
+        title={t("erp.analytics.title")}
+        description={
+          <>
+            {t("erp.analytics.subtitle")} ·{" "}
+            <span data-testid="erp-scope">
+              {seesWholeBook(session) ? t("erp.overview.wholeBook") : t("erp.overview.myQueue")}
+            </span>
+          </>
+        }
+      />
 
       {/* The window, as links carrying the ORDER LIST's own `range=` vocabulary
           — so a filter applied there survives arriving here, and vice versa. */}
-      <nav className="mt-4 flex flex-wrap gap-2" data-testid="analytics-ranges">
+      <nav className="flex flex-wrap gap-2" data-testid="analytics-ranges">
         <Link
           href={rangeHref("")}
           data-range="all"
@@ -219,7 +224,7 @@ export default async function ErpAnalyticsScreen({
 
       {offered.map((dimension) => (
         <section key={dimension} className="mt-8" data-dimension={dimension}>
-          <h2 className="text-sm font-medium">{DIMENSION_LABEL[dimension]}</h2>
+          <h2 className="text-sm font-semibold tracking-tight">{DIMENSION_LABEL[dimension]}</h2>
           <DataTable
             testId={`analytics-${dimension}`}
             empty={t("common.empty")}

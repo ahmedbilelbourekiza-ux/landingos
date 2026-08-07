@@ -6,6 +6,7 @@ import { can } from "@landingos/auth";
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { SettingsForm } from "@/components/console/erp/settings-form";
 import {
   FixedCostsEditor,
@@ -133,7 +134,7 @@ export default async function ErpAutomationScreen() {
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.settings.title")}</h1>
+      <PageHeader title={t("erp.settings.title")} />
 
       <SettingsForm
         // Keyed on what is stored, so a save remounts the form on the server's

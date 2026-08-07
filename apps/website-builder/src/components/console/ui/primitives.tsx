@@ -249,7 +249,15 @@ export function Stat({
       >
         {value}
       </span>
-      {sub && <span className={cn(s.meta, "mt-1.5 block")}>{sub}</span>}
+      {/* `data-sub` carries the tile's id: the analytics suite asserts that the
+          confirmation rate is rendered UNDER the confirmed count rather than as
+          a tile of its own, and that assertion is what stops it drifting back
+          into being a seventh figure nobody relates to anything. */}
+      {sub && (
+        <span data-sub={id} className={cn(s.meta, "mt-1.5 block")}>
+          {sub}
+        </span>
+      )}
     </>
   );
 

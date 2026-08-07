@@ -81,9 +81,9 @@ export function NotifyPreferences({
   return (
     <section
       data-testid="notify-preferences"
-      className="mt-8 rounded-lg border border-border p-4"
+      className="mt-8 rounded-lg border border-border bg-surface-raised p-4"
     >
-      <h2 className="text-sm font-medium">{s.panel}</h2>
+      <h2 className="text-sm font-semibold tracking-tight">{s.panel}</h2>
       <p className="mt-1 text-xs text-muted-foreground">{s.hint}</p>
 
       <label className="mt-4 flex items-center gap-2 text-sm">

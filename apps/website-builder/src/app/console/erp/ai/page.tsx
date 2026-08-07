@@ -9,6 +9,7 @@ import { actionErrors } from "@/lib/console/action-errors";
 import { aiStrings } from "@/lib/console/erp-strings";
 import { AI_PROVIDER_TYPES } from "@/lib/erp/ai-providers";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import {
   ProviderCreatePanel, ProviderRowActions, AgentCreatePanel, AgentRowActions,
@@ -123,13 +124,12 @@ export default async function ErpAiScreen() {
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.ai.title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{t("erp.ai.subtitle")}</p>
+      <PageHeader title={t("erp.ai.title")} description={t("erp.ai.subtitle")} />
 
-      <h2 className="mt-6 text-sm font-medium">{t("erp.ai.insights")}</h2>
+      <h2 className="mt-6 text-sm font-semibold tracking-tight">{t("erp.ai.insights")}</h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-testid="ai-insights">
         {tiles.map((tile) => (
-          <div key={tile.id} data-tile={tile.id} className="rounded-lg border border-border p-4">
+          <div key={tile.id} data-tile={tile.id} className="rounded-lg border border-border bg-surface-raised p-4">
             <span className="block text-xs text-muted-foreground">{tile.label}</span>
             <span className="mt-1 block text-2xl font-semibold tabular-nums" dir="ltr">{tile.value}</span>
           </div>
@@ -142,7 +142,7 @@ export default async function ErpAiScreen() {
         className="mt-6 rounded-lg border border-dashed border-border p-4"
         data-testid="ai-chat-unavailable"
       >
-        <h2 className="text-sm font-medium">{t("erp.ai.chat")}</h2>
+        <h2 className="text-sm font-semibold tracking-tight">{t("erp.ai.chat")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t("erp.ai.chatUnavailable")}</p>
         <p className="mt-1 text-xs text-muted-foreground" data-testid="ai-ceiling">
           {t("erp.ai.yourCeiling")}: {ceiling.length ? ceiling.join(", ") : t("common.empty")}
@@ -151,7 +151,7 @@ export default async function ErpAiScreen() {
 
       {mayConfigure && (
         <>
-          <h2 className="mt-8 text-sm font-medium">{t("erp.ai.providers")}</h2>
+          <h2 className="mt-8 text-sm font-semibold tracking-tight">{t("erp.ai.providers")}</h2>
           <ProviderCreatePanel errors={errors} s={s} types={AI_PROVIDER_TYPES} />
 
           <DataTable
@@ -215,7 +215,7 @@ export default async function ErpAiScreen() {
             ]}
           />
 
-          <h2 className="mt-8 text-sm font-medium">{t("erp.ai.agents")}</h2>
+          <h2 className="mt-8 text-sm font-semibold tracking-tight">{t("erp.ai.agents")}</h2>
           <AgentCreatePanel
             errors={errors}
             s={s}

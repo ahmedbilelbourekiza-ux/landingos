@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { NavIcon } from "./ui/icon";
+import { NavPending } from "./nav-pending";
 
 /**
  * A product's own navigation, rendered from its manifest.
@@ -122,6 +123,12 @@ export function ConsoleNav({
                       )}
                     />
                     <span className="truncate">{item.title}</span>
+                    {/* UI.17 — the item you clicked says it heard you. Every
+                        console screen is `force-dynamic` and runs between two
+                        and eleven queries before it can paint, and until now
+                        the gap between the click and the page was completely
+                        silent. */}
+                    <NavPending />
                   </Link>
                 </li>
               );

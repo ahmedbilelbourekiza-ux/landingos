@@ -127,7 +127,7 @@ export default async function OrderDetailPage({
         </section>
 
         <section className="rounded-lg border border-border bg-card p-4">
-          <h2 className="text-sm font-medium">History</h2>
+          <h2 className="text-sm font-semibold tracking-tight">History</h2>
           <ol className="mt-3 space-y-2" data-testid="order-history">
             {order.statusHistory.map((h: any) => {
               const s = resolveStatus("salesOrder", h.toStatus);

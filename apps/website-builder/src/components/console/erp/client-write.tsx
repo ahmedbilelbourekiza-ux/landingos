@@ -81,9 +81,9 @@ export function ClientEditPanel({
   return (
     <section
       data-testid="client-edit"
-      className="mt-6 rounded-lg border border-border p-4"
+      className="mt-6 rounded-lg border border-border bg-surface-raised p-4"
     >
-      <h2 className="text-sm font-medium">{s.panel}</h2>
+      <h2 className="text-sm font-semibold tracking-tight">{s.panel}</h2>
       {/* Said on the page rather than left to be discovered as a 422. The
           counters beside this panel look editable and are not. */}
       <p className="mt-1 text-xs text-muted-foreground">{s.hint}</p>

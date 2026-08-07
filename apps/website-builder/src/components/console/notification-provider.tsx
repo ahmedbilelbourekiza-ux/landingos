@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Bell, X } from "lucide-react";
 
 import { toneVars } from "@landingos/ui";
 
@@ -111,6 +112,10 @@ export function NotificationProvider({
   const [connected, setConnected] = useState(false);
 
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** UI.19 — the bell, so Escape can put focus back where it started, and the
+   *  wrapper, so an outside click can be told from an inside one. */
+  const bell = useRef<HTMLButtonElement | null>(null);
+  const panelRoot = useRef<HTMLDivElement | null>(null);
 
   /* The stream subscription is opened ONCE and its handler closes over
    * whatever `prefs` was at that moment. A ref keeps the handler reading the
@@ -272,27 +277,71 @@ export function NotificationProvider({
     if (next) void load();
   };
 
+  /* UI.19 — Escape and outside-click, the two the panel was missing.
+   *
+   * Escape returns focus to the bell rather than dropping it on `<body>`: a
+   * keyboard user who opens a popover and closes it must land back where they
+   * were, or the next Tab starts again from the top of the document. */
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      bell.current?.focus();
+    };
+    const onPointer = (e: PointerEvent) => {
+      if (!panelRoot.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    // `pointerdown` and not `click`: a click that begins inside the panel and
+    // ends outside it (a drag over the list) is not a request to close.
+    document.addEventListener("pointerdown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointer);
+    };
+  }, [open]);
+
   const label = (n: Feed) => n.title || n.type || n.product;
 
   return (
     <>
-      <div className="relative">
+      {/* UI.19 — the panel closes.
+       *
+       * It had `role="dialog"` and behaved like a div that is sometimes
+       * visible: no Escape, no click-outside, no focus management. The only way
+       * out was to find the bell again and press it a second time.
+       *
+       * NOT A FOCUS TRAP, deliberately. This is a popover on a header control,
+       * not a modal: tabbing past it should reach the rest of the header, and
+       * trapping focus in a notification list is how somebody ends up stuck in
+       * one. Escape and outside-click are what it actually needed. */}
+      <div ref={panelRoot} className="relative">
         <button
           type="button"
+          ref={bell}
           data-testid="notification-bell"
           aria-label={s.title}
           aria-expanded={open}
           aria-haspopup="dialog"
           onClick={toggle}
-          className="relative rounded-md border border-input px-2 py-1.5 text-sm"
+          className={`ui-btn ui-btn-ghost tap relative size-9 px-0 ${
+            open ? "bg-surface-hover text-foreground" : ""
+          }`}
         >
-          <span aria-hidden="true">🔔</span>
+          {/* Was the emoji `🔔`, which renders in whatever the platform's emoji
+              font decides, does not inherit colour, and matches nothing else in
+              the interface. */}
+          <Bell aria-hidden="true" className="size-[1.15rem]" />
           {unread > 0 && (
             <span
               data-testid="notification-badge"
               data-unread={unread}
-              className="ms-1 rounded-full px-1.5 text-xs font-semibold"
+              // Anchored to the bell's corner instead of pushing it wider, so
+              // the header does not reflow the first time something arrives.
+              className="absolute -top-0.5 end-0 min-w-4 rounded-full border px-1 text-2xs font-semibold tabular-nums"
               style={toneVars("danger")}
+              dir="ltr"
             >
               {unread > 99 ? "99+" : unread}
             </span>
@@ -307,10 +356,10 @@ export function NotificationProvider({
             role="dialog"
             aria-label={s.title}
             data-testid="notification-panel"
-            className="absolute end-0 z-50 mt-2 max-h-96 w-80 overflow-y-auto rounded-lg border border-border bg-background p-3 shadow-lg"
+            className="absolute end-0 z-50 mt-2 max-h-96 w-80 overflow-y-auto rounded-lg border border-border bg-surface-raised p-3 shadow-e3"
           >
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium">{s.title}</h2>
+              <h2 className="text-sm font-semibold tracking-tight">{s.title}</h2>
               <span
                 className="text-xs text-muted-foreground"
                 data-testid="notification-connection"
@@ -334,13 +383,25 @@ export function NotificationProvider({
                     data-testid="notification-item"
                     data-notification-id={n.id}
                     data-product={n.product}
-                    className={`rounded-md border border-border p-2 text-sm ${
-                      n.read ? "opacity-60" : ""
+                    // Unread is marked by a DOT and a surface, not by fading the
+                    // read ones: `opacity-60` on read items drops their text
+                    // below AA, so the notifications you have already seen
+                    // become the ones you cannot read.
+                    className={`relative rounded-md border p-2 ps-4 text-sm ${
+                      n.read
+                        ? "border-border bg-surface-raised"
+                        : "border-surface-selected-border bg-surface-selected"
                     }`}
                   >
+                    {!n.read && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute inset-y-2 start-1.5 w-1 rounded-full bg-primary"
+                      />
+                    )}
                     <p className="font-medium">{label(n)}</p>
                     {n.body && <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p>}
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    <p className="mt-1 text-2xs text-muted-foreground">
                       {productNames[n.product] ?? n.product}
                     </p>
                   </li>
@@ -351,8 +412,11 @@ export function NotificationProvider({
             <button
               type="button"
               data-testid="notification-close"
-              onClick={() => setOpen(false)}
-              className="mt-3 w-full rounded-md border border-input px-3 py-1.5 text-sm"
+              onClick={() => {
+                setOpen(false);
+                bell.current?.focus();
+              }}
+              className="ui-btn ui-btn-default tap mt-3 w-full"
             >
               {s.close}
             </button>
@@ -366,20 +430,41 @@ export function NotificationProvider({
         aria-live="polite"
         aria-atomic="false"
         data-testid="notification-toasts"
-        className="pointer-events-none fixed bottom-4 end-4 z-50 flex w-72 flex-col gap-2"
+        // Inset from the edge on a phone as well as a desktop, and never wider
+        // than the viewport — a fixed 18rem panel at 360px hung off the side.
+        className="pointer-events-none fixed bottom-4 end-4 z-50 flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-2"
       >
         {toasts.map((n) => (
           <div
             key={n.id}
             data-testid="notification-toast"
             data-notification-id={n.id}
-            className="pointer-events-auto rounded-lg border border-border bg-background p-3 text-sm shadow-lg"
+            className="pointer-events-auto flex items-start gap-2 rounded-lg border border-border bg-surface-raised p-3 text-sm shadow-e3 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
           >
-            <p className="font-medium">{label(n)}</p>
-            {n.body && <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p>}
-            <p className="mt-1 text-xs text-muted-foreground">
-              {productNames[n.product] ?? n.product}
-            </p>
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">{label(n)}</p>
+              {n.body && <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p>}
+              <p className="mt-1 text-2xs text-muted-foreground">
+                {productNames[n.product] ?? n.product}
+              </p>
+            </div>
+            {/* UI.19 — a toast can be put away.
+             *
+             * They stacked bottom-end with no dismiss, no pause and no action,
+             * so a burst of carrier events covered the corner of the screen for
+             * as long as the timer said. Dismissing removes it from THIS list
+             * only — it is not a read receipt, and marking a notification read
+             * because somebody swatted the toast away would be a write nobody
+             * asked for. */}
+            <button
+              type="button"
+              aria-label={s.close}
+              title={s.close}
+              onClick={() => setToasts((current) => current.filter((t) => t.id !== n.id))}
+              className="ui-btn ui-btn-ghost tap -me-1 -mt-1 size-7 shrink-0 px-0"
+            >
+              <X aria-hidden="true" className="size-3.5" />
+            </button>
           </div>
         ))}
       </div>

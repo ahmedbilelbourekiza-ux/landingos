@@ -8,6 +8,7 @@ import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { financeStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import {
   ChargeAddPanel,
@@ -102,8 +103,7 @@ export default async function ErpFinanceScreen() {
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.finance.title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{t("erp.finance.appendOnly")}</p>
+      <PageHeader title={t("erp.finance.title")} description={t("erp.finance.appendOnly")} />
 
       {/* Saving a period is offered. Editing or deleting a saved one is not,
           and never will be: no such route exists, because the older row IS the
@@ -202,7 +202,7 @@ export default async function ErpFinanceScreen() {
         ]}
       />
 
-      <h2 className="mt-8 text-sm font-medium">{t("erp.finance.charges")}</h2>
+      <h2 className="mt-8 text-sm font-semibold tracking-tight">{t("erp.finance.charges")}</h2>
 
       {mayWrite && <ChargeAddPanel errors={errors} s={s} />}
 

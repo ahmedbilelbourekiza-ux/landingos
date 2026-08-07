@@ -50,7 +50,7 @@ export function SettingsForm({
   const set = (k: string, v: string) => setDraft((d) => ({ ...d, [k]: v }));
 
   return (
-    <section className="mt-6 rounded-lg border border-border p-4" data-testid="erp-settings-form">
+    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-settings-form">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {fields.map((f) => (
           <div key={f.key} data-setting={f.key}>

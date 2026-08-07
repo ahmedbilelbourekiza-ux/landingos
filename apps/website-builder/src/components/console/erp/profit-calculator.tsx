@@ -336,7 +336,7 @@ export function ProfitCalculator({
       {/* The whole business, at the top, because it is the only number most
           people open this screen for. */}
       <section
-        className="mt-4 rounded-lg border border-border p-4"
+        className="mt-4 rounded-lg border border-border bg-surface-raised p-4"
         data-testid="calc-banner"
         data-grand-total={fmt(grandTotal)}
       >
@@ -367,7 +367,7 @@ export function ProfitCalculator({
           data-testid="calc-product"
           data-pid={b.pid}
           data-profit={fmt(c.profit)}
-          className="mt-4 rounded-lg border border-border p-4"
+          className="mt-4 rounded-lg border border-border bg-surface-raised p-4"
         >
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -526,8 +526,8 @@ export function ProfitCalculator({
       ))}
 
       {/* The business aggregate — fixed and unexpected costs subtracted ONCE. */}
-      <section className="mt-6 rounded-lg border border-border p-4" data-testid="calc-grand">
-        <h2 className="text-sm font-medium">{s.grandTitle}</h2>
+      <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="calc-grand">
+        <h2 className="text-sm font-semibold tracking-tight">{s.grandTitle}</h2>
         <dl className="mt-3 grid gap-1 text-sm">
           {row(s.sumProfit, fmt(totals.sumProfit))}
           {row(s.fixedProrated, fmt(fixed))}
@@ -538,8 +538,8 @@ export function ProfitCalculator({
       </section>
 
       {canWrite && (
-        <section className="mt-6 rounded-lg border border-border p-4" data-testid="calc-save">
-          <h2 className="text-sm font-medium">{s.saveRecord}</h2>
+        <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="calc-save">
+          <h2 className="text-sm font-semibold tracking-tight">{s.saveRecord}</h2>
           <p className="mt-1 text-xs text-muted-foreground">{s.saveHint}</p>
           <p className="mt-1 text-xs text-muted-foreground">{s.incidentsInProductCosts}</p>
           {/* An honest warning rather than a refusal: a custom range saves fine
@@ -578,8 +578,8 @@ export function ProfitCalculator({
 
       {/* The roll-up. Reads only what was already saved — it touches no orders
           and no inventory, which is the requirement's own fast path. */}
-      <section className="mt-6 rounded-lg border border-border p-4" data-testid="calc-aggregate">
-        <h2 className="text-sm font-medium">{s.aggregate}</h2>
+      <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="calc-aggregate">
+        <h2 className="text-sm font-semibold tracking-tight">{s.aggregate}</h2>
         <p className="mt-1 text-xs text-muted-foreground">
           {canAggregate ? s.aggregateHint : s.aggregateOnly}
         </p>

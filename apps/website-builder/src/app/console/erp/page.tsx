@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 
 import { withTenant } from "@landingos/db";
 import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
@@ -6,6 +7,7 @@ import { toneVars } from "@landingos/ui";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader, Notice, Stat, StatGrid } from "@/components/console/ui/primitives";
 import { seesWholeBook, orderScope } from "@/lib/erp/scope";
 import { readSettings } from "@/lib/erp/settings";
 import { rate } from "@/lib/erp/analytics";
@@ -154,71 +156,63 @@ export default async function ErpOverview() {
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.overview.title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {t("erp.overview.subtitle")} ·{" "}
-        <span data-testid="erp-scope">
-          {wholeBook ? t("erp.overview.wholeBook") : t("erp.overview.myQueue")}
-        </span>
-      </p>
+      <PageHeader
+        title={t("erp.overview.title")}
+        description={
+          <>
+            {t("erp.overview.subtitle")} ·{" "}
+            <span data-testid="erp-scope">
+              {wholeBook ? t("erp.overview.wholeBook") : t("erp.overview.myQueue")}
+            </span>
+          </>
+        }
+      />
 
       {/* A BANNER, not a tile, and only when there is something to act on. The
           legacy shows this and the platform lost it: orders nobody has phoned
           within the company's own `alertMinutes` are a queue that needs
-          draining, and a zero in a grid of tiles is furniture. */}
+          draining, and a zero in a grid of tiles is furniture.
+
+          UI.20 — it LEADS the screen now rather than sitting between the title
+          and a grid of six equal tiles. It is the only thing on this page with a
+          deadline; everything below it is a figure to read, not a queue to
+          drain, and a dashboard that gives them the same weight has no
+          hierarchy at all. */}
       {stats.overdue > 0 && (
-        <div
-          role="status"
-          data-testid="erp-overdue-banner"
-          data-overdue={stats.overdue}
-          className="mt-4 rounded-lg border px-4 py-3 text-sm"
-          style={toneVars("danger")}
+        <Notice
+          tone={toneVars("danger")}
+          testId="erp-overdue-banner"
+          data-overdue={String(stats.overdue)}
+          icon={<AlertTriangle className="size-4" />}
+          className="mb-4"
         >
-          <Link href={`/console/erp/orders?status=pending`} className="font-medium underline">
+          <Link
+            href={`/console/erp/orders?status=pending`}
+            className="font-medium underline underline-offset-2"
+          >
             {t("erp.overview.overdue")}: {stats.overdue}
           </Link>{" "}
           <span className="opacity-80">
             {t("erp.overview.overdueHint", { minutes: alertMinutes })}
           </span>
-        </div>
+        </Notice>
       )}
 
-      <div
-        className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
-        data-testid="erp-overview-tiles"
-      >
-        {tiles.map((tile) => {
-          const body = (
-            <>
-              <span className="block text-xs text-muted-foreground">{tile.label}</span>
-              {/* tabular-nums so a column of figures lines up, and dir="ltr"
-                  because a number is read left-to-right even on an RTL page. */}
-              <span className="mt-1 block text-2xl font-semibold tabular-nums" dir="ltr">
-                {tile.value}
-              </span>
-              {tile.sub && (
-                <span className="mt-0.5 block text-xs text-muted-foreground" data-sub={tile.id}>
-                  {tile.sub}
-                </span>
-              )}
-            </>
-          );
-          return tile.href ? (
-            <Link
-              key={tile.id}
-              href={tile.href}
-              data-tile={tile.id}
-              className="rounded-lg border border-border p-4 transition-colors hover:bg-muted/50"
-            >
-              {body}
-            </Link>
-          ) : (
-            <div key={tile.id} data-tile={tile.id} className="rounded-lg border border-border p-4">
-              {body}
-            </div>
-          );
-        })}
-      </div>
+      {/* `auto-fit`, not `lg:grid-cols-3`: five tiles on a laptop became three
+          and two-stretched-to-fill, and an agent — who is not shown the customer
+          count (D-05.1) — got a hole where it would have been. */}
+      <StatGrid testId="erp-overview-tiles">
+        {tiles.map((tile) => (
+          <Stat
+            key={tile.id}
+            id={tile.id}
+            label={tile.label}
+            value={tile.value}
+            sub={tile.sub}
+            href={tile.href}
+          />
+        ))}
+      </StatGrid>
     </ConsoleShell>
   );
 }

@@ -82,10 +82,11 @@ export function ChannelCreatePanel({
   };
 
   return (
-    <section className="mt-6 rounded-lg border border-border p-4" data-testid="channel-create">
+    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="channel-create">
       <button
         type="button"
         data-testid="channel-create-toggle"
+          aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className="ui-btn ui-btn-default ui-btn-sm tap"
       >

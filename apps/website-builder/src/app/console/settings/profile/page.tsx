@@ -19,6 +19,7 @@ import { getTranslations } from "next-intl/server";
 import { requireConsoleSession } from "@/lib/console/session";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { NotifyPreferences } from "@/components/console/notify-preferences";
 import { notifyPrefStrings } from "@/lib/console/erp-strings";
 import { readNotifyPrefs, NOTIFY_DEFAULTS } from "@/lib/platform/notify-prefs";
@@ -128,7 +129,7 @@ export default async function ProfilePage({
 
   return (
     <ConsoleShell session={session} productId={null}>
-      <h1 className="text-xl font-semibold">Profile</h1>
+      <PageHeader title={t("settings.profile")} description={t("settings.profileHint")} />
 
       {saved ? (
         <p
@@ -141,7 +142,7 @@ export default async function ProfilePage({
             borderColor: "var(--success-border)",
           }}
         >
-          {saved === "password" ? "Password changed. Other sessions were signed out." : "Saved."}
+          {saved === "password" ? t("settings.passwordChanged") : t("settings.saved")}
         </p>
       ) : null}
 
@@ -167,7 +168,7 @@ export default async function ProfilePage({
           data-testid="profile-form"
         >
           <div className="space-y-1">
-            <label htmlFor="email" className="ui-label">Email</label>
+            <label htmlFor="email" className="ui-label block">{t("settings.email")}</label>
             {/* Read-only: the address IS the identity across every tenant, so
                 changing it is an account operation rather than a profile edit. */}
             <input
@@ -179,7 +180,7 @@ export default async function ProfilePage({
           </div>
 
           <div className="space-y-1">
-            <label htmlFor="name" className="ui-label">Name</label>
+            <label htmlFor="name" className="ui-label block">{t("settings.name")}</label>
             <input
               id="name"
               name="name"
@@ -190,7 +191,7 @@ export default async function ProfilePage({
           </div>
 
           <div className="space-y-1">
-            <label htmlFor="locale" className="ui-label">Language</label>
+            <label htmlFor="locale" className="ui-label block">{t("settings.language")}</label>
             <select
               id="locale"
               name="locale"
@@ -207,7 +208,7 @@ export default async function ProfilePage({
             type="submit"
             className="ui-btn ui-btn-primary tap"
           >
-            Save
+            {t("common.save")}
           </button>
         </form>
 
@@ -216,10 +217,10 @@ export default async function ProfilePage({
           className="space-y-4 rounded-lg border border-border bg-card p-4"
           data-testid="password-form"
         >
-          <h2 className="text-sm font-medium">Change password</h2>
+          <h2 className="text-sm font-semibold tracking-tight">{t("settings.changePassword")}</h2>
 
           <div className="space-y-1">
-            <label htmlFor="current" className="ui-label">Current password</label>
+            <label htmlFor="current" className="ui-label block">{t("settings.currentPassword")}</label>
             <input
               id="current" name="current" type="password" required autoComplete="current-password"
               className="ui-control tap w-full"
@@ -227,19 +228,19 @@ export default async function ProfilePage({
           </div>
 
           <div className="space-y-1">
-            <label htmlFor="next" className="ui-label">New password</label>
+            <label htmlFor="next" className="ui-label block">{t("settings.newPassword")}</label>
             <input
               id="next" name="next" type="password" required minLength={12} autoComplete="new-password"
               className="ui-control tap w-full"
             />
-            <p className="text-xs text-muted-foreground">At least 12 characters.</p>
+            <p className="text-xs text-muted-foreground">{t("settings.passwordHint")}</p>
           </div>
 
           <button
             type="submit"
             className="ui-btn ui-btn-default tap"
           >
-            Change password
+            {t("settings.changePassword")}
           </button>
         </form>
       </div>

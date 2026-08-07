@@ -9,6 +9,7 @@ import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { carrierStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { CarrierCreatePanel, CarrierRowActions } from "@/components/console/erp/carrier-write";
 import { listAdapters, isKnownAdapter, getAdapter } from "@/lib/erp/carriers";
@@ -115,7 +116,7 @@ export default async function ErpCarriersScreen() {
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.carriers.title")}</h1>
+      <PageHeader title={t("erp.carriers.title")} />
 
       <CarrierCreatePanel errors={errors} s={s} adapters={adapters} />
 

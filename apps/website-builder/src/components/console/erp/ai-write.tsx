@@ -104,8 +104,8 @@ export function ProviderCreatePanel({
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
 
   return (
-    <section className="mt-6 rounded-lg border border-border p-4" data-testid="ai-provider-panel">
-      <h2 className="text-sm font-medium">{s.addProvider}</h2>
+    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="ai-provider-panel">
+      <h2 className="text-sm font-semibold tracking-tight">{s.addProvider}</h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <label htmlFor="ai-p-name" className="ui-label block">{s.name}</label>
@@ -305,8 +305,8 @@ export function AgentCreatePanel({
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
 
   return (
-    <section className="mt-6 rounded-lg border border-border p-4" data-testid="ai-agent-panel">
-      <h2 className="text-sm font-medium">{s.addAgent}</h2>
+    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="ai-agent-panel">
+      <h2 className="text-sm font-semibold tracking-tight">{s.addAgent}</h2>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div>

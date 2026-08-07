@@ -6,7 +6,9 @@ import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 import { getLocale } from "next-intl/server";
 
 import { requireConsoleSession } from "@/lib/console/session";
+import { getTranslations } from "next-intl/server";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +26,7 @@ export const dynamic = "force-dynamic";
  * ========================================================================== */
 
 export default async function IntegrationsPage() {
+  const t = await getTranslations();
   const session = await requireConsoleSession("/console/settings/integrations");
   if (!session.auth || !can(session.auth, "platform:integrations:read")) notFound();
 
@@ -41,7 +44,7 @@ export default async function IntegrationsPage() {
 
   return (
     <ConsoleShell session={session} productId={null}>
-      <h1 className="text-xl font-semibold">Integrations</h1>
+      <PageHeader title={t("settings.integrations")} />
       <p className="mt-1 text-sm text-muted-foreground">
         {mayManage
           ? "Push your events to your own tools."
@@ -139,7 +142,7 @@ export default async function IntegrationsPage() {
             id: "token",
             header: "Access token",
             // Never the value. Only that one exists.
-            cell: () => <span className="text-muted-foreground">Set</span>,
+            cell: () => <span className="text-muted-foreground">{t("settings.set")}</span>,
           },
           {
             id: "added",

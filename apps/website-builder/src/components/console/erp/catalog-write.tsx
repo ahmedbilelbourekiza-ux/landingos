@@ -115,15 +115,15 @@ export function ProductCreatePanel({
   );
 
   return (
-    <section className="mt-6 rounded-lg border border-border p-4" data-testid="erp-product-create">
+    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-product-create">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-medium">{s.newProduct}</h2>
+        <h2 className="text-sm font-semibold tracking-tight">{s.newProduct}</h2>
         <ActionButton
           data-testid="product-create-toggle"
+          aria-expanded={open}
           pending={false}
           pendingLabel={s.saving}
           onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
         >
           {open ? s.save : s.newProduct}
         </ActionButton>
@@ -336,9 +336,9 @@ export function ProductEditPanel({
   const product = products.find((p) => p.id === selected) ?? products[0];
 
   return (
-    <section className="mt-3 rounded-lg border border-border p-4" data-testid="erp-product-edit">
+    <section className="mt-3 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-product-edit">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-medium">{s.editProduct}</h2>
+        <h2 className="text-sm font-semibold tracking-tight">{s.editProduct}</h2>
         <ActionButton
           data-testid="product-edit-toggle"
           pending={false}
@@ -509,8 +509,8 @@ export function StockAdjustPanel({
   const usable = productId && reason.trim() && Number.isFinite(n) && n !== 0;
 
   return (
-    <section className="mt-6 rounded-lg border border-border p-4" data-testid="erp-adjust-panel">
-      <h2 className="text-sm font-medium">{s.adjustPanel}</h2>
+    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-adjust-panel">
+      <h2 className="text-sm font-semibold tracking-tight">{s.adjustPanel}</h2>
       <p className="mt-1 text-xs text-muted-foreground">{s.adjustHint}</p>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -595,8 +595,8 @@ export function StockLotPanel({
   const usable = productId && Number.isInteger(q) && q >= 1;
 
   return (
-    <section className="mt-6 rounded-lg border border-border p-4" data-testid="erp-lot-panel">
-      <h2 className="text-sm font-medium">{s.lotPanel}</h2>
+    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-lot-panel">
+      <h2 className="text-sm font-semibold tracking-tight">{s.lotPanel}</h2>
       {/* Why a lot exists at all, said where somebody is about to create one. */}
       <p className="mt-1 text-xs text-muted-foreground">{s.lotHint}</p>
 

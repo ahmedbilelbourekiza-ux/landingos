@@ -5,7 +5,9 @@ import { withTenant } from "@landingos/db";
 import { can } from "@landingos/auth";
 
 import { requireConsoleSession } from "@/lib/console/session";
+import { getTranslations } from "next-intl/server";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +70,7 @@ export default async function DeliveryPricesPage({
 }: {
   searchParams: Promise<{ saved?: string }>;
 }) {
+  const t = await getTranslations();
   const session = await requireConsoleSession("/console/settings/delivery-prices");
   if (!session.auth || !can(session.auth, "website-builder:settings:write")) notFound();
 
@@ -87,7 +90,7 @@ export default async function DeliveryPricesPage({
 
   return (
     <ConsoleShell session={session} productId={null}>
-      <h1 className="text-xl font-semibold">Delivery prices</h1>
+      <PageHeader title={t("settings.deliveryPrices")} />
       <p className="mt-1 text-sm text-muted-foreground">
         {priced} of {wilayas.length} wilayas priced. A blank field means this wilaya cannot be
         delivered to — not that delivery is free.
@@ -113,9 +116,9 @@ export default async function DeliveryPricesPage({
           <table className="w-full min-w-[560px] text-sm">
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="px-4 py-3 text-start font-medium">Wilaya</th>
-                <th className="px-4 py-3 text-end font-medium">Home delivery</th>
-                <th className="px-4 py-3 text-end font-medium">Stop desk</th>
+                <th scope="col" className="px-3 py-2.5 text-start font-medium">{t("settings.wilaya")}</th>
+                <th scope="col" className="px-3 py-2.5 text-end font-medium">{t("settings.homeDelivery")}</th>
+                <th scope="col" className="px-3 py-2.5 text-end font-medium">{t("settings.stopDesk")}</th>
               </tr>
             </thead>
             <tbody>

@@ -6,7 +6,9 @@ import { can } from "@landingos/auth";
 import { notFound } from "next/navigation";
 
 import { requireConsoleSession } from "@/lib/console/session";
+import { getTranslations } from "next-intl/server";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +62,7 @@ export default async function StoreSettingsPage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
+  const t = await getTranslations();
   const session = await requireConsoleSession("/console/settings/store");
   // Same answer as the API: no permission means the screen does not exist.
   if (!session.auth || !can(session.auth, "website-builder:settings:write")) notFound();
@@ -73,7 +76,7 @@ export default async function StoreSettingsPage({
 
   return (
     <ConsoleShell session={session} productId={null}>
-      <h1 className="text-xl font-semibold">Store profile</h1>
+      <PageHeader title={t("settings.store")} description={t("settings.storeHint")} />
 
       {saved ? (
         <p

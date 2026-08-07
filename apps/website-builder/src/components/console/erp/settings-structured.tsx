@@ -90,8 +90,8 @@ export function FixedCostsEditor({
   }, 0);
 
   return (
-    <section className="mt-6 rounded-lg border border-border p-4" data-testid="erp-fixed-costs">
-      <h2 className="text-sm font-medium">{s.fixedCosts}</h2>
+    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-fixed-costs">
+      <h2 className="text-sm font-semibold tracking-tight">{s.fixedCosts}</h2>
       <p className="mt-1 text-xs text-muted-foreground">{s.fixedCostsHint}</p>
 
       <div className="mt-3 flex flex-col gap-2">
@@ -216,8 +216,8 @@ export function ChannelCarrierEditor({
   const [draft, setDraft] = useState<Record<string, string>>(() => ({ ...value }));
 
   return (
-    <section className="mt-6 rounded-lg border border-border p-4" data-testid="erp-channel-carriers">
-      <h2 className="text-sm font-medium">{s.channelCarriers}</h2>
+    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-channel-carriers">
+      <h2 className="text-sm font-semibold tracking-tight">{s.channelCarriers}</h2>
       <p className="mt-1 text-xs text-muted-foreground">{s.channelCarriersHint}</p>
 
       {channels.length === 0 ? (

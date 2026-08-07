@@ -8,6 +8,7 @@ import { requireConsoleSession } from "@/lib/console/session";
 import { actionErrors } from "@/lib/console/action-errors";
 import { billingStrings } from "@/lib/console/platform-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { BillingScreen } from "@/components/console/platform/billing-screen";
 import { readBilling } from "@/lib/platform/billing";
 
@@ -52,8 +53,7 @@ export default async function BillingSettingsPage() {
 
   return (
     <ConsoleShell session={session} productId={null}>
-      <h1 className="text-xl font-semibold">{t("billing.title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{t("billing.description")}</p>
+      <PageHeader title={t("billing.title")} description={t("billing.description")} />
 
       <div className="mt-6">
         <BillingScreen

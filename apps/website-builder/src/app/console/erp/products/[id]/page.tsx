@@ -101,7 +101,7 @@ export default async function ErpProductDetailScreen({
   const view = inventoryView(product);
 
   const tile = (key: string, label: string, value: string) => (
-    <div key={key} data-tile={key} className="rounded-lg border border-border p-3">
+    <div key={key} data-tile={key} className="rounded-lg border border-border bg-surface-raised p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 text-lg font-semibold tabular-nums">{value}</div>
     </div>
@@ -150,7 +150,7 @@ export default async function ErpProductDetailScreen({
       {/* WHICH CHANNELS SELL IT. LP.16a matches revenue on these links FIRST
           and exclusively, so a link pointing at the wrong product sends money to
           the wrong row — and nothing showed them until now. */}
-      <h2 className="mt-8 text-sm font-medium">{t("erp.products.channels")}</h2>
+      <h2 className="mt-8 text-sm font-semibold tracking-tight">{t("erp.products.channels")}</h2>
       {links.length === 0 ? (
         <p className="mt-2 text-xs text-muted-foreground" data-testid="product-links-empty">
           {t("erp.products.noChannels")}
@@ -175,7 +175,7 @@ export default async function ErpProductDetailScreen({
       {/* THE PERMANENT TIMELINE. `CatalogProductEvent` is append-only: it is
           the record of what a cost basis USED to be, which is the only way to
           answer "why is last quarter's margin different from this one's". */}
-      <h2 className="mt-8 text-sm font-medium">{t("erp.products.timeline")}</h2>
+      <h2 className="mt-8 text-sm font-semibold tracking-tight">{t("erp.products.timeline")}</h2>
       <DataTable
         testId="product-timeline"
         empty={t("erp.products.noEvents")}

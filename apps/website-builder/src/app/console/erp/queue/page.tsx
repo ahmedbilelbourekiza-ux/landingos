@@ -8,6 +8,7 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { QueueCard, type QueueStrings, type QueueOrder } from "@/components/console/erp/queue-card";
 import { FollowupResolve } from "@/components/console/erp/followup-resolve";
 import { scopedWhere, seesWholeBook, followupScope } from "@/lib/erp/scope";
@@ -199,21 +200,29 @@ export default async function ErpQueueScreen({
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.queue.title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {seesWholeBook(session) ? t("erp.overview.wholeBook") : t("erp.overview.myQueue")}
-      </p>
+      <PageHeader
+        title={t("erp.queue.title")}
+        description={
+          seesWholeBook(session) ? t("erp.overview.wholeBook") : t("erp.overview.myQueue")
+        }
+      />
 
-      <dl className="mt-4 grid grid-cols-3 gap-3" data-testid="erp-queue-stats">
-        <div className="rounded-lg border border-border p-3" data-tile="active">
+      {/* Three tiles on a phone at `grid-cols-3` gave each of them about 100px,
+          which is not enough for a two-word label and a figure. They stack at
+          the narrowest width and only line up when there is room. */}
+      <dl
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3"
+        data-testid="erp-queue-stats"
+      >
+        <div className="rounded-lg border border-border bg-surface-raised p-3" data-tile="active">
           <dt className="text-xs text-muted-foreground">{t("erp.queue.toCall")}</dt>
           <dd className="mt-1 text-2xl font-semibold tabular-nums" dir="ltr">{counts.active}</dd>
         </div>
-        <div className="rounded-lg border border-border p-3" data-tile="confirmed">
+        <div className="rounded-lg border border-border bg-surface-raised p-3" data-tile="confirmed">
           <dt className="text-xs text-muted-foreground">{t("erp.overview.confirmed")}</dt>
           <dd className="mt-1 text-2xl font-semibold tabular-nums" dir="ltr">{counts.confirmed}</dd>
         </div>
-        <div className="rounded-lg border border-border p-3" data-tile="overdue">
+        <div className="rounded-lg border border-border bg-surface-raised p-3" data-tile="overdue">
           <dt className="text-xs text-muted-foreground">{t("erp.queue.overdue")}</dt>
           <dd className="mt-1 text-2xl font-semibold tabular-nums" dir="ltr">{overdueCount}</dd>
         </div>
@@ -261,8 +270,8 @@ export default async function ErpQueueScreen({
           reaches a state needing a person — customer out, bad address, a
           reschedule — and it is closed by the agent who rings them. */}
       {followup.length > 0 && (
-        <section className="mt-6 rounded-lg border border-border p-4" data-testid="erp-queue-followup">
-          <h2 className="text-sm font-medium">{t("erp.nav.followUp")}</h2>
+        <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-queue-followup">
+          <h2 className="text-sm font-semibold tracking-tight">{t("erp.nav.followUp")}</h2>
           <p className="mt-1 text-xs text-muted-foreground">{t("erp.queue.followUpHint")}</p>
           <ul className="mt-3 space-y-2">
             {followup.map((task) => (

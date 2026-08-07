@@ -74,8 +74,8 @@ export function JobRunner({
   };
 
   return (
-    <section className="mt-8 rounded-lg border border-border p-4" data-testid="job-runner">
-      <h2 className="text-sm font-medium">{s.title}</h2>
+    <section className="mt-8 rounded-lg border border-border bg-surface-raised p-4" data-testid="job-runner">
+      <h2 className="text-sm font-semibold tracking-tight">{s.title}</h2>
       <p className="mt-1 text-sm text-muted-foreground">{s.hint}</p>
 
       <div className="mt-3 flex flex-wrap gap-2">

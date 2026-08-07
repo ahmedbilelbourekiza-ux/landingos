@@ -89,7 +89,7 @@ export function QueueCard({
     <li
       data-order-id={order.id}
       data-overdue={order.overdue ? "true" : "false"}
-      className="rounded-lg border border-border p-4"
+      className="rounded-lg border border-border bg-surface-raised p-4"
       style={order.overdue ? { borderColor: "var(--danger-border)" } : undefined}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -197,7 +197,7 @@ export function QueueCard({
         {s.call} <span dir="ltr" className="font-mono text-sm">{order.phone}</span>
       </a>
 
-      <h3 className="mt-4 text-xs font-medium text-muted-foreground">{s.logResult}</h3>
+      <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{s.logResult}</h3>
       {/* Thumb-sized targets in a grid, not a row: this is worked one-handed on
           a phone while the agent is still talking. */}
       <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">

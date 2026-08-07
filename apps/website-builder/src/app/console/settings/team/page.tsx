@@ -8,6 +8,7 @@ import { requireConsoleSession } from "@/lib/console/session";
 import { actionErrors } from "@/lib/console/action-errors";
 import { teamStrings } from "@/lib/console/platform-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageHeader } from "@/components/console/ui/primitives";
 import { TeamScreen } from "@/components/console/platform/team-screen";
 import type { WriteOption } from "@/components/console/edit-field";
 import {
@@ -117,8 +118,7 @@ export default async function TeamSettingsPage() {
 
   return (
     <ConsoleShell session={session} productId={null}>
-      <h1 className="text-xl font-semibold">{t("team.title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{t("team.description")}</p>
+      <PageHeader title={t("team.title")} description={t("team.description")} />
 
       <div className="mt-6">
         <TeamScreen

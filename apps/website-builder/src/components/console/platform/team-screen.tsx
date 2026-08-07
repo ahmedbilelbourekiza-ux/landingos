@@ -140,7 +140,7 @@ function InvitePanel({
       className="rounded-lg border border-border bg-card p-4"
       data-testid="team-invite-panel"
     >
-      <h2 className="text-sm font-medium">{s.inviteTitle}</h2>
+      <h2 className="text-sm font-semibold tracking-tight">{s.inviteTitle}</h2>
       <form
         className="mt-3 flex flex-wrap items-end gap-2"
         onSubmit={async (e) => {

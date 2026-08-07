@@ -156,8 +156,8 @@ export function EditPanel({
   );
 
   return (
-    <section className="rounded-lg border border-border p-4" data-testid="erp-edit-panel">
-      <h2 className="text-sm font-medium">{s.editPanel}</h2>
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-edit-panel">
+      <h2 className="text-sm font-semibold tracking-tight">{s.editPanel}</h2>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">{agentFields.map(render)}</div>
 
@@ -166,7 +166,7 @@ export function EditPanel({
           {/* Captioned rather than merely present. Price is what payroll and the
               profit calculator are computed from â€” correcting the address on
               your own order is the job, editing the money on it is not. */}
-          <h3 className="mt-4 text-xs font-medium text-muted-foreground">
+          <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {s.editManagerFields}
           </h3>
           <div className="mt-2 grid gap-3 sm:grid-cols-2">{managerFields.map(render)}</div>
@@ -231,8 +231,8 @@ export function ParcelPanel({
   const { run, pending, error } = useApiAction(errors);
 
   return (
-    <section className="rounded-lg border border-border p-4" data-testid="erp-parcel-panel">
-      <h2 className="text-sm font-medium">{s.parcelPanel}</h2>
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-parcel-panel">
+      <h2 className="text-sm font-semibold tracking-tight">{s.parcelPanel}</h2>
       <p className="mt-1 text-xs text-muted-foreground">
         {hasShipment ? s.refreshHint : s.parcelHint}
       </p>
@@ -325,8 +325,8 @@ export function ReassignPanel({
   );
 
   return (
-    <section className="rounded-lg border border-border p-4" data-testid="erp-reassign-panel">
-      <h2 className="text-sm font-medium">{s.reassignPanel}</h2>
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-reassign-panel">
+      <h2 className="text-sm font-semibold tracking-tight">{s.reassignPanel}</h2>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         {picker("agentUserId", s.assignedAgent, agentUserId, setAgentUserId)}
@@ -376,8 +376,8 @@ export function CallPanel({
   const [note, setNote] = useState("");
 
   return (
-    <section className="rounded-lg border border-border p-4" data-testid="erp-call-panel">
-      <h2 className="text-sm font-medium">{s.callPanel}</h2>
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-call-panel">
+      <h2 className="text-sm font-semibold tracking-tight">{s.callPanel}</h2>
 
       {runningSince ? (
         // The server's answer, not a timer this component started. A refresh,
@@ -400,7 +400,7 @@ export function CallPanel({
         </div>
       )}
 
-      <h3 className="mt-4 text-xs font-medium text-muted-foreground">{s.logResult}</h3>
+      <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{s.logResult}</h3>
       <div className="mt-2 flex flex-wrap gap-2">
         {results.map((r) => (
           <ActionButton
@@ -454,8 +454,8 @@ export function NotePanel({
   const [note, setNote] = useState("");
 
   return (
-    <section className="rounded-lg border border-border p-4" data-testid="erp-note-panel">
-      <h2 className="text-sm font-medium">{s.notePanel}</h2>
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-note-panel">
+      <h2 className="text-sm font-semibold tracking-tight">{s.notePanel}</h2>
       {/* Said on the screen because the obvious implementation reuses the call
           path and quietly marks an order confirmed when somebody records
           "customer rang us". The API refuses to; a person should know why. */}
@@ -527,8 +527,8 @@ export function ClassifyPanel({
   const [responsible, setResponsible] = useState("");
 
   return (
-    <section className="rounded-lg border border-border p-4" data-testid="erp-classify-panel">
-      <h2 className="text-sm font-medium">{s.classifyPanel}</h2>
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-classify-panel">
+      <h2 className="text-sm font-semibold tracking-tight">{s.classifyPanel}</h2>
       {/* Classification is orthogonal to status and lives in its own column:
           a confirmed order that turns out to be fake is still confirmed. */}
       <p className="mt-1 text-xs text-muted-foreground">{s.classifyHint}</p>
