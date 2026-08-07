@@ -12,6 +12,64 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### AUDIT.2 The list that could not catch the mistake it existed for
+
+[Opus 5]
+Date: 7 August 2026
+Summary: the audit's eighth finding — `access.test.ts`'s hand-written route
+inventory was 34 routes short. access 95 → **201**.
+
+#### The finding
+
+`SURFACES` in `test/erp/access.test.ts` is the anonymous-caller inventory, and
+its own comment says it exists *"because a route added later without a permission
+is exactly the mistake this catches."*
+
+**A hand-written list cannot catch that.** The audit diffed it against the
+filesystem and found **34 unlisted ERP routes**, including three that matter
+more than most:
+
+- `POST /orders/[id]/call` — the payroll-fraud surface `hardening.test.js` §3 was
+  written for: logging a confirmed call on somebody else's order.
+- `POST /products/[id]/inventory/adjust` — it moves stock.
+- `POST /jobs/[job]` — it can suspend accounts.
+
+**Every one of them was correctly gated.** This was a test-coverage gap and not
+a hole: the derived run passes 201/201 first time. What was missing was the
+guarantee, not the behaviour.
+
+#### The fix is the general form, which this project has used before
+
+LP.17 hit the identical shape in navigation — `screens.test.ts` enumerated
+screens by hand and omitted `ai`, so a nav item 404'd for every member and
+nothing caught it. The fix then was to read the MANIFEST and assert every
+declared item; the fix now is to read the ROUTE FILES and assert every exported
+method.
+
+A route added tomorrow is covered without anybody remembering to add a line, and
+one that ships without a gate fails here rather than in production. The
+hand-written list stays: it carries the reasoning about WHY each surface is
+interesting, which a derivation cannot.
+
+**One exclusion, and it is stated in the file:** `/api/erp/webhooks/**` is
+inbound and unauthenticated by construction — a carrier and a storefront have no
+session, they are gated by signature and tenant slug, and `integrations.test.ts`
+is where that is asserted. Nothing else is excluded; anything that needs to be
+needs a reason written beside it.
+
+**The derivation asserts it found something.** `files.length >= 30` guards the
+failure mode of every "for each discovered X" test: a glob that silently matches
+nothing makes every assertion below it vacuous and the suite green.
+
+#### Files
+
+- `apps/website-builder/test/erp/access.test.ts` — the derived inventory,
+  106 new assertions
+
+**Migration:** none. **Risk:** none — test-only.
+
+---
+
 ### AUDIT.1 Four writers and four readers that never met
 
 [Opus 5]

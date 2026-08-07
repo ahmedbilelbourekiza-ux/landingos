@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *AUDIT.1: four writers and four readers that never met*
+**Branch:** `master` · **Last commit:** *AUDIT.2: the list that could not catch its own mistake*
 **Working tree:** clean, all work committed.
 
 ---
@@ -86,6 +86,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.21** manual follow-up assignment + the live countdown | R13, N14 | **DONE** — integrations 63→75, access 94→95 |
 | **LP.22** the Ecom Delivery adapter + the poll leaves the transaction | R2 (rest), N17 | **DONE — TIER 3 COMPLETE** — delivery 77→88 |
 | **AUDIT.1** the independent audit: 7 findings, all writer/reader mismatches | — | **DONE** — screens 152→167 |
+| **AUDIT.2** the access inventory derives itself from the route files | — | **DONE** — access 95→201 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -488,9 +489,9 @@ domain at a time.
 | the P&L department — proration, fixed costs, versions, roll-up, the calculator screen (LP.16) | finance 38/38 + calc 20/20 |
 | the confirmation rate and six other breakdowns, plus the dashboard's reaction-time figures (LP.13) | analytics 19/19 |
 | the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
-| every surface, gated | access 95/95 |
+| every surface, gated — **derived from the route files**, not listed by hand | access 201/201 |
 
-**861/861** across EIGHTEEN ERP contract files, each verified on its own, plus
+**967/967** across EIGHTEEN ERP contract files, each verified on its own, plus
 **91/91** platform contract (team 62 · billing 19 · signup 10) and **20/20** in
 `test/calc.test.ts` — the one PURE suite, which needs no server at all. Running
 several contract files back to back still trips the documented Neon connection
@@ -1005,6 +1006,24 @@ claim (`lastPolledAt`) is committed in its own short transaction BEFORE the
 network call, and both callers changed as N17 predicted: the route runs it
 through `afterCommit`, the worker's tick no longer wraps it. There is still
 exactly one ingest path — the poll composes `refreshShipmentForOrder`.
+
+### AUDIT.2 — the list that could not catch the mistake it existed for
+
+`access.test.ts`'s `SURFACES` says it exists "because a route added later without
+a permission is exactly the mistake this catches" — and a hand-written list
+cannot catch that. The audit diffed it against the filesystem: **34 ERP routes
+were unlisted**, including `POST /orders/[id]/call` (the payroll-fraud surface),
+`/products/[id]/inventory/adjust` (it moves stock) and `/jobs/[job]` (it can
+suspend accounts).
+
+**Every one was correctly gated** — the derived run passes 201/201 first time.
+The gap was the guarantee, not the behaviour.
+
+The fix is the general form this project used for navigation in LP.17: read the
+ROUTE FILES and assert every exported method. One exclusion, stated in the file:
+`/api/erp/webhooks/**` is unauthenticated by construction. And the derivation
+asserts it found something, because a glob that silently matches nothing makes
+every assertion below it vacuous.
 
 ### AUDIT.1 — the independent audit: four writers and four readers that never met
 
@@ -1906,7 +1925,7 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 861 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 967 | all pass against a running server |
 | `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
 | `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
@@ -1914,7 +1933,7 @@ fail without it, so check the counts, not just the exit code.
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1517** | green per suite |
+| **Total** | **1623** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

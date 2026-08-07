@@ -1,5 +1,7 @@
 import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 
 import {
   skip, anon, uid, phone, makeTenant, makeErpTenant, makeMember, cleanup,
@@ -531,4 +533,77 @@ describe('a caller-supplied filter never widens what they can see', () => {
       'a caller-supplied agent filter widened an export',
     );
   });
+});
+
+/* -----------------------------------------------------------------------------
+ * THE AUDIT'S FINDING — the hand-written list above was 34 routes short
+ *
+ * `SURFACES` says in its own comment that it exists "because a route added later
+ * without a permission is exactly the mistake this catches". A hand-written list
+ * cannot catch that: the audit diffed it against the filesystem and found 34
+ * unlisted ERP routes, including `POST /orders/[id]/call` — the payroll-fraud
+ * surface `hardening.test.js` §3 was written for — `/products/[id]/inventory/
+ * adjust`, which moves stock, and `/jobs/[job]`, which can suspend accounts.
+ *
+ * The fix is the general form, exactly as LP.17's AI suite does for navigation:
+ * it reads the ROUTE FILES and asserts every one of them. A route added
+ * tomorrow is covered without anybody remembering to add a line, and one that
+ * ships without a gate fails here rather than in production.
+ *
+ * WHAT IS EXCLUDED, AND WHY EACH IS DELIBERATE:
+ *
+ *   - `/api/erp/webhooks/**` — inbound, unauthenticated by construction. A
+ *     carrier and a storefront have no session; they are gated by signature and
+ *     by tenant slug, and `integrations.test.ts` is where that is asserted.
+ *
+ * Nothing else is excluded. If a route needs to be, it needs a reason here.
+ * -------------------------------------------------------------------------- */
+
+/** Every method a route file exports, read from the file itself. */
+function exportedMethods(source: string): string[] {
+  return [...source.matchAll(/export\s+(?:const|async\s+function)\s+(GET|POST|PUT|PATCH|DELETE)\b/g)]
+    .map((m) => m[1]);
+}
+
+/** Route file path → the URL it serves, with every dynamic segment filled in. */
+function urlOf(file: string): string {
+  return file
+    .replace(/\\/g, '/')
+    .replace(/^.*src\/app/, '')
+    .replace(/\/route\.ts$/, '')
+    .replace(/\[\.\.\.[^\]]+\]/g, 'nonexistent')
+    .replace(/\[[^\]]+\]/g, 'nonexistent');
+}
+
+function erpRouteFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...erpRouteFiles(full));
+    else if (entry.name === 'route.ts') out.push(full);
+  }
+  return out;
+}
+
+describe('EVERY ERP route is closed by default, not just the listed ones', () => {
+  const root = path.join(import.meta.dirname, '..', '..', 'src', 'app', 'api', 'erp');
+  const files = erpRouteFiles(root).filter((f) => !f.replace(/\\/g, '/').includes('/erp/webhooks/'));
+
+  test('the inventory is derived from the filesystem, and it found routes', () => {
+    // A derivation that silently matched nothing would make every assertion
+    // below vacuous — the failure mode of every "for each discovered X" test.
+    assert.ok(files.length >= 30, `only ${files.length} route files were discovered`);
+  });
+
+  for (const file of files) {
+    const source = fs.readFileSync(file, 'utf8');
+    const url = urlOf(file);
+    for (const method of exportedMethods(source)) {
+      test(`${method} ${url} rejects an anonymous caller`, async () => {
+        const r = await anon(method, url, method === 'GET' ? undefined : {});
+        assert.equal(r.status, 401, `${method} ${url} must require a session`);
+        assert.equal(r.body?.error?.code, 'UNAUTHENTICATED');
+      });
+    }
+  }
 });
