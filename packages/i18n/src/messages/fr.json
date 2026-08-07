@@ -574,6 +574,23 @@
       "addVariant": "Ajouter une variante",
       "remove": "Supprimer",
       "noVariants": "Aucune variante — ce produit est suivi comme une seule ligne de stock."
+    },
+    "import": {
+      "panel": "Importer un fichier",
+      "clientsHint": "Un CSV de clients. Rien qui ait déjà une valeur n'est écrasé, et les compteurs à vie ne sont jamais touchés — un chiffre importé arrive dans sa propre colonne.",
+      "ordersHint": "Un CSV de commandes passées. Les lignes déjà importées sont reconnues par leur identifiant d'origine et ignorées, donc relancer le fichier ne double pas l'historique.",
+      "file": "Fichier CSV",
+      "source": "Provenance",
+      "preview": "Aperçu",
+      "commit": "Importer",
+      "created": "Nouveaux",
+      "merged": "Fusionnés",
+      "duplicates": "Déjà présents",
+      "skipped": "Ignorés",
+      "rows": "Ligne",
+      "rowsTotal": "Lignes",
+      "previewFirst": "Faites d'abord un aperçu.",
+      "done": "Importé"
     }
   },
   "status": {

@@ -223,10 +223,27 @@ was reachable any other way:
    advances `TenantSequence`. `nextReference` now heals itself from the highest
    reference already in use, counting only references it could have minted.
 
-**TIER 2 IS COMPLETE** (#7–#12) **and #15 and #18 are done.** The remaining work
-is Tier 3: #19, #20, #21 and #22. #11
+**TIER 2 IS COMPLETE** (#7–#12) **and #15, #18 and #19 are done.** The remaining
+work is Tier 3: #20, #21 and #22. #11
 (sound + desktop notification preferences on `ProductSetting`) hangs directly off
 this provider.
+
+### LP.19 — DONE. A spreadsheet can come in (R5 rest, R17 import)
+
+**Implemented and verified.** `test/erp/import.test.ts` is new at **25/25**;
+access 92 → **94**. Customer and order CSV import, parsed server-side, with a
+preview and per-row skip reasons.
+
+**Three things to carry forward:**
+
+- **`parseCsv` and the dictionaries live in `lib/erp/import.ts`.** Anything that
+  ever reads a file here uses them; a second parser is the browser-side mistake
+  D-LP.19.1 exists to avoid.
+- **`mode` is required and must stay required.** A default of `commit` is a
+  spreadsheet written into a live registry by somebody who meant to look first.
+- **The order import raises no notification, deliberately** (D-LP.19.5). If a
+  future import path is added, it inherits that or it fires LP.11's ka-ching once
+  per historical row.
 
 ### LP.18 — DONE. The variant matrix (R12)
 
@@ -429,8 +446,8 @@ payroll report, audit view **[DONE LP.12]**.
 (14) carrier test/sync/logs **[DONE LP.14]** ·
 (15) sales-channel screen **[DONE LP.15]** · (16) profit calculator **[DONE LP.16]** ·
 (17) AI screen **[DONE LP.17]** ·
-(18) product fields + variant editor **[DONE LP.18]** · (19) CSV import ·
-(20) channel webhooks ·
+(18) product fields + variant editor **[DONE LP.18]** ·
+(19) CSV import **[DONE LP.19]** · (20) channel webhooks ·
 (21) manual follow-up assignment · (22) Ecom adapter.
 **Tier 4 — hardening:** (23) rate limiting + `CSRF_ORIGIN` · (24) the offline
 shell decision · (25) board view + print · (26) status vocabularies ·

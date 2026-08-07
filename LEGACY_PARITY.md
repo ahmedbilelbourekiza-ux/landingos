@@ -452,7 +452,7 @@ deliberately not pulled forward.
 
 ---
 
-### R5 · Client detail, correction, import and export — 🟡 PARTIAL *(3 of 4 done — LP.10; the import is slice 19)*
+### R5 · Client detail, correction, import and export — ✅ DONE (LP.10 + LP.19)
 **Legacy:** `GET /api/clients/:id` returns the client plus their complete order
 history. `PUT /api/clients/:id` corrects name/wilaya/commune/address without ever
 touching the lifetime counters. `POST /import/preview` and `/import` take
@@ -463,8 +463,9 @@ browser-parsed CSV/Excel rows and merge them, recording `importedSource` and
 place of one. The correction writes four fields and refuses every lifetime
 counter BY NAME — including `phone`, which is the identity key. `erp:clients:write`
 is a new SENSITIVE permission.
-**Still missing:** the IMPORT half (`/import/preview` and `/import`), which is
-roadmap slice 19 and shares its parser with the order import.
+**Complete (LP.19):** the import half is `POST /api/erp/clients/import` — one
+route with a required `mode`, parsed server-side, never overwriting a real value,
+and reporting per-row skip reasons. R5 is closed whole.
 **Business impact:** **High.** The customer registry is the most valuable asset in
 a COD business — it is what repeat-purchase campaigns run on. Today it can be
 read and nothing else. The schema is already carrying five `imported*` columns and
@@ -678,10 +679,12 @@ that nothing throttles — a tenant-creation flood is unmetered.
 
 ---
 
-### R17 · Order board view, print labels, CSV import — 🔴 MISSING (3 features)
+### R17 · Order board view, print labels, CSV import — 🟡 PARTIAL *(the import is done — LP.19; board and print are Tier 4 slice 25)*
 **Legacy:** a kanban board grouped by status with the choice persisted; bulk label
 printing; Shopify CSV order import with a preview and dedup by external id.
-**Now:** a list only; no print; no import.
+**Now:** a list only; no print. **The import landed in LP.19** —
+`POST /api/erp/orders/import`, deduped by external id, with a preview, and
+handling the shape a real Shopify export has (one row per line item).
 **Business impact:** **Medium** (board — preference), **Medium** (print),
 **Medium** (import — a one-off migration aid, but it is how a new tenant's history
 arrives).
@@ -922,7 +925,7 @@ from complete** — order export (R4) is all that remains in it.
 | ~~16~~ | ~~Profit/loss calculator + record versions + period aggregation~~ | R9 | L | **DONE — LP.16.** All four steps (§7.4): 16a `sales-summary`, 16b proration + the structured-settings editors, 16c `versions`/`aggregate`, 16d the screen. Also closes **N23** and the write half of **R20**. |
 | ~~17~~ | ~~AI screen + provider/agent CRUD~~ | R10 | M | **DONE — LP.17.** The 404 is closed and the manifest is now asserted whole: every declared nav item must answer 200. Chat stays a stated 501; provider `/test` is deferred to slice 27 with its reason on the screen. |
 | ~~18~~ | ~~Product fields, variant editor, `niche`/`category`/`supplier`~~ | R12 | M | **DONE — LP.18.** `PUT /products/[id]/variants` writes the matrix and the option definitions and moves every stock difference through `applyMovement` (D-LP.18.1); removing a variant that still holds stock is refused by name (D-LP.18.2). The three columns land, and `niche` unblocks the client filter LP.10 had to ship without. |
-| **19** | Client + order CSV import | R5 (rest), R17 | M | |
+| ~~19~~ | ~~Client + order CSV import~~ | R5 (rest), R17 (import) | M | **DONE — LP.19.** Parsed on the SERVER (D-LP.19.1), preview and commit as one request with a required mode (D-LP.19.2), never overwriting a real value (D-LP.19.3), through `createOrder` and silently (D-LP.19.4/5), deduped by external id. Found a defect: a Shopify export repeats the order row per line item, and checking the phone before the id read those as skips. |
 | **20** | Channel webhooks: lead-capture, product, Shopify HMAC | R19 | M | |
 | **21** | Manual follow-up assignment · live countdown | R13, N14 | S | |
 | **22** | Ecom carrier adapter | R2 (rest) | M | |

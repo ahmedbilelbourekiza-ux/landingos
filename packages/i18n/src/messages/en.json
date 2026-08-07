@@ -574,6 +574,23 @@
       "addVariant": "Add a variant",
       "remove": "Remove",
       "noVariants": "No variants — this product is tracked as one stock line."
+    },
+    "import": {
+      "panel": "Import a file",
+      "clientsHint": "A CSV of customers. Nothing that already has a value is overwritten, and the lifetime counters are never touched — an imported figure lands in its own column.",
+      "ordersHint": "A CSV of past orders. Rows already imported are recognised by their original order id and skipped, so running the file twice does not double the history.",
+      "file": "CSV file",
+      "source": "Where it came from",
+      "preview": "Preview",
+      "commit": "Import",
+      "created": "New",
+      "merged": "Merged",
+      "duplicates": "Already here",
+      "skipped": "Skipped",
+      "rows": "Row",
+      "rowsTotal": "Rows",
+      "previewFirst": "Preview first.",
+      "done": "Imported"
     }
   },
   "status": {

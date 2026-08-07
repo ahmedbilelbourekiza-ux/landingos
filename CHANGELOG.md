@@ -12,6 +12,135 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.19 A spreadsheet can come in, not only go out
+
+[Opus 5]
+Date: 7 August 2026
+Summary: R5's fourth feature and R17's import — customer and order CSV import,
+with a preview, per-row skip reasons and dedup by external id.
+`test/erp/import.test.ts` is new at **25/25**; access 92 → **94**.
+
+#### How a new tenant's history arrives, and there was no door for it
+
+The schema has carried five `imported*` columns, an `importedSource` and an
+`importedAt` since M-06 — declared, indexed, and rendered by LP.10's customer
+screen — and **nothing could write any of them**. The registry could be exported
+and not imported, which is half a round trip. The order half is R17: a back
+catalogue of orders is what makes a new tenant's analytics, customer registry and
+repeat-purchase campaigns mean anything on day one.
+
+#### D-LP.19.1 — the file is parsed on the SERVER
+
+The legacy parses the CSV in `index.html`, maps its columns there, and posts
+"clean records" to an endpoint that trusts them. That is a second implementation
+of the format living where nothing tests it, and it makes the API unusable by
+anything except that one page — a migration script, a support engineer with
+`curl`, a future mobile client would each have to re-implement the parser.
+
+`parseCsv` is RFC 4180 including the parts people get wrong: a quoted comma, a
+doubled quote, an embedded newline, `\r\n` / `\n` / lone `\r`, and a leading
+BOM. The BOM matters concretely — **our own export writes one** because Excel
+needs it, so without stripping it a file exported here and re-imported here
+arrives with its first header named `﻿Name` and every column unmapped. A test
+drives that exact round trip.
+
+#### D-LP.19.2 — preview and commit are one request with a required `mode`
+
+Two endpoints is two chances for the preview to describe something the commit
+does not do. `mode` has **no default**, because the failure mode of a defaulted
+`commit` is a spreadsheet written into a live registry by somebody who meant to
+look at it first. The preview walks the identical path and writes nothing, which
+is what makes it worth trusting.
+
+The panel disables the commit button until THIS file has been previewed, and
+choosing a different file clears the previous preview — otherwise an operator can
+preview one file, pick another, and commit the second on the first's numbers.
+
+#### D-LP.19.3 — an import never overwrites a real value
+
+Ported verbatim from `importClientRecord`, and it is the whole safety of the
+feature:
+
+- identity fields (`name`, `wilaya`, `commune`, `address`) are filled **only
+  where the stored value is blank**;
+- the `imported*` figures are written **once**, on the first import that ever
+  touches a client, marked by `importedSource` — a second import does not double
+  them;
+- the **live counters are never touched at all**. They are the sum of order
+  events, and a file is not an order event. They land in their own columns, which
+  is why those columns exist.
+
+#### The two refusals that turn a wall into an instruction
+
+**`NO_PHONE_COLUMN`.** A file whose phone column was not recognised produces
+records with no phone, and every row is skipped as `no_phone` — which reads as
+"the data is bad" rather than "the mapping is wrong". Named separately, with the
+headers it saw, so the operator maps the column instead of editing the file.
+
+**Per-row skip reasons.** A 400-row file with three bad numbers names those three
+by row number (offset for the header, and counting from one) rather than
+reporting "3 skipped" and leaving somebody to find them.
+
+A header that maps to nothing is IGNORED rather than refused — real exports carry
+a dozen columns nobody wants, and refusing over "Accepts Marketing" would be a
+wall in front of a migration. The dictionary matches English AND French headers,
+because the two files an operator has to hand are "the one I exported from here"
+and "the one the old system gave me".
+
+#### D-LP.19.4 / D-LP.19.5 — the order import
+
+**It goes through `createOrder`, not around it.** `createMany` would be faster and
+would produce orders with no `reference` (a customer cannot read a cuid back over
+the phone) and a customer registry that does not know they exist — which is most
+of what an import is FOR.
+
+**No notification is raised.** Importing two years of history would push two
+years of "new order" alerts at everybody holding `erp:orders:write`, and the
+ka-ching LP.11 just built would fire a thousand times. `autoAssignOnCreate` IS
+honoured, because a tenant with auto-assignment on wants the back catalogue
+distributed.
+
+**Dedup by external id, and it is the property that matters.** An operator who is
+not sure whether the first import worked runs it again, and doubling the history
+also doubles every customer's lifetime counters — which are append-only and
+cannot be walked back. A file with no id column falls back to phone + total, and
+the response **says** `dedupBy: "phone+total"` rather than presenting it as a
+guarantee.
+
+#### The defect a test caught: a Shopify export repeats the order row per line item
+
+The first build checked the phone before the id. Shopify writes one row per LINE
+ITEM and leaves every customer column blank on the continuation rows, so a
+two-line-item order arrived as one order plus one `no_phone` skip — which reads
+as a broken file rather than as the normal shape of the export. **The id is
+checked first now**, and a row carrying an already-seen id is a duplicate
+whatever else it carries.
+
+#### Files
+
+- `apps/website-builder/src/lib/erp/import.ts` — new: the parser, the
+  dictionaries, and the merge rules
+- `apps/website-builder/src/app/api/erp/clients/import/route.ts` — new
+- `apps/website-builder/src/app/api/erp/orders/import/route.ts` — new
+- `apps/website-builder/src/components/console/erp/csv-import.tsx` — new
+- `apps/website-builder/src/app/console/erp/clients/page.tsx`
+- `apps/website-builder/src/app/console/erp/orders/page.tsx`
+- `apps/website-builder/src/lib/console/erp-strings.ts`
+- `packages/i18n/src/messages/{ar,en,fr}.json` — `erp.import.*`, 15 keys × 3
+- `apps/website-builder/test/erp/import.test.ts` — new, 25 tests
+- `apps/website-builder/test/erp/access.test.ts` — 2 new surfaces
+
+**Migration:** none. The `imported*` columns have existed since M-06 and finally
+have a writer.
+
+**Risk:** medium — these are the two largest writes on the surface. Bounded by
+`IMPORT_LIMIT = 5,000` rows, refused by name above it; the whole run is inside
+one transaction, so a failure part-way leaves nothing behind; and both commits
+write an audit row with the counts, because "where did these 900 customers come
+from" needs an answer.
+
+---
+
 ### LP.18 The variant matrix, and three columns the port dropped
 
 [Opus 5]

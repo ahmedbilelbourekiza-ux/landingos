@@ -6,14 +6,19 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 import { requireProduct } from "@/lib/console/product-page";
 import { FilterBar } from "@/components/console/filter-bar";
 import { Pager } from "@/components/console/pager";
-import { filterStrings, pagerStrings, clientExportStrings } from "@/lib/console/erp-strings";
+import {
+  filterStrings, pagerStrings, clientExportStrings, importStrings,
+} from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
 import { ClientExportPanel } from "@/components/console/erp/client-export";
+import { CsvImportPanel } from "@/components/console/erp/csv-import";
 import {
   CLIENT_SELECT, clientFilters, clientHistoryPhones, clientFilterFields, withDerived,
 } from "@/lib/erp/clients";
 import { seesWholeBook } from "@/lib/erp/scope";
+import { can } from "@landingos/auth";
+import { actionErrors } from "@/lib/console/action-errors";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -137,6 +142,19 @@ export default async function ErpClientsScreen({
       {/* The file IS the list, carrying the same query string (D-LP.6.2), which
           is why it lives here rather than on a screen of its own. */}
       <ClientExportPanel params={params} s={clientExportStrings(t)} total={total} />
+
+      {/* LP.19 — the other half of the round trip. Gated on
+          `erp:clients:write`, which is what the route checks (D-06.2): loading
+          a spreadsheet into the registry is at least as consequential as
+          correcting one record. */}
+      {can(session.auth!, "erp:clients:write") && (
+        <CsvImportPanel
+          endpoint="/api/erp/clients/import"
+          errors={actionErrors(t)}
+          s={importStrings(t, "clients")}
+          testId="erp-client-import"
+        />
+      )}
 
       <DataTable
         testId="erp-clients-table"

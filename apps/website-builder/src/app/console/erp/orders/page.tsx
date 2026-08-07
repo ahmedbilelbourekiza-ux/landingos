@@ -16,8 +16,10 @@ import { OrderBulkBar, type BulkStrings } from "@/components/console/erp/order-b
 import { OrderCreatePanel } from "@/components/console/erp/order-create";
 import { OrderExportPanel } from "@/components/console/erp/order-export";
 import { OrderRowActions } from "@/components/console/erp/order-row-actions";
+import { CsvImportPanel } from "@/components/console/erp/csv-import";
 import {
   filterStrings, pagerStrings, orderCreateStrings, orderExportStrings, rowActionStrings,
+  importStrings,
 } from "@/lib/console/erp-strings";
 import { scopedWhere, seesWholeBook, mayTouchOrder } from "@/lib/erp/scope";
 import {
@@ -540,6 +542,18 @@ export default async function ErpOrdersScreen({
           statuses={statusChoices}
           members={managesBook ? memberOptions : undefined}
           carriers={carrierOptions}
+        />
+      )}
+
+      {/* LP.19 / R17 — how a new tenant's history arrives. Beside the create
+          panel because both are "an order that did not come from a customer
+          pressing buy", and gated on the same `erp:orders:write`. */}
+      {mayWrite && (
+        <CsvImportPanel
+          endpoint="/api/erp/orders/import"
+          errors={actionErrors(t)}
+          s={importStrings(t, "orders")}
+          testId="erp-order-import"
         />
       )}
 

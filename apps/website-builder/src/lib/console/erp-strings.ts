@@ -18,6 +18,7 @@ import type { ClientExportStrings } from "@/components/console/erp/client-export
 import type { NotifyPrefStrings } from "@/components/console/notify-preferences";
 import type { ChannelStrings } from "@/components/console/erp/channel-write";
 import type { VariantEditorStrings } from "@/components/console/erp/variant-editor";
+import type { ImportStrings } from "@/components/console/erp/csv-import";
 
 /* =============================================================================
  * The ERP's write-control labels, resolved once per screen.
@@ -523,5 +524,32 @@ export function variantEditorStrings(t: (key: string) => string): VariantEditorS
     reason: t("erp.inventory.reason"),
     save: t("common.save"),
     noVariants: t("erp.variants.noVariants"),
+  };
+}
+
+
+/**
+ * The CSV import panel's labels — LP.19.
+ *
+ * `kind` picks the hint, and the hint is the only difference: a customer import
+ * merges and an order import dedups, and saying which BEFORE somebody presses
+ * the button is what stops "why did it say merged" arriving afterwards.
+ */
+export function importStrings(t: (key: string) => string, kind: "clients" | "orders"): ImportStrings {
+  return {
+    saving: t("common.saving"),
+    panel: t("erp.import.panel"),
+    hint: kind === "clients" ? t("erp.import.clientsHint") : t("erp.import.ordersHint"),
+    file: t("erp.import.file"),
+    source: t("erp.import.source"),
+    preview: t("erp.import.preview"),
+    commit: t("erp.import.commit"),
+    created: t("erp.import.created"),
+    merged: t("erp.import.merged"),
+    duplicates: t("erp.import.duplicates"),
+    skipped: t("erp.import.skipped"),
+    rows: t("erp.import.rows"),
+    previewFirst: t("erp.import.previewFirst"),
+    done: t("erp.import.done"),
   };
 }

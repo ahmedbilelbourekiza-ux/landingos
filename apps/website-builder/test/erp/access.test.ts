@@ -75,6 +75,10 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   ['GET', '/api/erp/clients/nonexistent'],
   ['PATCH', '/api/erp/clients/nonexistent'],
   ['GET', '/api/erp/clients/export'],
+  // LP.19. Both imports — the one write on each surface that can touch
+  // thousands of rows in a request.
+  ['POST', '/api/erp/clients/import'],
+  ['POST', '/api/erp/orders/import'],
   ['GET', '/api/erp/products'],
   // A made-up id is fine: the inventory asserts the route is CLOSED, and an
   // unauthenticated caller must never get far enough for the id to be resolved.
