@@ -130,11 +130,14 @@ export function GeneralSection({
   const [categories, setCategories] = React.useState<{ id: string; name: string }[]>([]);
   const [themes, setThemes] = React.useState<{ id: string; name: string; primary: string; accent: string; background: string }[]>([]);
   React.useEffect(() => {
+    // Platform envelope: the list lives at data.items, not data (LB.2 — the
+    // editor crashed on load reading it as the array, BUILDER_AUDIT B-05).
     fetch(api("/categories")).then((r) => r.json()).then((json) => {
-      if (json.success) setCategories(json.data.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+      if (json.success && Array.isArray(json.data?.items))
+        setCategories(json.data.items.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
     });
     fetch(api("/themes")).then((r) => r.json()).then((json) => {
-      if (json.success) setThemes(json.data);
+      if (json.success && Array.isArray(json.data?.items)) setThemes(json.data.items);
     });
   }, []);
 

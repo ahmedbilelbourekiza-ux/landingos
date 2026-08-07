@@ -361,9 +361,44 @@ worse than no search box.
 A plain GET form, like the filter bar and the pager: the answer is a URL
 somebody can bookmark or hand to a colleague, and it works before JavaScript.
 
+### PM.8 `npm run builder:start` had stopped starting anything
+
+[Opus 5]
+Date: 7 August 2026
+
+**What.** `next.config.ts` sets `output: "standalone"`, and Next 16.2 refuses
+`next start` with that configuration — printing `✓ Ready in 533ms`, *then* the
+refusal, then exiting 1. So the documented local command looks healthy for
+exactly one line and leaves nothing listening on :3000.
+
+**Why it stayed hidden for a whole session.** Another `next start` process was
+already holding the port and answering everything, so every restart "worked".
+It surfaced the first time the port was genuinely free. That is PROJECT_STATE
+rule 5's silent port race seen from the other direction: rule 5 warns that a
+stale server can serve a NEW verification; this is a dead starter hiding behind
+an OLD server.
+
+**Files.** `apps/website-builder/scripts/start-standalone.mjs` (new),
+`apps/website-builder/package.json` (`start` → the script; `start:next` keeps
+the old command for anyone who turns `output` off).
+
+**It runs the artifact that ships.** `standalone/apps/website-builder/server.js`
+— the same file the Dockerfile runs and the deployment serves, one level deeper
+than a single-app build because `outputFileTracingRoot` is pinned to the
+workspace root. Verifying against anything else is verifying against something
+that will never be deployed.
+
+**And it mirrors `public/` and `.next/static/` in first**, because Next
+deliberately leaves both out of the standalone bundle and the Dockerfile copies
+them as separate layers. Without that the pages render and every stylesheet,
+script and committed image 404s — which reads as a broken build rather than as
+a missing directory. Verified: the console's CSS bundle answers 200 and the 84
+screen/role pairs are still clean on this server.
+
 ### Verification
 
-Live, against the running server on a real Neon database.
+Live, against the running server on a real Neon database. Re-run end to end on
+the STANDALONE server after PM.8, which is the artifact that deploys.
 
 | Suite | Result |
 |---|---|

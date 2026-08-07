@@ -50,17 +50,19 @@ export function ReviewsSection({
 
   const section = useSectionState({
     save: async () => {
-      const payload = reviews.map((r, i) => ({
+      // Array order IS the display order; the route assigns it from position.
+      // `items` is the route's vocabulary (LB.2 — `reviews` was silently a
+      // 422 on every save).
+      const payload = reviews.map((r) => ({
         customerName: r.customerName,
         customerAvatar: r.avatarUrl,
         rating: r.rating,
         reviewText: r.reviewText,
-        displayOrder: i,
       }));
       const res = await fetch(api(`/landings/${landingId}/reviews`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reviews: payload }),
+        body: JSON.stringify({ items: payload }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error?.message || "Save failed");

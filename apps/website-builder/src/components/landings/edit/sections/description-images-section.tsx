@@ -79,15 +79,14 @@ export function DescriptionImagesSection({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           // Array position IS the display order — the list the admin sees is
-          // the order the customer gets.
-          media: images.map((m, i) => ({
+          // the order the customer gets. `items` is the route's vocabulary.
+          items: images.map((m) => ({
             type: "IMAGE" as const,
             url: m.url,
             altText: m.filename,
-            displayOrder: i,
           })),
-          // Without this the request would default to GALLERY and replace the
-          // product slider with these images.
+          // Scopes the replace: without this the request would default to
+          // GALLERY and replace the product slider with these images.
           placement: "DESCRIPTION" as const,
         }),
       });

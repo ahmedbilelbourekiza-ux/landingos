@@ -68,6 +68,7 @@ export default async function ConsoleEditLandingPage({
         landingId={page.id}
         landingTitle={page.title}
         landingSlug={page.slug}
+        publicPath={`/${session.tenant!.slug}/${page.slug}`}
         initialPreview={toPreviewState(page)}
         initialStatus={(page.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT") as PublishStatus}
       />

@@ -76,7 +76,9 @@ export function ImagesSection({
       const res = await fetch(api(`/landings/${landingId}/media`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ media: allMedia }),
+        // `items` is the route's vocabulary; `placement` scopes the replace so
+        // saving the gallery cannot delete the description images (LB.2).
+        body: JSON.stringify({ items: allMedia, placement: "GALLERY" }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error?.message || "Save failed");

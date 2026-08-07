@@ -96,6 +96,7 @@ made the cheap half mechanical — but it is a NAME check, so a column that is
 written, selected, returned by an API and rendered by no screen passes it
 cleanly. All three findings above are that residue. **The question the schema
 scan cannot ask is: for every column an API returns, which SCREEN renders it?**
+Recorded as PM.12 in `NEXT_STEPS.md`.
 
 ### Verification (Phase PM)
 
@@ -508,6 +509,24 @@ If you are a new session picking this up, read this section fully before running
 4. **A green build proves almost nothing.** This project has been bitten three
    separate times by a build that compiled while every request failed at
    runtime. Always verify against the running server.
+
+5b. **`builder:start` runs the STANDALONE build now, and the reason is a trap
+   worth knowing.** `next.config.ts` sets `output: "standalone"`, and Next 16.2
+   REFUSES `next start` with that configuration — in the worst possible order:
+   it prints `✓ Ready in 533ms`, *then* the refusal, then exits 1. A background
+   start therefore looks healthy for exactly one line and leaves nothing
+   listening, which is rule 5's silent port race arriving from the other
+   direction. It stayed hidden for a whole session because another process was
+   holding :3000 and answering every request.
+
+   `apps/website-builder/scripts/start-standalone.mjs` runs
+   `standalone/apps/website-builder/server.js` — **the same artifact the
+   Dockerfile runs and the deployment serves** — and mirrors `public/` and
+   `.next/static/` in beside it first, because Next deliberately leaves both out
+   of the standalone bundle and the Dockerfile copies them as separate layers.
+   Without that copy the pages render and every stylesheet 404s, which looks
+   like a broken build rather than a missing directory. `start:next` keeps the
+   old command for anyone who turns `output` off.
 
 5. **Windows: stop node, build, THEN start — in that order, every time.**
    `prisma generate` rewrites a native `.dll` a running node process holds open,

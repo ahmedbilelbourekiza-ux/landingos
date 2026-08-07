@@ -35,18 +35,20 @@ export function VariantsSection({
 
   const section = useSectionState({
     save: async () => {
-      const flatVariants = groups.flatMap((g, gi) =>
-        g.options.map((opt, oi) => ({
+      // Array order IS the display order; the route assigns it from position.
+      // `items` is the route's vocabulary (LB.2 — `variants` was silently a
+      // 422 on every save).
+      const flatVariants = groups.flatMap((g) =>
+        g.options.map((opt) => ({
           name: g.name,
           value: opt.label,
           extraPrice: opt.extraPrice,
-          displayOrder: gi * 100 + oi,
         })),
       );
       const res = await fetch(api(`/landings/${landingId}/variants`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ variants: flatVariants }),
+        body: JSON.stringify({ items: flatVariants }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error?.message || "Save failed");

@@ -4,40 +4,46 @@ import * as React from "react";
 import { formatPrice } from "@/lib/landing/format";
 import type { PreviewState } from "@/types/preview";
 import { normalizeOrder } from "@/lib/landing/mock-order-form";
-import { useBuilderApi } from "@/lib/builder/api-base";
+import { useStorefrontApi } from "@/lib/storefront/api-base";
+import type { WilayaItem } from "@/lib/storefront/contract";
 
 // Order form preview. Renders the configured form fields plus a wilaya
 // selector (loaded from the API) and a baladia selector that filters by the
 // selected wilaya. When a wilaya is selected, the shipping price is looked
 // up from the delivery slice and the total updates instantly.
+//
+// LB.2: this reads the STOREFRONT destinations endpoint — the same one the
+// public form reads, same envelope, same embedded prices — so the preview
+// offers exactly the wilayas a customer would see, communes included. The
+// console delivery-prices endpoint it used before carries no communes and a
+// different shape, which is how the preview crashed (B-05).
 export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
-  // Bound to the console API by BuilderApiProvider.
-  const api = useBuilderApi();
+  // Bound to this tenant's storefront API by StorefrontApiProvider.
+  const api = useStorefrontApi();
   const { config } = preview.orderForm;
-  const [wilayas, setWilayas] = React.useState<{
-    id: number;
-    name: string;
-    baladias: { id: number; name: string }[];
-  }[]>([]);
+  const [wilayas, setWilayas] = React.useState<WilayaItem[]>([]);
   const [selectedWilaya, setSelectedWilaya] = React.useState<number | "">("");
   const [selectedBaladia, setSelectedBaladia] = React.useState<number | "">("");
   const [deliveryPrices, setDeliveryPrices] = React.useState<Record<number, number>>({});
 
-  // Load wilayas + global delivery prices on mount
   React.useEffect(() => {
-    Promise.all([
-      fetch(api("/settings/delivery-prices")).then((r) => r.json()),
-      fetch(api("/settings/delivery-prices")).then((r) => r.json()),
-    ]).then(([wJson, pJson]) => {
-      if (wJson.success) setWilayas(wJson.data);
-      if (pJson.success) {
+    fetch(api("/wilayas"))
+      .then((r) => r.json())
+      .then((json) => {
+        if (!json?.success || !Array.isArray(json.data?.items)) return;
+        const items: WilayaItem[] = json.data.items;
+        setWilayas(items);
         const map: Record<number, number> = {};
-        for (const p of pJson.data) {
-          if (p.homePrice !== null) map[p.id] = p.homePrice;
+        for (const w of items) {
+          if (w.homePrice != null) map[w.id] = Number(w.homePrice);
         }
         setDeliveryPrices(map);
-      }
-    });
+      })
+      .catch(() => {
+        // The preview renders with an empty destination list rather than
+        // failing the whole editor.
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Driven by the configured order rather than a hardcoded list, so dragging

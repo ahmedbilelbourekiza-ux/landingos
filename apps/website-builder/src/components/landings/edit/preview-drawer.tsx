@@ -36,8 +36,9 @@ export function PreviewDrawer({
     fetch(api("/themes"))
       .then((r) => r.json())
       .then((json) => {
-        if (json.success) {
-          const found = json.data.find((t: LandingThemeData) => t.id === themeId);
+        // Platform envelope: the list is data.items (LB.2, B-05).
+        if (json.success && Array.isArray(json.data?.items)) {
+          const found = json.data.items.find((t: LandingThemeData) => t.id === themeId);
           setTheme(found ?? DEFAULT_THEME);
         }
       });

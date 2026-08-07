@@ -801,5 +801,5 @@ defect it has produced that no test could have.
 §0 says "nothing in this document proposes changing what the software does",
 and that constraint is what produced a 🟡 for the dashboard. A presentation
 audit and a product audit are different instruments and the second one was never
-run. **PM.8–PM.11 in `NEXT_STEPS.md` are what the second instrument found and
+run. **PM.9–PM.12 in `NEXT_STEPS.md` are what the second instrument found and
 did not have time to fix.**

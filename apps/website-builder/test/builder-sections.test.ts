@@ -211,6 +211,73 @@ describe('landing editor sections', { skip }, () => {
     assert.equal(gallery[0].url, 'a.jpg', 'the hero is the first GALLERY image');
   });
 
+  test('a placement-scoped save replaces only its own list (LB.2)', async () => {
+    // Seed both placements, then save the gallery ALONE — the description
+    // images must survive. The editor's two image sections each save one
+    // placement; an unscoped replace would make saving one delete the other.
+    await put(`/api/builder/landings/${pageId}/media`, tokens.owner, {
+      items: [
+        { type: 'IMAGE', url: 'g1.jpg', placement: 'GALLERY' },
+        { type: 'IMAGE', url: 'd1.jpg', placement: 'DESCRIPTION' },
+      ],
+    });
+    const r = await put(`/api/builder/landings/${pageId}/media`, tokens.owner, {
+      items: [{ type: 'IMAGE', url: 'g2.jpg' }],
+      placement: 'GALLERY',
+    });
+    assert.equal(r.status, 200);
+
+    const rows = await withTenant(tenant, (tx) =>
+      (tx as any).landingMedia.findMany({
+        where: { landingPageId: pageId },
+        select: { url: true, placement: true },
+      }),
+    );
+    assert.deepEqual(
+      rows.map((m: any) => m.url).sort(),
+      ['d1.jpg', 'g2.jpg'],
+      'the gallery was replaced and the description images survived',
+    );
+  });
+
+  test("the order-form save stores the editor's own shape, readably (LB.2/B-07)", async () => {
+    // The editor PATCHes the WHOLE OrderFormConfig — field configs at the top
+    // level plus the order array. The first port only accepted a `fields`
+    // record no client sent, so every save answered 200 while storing nothing.
+    const r = await patch(`/api/builder/landings/${pageId}/order-form`, tokens.owner, {
+      customerName: { label: 'الاسم', placeholder: 'اكتب اسمك', visible: true, required: true },
+      notes: { visible: false, required: false, label: 'ملاحظات', placeholder: '...' },
+      order: ['phone', 'customerName', 'wilaya', 'baladia', 'address', 'notes', 'quantity'],
+      buttonText: 'اشترِ الآن',
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+
+    const setting = await withTenant(tenant, (tx) =>
+      (tx as any).landingSetting.findUnique({
+        where: { landingPageId: pageId },
+        select: { orderFormConfig: true },
+      }),
+    );
+    const stored = setting.orderFormConfig as any;
+    assert.equal(stored.customerName.label, 'الاسم', 'the field config was stored');
+    assert.equal(stored.notes.visible, false);
+    assert.deepEqual(stored.order.slice(0, 2), ['phone', 'customerName'], 'the render order was stored');
+    assert.equal(typeof stored, 'object', 'stored as a Json VALUE, not a serialized string');
+
+    const pageRow = await withTenant(tenant, (tx) =>
+      (tx as any).landingPage.findUnique({ where: { id: pageId }, select: { buttonText: true } }),
+    );
+    assert.equal(pageRow.buttonText, 'اشترِ الآن');
+  });
+
+  test("hiding a courier field through the editor's shape is refused too", async () => {
+    const r = await patch(`/api/builder/landings/${pageId}/order-form`, tokens.owner, {
+      phone: { visible: false },
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'FIELD_REQUIRED');
+  });
+
   test('a duplicate variant is refused', async () => {
     const r = await put(`/api/builder/landings/${pageId}/variants`, tokens.owner, {
       items: [

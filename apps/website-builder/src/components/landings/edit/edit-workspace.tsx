@@ -16,12 +16,20 @@ export function EditWorkspace({
   landingId,
   landingTitle,
   landingSlug,
+  publicPath,
   initialPreview,
   initialStatus,
 }: {
   landingId: string;
   landingTitle: string;
   landingSlug: string;
+  /**
+   * The page's PUBLIC path on this platform, e.g. `/acme/winter-jacket`.
+   * Supplied by the server mount — the legacy `/l/<slug>` this component used
+   * to build is a reserved-slug 404 here, so Copy Link handed the merchant a
+   * dead URL to their own page (LB.2).
+   */
+  publicPath: string;
   initialPreview: PreviewState;
   initialStatus: PublishStatus;
 }) {
@@ -71,12 +79,12 @@ export function EditWorkspace({
   // --- Copy Link ---
   const handleCopyLink = () => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    navigator.clipboard?.writeText(`${origin}/l/${landingSlug}`);
+    navigator.clipboard?.writeText(`${origin}${publicPath}`);
   };
 
   // --- Open Landing ---
   const handleOpenLanding = () => {
-    window.open(`/l/${landingSlug}`, "_blank");
+    window.open(publicPath, "_blank");
   };
 
   // --- Back with warning ---
