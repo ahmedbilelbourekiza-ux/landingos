@@ -12,6 +12,13 @@
 .git
 **/.gitignore
 
+# Generated Prisma clients — ALWAYS regenerated in the builder stage, so the
+# query engines match the image's platform (linux-musl), never a dev machine's.
+# A dev-machine client in the context is dead weight at best and, if the
+# generate step were ever skipped, a windows .dll shipping to Linux at worst.
+packages/db/prisma/client
+apps/website-builder/src/generated
+
 # Local deps + data — never bake these into the image
 **/node_modules
 **/db/*.db

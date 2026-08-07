@@ -239,8 +239,29 @@ standalone tenant walkthrough (§8) all passed, including zero ERP rows. Mobile
 - [x] Standalone tenant fully functional; integrated tenant creates the ERP record transactionally
 - [x] SEO/OG/JSON-LD on public pages; sitemap-ready canonicals
 - [x] Public writes rate-limited; secrets encrypted at rest; SSRF guard on webhook URLs
-- [ ] Deployment env: set `AUTH_SECRET` (never rotate casually — it derives the secret-encryption key), `DATABASE_URL`, R2 vars for durable uploads (`/api/health` reports the storage backend)
-- [ ] Real-credential smoke test: no request has crossed the REAL Meta/TikTok/GA4 endpoints — the adapters are spec-built and stub-verified (the ZR/Ecom precedent). Verify with a test pixel + `testCode` in Events Manager before first ad spend.
+- [x] **Deployment packaging (LB.9).** The Docker pipeline builds and boots the
+  platform: deps stage validates against every workspace manifest (npm pinned
+  11.16.0), both Prisma clients are generated in-image, the generated client
+  ships at the path the standalone bundle actually searches
+  (`apps/website-builder/packages/db/prisma/client` — found by booting the
+  artifact), and the entrypoint is DDL-free: it verifies config + schema
+  presence and refuses to start otherwise, printing the migration runbook.
+  Schema/roles/RLS/reference-seed are explicit repo-side steps (DEPLOY.md).
+  Verified via a stage-faithful clean-room build (fresh install from lockfile →
+  in-tree generates → build → runner-layout boot through the real entrypoint)
+  with 99 contract tests green against that artifact. **Not yet verified in an
+  actual Linux container — Docker is unavailable on the dev machine**; the
+  first `docker build` on any Docker host (or Render itself) is the remaining
+  step, and the linux-musl engine + apk layers are the only parts the clean
+  room could not exercise.
+- [ ] Render configuration (deliberately untouched): Dockerfile Path
+  `apps/website-builder/Dockerfile`, Build Context `.`, env per DEPLOY.md
+  (`PLATFORM_DATABASE_URL` = the `landingos_app` credential, `AUTH_SECRET`
+  unchanged, R2 vars), then one manual deploy and the health-shape check.
+- [ ] Real-credential smoke test: no request has crossed the REAL
+  Meta/TikTok/GA4 endpoints — the adapters are spec-built and stub-verified
+  (the ZR/Ecom precedent). Verify with a test pixel + `testCode` in Events
+  Manager before first ad spend.
 - [ ] CSRF origin check + login throttling (platform Tier 4)
 
 ## 12. Known limitations
