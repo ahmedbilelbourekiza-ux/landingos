@@ -115,6 +115,36 @@ export function verifySignature(
  * Payload → order
  * -------------------------------------------------------------------------- */
 
+/* =============================================================================
+ * AUDIT.7 — THE THREE FIELDS THE PARSER THREW AWAY.
+ *
+ * `FulfillmentOrder.externalProductId`, `externalVariantId` and
+ * `externalOrderAt` exist in the schema, and **nothing has ever written any of
+ * them.** Two consequences, and the first is the expensive one:
+ *
+ * 1. `resolveProduct` (product-stats.ts) reads `externalProductId` FIRST, and
+ *    its own comment says "a link that resolves DECIDES, including deciding
+ *    'this one and not the name match'". That branch has been dead for every
+ *    order ever written. Every channel order falls through to matching by NAME
+ *    — and AUDIT.3 has just made name matching REFUSE when two catalogue rows
+ *    share one. So a tenant selling through Shopify with two products called
+ *    "Montre" gets no lifetime counters on either, while the payload was
+ *    carrying the `product_id` that resolves it exactly.
+ *
+ *    AUDIT.1 built `CatalogProductLink`'s display and AUDIT.3 made the fallback
+ *    honest. This is the identifier that makes the fallback unnecessary.
+ *
+ * 2. `externalOrderAt` is when the CUSTOMER ordered; `createdAt` is when this
+ *    system heard about it. They are the same second in the good case and hours
+ *    or days apart in the ones that matter — a replayed backlog when a store is
+ *    first connected, a retried webhook, an outage. The legacy stored it
+ *    (`shopifyCreatedAt`) and the schema comment says so. Losing it means a
+ *    connected store's whole history lands on the day it was connected.
+ *
+ * The fields are OPTIONAL on this shape, because a platform that does not send
+ * them is normal and must not stop producing an order.
+ * ========================================================================== */
+
 interface ExternalOrder {
   readonly externalId: string;
   readonly externalName: string;
@@ -126,6 +156,27 @@ interface ExternalOrder {
   readonly quantity: number;
   readonly price: string | null;
   readonly lineItems: unknown;
+  /** The catalogue identity on the platform. What makes the link exact. */
+  readonly externalProductId?: string | null;
+  readonly externalVariantId?: string | null;
+  /** When the customer ordered, not when we heard. ISO or epoch-ms. */
+  readonly externalOrderAt?: string | null;
+}
+
+/**
+ * A platform date, or null.
+ *
+ * Never throws and never returns an Invalid Date: a malformed timestamp must
+ * leave the column null rather than poison every date range the order appears
+ * in. Accepts ISO (what Shopify sends) and epoch-ms (what the legacy's own
+ * `createdAt` was), because both are in this codebase's history.
+ */
+export function externalDate(value: unknown): Date | null {
+  if (value === null || value === undefined || value === "") return null;
+  const raw = typeof value === "number" ? value : String(value).trim();
+  if (raw === "") return null;
+  const date = typeof raw === "number" ? new Date(raw) : new Date(/^\d+$/.test(raw) ? Number(raw) : raw);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 /**
@@ -158,7 +209,21 @@ export function parseOrder(body: Record<string, unknown>): ExternalOrder | null 
     quantity: Number(first.quantity) || 1,
     price: String(body.total_price ?? body.total ?? first.price ?? ""),
     lineItems,
+    // AUDIT.7. Read by NAME across the several spellings the nine platforms
+    // use, in the same forgiving spirit as the rest of this function: an
+    // unrecognised shape leaves them null and still produces an order.
+    externalProductId: str(first.product_id ?? first.productId ?? first.product ?? null),
+    externalVariantId: str(first.variant_id ?? first.variantId ?? first.variant ?? null),
+    externalOrderAt: str(body.created_at ?? body.createdAt ?? body.placed_at ?? null),
   };
+}
+
+/** A trimmed string, or null. `String(null)` is `"null"`, which is a real bug. */
+function str(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "object") return null;
+  const s = String(value).trim();
+  return s === "" ? null : s;
 }
 
 /**
@@ -201,6 +266,13 @@ export async function ingestOrder(
       reference: await nextReference(),
       externalId: parsed.externalId,
       externalName: parsed.externalName,
+      /* AUDIT.7. The exact catalogue identity, so `resolveProduct` can take its
+         link branch instead of matching by name — which is the branch that
+         refuses when two products share one. And the customer's own order time,
+         which `createdAt` is not whenever a backlog is replayed. */
+      externalProductId: parsed.externalProductId ?? null,
+      externalVariantId: parsed.externalVariantId ?? null,
+      externalOrderAt: externalDate(parsed.externalOrderAt),
       // From the CHANNEL, never from the body. A payload that could name its
       // own tenant or channel would let a stranger file orders into any
       // company on the platform.

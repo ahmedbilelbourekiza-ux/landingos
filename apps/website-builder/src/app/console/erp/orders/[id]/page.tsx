@@ -77,6 +77,9 @@ export default async function ErpOrderDetail({
         price: true, status: true, classification: true,
         agentUserId: true, followupUserId: true,
         note: true, managerNote: true, source: true,
+        // AUDIT.7. When the CUSTOMER ordered, which is not when we heard
+        // whenever a platform replays a backlog. Rendered only when it differs.
+        externalOrderAt: true,
         deliveryStatus: true, deliveryOutcome: true, deliveryOutcomeAt: true,
         trackingNumber: true, createdAt: true,
         // Phase 6.3: whether a call is running is the server's fact, and the
@@ -377,6 +380,18 @@ export default async function ErpOrderDetail({
               <dt className="text-muted-foreground">{t("erp.orders.placed")}</dt>
               <dd>{formatDate(order.createdAt, locale)}</dd>
             </div>
+            {/* AUDIT.7. Shown ONLY when the storefront's time differs from ours
+                by more than a minute. Two dates side by side that always agree
+                is a field people stop reading; the case worth seeing is the one
+                where a connected store replayed a week of backlog and every
+                order says it arrived today. */}
+            {order.externalOrderAt
+              && Math.abs(order.externalOrderAt.getTime() - order.createdAt.getTime()) > 60_000 && (
+              <div data-testid="order-external-date">
+                <dt className="text-muted-foreground">{t("erp.orders.orderedOnStore")}</dt>
+                <dd>{formatDate(order.externalOrderAt, locale)}</dd>
+              </div>
+            )}
             <div>
               <dt className="text-muted-foreground">{t("erp.orders.source")}</dt>
               <dd className="text-muted-foreground">{order.source || "—"}</dd>

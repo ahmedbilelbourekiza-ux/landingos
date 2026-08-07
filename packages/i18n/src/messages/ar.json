@@ -76,7 +76,8 @@
       "variant": "المتغير",
       "express": "توصيل سريع",
       "marketer": "المسوّق",
-      "brand": "العلامة"
+      "brand": "العلامة",
+      "orderedOnStore": "تاريخ الطلب في المتجر"
     },
     "row": {
       "overdue": "متأخر",

@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *AUDIT.6: two things an operator could not reach*
+**Branch:** `master` · **Last commit:** *AUDIT.7: three fields the parser threw away*
 **Working tree:** clean, all work committed.
 
 ---
@@ -91,6 +91,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **AUDIT.4** a `t()` key that existed only in code, and the scan that closes the class | — | **DONE** — i18n 18→20 |
 | **AUDIT.5** AI provider Test Connection + integration log — two columns whose writer the port left behind | — | **DONE** — ai 20→31, access 201→203 |
 | **AUDIT.6** "run it now" had no button; the roster did not say where people come from | — | **DONE** — jobs 27→31 |
+| **AUDIT.7** the webhook dropped `externalProductId`/`VariantId`/`OrderAt` — the link branch had never run | — | **DONE** — integrations 75→80 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -1010,6 +1011,33 @@ claim (`lastPolledAt`) is committed in its own short transaction BEFORE the
 network call, and both callers changed as N17 predicted: the route runs it
 through `afterCommit`, the worker's tick no longer wraps it. There is still
 exactly one ingest path — the poll composes `refreshShipmentForOrder`.
+
+### AUDIT.7 — three fields the parser threw away
+
+`FulfillmentOrder.externalProductId`, `externalVariantId` and `externalOrderAt`
+exist in the schema — the last commented `// was shopifyCreatedAt` — and
+**nothing has ever written any of them.**
+
+**`resolveProduct` reads `externalProductId` FIRST**, and its comment says "a
+link that resolves DECIDES, including deciding 'this one and not the name
+match'". That branch had never run. Every channel order matched by NAME instead
+— and AUDIT.3 had just made name matching REFUSE on a duplicate. So a tenant
+selling through Shopify with two products called "Montre" got no counters on
+either and a badge telling them to rename something, while every payload carried
+the `product_id` that resolves it exactly.
+
+**Why no test caught it, which is worth more than the fix.** `delivery.test.ts`
+covers that branch thoroughly — including "an order linked to ANOTHER product is
+refused, even when the names match" — and reaches it through a HELPER that writes
+the column directly. The branch was proven correct and unreachable at the same
+time. **A test that stages the state a production path is supposed to produce
+cannot tell you the path produces it.**
+
+`externalOrderAt` is when the CUSTOMER ordered; `createdAt` is when we heard.
+Same second in the good case, days apart when a store is first connected and the
+platform replays a backlog — which is exactly when it matters. Shown on the
+detail only when the two differ by more than a minute, because two dates that
+always agree is a field people stop reading.
 
 ### AUDIT.6 — two things an operator could not reach
 
@@ -2031,7 +2059,7 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 986 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 991 | all pass against a running server |
 | `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
 | `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
@@ -2039,7 +2067,7 @@ fail without it, so check the counts, not just the exit code.
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 20 | all pass — including a scan of every `t("literal")` in the console source |
-| **Total** | **1644** | green per suite |
+| **Total** | **1649** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

@@ -128,7 +128,7 @@ ways; and close a month's books with a calculator that agrees with its own saved
 record.
 
 **§9 is the fourth pass — the independent audit** — which read the legacy module
-by module without using this roadmap, and found thirteen things it had not: nine
+by module without using this roadmap, and found fourteen things it had not: ten
 writer/reader mismatches, one that only appeared when a real order was placed
 through the running console, one read out of that same run's server log, and two
 routes with no screen calling them.
@@ -1630,7 +1630,7 @@ That is the shape of every serious defect this project has found: BUG-02
 (`deliveryOutcome` read in eight places, written in none), `IntegrationLog`
 (migrated with its indexes, no caller), `OrderCall.suspicious` (computed, shown
 nowhere), `fakeReason` (written since Phase 5, read by nothing), the confirmation
-rate (computed nowhere at all). **Thirteen more were there.**
+rate (computed nowhere at all). **Fourteen more were there.**
 
 | # | Finding | Severity | Closed by |
 |---|---|---|---|
@@ -1647,6 +1647,7 @@ rate (computed nowhere at all). **Thirteen more were there.**
 | **A11** | `AiProvider.lastTestAt`/`lastTestOk` — three readers, **no writer**. LP.17 deferred `/test` saying "testing a provider means calling a model"; the legacy's adapters test with `GET /models`. A wrong model key surfaces at CHAT time, which on this deployment is never | Medium | AUDIT.5 |
 | **A12** | `POST /jobs/[job]` — **no screen has ever called it**, while its own comment says "a manager needs to be able to say 'run it now'". Reachable only by typing a URL | Medium | AUDIT.6 |
 | **A13** | The staff roster has no "add a person" control (correct — M-02) and no sentence saying where people ARE added. LP.17's defect inverted | Low | AUDIT.6 |
+| **A14** | The channel parser dropped `externalProductId`, `externalVariantId` and `externalOrderAt`. `resolveProduct`'s exact-link branch **had never run**, so every channel order matched by name — which AUDIT.3 had just made refuse on a duplicate | **High** | AUDIT.7 |
 
 **A5 is the one that matters most**, and it is BUG-02's shape exactly: the port
 brought `upsertClientFromOrder` across as `syncClientFromOrder` and left
@@ -1674,6 +1675,15 @@ a workflow existing, and a route covered by an access test and driven by a
 contract suite can still be one no operator can reach. Grep the path across
 `.tsx`; an empty result on a route documented as an operator action is the
 finding.
+
+**A14 is the one whose coverage looked complete.** `delivery.test.ts` proves the
+exact-link branch correct in four tests, including the hardest case — and reaches
+it through a fixture helper that writes the column directly. The branch was
+correct and unreachable simultaneously, for the whole life of the platform.
+**A test that stages the state a production path is supposed to produce cannot
+tell you the path produces it**, and a helper is exactly how that state gets
+staged. The question to ask of any helper: which production code writes what this
+is writing?
 
 **A8 was a guarantee gap, not a hole** — the derived run passed 201/201 first
 time, so every unlisted route was correctly gated. The inventory now derives

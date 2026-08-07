@@ -238,6 +238,11 @@ export const ORDER_LIST_SELECT = {
   trackingNumber: true, shipmentId: true,
   marketer: true, managerNote: true, note: true,
   externalId: true, externalName: true, source: true, salesChannelId: true,
+  /* AUDIT.7. The identity the platform sent, which the webhook used to drop.
+     `externalProductId` is what lets `resolveProduct` take its exact link
+     branch rather than matching by name; `externalOrderAt` is when the customer
+     ordered, which is not `createdAt` whenever a backlog is replayed. */
+  externalProductId: true, externalVariantId: true, externalOrderAt: true,
   overdueFlaggedAt: true, pendingCallStart: true,
   createdAt: true, updatedAt: true,
   /* LP.8 / N21 — THE FACTS THE ROW WAS MISSING.

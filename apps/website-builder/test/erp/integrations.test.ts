@@ -6,6 +6,7 @@ import { SESSION_COOKIE } from '@landingos/auth';
 
 import {
   skip, uid, phone, BASE, makeErpTenant, makeMember, makeFollowupTask, cleanup, slugOf,
+  linkProduct,
   contractTest as test,
 } from './helpers.ts';
 
@@ -1379,5 +1380,212 @@ describe('the follow-up screen offers the control and a live countdown (R13, N14
     assert.equal(r.status, 200);
     assert.match(r.body, /data-testid="erp-followup-table"/);
     assert.ok(!/data-testid="followup-assign"/.test(r.body), 'the route would answer 403');
+  });
+});
+
+
+/* =============================================================================
+ * AUDIT.7 — the three fields the parser threw away.
+ *
+ * `FulfillmentOrder.externalProductId`, `externalVariantId` and
+ * `externalOrderAt` exist in the schema and **nothing wrote any of them.**
+ *
+ * The first is the expensive one. `resolveProduct` reads `externalProductId`
+ * FIRST — "a link that resolves DECIDES, including deciding 'this one and not
+ * the name match'" — and that branch was dead for every order ever written.
+ * Every channel order matched by NAME instead, and AUDIT.3 has just made name
+ * matching REFUSE when two catalogue rows share one.
+ *
+ * WHY NO TEST CAUGHT IT, which is the part worth keeping: `delivery.test.ts`
+ * covers the link branch thoroughly and reaches it through a HELPER —
+ * `setOrderExternalProduct` writes the column directly. The branch was proven
+ * correct and unreachable at the same time. **A test that stages the state a
+ * production path is supposed to produce cannot tell you the path produces it.**
+ * These assert the WEBHOOK writes it.
+ * ========================================================================== */
+
+describe('an inbound order keeps the identity the platform sent (AUDIT.7)', () => {
+  test('a Shopify order carries its product id, variant id and store date', async () => {
+    const staged = await makeErpTenant(`ext7-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const created = await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Shopify Ext', platform: 'shopify',
+    });
+    const id = created.body.data.id;
+
+    // Three days ago: what a replayed backlog looks like the day a store is
+    // first connected, and the case where `createdAt` is the wrong date.
+    const storeDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const marker = `Ext Widget ${uid()}`;
+
+    const res = await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shopify-topic': 'orders/create' },
+      body: JSON.stringify({
+        id: 77001, name: '#2042', phone: '0555443322', total_price: '5900.00',
+        created_at: storeDate,
+        shipping_address: { name: 'Yasmine K', address1: 'Rue 9', province: 'Alger', city: 'Kouba' },
+        line_items: [{ name: marker, quantity: 1, price: '5900.00', product_id: 55501, variant_id: 99001 }],
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const orders = await staged.manager.api(
+      'GET', `/api/erp/orders?search=${encodeURIComponent(marker)}`,
+    );
+    const order = orders.body.data.items[0];
+    assert.ok(order, 'the payload produced no order');
+
+    const detail = await staged.manager.api('GET', `/api/erp/orders/${order.id}`);
+    const d = detail.body.data;
+    assert.equal(String(d.externalProductId), '55501', 'the catalogue identity was dropped');
+    assert.equal(String(d.externalVariantId), '99001', 'the variant identity was dropped');
+    assert.ok(d.externalOrderAt, 'the store date was dropped');
+    assert.equal(
+      new Date(d.externalOrderAt).toISOString().slice(0, 10),
+      storeDate.slice(0, 10),
+      'the store date is not the date the customer ordered',
+    );
+  });
+
+  test('a LightFunnels order keeps the same three, from its own envelope', async () => {
+    const staged = await makeErpTenant(`ext7lf-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const created = await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'LF Ext', platform: 'lightfunnels',
+    });
+    const id = created.body.data.id;
+    const marker = `LF Ext ${uid()}`;
+
+    const res = await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        node: {
+          id: `lf_${uid()}`, phone: '0555887766', total: 3000, email: 'a@b.c',
+          created_at: '2026-07-01T09:15:00.000Z',
+          items: [{ title: marker, price: 3000, quantity: 1, product_id: 'lfp_1', variant_id: 'lfv_1' }],
+          shipping_address: { name: 'Sofiane M', province: 'Oran', city: 'Es Senia' },
+        },
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const orders = await staged.manager.api(
+      'GET', `/api/erp/orders?search=${encodeURIComponent(marker)}`,
+    );
+    const detail = await staged.manager.api('GET', `/api/erp/orders/${orders.body.data.items[0].id}`);
+    assert.equal(detail.body.data.externalProductId, 'lfp_1');
+    assert.equal(detail.body.data.externalVariantId, 'lfv_1');
+    assert.ok(detail.body.data.externalOrderAt);
+  });
+
+  test('a payload with none of them still produces an order', async () => {
+    // The forgiving rule this parser is built on: a missing field must never
+    // lose the sale. Most of the nine platforms send none of these.
+    const staged = await makeErpTenant(`ext7bare-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const created = await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Bare', platform: 'custom',
+    });
+    const marker = `Bare Widget ${uid()}`;
+
+    const res = await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${created.body.data.id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: `bare_${uid()}`, phone: '0555110099', total: 1200,
+        line_items: [{ title: marker, quantity: 1 }],
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const orders = await staged.manager.api(
+      'GET', `/api/erp/orders?search=${encodeURIComponent(marker)}`,
+    );
+    const order = orders.body.data.items[0];
+    assert.ok(order, 'a payload without the optional fields lost the order');
+    const detail = await staged.manager.api('GET', `/api/erp/orders/${order.id}`);
+    assert.equal(detail.body.data.externalProductId, null);
+    assert.equal(detail.body.data.externalOrderAt, null, 'an absent date must be null, not now');
+  });
+
+  test('a malformed store date leaves the column null rather than poisoning it', async () => {
+    // An Invalid Date on a DateTime column is either a throw or a row no date
+    // range can ever match. Neither is acceptable for a field a platform
+    // controls and this system does not.
+    const staged = await makeErpTenant(`ext7bad-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const created = await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Bad date', platform: 'custom',
+    });
+    const marker = `Bad Date ${uid()}`;
+
+    const res = await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${created.body.data.id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: `bad_${uid()}`, phone: '0555110098', total: 1200,
+        created_at: 'not a date at all',
+        line_items: [{ title: marker, quantity: 1 }],
+      }),
+    });
+    assert.equal(res.status, 200, 'a malformed date lost the order');
+
+    const orders = await staged.manager.api(
+      'GET', `/api/erp/orders?search=${encodeURIComponent(marker)}`,
+    );
+    const detail = await staged.manager.api('GET', `/api/erp/orders/${orders.body.data.items[0].id}`);
+    assert.equal(detail.body.data.externalOrderAt, null);
+  });
+
+  test('the identity the webhook wrote is what attributes the sale', async () => {
+    /* The whole point, end to end. Two catalogue rows with one name — which
+       AUDIT.3 made attribute to NEITHER — plus a link on one of them, and an
+       order arriving by webhook naming that listing. Before this slice the
+       webhook dropped the id, the name was ambiguous, and both read zero. */
+    const staged = await makeErpTenant(`ext7attr-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Attrib', platform: 'shopify',
+    });
+    const channelId = channel.body.data.id;
+
+    const shared = `Twin Ext ${uid()}`;
+    const mine = (await staged.manager.api('POST', '/api/erp/products', {
+      name: shared, price: 4000, costPrice: 1000, variants: [{ name: 'Solo', stock: 20 }],
+    })).body.data;
+    const theirs = (await staged.manager.api('POST', '/api/erp/products', {
+      name: shared, price: 4000, costPrice: 1000, variants: [{ name: 'Solo', stock: 20 }],
+    })).body.data;
+
+    const externalProductId = `ext-${uid()}`;
+    await linkProduct(staged.tenantId, theirs.id, { externalProductId, salesChannelId: channelId });
+
+    const res = await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channelId}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shopify-topic': 'orders/create' },
+      body: JSON.stringify({
+        id: `attr_${uid()}`, phone: '0555220011', total_price: '4000.00',
+        shipping_address: { name: 'Nadia R', province: 'Alger', city: 'Hydra' },
+        line_items: [{ name: shared, quantity: 1, price: '4000.00', product_id: externalProductId }],
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const orders = await staged.manager.api(
+      'GET', `/api/erp/orders?search=${encodeURIComponent(shared)}`,
+    );
+    const orderId = orders.body.data.items[0].id;
+    // Confirming is what moves the lifetime counters.
+    await staged.manager.api('PATCH', `/api/erp/orders/${orderId}`, { status: 'confirmed' });
+
+    const forMine = (await staged.manager.api('GET', `/api/erp/products/${mine.id}`)).body.data;
+    const forTheirs = (await staged.manager.api('GET', `/api/erp/products/${theirs.id}`)).body.data;
+    assert.equal(forMine.confirmedOrders, 0, 'the unlinked twin took the sale');
+    assert.equal(
+      forTheirs.confirmedOrders, 1,
+      'the linked product did not get the sale — the webhook dropped the id again',
+    );
   });
 });

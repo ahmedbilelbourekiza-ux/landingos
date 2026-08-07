@@ -12,6 +12,92 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### AUDIT.7 Three fields the parser threw away, and a branch that had never run
+
+[Opus 5]
+Date: 7 August 2026
+Summary: the audit's fourteenth finding, and the one with the largest silent
+consequence — a dead code path that AUDIT.3 had just made expensive.
+integrations 75 → **80**.
+
+#### The finding
+
+`FulfillmentOrder.externalProductId`, `externalVariantId` and `externalOrderAt`
+exist in the schema, the last carrying the comment `// was shopifyCreatedAt`.
+**Nothing has ever written any of them.** The parser reads a platform payload,
+takes seven fields out of it and drops these three on the floor.
+
+#### Why the first one is expensive
+
+`resolveProduct` reads `externalProductId` **first**, and its own comment says
+what that means:
+
+> A link that resolves DECIDES, including deciding "this one and not the name
+> match".
+
+**That branch has been dead for every order ever written.** Every channel order
+falls through to matching the catalogue by NAME — and AUDIT.3 had just made name
+matching REFUSE when two catalogue rows share one, because guessing was worse.
+
+So the combined state before this slice: a tenant selling through Shopify with
+two products called "Montre" got **no lifetime counters on either**, and a badge
+telling them to go rename something — while every one of those webhook payloads
+was carrying the `product_id` that resolves it exactly. AUDIT.1 built the link's
+display, AUDIT.3 made the fallback honest, and the identifier that makes the
+fallback unnecessary was being discarded one function earlier.
+
+#### Why no test caught it, which is worth more than the fix
+
+`delivery.test.ts` covers the link branch **thoroughly** — including the sharpest
+case, "an order linked to ANOTHER product is refused, even when the names match".
+It reaches that branch through a helper: `setOrderExternalProduct` writes the
+column directly.
+
+So the branch was proven correct and unreachable at the same time. **A test that
+stages the state a production path is supposed to produce cannot tell you the
+path produces it.** That is a general property of fixture helpers and it is worth
+naming: the helper is what made the coverage look complete.
+
+#### The second: a date that is not the date
+
+`externalOrderAt` is when the CUSTOMER ordered. `createdAt` is when this system
+heard. They are the same second in the good case and hours or days apart in the
+ones that matter — a replayed backlog when a store is first connected, a retried
+webhook, an outage. The legacy stored it. **Losing it means a connected store's
+whole history lands on the day it was connected.**
+
+It is rendered on the order detail **only when it differs from `createdAt` by
+more than a minute**: two dates side by side that always agree is a field people
+stop reading, and the case worth seeing is the one where a week of backlog all
+says "arrived today".
+
+A malformed date leaves the column **null** rather than an Invalid Date, which
+would be either a throw or a row no date range can ever match — and this is a
+field the remote platform controls and we do not.
+
+#### Files
+
+- `apps/website-builder/src/lib/erp/webhooks.ts` — the shape, the generic
+  parser, `externalDate`, and the three columns on the create
+- `apps/website-builder/src/lib/erp/channel-adapters.ts` — both registered
+  adapters, each reading its OWN payload's spelling
+- `apps/website-builder/src/lib/erp/orders.ts` — `ORDER_LIST_SELECT`
+- `apps/website-builder/src/app/console/erp/orders/[id]/page.tsx`
+- `packages/i18n/src/messages/{ar,en,fr}.json` — 1 key × 3
+- `apps/website-builder/test/erp/integrations.test.ts` — 5 regression tests,
+  the last of which drives the whole path: two same-named products, a link on
+  one, a webhook order, and the counter landing on the linked row
+
+**Migration:** none — all three columns already exist. **Risk:** low. Every field
+is optional and absent ones behave exactly as before; the attribution change is a
+strict improvement (an exact id now decides where a name previously refused).
+
+**Not backfilled**, for the reason recorded in AUDIT.1: these are historical
+facts about orders already written, and inventing them from current state would
+produce a different, authoritative-looking number.
+
+---
+
 ### AUDIT.6 Two things an operator could not reach
 
 [Opus 5]

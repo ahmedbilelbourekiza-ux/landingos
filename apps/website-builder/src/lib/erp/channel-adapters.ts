@@ -145,6 +145,14 @@ const shopify: ChannelAdapter = {
       quantity: Number(first.quantity) || 1,
       price: String(body.total_price ?? ""),
       lineItems: items,
+      /* AUDIT.7. Shopify has always sent these and the platform dropped all
+         three. `product_id` is what lets `resolveProduct` take its exact link
+         branch rather than matching by name; `created_at` is when the customer
+         ordered, which differs from when we heard whenever Shopify replays a
+         backlog — exactly what happens the day a store is connected. */
+      externalProductId: first.product_id != null ? String(first.product_id) : null,
+      externalVariantId: first.variant_id != null ? String(first.variant_id) : null,
+      externalOrderAt: body.created_at != null ? String(body.created_at) : null,
     };
   },
 
@@ -254,6 +262,21 @@ const lightfunnels: ChannelAdapter = {
       quantity: Number(first.quantity) || 1,
       price: String(order.total ?? ""),
       lineItems: items,
+      // AUDIT.7, as above. LightFunnels names them differently, which is the
+      // whole reason each adapter reads its own payload rather than sharing a
+      // guess: `product_id` on a LightFunnels item is not Shopify's.
+      externalProductId:
+        first.product_id != null ? String(first.product_id)
+        : first.productId != null ? String(first.productId)
+        : null,
+      externalVariantId:
+        first.variant_id != null ? String(first.variant_id)
+        : first.variantId != null ? String(first.variantId)
+        : null,
+      externalOrderAt:
+        order.created_at != null ? String(order.created_at)
+        : order.createdAt != null ? String(order.createdAt)
+        : null,
     };
   },
 };

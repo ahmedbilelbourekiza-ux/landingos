@@ -76,7 +76,8 @@
       "variant": "Variante",
       "express": "Livraison express",
       "marketer": "Marketeur",
-      "brand": "Marque"
+      "brand": "Marque",
+      "orderedOnStore": "Commandé sur la boutique"
     },
     "row": {
       "overdue": "En retard",
