@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { triggerProductWebhook } from "@/lib/webhooks/tenant-triggers";
 
 export const dynamic = "force-dynamic";
 type Params = { id: string };
@@ -11,7 +12,7 @@ const Body = z.object({
   buttonText: z.string().trim().max(120).optional(),
 });
 
-export const PATCH = tenantRoute<Params>("website-builder:pages:write", async ({ db, req, params }) => {
+export const PATCH = tenantRoute<Params>("website-builder:pages:write", async ({ db, req, params, session, afterCommit }) => {
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");
 
@@ -23,5 +24,12 @@ export const PATCH = tenantRoute<Params>("website-builder:pages:write", async ({
 
   const { count } = await (db as any).landingPage.updateMany({ where: { id: params.id }, data: parsed.data });
   if (count === 0) return apiError(404, "NOT_FOUND", "That page does not exist.");
+
+  // A price change is exactly what a subscribed catalogue cares about (LB.3).
+  const tenantId = session.auth!.tenantId;
+  afterCommit(async () => {
+    triggerProductWebhook("product.updated", tenantId, params.id);
+  });
+
   return apiOk({ id: params.id });
 });

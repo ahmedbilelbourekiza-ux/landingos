@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tenantRoute, apiOk, apiError, pagination } from "@/lib/api/route";
+import { triggerProductWebhook } from "@/lib/webhooks/tenant-triggers";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,7 @@ const CreateLanding = z.object({
   categoryId: z.string().optional().nullable(),
 });
 
-export const POST = tenantRoute("website-builder:pages:write", async ({ db, req, session }) => {
+export const POST = tenantRoute("website-builder:pages:write", async ({ db, req, session, afterCommit }) => {
   const parsed = CreateLanding.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");
@@ -79,6 +80,13 @@ export const POST = tenantRoute("website-builder:pages:write", async ({ db, req,
   const created = await (db as any).landingPage.create({
     data: { ...parsed.data, tenantId: session.auth!.tenantId },
     select: { id: true, title: true, slug: true, status: true },
+  });
+
+  // After commit, or the trigger's own binding would race this transaction
+  // and find no row. Fire-and-forget beyond that point (LB.3).
+  const tenantId = session.auth!.tenantId;
+  afterCommit(async () => {
+    triggerProductWebhook("product.created", tenantId, created.id);
   });
 
   return apiOk(created, { status: 201 });

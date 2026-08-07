@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { encryptToken } from "@/lib/meta/crypto";
 
 export const dynamic = "force-dynamic";
 type Params = { id: string };
@@ -19,7 +20,13 @@ export const PATCH = tenantRoute<Params>("platform:integrations:manage", async (
     return apiError(422, "INSECURE_URL", "A webhook endpoint must use https.");
   }
 
-  const { count } = await (db as any).webhookEndpoint.updateMany({ where: { id: params.id }, data: parsed.data });
+  // A replaced secret is encrypted like a created one; an omitted secret
+  // leaves the stored one untouched.
+  const data = {
+    ...parsed.data,
+    ...(parsed.data.secret ? { secret: encryptToken(parsed.data.secret) } : {}),
+  };
+  const { count } = await (db as any).webhookEndpoint.updateMany({ where: { id: params.id }, data });
   if (count === 0) return apiError(404, "NOT_FOUND", "That endpoint does not exist.");
   return apiOk({ id: params.id });
 });

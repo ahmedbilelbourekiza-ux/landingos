@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { triggerOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 
 export const dynamic = "force-dynamic";
 type Params = { id: string };
@@ -24,7 +25,7 @@ const Body = z.object({
   toStatus: z.enum(["NEW", "CONFIRMED", "PREPARING", "SHIPPED", "DELIVERED", "CANCELLED"]),
 });
 
-export const PATCH = tenantRoute<Params>("website-builder:orders:read", async ({ db, req, params, session }) => {
+export const PATCH = tenantRoute<Params>("website-builder:orders:read", async ({ db, req, params, session, afterCommit }) => {
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return apiError(422, "INVALID_INPUT", "Not a valid order status.");
 
@@ -57,6 +58,16 @@ export const PATCH = tenantRoute<Params>("website-builder:orders:read", async ({
       fromStatus: order.status,
       toStatus: parsed.data.toStatus,
     },
+  });
+
+  // order.updated / order.cancelled were declared and offered to subscribers
+  // since the port, and nothing ever fired them — the status change IS the
+  // update a CRM cares about (LB.3, W-02's class). After commit, so the
+  // trigger's own read sees the new status.
+  const tenantId = session.auth!.tenantId;
+  const event = parsed.data.toStatus === "CANCELLED" ? "order.cancelled" : "order.updated";
+  afterCommit(async () => {
+    triggerOrderWebhook(event, tenantId, params.id);
   });
 
   return apiOk({ id: params.id, status: parsed.data.toStatus });

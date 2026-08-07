@@ -54,8 +54,28 @@ interface VariantSnapshot {
   value: string;
 }
 
+/**
+ * `variants` is a Json column, so Prisma returns the ARRAY; only legacy rows
+ * hold a serialized string. JSON.parse-ing the array threw and silently
+ * emptied every payload's variant list (same class as W-01).
+ */
+function parseVariants(value: unknown): VariantSnapshot[] {
+  let parsed = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(parsed)
+    ? parsed.filter((v): v is VariantSnapshot => Boolean(v && typeof v === "object"))
+    : [];
+}
+
 export interface OrderWithLanding {
   id: string;
+  tenantId: string;
   customerName: string;
   phone: string;
   wilaya: string;
@@ -63,7 +83,7 @@ export interface OrderWithLanding {
   address: string;
   notes: string | null;
   quantity: number;
-  variants: string;
+  variants: unknown;
   productPrice: { toNumber(): number };
   shippingPrice: { toNumber(): number };
   totalPrice: { toNumber(): number };
@@ -83,12 +103,7 @@ export async function buildOrderPayload(order: OrderWithLanding) {
   const currency = landing?.currency ?? "DZD";
   const { first, last } = splitName(order.customerName);
 
-  let variants: VariantSnapshot[] = [];
-  try {
-    variants = JSON.parse(order.variants) as VariantSnapshot[];
-  } catch {
-    variants = [];
-  }
+  const variants = parseVariants(order.variants);
 
   const productPrice = order.productPrice.toNumber();
   const shippingPrice = order.shippingPrice.toNumber();
@@ -235,13 +250,14 @@ export async function buildOrderPayload(order: OrderWithLanding) {
 
 export interface DraftWithLanding {
   id: string;
+  tenantId: string;
   token: string;
   customerName: string | null;
   phone: string | null;
   wilaya: string | null;
   baladia: string | null;
   quantity: number;
-  variants: string;
+  variants: unknown;
   productPrice: { toNumber(): number } | null;
   shippingPrice: { toNumber(): number } | null;
   totalPrice: { toNumber(): number } | null;
@@ -274,12 +290,7 @@ export async function buildDraftOrderPayload(draft: DraftWithLanding) {
     ? splitName(draft.customerName)
     : { first: "", last: "" };
 
-  let variants: VariantSnapshot[] = [];
-  try {
-    variants = JSON.parse(draft.variants) as VariantSnapshot[];
-  } catch {
-    variants = [];
-  }
+  const variants = parseVariants(draft.variants);
 
   const productPrice = draft.productPrice?.toNumber() ?? 0;
   const shippingPrice = draft.shippingPrice?.toNumber() ?? 0;

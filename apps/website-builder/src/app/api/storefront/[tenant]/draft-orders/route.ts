@@ -42,12 +42,16 @@ export async function POST(
   const { token, landingPageId, ...fields } = parsed.data;
 
   try {
-    await withTenant(tenant.id, async (db) => {
+    // The event is decided INSIDE the transaction and fired AFTER it returns:
+    // the trigger re-reads through its own binding — a separate connection —
+    // so fired from in here it would race the commit and find no row, and the
+    // webhook would silently never send (W-01's quieter sibling).
+    const fire = await withTenant(tenant.id, async (db) => {
       const page = await (db as any).landingPage.findFirst({
         where: { id: landingPageId, published: true },
         select: { id: true },
       });
-      if (!page) return;
+      if (!page) return null;
 
       const draft = await (db as any).draftOrder.upsert({
         where: { token },
@@ -56,17 +60,21 @@ export async function POST(
         select: { id: true, notifiedAt: true },
       });
 
-      // Exactly once per visitor, however many times they edit the form.
-      // notifiedAt is what makes that true — without it a customer typing
-      // their phone number slowly would fire a dozen leads at the CRM.
+      // `draft_order.created` exactly once per visitor — notifiedAt is the
+      // guard. Later captures are `draft_order.updated`: an opt-in event for
+      // receivers that want to watch a lead warm up. The client debounces and
+      // skips identical snapshots, which bounds the volume.
       if (!draft.notifiedAt) {
         await (db as any).draftOrder.update({
           where: { id: draft.id },
           data: { notifiedAt: new Date() },
         });
-        triggerDraftOrderWebhook("draft_order.created", tenant.id, draft.id);
+        return { event: "draft_order.created" as const, id: draft.id };
       }
+      return { event: "draft_order.updated" as const, id: draft.id };
     });
+
+    if (fire) triggerDraftOrderWebhook(fire.event, tenant.id, fire.id);
   } catch (error) {
     console.error("[storefront] draft capture failed", error);
   }

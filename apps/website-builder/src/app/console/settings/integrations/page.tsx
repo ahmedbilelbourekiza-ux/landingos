@@ -10,6 +10,9 @@ import { getTranslations } from "next-intl/server";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
+import { WebhookCreatePanel, WebhookRowActions } from "@/components/console/platform/webhook-write";
+import { WEBHOOK_EVENTS, WEBHOOK_EVENT_LABELS } from "@/lib/webhooks/events";
+import { actionErrors } from "@/lib/console/action-errors";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +36,13 @@ export default async function IntegrationsPage() {
   const raw = await getLocale();
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
   const mayManage = can(session.auth, "platform:integrations:manage");
+  const errors = actionErrors(t);
+  // The event vocabulary the delivery layer filters on, offered as-is — a
+  // second list here would go stale the day an event is added (D-LP.3's rule).
+  const eventOptions = WEBHOOK_EVENTS.map((value) => ({
+    value,
+    label: WEBHOOK_EVENT_LABELS[value],
+  }));
 
   const [webhooks, pixels] = await withTenant(session.auth.tenantId, async (db) => [
     await (db as any).webhookEndpoint.findMany({
@@ -114,8 +124,22 @@ export default async function IntegrationsPage() {
               </span>
             ),
           },
+          // The controls exist only where the API would accept them (D-06.2):
+          // the manage permission is what POST/PATCH/DELETE check.
+          ...(mayManage
+            ? [
+                {
+                  id: "actions",
+                  header: "",
+                  cell: (w: any) => (
+                    <WebhookRowActions id={w.id} isActive={w.isActive} errors={errors} />
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
+      {mayManage && <WebhookCreatePanel events={eventOptions} errors={errors} />}
 
       <h2 className="mt-10 text-sm font-medium uppercase tracking-wide text-muted-foreground">
         Meta pixels

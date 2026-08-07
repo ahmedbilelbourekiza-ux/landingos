@@ -15,6 +15,11 @@ export const WEBHOOK_EVENTS = [
   "product.created",
   "product.updated",
   "product.deleted",
+  // The page lifecycle. Distinct from product.updated because going live is
+  // the one change with a public consequence — an automation that reacts to
+  // "my page is selling now" must not have to diff product payloads to see it.
+  "page.published",
+  "page.unpublished",
 ] as const;
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
@@ -33,4 +38,6 @@ export const WEBHOOK_EVENT_LABELS: Record<WebhookEvent, string> = {
   "product.created": "Product created",
   "product.updated": "Product updated (incl. price)",
   "product.deleted": "Product deleted",
+  "page.published": "Landing page published (went live)",
+  "page.unpublished": "Landing page unpublished (taken down)",
 };

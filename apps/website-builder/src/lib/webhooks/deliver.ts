@@ -4,6 +4,21 @@ import { withTenant } from "@landingos/db";
 import { decryptToken } from "@/lib/meta/crypto";
 import type { WebhookEvent } from "./events";
 
+/**
+ * The stored signing secret, whichever way it was stored. Secrets are
+ * encrypted at rest on every write path NOW — but the first platform port
+ * wrote them as plaintext (encryptToken had zero callers, BUILDER_AUDIT), so
+ * rows from that era do not carry the `iv:tag:ciphertext` shape and
+ * decryptToken throws on them. A value that does not look encrypted IS the
+ * secret. It came from the same column either way, so this widens nothing.
+ */
+function revealSecret(stored: string): string {
+  if (/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/i.test(stored)) {
+    return decryptToken(stored);
+  }
+  return stored;
+}
+
 // Outgoing webhook delivery: signing, retries, and logging.
 //
 // Every payload is signed with HMAC-SHA256 over the exact JSON body using the
@@ -42,16 +57,32 @@ interface EndpointRow {
   label: string;
   url: string;
   secret: string;
-  events: string;
+  /** Prisma Json column — an ARRAY at runtime, or a string on legacy rows. */
+  events: unknown;
+}
+
+/**
+ * The subscribed-events column is Json, so Prisma returns the VALUE — an
+ * array. The first platform build called JSON.parse on it, which throws on an
+ * array, was caught, and answered false: every endpoint therefore "subscribed
+ * to nothing" and no webhook was ever delivered (BUILDER_AUDIT W-01). Strings
+ * are still parsed for rows written by the pre-platform app, which stored the
+ * list serialized.
+ */
+export function subscribedEvents(events: unknown): string[] {
+  let value = events;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(value) ? value.map(String) : [];
 }
 
 function subscribesTo(endpoint: EndpointRow, event: WebhookEvent): boolean {
-  try {
-    const events = JSON.parse(endpoint.events) as unknown;
-    return Array.isArray(events) && events.includes(event);
-  } catch {
-    return false;
-  }
+  return subscribedEvents(endpoint.events).includes(event);
 }
 
 async function deliverToEndpoint(
@@ -63,7 +94,7 @@ async function deliverToEndpoint(
 ): Promise<void> {
   let secret: string;
   try {
-    secret = decryptToken(endpoint.secret);
+    secret = revealSecret(endpoint.secret);
   } catch (error) {
     console.error(`[webhooks] endpoint "${endpoint.label}": cannot decrypt secret`, error);
     await logDelivery(tenantId, endpoint.id, event, resourceId, false, null, 1, "Secret could not be decrypted");
@@ -73,8 +104,10 @@ async function deliverToEndpoint(
   const signature = signPayload(body, secret);
   let lastStatus: number | null = null;
   let lastError: string | null = null;
+  let attemptsMade = 0;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    attemptsMade = attempt;
     try {
       const res = await fetch(endpoint.url, {
         method: "POST",
@@ -112,7 +145,9 @@ async function deliverToEndpoint(
   console.error(
     `[webhooks] endpoint "${endpoint.label}" failed ${event} for ${resourceId}: ${lastError}`,
   );
-  await logDelivery(tenantId, endpoint.id, event, resourceId, false, lastStatus, MAX_ATTEMPTS, lastError);
+  // The attempts ACTUALLY made — a 4xx breaks after one, and a log claiming
+  // three would tell the operator their receiver was hammered when it was not.
+  await logDelivery(tenantId, endpoint.id, event, resourceId, false, lastStatus, attemptsMade, lastError);
 }
 
 async function logDelivery(
@@ -145,6 +180,63 @@ async function logDelivery(
   } catch (err) {
     console.error("[webhooks] failed to record delivery log:", err);
   }
+}
+
+/**
+ * One signed delivery attempt, awaited, no retries — for the console's "send
+ * test" button, where the operator is watching and owed the real answer now.
+ * Runs OUTSIDE any tenant transaction (callers use afterCommit): it talks to
+ * somebody else's server, and D-LP.5.1 applies to every outbound call.
+ *
+ * The payload says what it is. A receiver that treats `test` like a real
+ * order was going to do that with a replayed real event too; sending a
+ * clearly-marked ping is the honest way to prove connectivity + signature.
+ */
+export async function sendTestDelivery(
+  tenantId: string,
+  endpoint: { id: string; label: string; url: string; secret: string },
+): Promise<{ ok: boolean; statusCode: number | null; error: string | null }> {
+  let secret: string;
+  try {
+    secret = revealSecret(endpoint.secret);
+  } catch {
+    return { ok: false, statusCode: null, error: "The stored secret could not be decrypted." };
+  }
+
+  const body = JSON.stringify({
+    event: "test",
+    created_at: new Date().toISOString(),
+    data: {
+      message: "LandingOS webhook test — verify the HMAC over this exact raw body.",
+      endpoint_id: endpoint.id,
+    },
+  });
+
+  let statusCode: number | null = null;
+  let error: string | null = null;
+  try {
+    const res = await fetch(endpoint.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-LandingOS-Topic": "test",
+        "X-LandingOS-Hmac-SHA256": signPayload(body, secret),
+        "X-LandingOS-Resource-Id": endpoint.id,
+        "X-LandingOS-Delivery-Attempt": "1",
+        "User-Agent": "LandingOS-Webhooks/1.0",
+      },
+      body,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    statusCode = res.status;
+    if (!res.ok) error = `HTTP ${res.status}`;
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+  }
+
+  const ok = statusCode !== null && statusCode >= 200 && statusCode < 300;
+  await logDelivery(tenantId, endpoint.id, "test", endpoint.id, ok, statusCode, 1, error);
+  return { ok, statusCode, error };
 }
 
 // Fire-and-forget entry point. Callers must NOT await this on a

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { encryptToken } from "@/lib/meta/crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,14 @@ export const POST = tenantRoute("platform:integrations:manage", async ({ db, req
   }
 
   const created = await (db as any).webhookEndpoint.create({
-    data: { ...parsed.data, tenantId: session.auth!.tenantId },
+    // Encrypted at rest, as the schema has always claimed. The port stored it
+    // in plaintext while the delivery layer decrypted — so signing failed on
+    // every row this route ever wrote (BUILDER_AUDIT, LB.3).
+    data: {
+      ...parsed.data,
+      secret: encryptToken(parsed.data.secret),
+      tenantId: session.auth!.tenantId,
+    },
   });
   return apiOk(mask(created), { status: 201 });
 });

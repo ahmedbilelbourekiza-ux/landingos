@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { triggerProductWebhook } from "@/lib/webhooks/tenant-triggers";
 
 export const dynamic = "force-dynamic";
 type Params = { id: string };
@@ -11,7 +12,7 @@ const Body = z.object({ published: z.boolean().optional() });
  * one edit with a public consequence, and it carries its own permission —
  * someone may be trusted to draft a page without being trusted to put it live.
  */
-export const POST = tenantRoute<Params>("website-builder:pages:publish", async ({ db, req, params }) => {
+export const POST = tenantRoute<Params>("website-builder:pages:publish", async ({ db, req, params, session, afterCommit }) => {
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   const publish = parsed.success ? parsed.data.published ?? true : true;
 
@@ -31,6 +32,13 @@ export const POST = tenantRoute<Params>("website-builder:pages:publish", async (
     data: publish
       ? { status: "PUBLISHED", published: true }
       : { status: "DRAFT", published: false },
+  });
+
+  // The lifecycle event, after commit (LB.3). Going live is the one page
+  // change an automation most wants to react to.
+  const tenantId = session.auth!.tenantId;
+  afterCommit(async () => {
+    triggerProductWebhook(publish ? "page.published" : "page.unpublished", tenantId, params.id);
   });
 
   return apiOk({ id: params.id, status: publish ? "PUBLISHED" : "DRAFT", published: publish });

@@ -1,4 +1,5 @@
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { triggerProductDeletedWebhook } from "@/lib/webhooks/tenant-triggers";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +30,25 @@ export const GET = tenantRoute<Params>("website-builder:read", async ({ db, para
   return apiOk(page);
 });
 
-export const DELETE = tenantRoute<Params>("website-builder:pages:write", async ({ db, params }) => {
+export const DELETE = tenantRoute<Params>("website-builder:pages:write", async ({ db, params, session, afterCommit }) => {
+  // The webhook payload is built from a snapshot taken BEFORE the delete —
+  // there is no row to re-read afterwards (LB.3).
+  const snapshot = await (db as any).landingPage.findUnique({
+    where: { id: params.id },
+    include: {
+      media: { orderBy: { displayOrder: "asc" } },
+      variants: { orderBy: { displayOrder: "asc" } },
+      category: { select: { name: true } },
+    },
+  });
+
   const { count } = await (db as any).landingPage.deleteMany({ where: { id: params.id } });
   if (count === 0) return apiError(404, "NOT_FOUND", "That page does not exist.");
+
+  const tenantId = session.auth!.tenantId;
+  afterCommit(async () => {
+    if (snapshot) triggerProductDeletedWebhook(tenantId, snapshot);
+  });
+
   return apiOk({ id: params.id });
 });
