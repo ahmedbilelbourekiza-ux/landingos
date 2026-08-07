@@ -1,8 +1,10 @@
 import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { SESSION_COOKIE } from '@landingos/auth';
+
 import {
-  skip, phone, makeErpTenant, makeMember, makeFollowupTask, backdateOrder,
+  skip, phone, BASE, makeErpTenant, makeMember, makeFollowupTask, backdateOrder,
   setSubscriptionStatus, WORKER_SECRET, cleanup,
   contractTest as test,
 } from './helpers.ts';
@@ -336,6 +338,87 @@ describe('the worker tick', () => {
       (listed.body.data.items as any[]).find((t) => t.id === lapsedTask.id)?.status,
       'open',
       "a cancelled subscription's scheduled work still ran",
+    );
+  });
+});
+
+/* =============================================================================
+ * AUDIT.6 — a route whose own comment states an operator need, with no operator
+ * path to it.
+ *
+ * `POST /api/erp/jobs/[job]` has existed since M-15. Its comment says "a manager
+ * needs to be able to say 'run it now' after changing a threshold" and, on the
+ * response, "whoever pressed 'run it now' is owed the result". **No screen has
+ * ever called it** — it was reachable by typing a URL, which is a thing an
+ * engineer can do, not a workflow.
+ *
+ * The general form is the one this audit keeps finding: an endpoint existing is
+ * not the same as a workflow existing. These assert the CONTROL, not the route,
+ * because the route was already fine.
+ * ========================================================================== */
+
+describe('a manager can run a rule from the screen that configures it', () => {
+  const screen = async (token: string) => {
+    const res = await fetch(`${BASE}/console/erp/automation`, {
+      redirect: 'manual',
+      headers: { cookie: `${SESSION_COOKIE}=${token}; locale=en` },
+    });
+    return { status: res.status, body: await res.text() };
+  };
+
+  test('the automation screen offers every job the route accepts', async () => {
+    const r = await screen(acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="job-runner"/, 'the automation screen has no job controls');
+
+    // The route's own vocabulary, asserted one by one. A control for a job the
+    // route would 404 on, or a job with no control, both fail here — which is
+    // the D-LP.3 guarantee the shared `JOBS` import is supposed to give.
+    for (const job of ['followup-escalation', 'overdue-sweep', 'tracking-poll', 'stale-orders']) {
+      assert.ok(
+        r.body.includes(`data-job="${job}"`),
+        `no control runs "${job}", which the route accepts`,
+      );
+    }
+  });
+
+  test('the controls name the same jobs the route accepts, and no others', async () => {
+    const r = await screen(acme.manager.token);
+    const offered = [...r.body.matchAll(/data-job="([a-z-]+)"/g)].map((m) => m[1]);
+    const unique = [...new Set(offered)];
+    assert.ok(unique.length >= 4, `only ${unique.length} jobs are offered`);
+
+    // Every offered job must be one the route runs rather than 404s.
+    for (const job of unique) {
+      const res = await acme.manager.api('POST', `/api/erp/jobs/${job}`, {});
+      assert.equal(res.status, 200, `the screen offers "${job}" and the route refuses it`);
+    }
+  });
+
+  test('an agent is not offered the controls, because the route would refuse', async () => {
+    // D-06.2. `erp:settings:write` is what the route checks and what the screen
+    // requires, so an agent gets neither the page nor the buttons.
+    const r = await screen(acme.agent.token);
+    assert.equal(r.status, 404);
+  });
+});
+
+describe('the staff roster says where a person is added', () => {
+  test('the ERP agents screen points at the team screen', async () => {
+    const res = await fetch(`${BASE}/console/erp/agents`, {
+      redirect: 'manual',
+      headers: { cookie: `${SESSION_COOKIE}=${acme.manager.token}; locale=en` },
+    });
+    const body = await res.text();
+    assert.equal(res.status, 200);
+    // Adding a person IS a platform action (M-02) and the button belongs
+    // elsewhere. The defect was that the reasoning lived in a source comment: an
+    // operator saw a roster with no way to add to it and no sentence saying why.
+    assert.match(body, /data-testid="agents-add-hint"/, 'the roster explains nothing');
+    assert.match(
+      body,
+      /href="\/console\/settings\/team"/,
+      'the roster does not link to where a person is actually added',
     );
   });
 });

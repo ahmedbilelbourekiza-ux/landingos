@@ -12,6 +12,82 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### AUDIT.6 Two things an operator could not reach
+
+[Opus 5]
+Date: 7 August 2026
+Summary: the audit's twelfth and thirteenth findings, both of the same shape and
+both found by applying AUDIT.5's lesson one question further — **an endpoint
+existing is not a workflow existing.** jobs 27 → **31**.
+
+#### A12 — "Run it now", with nothing to press
+
+`POST /api/erp/jobs/[job]` has existed since M-15. **No screen has ever called
+it.** Its own comment states the operator need it was built for:
+
+> A manager needs to be able to say "run it now" after changing a threshold,
+> rather than waiting out an interval to see what it does.
+
+and, on the response:
+
+> whoever pressed "run it now" is owed the result.
+
+There was no "run it now" to press. The route was reachable by typing a URL,
+which is a thing an engineer can do — not a workflow. `access.test.ts` covered it
+and the jobs suite drove it; both were testing a door with no corridor to it.
+
+It belongs on the **automation** screen and nowhere else, because every job acts
+on a rule configured directly above it: the escalation interval, the overdue
+threshold, the poll cadence, the stale window. Changing a number and watching
+what it does is one act, and splitting it across two screens is how a manager
+ends up not checking.
+
+The list is `JOBS`, imported from the module the route validates against —
+D-LP.3. A second list here would go stale the moment a job is added, and it would
+fail as a button that 404s. **The test asserts both directions**: every job the
+route accepts has a control, and every control the screen offers is a job the
+route actually runs.
+
+#### A13 — a roster with no way to add to it, and no sentence saying why
+
+`/console/erp/agents` lists the staff and has no "add a person" control. **That
+is correct** — inviting somebody is a platform action (M-02), and routing it
+through a product would give every product a way to create accounts in every
+other one.
+
+The defect is that the reasoning lived in a **source comment**. An operator
+standing on the staff roster saw a table, no button, and nothing at all
+explaining where people come from; the legacy has "Add agent" right there. It is
+LP.17's defect inverted — a nav item that led to a 404 versus a screen with a
+missing signpost — and it fails the same way: the capability exists and nobody
+finds it.
+
+There is a sentence now, and **D-06.2 decides whether it carries a link**.
+`platform:team:*` is on the SENSITIVE list, so `erp:agents:manage` does not carry
+it: somebody granted the roster by name would otherwise be sent to a screen that
+404s at them.
+
+#### The method, stated because it is what found both
+
+AUDIT.5's lesson was *read the source a deferral claims to be about*. This is the
+next question along: **for every route, which screen calls it?** Two answered
+"none" while their own comments described an operator pressing a button. Grep the
+route path across `.tsx` — an empty result on a route documented as an operator
+action is the finding.
+
+#### Files
+
+- `apps/website-builder/src/components/console/erp/job-runner.tsx` (new)
+- `apps/website-builder/src/app/console/erp/automation/page.tsx`
+- `apps/website-builder/src/app/console/erp/agents/page.tsx`
+- `packages/i18n/src/messages/{ar,en,fr}.json` — 8 keys × 3
+- `apps/website-builder/test/erp/jobs.test.ts` — 4 regression tests
+
+**Migration:** none. **Risk:** none — no route, permission or calculation
+changed. Both are paths to things that already worked.
+
+---
+
 ### AUDIT.5 The Test Connection button, and a reason that did not survive re-reading
 
 [Opus 5]

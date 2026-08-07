@@ -264,7 +264,9 @@
       "resetMissed": "Remettre à zéro",
       "suspicious": "Appels signalés",
       "payroll": "Paie de la période",
-      "payrollHint": "Le salaire est proratisé selon la règle de période ; la paie à la commande compte ce qui s’est réellement passé."
+      "payrollHint": "Le salaire est proratisé selon la règle de période ; la paie à la commande compte ce qui s’est réellement passé.",
+      "addElsewhere": "Les personnes sont ajoutées à l'entreprise sur l'écran d'équipe, pas ici — cet écran définit le rôle de chacun et sa rémunération.",
+      "goToTeam": "Aller à l'écran d'équipe"
     },
     "write": {
       "readOnly": "Vous pouvez consulter cette commande, pas la modifier.",
@@ -609,6 +611,17 @@
       "rowsTotal": "Lignes",
       "previewFirst": "Faites d'abord un aperçu.",
       "done": "Importé"
+    },
+    "jobs": {
+      "title": "Exécuter une règle maintenant",
+      "hint": "Ces règles s'exécutent normalement sur une minuterie. Appuyez sur l'une d'elles pour l'appliquer immédiatement après avoir modifié un seuil ci-dessus, et voir ce qu'elle a fait.",
+      "runNow": "Exécuter",
+      "name": {
+        "followup-escalation": "Escalader les relances",
+        "overdue-sweep": "Balayer les commandes en retard",
+        "tracking-poll": "Interroger les transporteurs",
+        "stale-orders": "Signaler les commandes dormantes"
+      }
     }
   },
   "status": {

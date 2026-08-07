@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *AUDIT.5: the Test Connection button, and a reason that did not survive re-reading*
+**Branch:** `master` · **Last commit:** *AUDIT.6: two things an operator could not reach*
 **Working tree:** clean, all work committed.
 
 ---
@@ -90,6 +90,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **AUDIT.3** a duplicated product name attributes to neither row, visibly | — | **DONE** — screens 167→169 |
 | **AUDIT.4** a `t()` key that existed only in code, and the scan that closes the class | — | **DONE** — i18n 18→20 |
 | **AUDIT.5** AI provider Test Connection + integration log — two columns whose writer the port left behind | — | **DONE** — ai 20→31, access 201→203 |
+| **AUDIT.6** "run it now" had no button; the roster did not say where people come from | — | **DONE** — jobs 27→31 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -1009,6 +1010,32 @@ claim (`lastPolledAt`) is committed in its own short transaction BEFORE the
 network call, and both callers changed as N17 predicted: the route runs it
 through `afterCommit`, the worker's tick no longer wraps it. There is still
 exactly one ingest path — the poll composes `refreshShipmentForOrder`.
+
+### AUDIT.6 — two things an operator could not reach
+
+Both found by asking AUDIT.5's next question: **for every route, which screen
+calls it?**
+
+**A12.** `POST /api/erp/jobs/[job]` has existed since M-15 and **no screen has
+ever called it** — while its own comment says "a manager needs to be able to say
+'run it now' after changing a threshold" and its response comment says "whoever
+pressed 'run it now' is owed the result". There was no "run it now" to press.
+`access.test.ts` covered it and the jobs suite drove it; both were testing a door
+with no corridor to it. It is on the AUTOMATION screen now, because every job
+acts on a rule configured directly above it, and the button list is the route's
+own `JOBS` import rather than a copy.
+
+**A13.** The ERP staff roster has no "add a person" control, which is CORRECT —
+inviting somebody is a platform action (M-02). The defect is that the reasoning
+lived in a source comment: an operator saw a table, no button, and no sentence.
+It is LP.17's defect inverted — a nav item leading to a 404 versus a screen with
+a missing signpost — and it fails the same way. The sentence carries a link only
+where `platform:team:read` holds, because `erp:agents:manage` does not carry it
+and the alternative is sending somebody to a screen that 404s at them.
+
+**An endpoint existing is not a workflow existing.** Grep a route path across
+`.tsx`; an empty result on a route documented as an operator action is the
+finding.
 
 ### AUDIT.5 — the Test Connection button, and a reason that did not survive re-reading
 
@@ -2004,7 +2031,7 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 982 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 986 | all pass against a running server |
 | `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
 | `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
@@ -2012,7 +2039,7 @@ fail without it, so check the counts, not just the exit code.
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 20 | all pass — including a scan of every `t("literal")` in the console source |
-| **Total** | **1640** | green per suite |
+| **Total** | **1644** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

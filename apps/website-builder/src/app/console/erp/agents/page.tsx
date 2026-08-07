@@ -101,6 +101,27 @@ export default async function ErpAgentsScreen() {
     <ConsoleShell session={session} productId="erp">
       <h1 className="text-xl font-semibold">{t("erp.agents.title")}</h1>
 
+      {/* AUDIT.6. Adding a person genuinely is a platform action (M-02) and this
+          screen was right not to have the button — but the reason lived in a
+          source comment, and an operator standing on the staff roster with no
+          button and no sentence has a workflow they cannot find. The legacy has
+          "Add agent" right here.
+
+          D-06.2 decides whether it is a LINK or just the sentence: `platform:team:*`
+          is SENSITIVE, so `erp:agents:manage` does not carry it. Somebody granted
+          the roster by name would otherwise be sent to a screen that 404s. */}
+      <p className="mt-1 text-sm text-muted-foreground" data-testid="agents-add-hint">
+        {t("erp.agents.addElsewhere")}
+        {can(session.auth, "platform:team:read") && (
+          <>
+            {" "}
+            <Link href="/console/settings/team" className="underline underline-offset-2">
+              {t("erp.agents.goToTeam")}
+            </Link>
+          </>
+        )}
+      </p>
+
       <DataTable
         testId="erp-agents-table"
         empty={t("erp.agents.none")}

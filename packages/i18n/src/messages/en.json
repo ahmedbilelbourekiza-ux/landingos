@@ -264,7 +264,9 @@
       "resetMissed": "Reset counter",
       "suspicious": "Flagged calls",
       "payroll": "Pay for this period",
-      "payrollHint": "Salary is prorated by the period rule; per-order pay counts what actually happened in it."
+      "payrollHint": "Salary is prorated by the period rule; per-order pay counts what actually happened in it.",
+      "addElsewhere": "People are added to the company on the team screen, not here — this screen sets what each person does and what they are paid.",
+      "goToTeam": "Go to the team screen"
     },
     "write": {
       "readOnly": "You can read this order but not change it.",
@@ -609,6 +611,17 @@
       "rowsTotal": "Rows",
       "previewFirst": "Preview first.",
       "done": "Imported"
+    },
+    "jobs": {
+      "title": "Run a rule now",
+      "hint": "These normally run on a timer. Press one to apply it immediately after changing a threshold above, and see what it did.",
+      "runNow": "Run now",
+      "name": {
+        "followup-escalation": "Escalate follow-ups",
+        "overdue-sweep": "Sweep overdue orders",
+        "tracking-poll": "Poll carriers",
+        "stale-orders": "Flag stale orders"
+      }
     }
   },
   "status": {

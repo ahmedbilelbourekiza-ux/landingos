@@ -14,6 +14,9 @@ import {
 import { structuredStrings, readFixedCostRows, readChannelCarriers } from "@/lib/console/erp-strings";
 import type { SettingField } from "@/components/console/setting-field";
 import { readSettings, SETTINGS_SCHEMA } from "@/lib/erp/settings";
+import { JobRunner } from "@/components/console/erp/job-runner";
+// The route's own list, not a copy — D-LP.3. A job added there appears here.
+import { JOBS } from "@/lib/erp/jobs";
 
 export const dynamic = "force-dynamic";
 
@@ -160,6 +163,24 @@ export default async function ErpAutomationScreen() {
         channels={channels}
         carriers={carriers.map((c) => ({ code: c.code!, name: c.name }))}
         value={channelCarriers}
+      />
+
+      {/* AUDIT.6. `POST /api/erp/jobs/[job]` was reachable only by typing a URL,
+          and its own comment says why it exists: "a manager needs to be able to
+          say 'run it now' after changing a threshold". Here, because every job
+          acts on a rule configured directly above it. D-06.2: this screen
+          already requires `erp:settings:write`, which is exactly what the route
+          checks. */}
+      <JobRunner
+        jobs={JOBS}
+        errors={actionErrors(t)}
+        s={{
+          title: t("erp.jobs.title"),
+          hint: t("erp.jobs.hint"),
+          runNow: t("erp.jobs.runNow"),
+          running: t("common.saving"),
+          labels: Object.fromEntries(JOBS.map((j) => [j, t(`erp.jobs.name.${j}`)])),
+        }}
       />
     </ConsoleShell>
   );
