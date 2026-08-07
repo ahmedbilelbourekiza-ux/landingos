@@ -1690,6 +1690,34 @@ time, so every unlisted route was correctly gated. The inventory now derives
 itself from the route files, which is the same general form LP.17 applied to
 navigation.
 
+
+### What the fourth pass left behind, which matters more than its findings
+
+Three of the questions it asked are now TESTS, so the next pass starts where this
+one finished rather than re-deriving it:
+
+| Question | Where it is asked now | Found on the way in |
+|---|---|---|
+| Does every route the console needs actually check a permission? | `test/erp/access.test.ts` — the inventory DERIVES itself from the route files | A8: the hand-written list was 34 routes short |
+| Does every key the code asks for exist in every locale? | `packages/i18n/test/messages.test.ts` — scans every `t("literal")` in the console source | A10: a render-time 500 in the default locale |
+| **Which columns does something declare that nothing names?** | `packages/db/test/orphans.test.ts` (AUDIT.8) | **Nine, all in the PLATFORM schema** — which this pass's own by-hand sweep never covered, because it read `erp.prisma` and stopped |
+
+The third is the one worth having. It is the shape of **eight** serious defects
+across this project: BUG-02, `IntegrationLog`, `OrderCall.suspicious`,
+`fakeReason`, A5, A7, A11 and A14. Every one was found by a person asking. It is
+asked on every run now, and its exemption list may only say **DEAD BOTH SIDES**
+(the legacy does not use it either) or **AHEAD OF A FEATURE** naming the work —
+an entry that cannot name the work is a finding, not an exemption.
+
+**None of AUDIT.8's nine is an ERP parity gap.** The legacy is single-tenant,
+sells nothing and has no custom domains; all nine are platform columns waiting on
+platform work, and they are listed in NEXT_STEPS with what would reference them.
+
+**What none of the three can see is stated in each file rather than implied** —
+a runtime-built translation key, a webhook route by design, a column read but
+never written when both are the same identifier. The cheap half of each question
+is mechanical now; the expensive half stays a thing a person asks.
+
 ### What the audit checked and found NOT to be gaps
 
 - Every one of the legacy's **15 screens** has a platform home, including the
