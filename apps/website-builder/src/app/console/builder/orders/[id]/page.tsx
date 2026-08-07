@@ -8,6 +8,7 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 
 import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageBody } from "@/components/console/ui/primitives";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +85,7 @@ export default async function OrderDetailPage({
 
   return (
     <ConsoleShell session={session} productId="website-builder">
+      <PageBody>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{order.customerName}</h1>
@@ -178,6 +180,7 @@ export default async function OrderDetailPage({
           )}
         </section>
       </div>
+      </PageBody>
     </ConsoleShell>
   );
 }

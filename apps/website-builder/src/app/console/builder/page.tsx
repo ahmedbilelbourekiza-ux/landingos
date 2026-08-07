@@ -5,6 +5,7 @@ import { formatMoney, formatNumber, isLocale, DEFAULT_LOCALE } from "@landingos/
 
 import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageBody } from "@/components/console/ui/primitives";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +72,7 @@ export default async function BuilderOverview() {
 
   return (
     <ConsoleShell session={session} productId="website-builder">
+      <PageBody>
       <h1 className="text-xl font-semibold">{session.tenant?.name}</h1>
       <p className="mt-1 text-sm text-muted-foreground">{t("product.websiteBuilder.description")}</p>
 
@@ -98,6 +100,7 @@ export default async function BuilderOverview() {
           hint={t("status.salesOrder.delivered")}
         />
       </div>
+      </PageBody>
     </ConsoleShell>
   );
 }

@@ -4,7 +4,7 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 
 import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable, StatusPill } from "@/components/console/data-table";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +32,7 @@ export default async function BuilderOrdersScreen() {
 
   return (
     <ConsoleShell session={session} productId="website-builder">
+      <PageBody>
       <PageHeader title={t("builder.nav.orders")} />
       <DataTable
         testId="orders-table"
@@ -102,6 +103,7 @@ export default async function BuilderOrdersScreen() {
           },
         ]}
       />
+      </PageBody>
     </ConsoleShell>
   );
 }

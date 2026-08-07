@@ -6,7 +6,7 @@ import { can } from "@landingos/auth";
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { SettingsForm } from "@/components/console/erp/settings-form";
 import {
   FixedCostsEditor,
@@ -134,6 +134,7 @@ export default async function ErpAutomationScreen() {
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       <PageHeader title={t("erp.settings.title")} />
 
       <SettingsForm
@@ -183,6 +184,7 @@ export default async function ErpAutomationScreen() {
           labels: Object.fromEntries(JOBS.map((j) => [j, t(`erp.jobs.name.${j}`)])),
         }}
       />
+      </PageBody>
     </ConsoleShell>
   );
 }

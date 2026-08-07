@@ -8,7 +8,7 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { QueueCard, type QueueStrings, type QueueOrder } from "@/components/console/erp/queue-card";
 import { FollowupResolve } from "@/components/console/erp/followup-resolve";
 import { scopedWhere, seesWholeBook, followupScope } from "@/lib/erp/scope";
@@ -200,6 +200,7 @@ export default async function ErpQueueScreen({
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       <PageHeader
         title={t("erp.queue.title")}
         description={
@@ -333,6 +334,7 @@ export default async function ErpQueueScreen({
           ))}
         </ul>
       )}
+      </PageBody>
     </ConsoleShell>
   );
 }

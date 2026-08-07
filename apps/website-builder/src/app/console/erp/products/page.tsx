@@ -23,7 +23,7 @@ import {
   VariantEditorPanel,
   type EditableProductVariants,
 } from "@/components/console/erp/variant-editor";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { ListFrame } from "@/components/console/ui/list-frame";
 import {
   catalogStrings, filterStrings, pagerStrings, variantEditorStrings,
@@ -189,6 +189,7 @@ export default async function ErpProductsScreen({
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       <PageHeader
         title={t("erp.products.title")}
         meta={
@@ -228,7 +229,6 @@ export default async function ErpProductsScreen({
       )}
 
       <ListFrame
-        className="mt-4"
         density={densityStrings(t)}
         toolbar={
           <FilterBar
@@ -368,6 +368,7 @@ export default async function ErpProductsScreen({
         ]}
       />
       </ListFrame>
+      </PageBody>
     </ConsoleShell>
   );
 }

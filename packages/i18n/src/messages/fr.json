@@ -745,7 +745,8 @@
     "pageNotFound": "Page introuvable",
     "pageNotFoundHint": "Cette adresse ne mène nulle part dans cette console.",
     "backToConsole": "Retour à la console",
-    "apply": "Appliquer"
+    "apply": "Appliquer",
+    "saved": "Enregistré"
   },
   "join": {
     "title": "Rejoindre un espace de travail",

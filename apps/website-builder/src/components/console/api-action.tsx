@@ -6,6 +6,7 @@ import { AlertCircle, Loader2 } from "lucide-react";
 
 import { toneVars } from "@landingos/ui";
 import { button, type ButtonSize, type ButtonVariant } from "./ui/styles";
+import { ACTION_OK_EVENT } from "./action-feedback";
 
 /* =============================================================================
  * The console's write primitive — Phase 6.3.
@@ -75,6 +76,18 @@ export function useApiAction(errors: ActionErrors) {
           setError(errors[code] ?? errors[FALLBACK]);
           return { ok: false, data: null };
         }
+
+        /* UI.24 — say that it worked, once, from one place.
+         *
+         * Dispatched rather than returned, because every write panel in this
+         * console calls this hook and there are more than twenty of them:
+         * threading a flag through each would be twenty edits a twenty-first
+         * panel would forget. `ActionFeedback` in the shell listens.
+         *
+         * This is not optimistic UI (D-06.3). It fires after the API answered
+         * SUCCESS, so it reports what the server said — the refresh below is
+         * still what puts the truth on screen. */
+        window.dispatchEvent(new CustomEvent(ACTION_OK_EVENT));
 
         startTransition(() => router.refresh());
         return { ok: true, data: envelope.data };

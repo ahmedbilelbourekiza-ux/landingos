@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { useApiAction, ActionError, ActionButton } from "@/components/console/api-action";
 import type { ActionErrors } from "@/lib/console/action-errors";
+import { Field, fieldAria } from "@/components/console/ui/primitives";
 
 /* =============================================================================
  * Taking an order over the phone — LP.4.
@@ -34,7 +35,7 @@ import type { ActionErrors } from "@/lib/console/action-errors";
  *   every channel report downstream.
  * ========================================================================== */
 
-const FIELD = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
+const FIELD = "ui-control tap";
 
 export interface OrderCreateStrings {
   readonly saving: string;
@@ -97,49 +98,68 @@ export function OrderCreatePanel({
      refuses, which is what the contract test drives. */
   const usable = form.client.trim() !== "" || form.phone.trim() !== "";
 
-  const text = (id: keyof typeof form, label: string, extra?: { ltr?: boolean }) => (
-    <div>
-      <label htmlFor={`new-order-${id}`} className="ui-label block">
-        {label}
-      </label>
-      <input
-        id={`new-order-${id}`}
-        name={id}
-        value={form[id]}
-        onChange={(e) => set(id, e.target.value)}
-        {...(extra?.ltr ? { dir: "ltr" as const } : {})}
-        className={`mt-1 ${FIELD}`}
-      />
-    </div>
-  );
+  /* UI.23 — THE PANEL SAYS WHAT IT NEEDS BEFORE IT REFUSES.
+   *
+   * Eleven fields shared one `role="alert"` at the bottom, so an operator was
+   * told THAT something was refused and never WHICH — and a screen-reader user
+   * got the sentence with no context at all. `<Field>` binds the message to the
+   * control with `aria-describedby` and marks it `aria-invalid`, which is also
+   * what tints the input's border.
+   *
+   * `required` here mirrors the ROUTE'S own rule and nothing more: an order
+   * with neither a name nor a number cannot be called about, so it is refused.
+   * The mark is rendered AND `aria-required` is set, because an asterisk is
+   * invisible to a screen reader and an attribute is invisible to everybody
+   * else. The API still refuses either way — this only stops the refusal being
+   * the first time anybody hears about it. */
+  const text = (
+    id: keyof typeof form,
+    label: string,
+    extra?: { ltr?: boolean; required?: boolean; help?: string },
+  ) => {
+    const fid = `new-order-${id}`;
+    return (
+      <Field id={fid} label={label} required={extra?.required} help={extra?.help}>
+        <input
+          {...fieldAria(fid, { required: extra?.required, help: Boolean(extra?.help) })}
+          name={id}
+          value={form[id]}
+          onChange={(e) => set(id, e.target.value)}
+          {...(extra?.ltr ? { dir: "ltr" as const } : {})}
+          className={`${FIELD} w-full`}
+        />
+      </Field>
+    );
+  };
 
   const choose = (
     id: keyof typeof form,
     label: string,
     options: readonly Choice[],
     anyLabel: string,
-  ) => (
-    <div>
-      <label htmlFor={`new-order-${id}`} className="ui-label block">
-        {label}
-      </label>
-      <select
-        id={`new-order-${id}`}
-        name={id}
-        value={form[id]}
-        onChange={(e) => set(id, e.target.value)}
-        className={`mt-1 ${FIELD}`}
-      >
-        <option value="">{anyLabel}</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-    </div>
-  );
+    help?: string,
+  ) => {
+    const fid = `new-order-${id}`;
+    return (
+      <Field id={fid} label={label} help={help}>
+        <select
+          {...fieldAria(fid, { help: Boolean(help) })}
+          name={id}
+          value={form[id]}
+          onChange={(e) => set(id, e.target.value)}
+          className={`${FIELD} w-full`}
+        >
+          <option value="">{anyLabel}</option>
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </Field>
+    );
+  };
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-order-create">
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-order-create">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold tracking-tight">{s.newOrder}</h2>
         <ActionButton
@@ -160,53 +180,50 @@ export function OrderCreatePanel({
       <div hidden={!open}>
         <p className="mt-2 text-xs text-muted-foreground">{s.hint}</p>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {text("client", s.customer)}
+        {/* Grouped into the three questions an operator is actually answering —
+            who, what, and how it is handled — rather than eleven boxes in one
+            run. Nothing moved between groups that changes what is sent. */}
+        <div className="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
+          {text("client", s.customer, { required: true })}
           {/* A phone number is always left-to-right, even on an RTL page, or the
               digits appear reordered. The route normalises whatever is typed —
               +213 555 12 34 56 is stored as 0555123456 — so there is nothing to
               validate here that the server does not do better. */}
-          {text("phone", s.phone, { ltr: true })}
+          {text("phone", s.phone, { ltr: true, required: true })}
           {text("wilaya", s.wilaya)}
           {text("commune", s.commune)}
           {text("city", s.city)}
           {text("product", s.product)}
           {text("productVariant", s.variant)}
 
-          <div>
-            <label
-              htmlFor="new-order-quantity"
-              className="ui-label block"
-            >
-              {s.quantity}
-            </label>
+          <Field id="new-order-quantity" label={s.quantity}>
             <input
-              id="new-order-quantity" name="quantity" type="number" min={1} dir="ltr"
+              {...fieldAria("new-order-quantity")}
+              name="quantity" type="number" min={1} dir="ltr"
               value={form.quantity} onChange={(e) => set("quantity", e.target.value)}
-              className={`mt-1 ${FIELD}`}
+              className={`${FIELD} w-full`}
             />
-          </div>
+          </Field>
 
-          <div>
-            <label htmlFor="new-order-price" className="ui-label block">
-              {s.price}
-            </label>
+          <Field id="new-order-price" label={s.price}>
             {/* Text with a decimal keypad, never type="number" — a number input
                 hands back a JS float and `price` is a Decimal column (M-06). */}
             <input
-              id="new-order-price" name="price" inputMode="decimal" dir="ltr"
+              {...fieldAria("new-order-price")}
+              name="price" inputMode="decimal" dir="ltr"
               value={form.price} onChange={(e) => set("price", e.target.value)}
-              className={`mt-1 ${FIELD}`}
+              className={`${FIELD} w-full`}
             />
-          </div>
+          </Field>
 
           {choose("status", s.status, statuses, statuses[0]?.label ?? "")}
           {/* The tenant's own carriers, not a free-text code. `createShipment`
               looks the code up and falls back to the default when it matches
               nothing, so a typed code would book the wrong carrier and say
               nothing. Empty means "use the default", which is what the ERP
-              did. */}
-          {choose("carrierCode", s.carrier, carriers, s.defaultCarrier)}
+              did — and the field now SAYS so, where it used to be a rule that
+              lived only in this comment. */}
+          {choose("carrierCode", s.carrier, carriers, s.defaultCarrier, s.defaultCarrier)}
 
           {/* D-06.2. The route answers 403 FORBIDDEN_FIELD for `agentUserId`
               from anybody who does not see the whole book, so the control only
@@ -214,16 +231,14 @@ export function OrderCreatePanel({
               disabled: a disabled select still says "you nearly could". */}
           {members && choose("agentUserId", s.agent, members, s.unassigned)}
 
-          <div className="sm:col-span-2 lg:col-span-4">
-            <label htmlFor="new-order-note" className="ui-label block">
-              {s.note}
-            </label>
+          <Field id="new-order-note" label={s.note} className="sm:col-span-2 lg:col-span-4">
             <textarea
-              id="new-order-note" name="note" rows={2}
+              {...fieldAria("new-order-note")}
+              name="note" rows={2}
               value={form.note} onChange={(e) => set("note", e.target.value)}
-              className={`mt-1 ${FIELD}`}
+              className={`${FIELD} w-full`}
             />
-          </div>
+          </Field>
         </div>
 
         <div className="mt-4">

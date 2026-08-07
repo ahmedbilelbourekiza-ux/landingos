@@ -6,7 +6,7 @@ import { can } from "@landingos/auth";
 
 import { requireConsoleSession } from "@/lib/console/session";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +84,7 @@ export default async function SettingsIndex() {
 
   return (
     <ConsoleShell session={session} productId={null}>
+      <PageBody>
       <PageHeader
         title={session.tenant?.name ?? t("common.settings")}
         description={t("settings.subtitle")}
@@ -114,6 +115,7 @@ export default async function SettingsIndex() {
           </li>
         ))}
       </ul>
+      </PageBody>
     </ConsoleShell>
   );
 }

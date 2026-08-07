@@ -35,7 +35,7 @@ export function ClientExportPanel({
   const href = `/api/erp/clients/export${query.toString() ? `?${query}` : ""}`;
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-client-export">
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-client-export">
       <h2 className="text-sm font-semibold tracking-tight">{s.title}</h2>
       <p className="mt-1 text-xs text-muted-foreground">{s.hint}</p>
       <a

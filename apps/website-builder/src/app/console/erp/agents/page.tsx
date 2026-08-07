@@ -9,7 +9,7 @@ import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { agentStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { AgentRowActions } from "@/components/console/erp/agent-write";
 import { readAllAgentConfigs, computePayroll, JOB_ROLES } from "@/lib/erp/agents";
@@ -100,6 +100,7 @@ export default async function ErpAgentsScreen() {
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       <PageHeader title={t("erp.agents.title")} />
 
       {/* AUDIT.6. Adding a person genuinely is a platform action (M-02) and this
@@ -280,6 +281,7 @@ export default async function ErpAgentsScreen() {
           },
         ]}
       />
+      </PageBody>
     </ConsoleShell>
   );
 }

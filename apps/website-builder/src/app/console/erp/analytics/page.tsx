@@ -6,7 +6,7 @@ import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { orderFilters } from "@/lib/erp/orders";
 import { scopedWhere, seesWholeBook } from "@/lib/erp/scope";
@@ -154,6 +154,7 @@ export default async function ErpAnalyticsScreen({
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       <PageHeader
         title={t("erp.analytics.title")}
         description={
@@ -279,6 +280,7 @@ export default async function ErpAnalyticsScreen({
           />
         </section>
       ))}
+      </PageBody>
     </ConsoleShell>
   );
 }

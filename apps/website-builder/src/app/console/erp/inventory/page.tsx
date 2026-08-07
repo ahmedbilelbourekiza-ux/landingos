@@ -6,7 +6,7 @@ import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { catalogStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import {
   StockAdjustPanel,
@@ -106,6 +106,7 @@ export default async function ErpInventoryScreen() {
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       <PageHeader title={t("erp.inventory.title")} />
 
       {mayWrite && (
@@ -217,6 +218,7 @@ export default async function ErpInventoryScreen() {
           },
         ]}
       />
+      </PageBody>
     </ConsoleShell>
   );
 }

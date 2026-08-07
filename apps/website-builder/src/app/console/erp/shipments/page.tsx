@@ -9,7 +9,7 @@ import { Pager } from "@/components/console/pager";
 import { pagerStrings, densityStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable, StatusPill } from "@/components/console/data-table";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { ListFrame } from "@/components/console/ui/list-frame";
 
 export const dynamic = "force-dynamic";
@@ -58,6 +58,7 @@ export default async function ErpShipmentsScreen({
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       <PageHeader title={t("erp.shipments.title")} />
 
       <ListFrame
@@ -122,6 +123,7 @@ export default async function ErpShipmentsScreen({
         ]}
       />
       </ListFrame>
+      </PageBody>
     </ConsoleShell>
   );
 }

@@ -10,7 +10,7 @@ import {
   filterStrings, pagerStrings, clientExportStrings, importStrings,
   densityStrings, emptyCopy,
 } from "@/lib/console/erp-strings";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { ListFrame } from "@/components/console/ui/list-frame";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
@@ -112,6 +112,7 @@ export default async function ErpClientsScreen({
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       <PageHeader title={t("erp.clients.title")} />
 
       <ListFrame
@@ -272,6 +273,7 @@ export default async function ErpClientsScreen({
         ]}
       />
       </ListFrame>
+      </PageBody>
     </ConsoleShell>
   );
 }

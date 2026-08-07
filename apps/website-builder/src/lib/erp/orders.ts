@@ -11,6 +11,9 @@ import { syncProductStatsFromOrder } from "./product-stats";
 // control; it carries no behaviour and no directive, so both this server module
 // and the client-free bar can name it.
 import type { FilterField as FilterFieldSpec } from "@/components/console/filter-field";
+// UI.12 — the sort vocabulary, from the directive-free module a contract test
+// and a screen can also import. See that file for why it is not declared here.
+import { isOrderSortField, type OrderSortField } from "./sort-fields";
 
 /* =============================================================================
  * The order repository.
@@ -341,29 +344,25 @@ export function orderRowFacts(
   };
 }
 
-const ORDER_SORT_COLUMNS: Record<string, keyof Prisma.FulfillmentOrderOrderByWithRelationInput> = {
+/**
+ * The whitelist, keyed on the SHARED vocabulary — UI.12.
+ *
+ * `Record<OrderSortField, …>` rather than `Record<string, …>`: a key added to
+ * `ORDER_SORT_FIELDS` without a column here fails to compile, and a column here
+ * that no key names is impossible. That is what stops the list a screen offers
+ * and the list this function honours from drifting apart — which matters
+ * particularly because the fallback below is SILENT.
+ */
+const ORDER_SORT_COLUMNS: Record<
+  OrderSortField,
+  keyof Prisma.FulfillmentOrderOrderByWithRelationInput
+> = {
   createdAt: "createdAt",
   price: "price",
   client: "client",
   status: "status",
   updatedAt: "updatedAt",
 };
-
-/**
- * The sort keys a control may offer — D-LP.3's rule, applied to ordering.
- *
- * `orderSort` has read `?sort=` since Phase 5 and **no control anywhere set
- * it**: an operator could not sort the order book by value, by date or by
- * customer, though the query has always supported it. That is the shape of
- * defect this project has now caught six times — a capability computed,
- * whitelisted and reachable by nothing.
- *
- * Exported from the module that VALIDATES it, beside `orderFilterFields`, so a
- * column header cannot offer a key `orderSort` would ignore and a key added
- * here cannot go unoffered. A header bound to a key outside this list is a
- * control that silently reorders by `createdAt` and says it did something else.
- */
-export const ORDER_SORT_FIELDS = Object.keys(ORDER_SORT_COLUMNS) as readonly string[];
 
 /**
  * Resolve `?sort=` against a whitelist.
@@ -377,7 +376,7 @@ export function orderSort(
   sort: string | null,
   dir: string | null,
 ): Prisma.FulfillmentOrderOrderByWithRelationInput[] {
-  const column = ORDER_SORT_COLUMNS[sort ?? ""] ?? "createdAt";
+  const column = isOrderSortField(sort ?? "") ? ORDER_SORT_COLUMNS[sort as OrderSortField] : "createdAt";
   const direction: Prisma.SortOrder = String(dir).toLowerCase() === "asc" ? "asc" : "desc";
   // The id tiebreak keeps paging stable: without it, rows sharing a createdAt
   // can come back in a different order on each page and an order is then

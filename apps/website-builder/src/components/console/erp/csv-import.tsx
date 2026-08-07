@@ -105,7 +105,7 @@ export function CsvImportPanel({
       .join(" · ");
 
   return (
-    <section className="mt-3 rounded-lg border border-border bg-surface-raised p-4" data-testid={testId}>
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid={testId}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold tracking-tight">{s.panel}</h2>
         <ActionButton

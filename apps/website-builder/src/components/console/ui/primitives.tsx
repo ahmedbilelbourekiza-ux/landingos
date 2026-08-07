@@ -67,7 +67,10 @@ export function PageHeader({
   readonly id?: string;
 }) {
   return (
-    <div className="mb-5">
+    // Almost no margin of its own: the page body is a `gap-4` column (see
+    // `PageBody`), so the space below the header belongs to the container like
+    // every other gap on the screen. Rule 4.
+    <div className="mb-1">
       {breadcrumb && breadcrumb.length > 0 && (
         <nav aria-label="Breadcrumb" className="mb-2">
           <ol className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
@@ -112,6 +115,36 @@ export function PageHeader({
       </div>
     </div>
   );
+}
+
+/* -----------------------------------------------------------------------------
+ * PageBody
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The column every screen's contents sit in — UI.25.
+ *
+ * `flex flex-col gap-4`, not `space-y-4`, and the difference is the whole
+ * reason it exists. `space-y` sets `margin-top` through a compound selector
+ * that OUTRANKS a plain `mt-8` on the child, so adopting it would silently
+ * flatten every deliberate section break on the finance, inventory and AI
+ * screens. A flex gap ADDS to a child's own margin instead of replacing it, so
+ * the default rhythm is one value and a screen that genuinely wants a bigger
+ * break can still say so.
+ *
+ * This is rule 4 applied at the top: six components on the order screen were
+ * each applying their own top margin from inside their own file, so the gap
+ * between two panels was decided by whichever rendered second and reordering
+ * them changed the layout.
+ */
+export function PageBody({
+  children,
+  className,
+}: {
+  readonly children: ReactNode;
+  readonly className?: string;
+}) {
+  return <div className={cn("flex flex-col gap-4", className)}>{children}</div>;
 }
 
 /* -----------------------------------------------------------------------------

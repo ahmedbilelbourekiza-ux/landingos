@@ -17,6 +17,7 @@ import { ConsoleDrawer } from "./console-sidebar";
 import { SignOutButton } from "./sign-out-button";
 import { NotificationProvider } from "./notification-provider";
 import { ThemeSwitcher } from "./theme-switcher";
+import { ActionFeedback } from "./action-feedback";
 import { NavIcon } from "./ui/icon";
 import { pageContainer } from "./ui/styles";
 
@@ -280,6 +281,11 @@ export async function ConsoleShell({
           <div className={pageContainer}>{children}</div>
         </main>
       </div>
+
+      {/* UI.24 — one listener for every write panel in the console. Mounted in
+          the shell for the same reason the notification provider is: there is
+          one of it per session, not one per screen. */}
+      <ActionFeedback label={t("common.saved")} />
     </div>
   );
 }

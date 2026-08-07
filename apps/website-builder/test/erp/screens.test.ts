@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 
 import { SESSION_COOKIE } from '@landingos/auth';
 
+// UI.12 — the sort vocabulary, imported from the module that VALIDATES it
+// rather than listed here. A hand-written list in a test is the same defect
+// AUDIT.2 found in `access.test.ts`'s SURFACES: it cannot catch the mistake it
+// exists for, because a key added to the API and not to the screen leaves both
+// the screen and the list unchanged.
+import { ORDER_SORT_FIELDS } from '../../src/lib/erp/sort-fields.ts';
+
 import {
   skip, BASE, uid, phone, makeTenant, makeMember, makeErpTenant, makeFollowupTask, cleanup,
   setCarrierAdapter, slugOf, setAgentMissed,
@@ -1041,6 +1048,72 @@ describe('a list can be paged and filtered', () => {
     const r = await html('/console/erp/orders?range=fortnight', bulk.manager.token);
     assert.equal(r.status, 200);
     assert.equal(rowsOf(r.body), PAGE);
+  });
+
+  /* ---------------------------------------------------------------------------
+   * UI.12 — the column headers sort.
+   *
+   * `orderSort` has read `?sort=`/`?dir=` since Phase 5, against a whitelist,
+   * and NO CONTROL ANYWHERE SET EITHER. An operator could not sort the order
+   * book by value, by date or by customer though the query always could — the
+   * sixth time this project has found a capability computed, validated and
+   * reachable by nothing (BUG-02, IntegrationLog, OrderCall.suspicious,
+   * fakeReason, A12, A13).
+   *
+   * Asserted BOTH WAYS, the rule D-LP.3 established for the filter bar: every
+   * offered header names a key `orderSort` reads, and following one actually
+   * reorders the list. A header that renders and sorts by `createdAt` anyway is
+   * exactly the defect this closes, and it looks perfect in review.
+   * ------------------------------------------------------------------------ */
+  test('the sortable headers name keys orderSort actually reads', async () => {
+    const r = await html('/console/erp/orders', bulk.manager.token);
+    const offered = [...r.body.matchAll(/data-sort="([^"]+)"/g)].map((m) => m[1]);
+    assert.ok(offered.length > 0, 'no column offers a sort at all');
+    for (const key of offered) {
+      assert.ok(
+        (ORDER_SORT_FIELDS as readonly string[]).includes(key),
+        `the header offers "${key}", which orderSort would ignore`,
+      );
+    }
+    // And the one an operator reaches for first is there.
+    assert.ok(offered.includes('price'), 'the order book cannot be sorted by value');
+  });
+
+  test('following a sort header reorders the rows', async () => {
+    // The other half. The fixture is 54 orders all priced 1000, so price
+    // cannot separate them — `client` can: "Pager 0" … "Pager 53".
+    const asc = await html('/console/erp/orders?sort=client&dir=asc', bulk.manager.token);
+    const desc = await html('/console/erp/orders?sort=client&dir=desc', bulk.manager.token);
+    assert.equal(asc.status, 200);
+    assert.equal(desc.status, 200);
+
+    const first = idsOf(asc.body)[0];
+    const last = idsOf(desc.body)[0];
+    assert.ok(first && last, 'both directions returned rows');
+    assert.notEqual(first, last, 'asc and desc opened with the same row');
+  });
+
+  test('the active column says which way it is sorted, and offers the other', async () => {
+    const r = await html('/console/erp/orders?sort=price&dir=desc', bulk.manager.token);
+    // `aria-sort` on the header is the state; the link's own href is the
+    // action, and it must be the OPPOSITE direction or the control does
+    // nothing on a second press.
+    assert.match(r.body, /aria-sort="descending"/, 'the header does not report its state');
+    assert.match(
+      r.body,
+      /data-sort="price"[^>]*data-sort-active="desc"/,
+      'the active column is not marked',
+    );
+    assert.match(r.body, /sort=price&amp;dir=asc/, 'pressing it again must flip the direction');
+  });
+
+  test('sorting keeps the filter and resets the page', async () => {
+    // Both are the classic defects in a sortable list, and both are invisible
+    // in review because page 1 of an unfiltered list looks right.
+    const r = await html(`/console/erp/orders?wilaya=${alger}&page=2`, bulk.manager.token);
+    const link = /href="([^"]*sort=price[^"]*)"/.exec(r.body)?.[1] ?? '';
+    assert.ok(link.includes(`wilaya=${alger}`), 'sorting dropped the filter');
+    assert.ok(!link.includes('page='), 'sorting kept a page number from the old order');
   });
 
   test('the agent filter is not offered to somebody who cannot use it', async () => {

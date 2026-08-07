@@ -7,7 +7,7 @@ import { can } from "@landingos/auth";
 import { requireConsoleSession } from "@/lib/console/session";
 import { getTranslations } from "next-intl/server";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +90,7 @@ export default async function DeliveryPricesPage({
 
   return (
     <ConsoleShell session={session} productId={null}>
+      <PageBody>
       <PageHeader title={t("settings.deliveryPrices")} />
       <p className="mt-1 text-sm text-muted-foreground">
         {priced} of {wilayas.length} wilayas priced. A blank field means this wilaya cannot be
@@ -164,6 +165,7 @@ export default async function DeliveryPricesPage({
           Save
         </button>
       </form>
+      </PageBody>
     </ConsoleShell>
   );
 }

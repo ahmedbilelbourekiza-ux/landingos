@@ -8,7 +8,7 @@ import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { channelStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { ChannelCreatePanel, ChannelRowActions } from "@/components/console/erp/channel-write";
 import { listChannelPlatforms, getChannelAdapter } from "@/lib/erp/channel-adapters";
@@ -88,6 +88,7 @@ export default async function ErpChannelsScreen() {
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       <PageHeader title={t("erp.channels.title")} />
 
       <ChannelCreatePanel
@@ -203,6 +204,7 @@ export default async function ErpChannelsScreen() {
       />
 
       <p className="mt-4 text-xs text-muted-foreground">{s.webhookHint}</p>
+      </PageBody>
     </ConsoleShell>
   );
 }

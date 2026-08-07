@@ -13,7 +13,7 @@ import {
   readFixedCostRows,
 } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { ProfitCalculator } from "@/components/console/erp/profit-calculator";
 import { FixedCostsEditor } from "@/components/console/erp/settings-structured";
@@ -145,6 +145,7 @@ export default async function ErpCalculatorScreen({
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       <PageHeader title={t("erp.calculator.title")} description={t("erp.calculator.subtitle")} />
 
       {/* The period. Links, not buttons — a calculation somebody is about to
@@ -280,6 +281,7 @@ export default async function ErpCalculatorScreen({
           { id: "notes", header: t("erp.calculator.notes"), cell: (r) => r.notes ?? "" },
         ]}
       />
+      </PageBody>
     </ConsoleShell>
   );
 }

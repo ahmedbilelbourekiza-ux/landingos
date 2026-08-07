@@ -9,7 +9,7 @@ import { actionErrors } from "@/lib/console/action-errors";
 import { aiStrings } from "@/lib/console/erp-strings";
 import { AI_PROVIDER_TYPES } from "@/lib/erp/ai-providers";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import {
   ProviderCreatePanel, ProviderRowActions, AgentCreatePanel, AgentRowActions,
@@ -124,6 +124,7 @@ export default async function ErpAiScreen() {
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       <PageHeader title={t("erp.ai.title")} description={t("erp.ai.subtitle")} />
 
       <h2 className="mt-6 text-sm font-semibold tracking-tight">{t("erp.ai.insights")}</h2>
@@ -272,6 +273,7 @@ export default async function ErpAiScreen() {
           />
         </>
       )}
+      </PageBody>
     </ConsoleShell>
   );
 }

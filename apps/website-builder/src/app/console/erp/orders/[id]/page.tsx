@@ -9,7 +9,7 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { StatusPill } from "@/components/console/data-table";
 import {
   CallPanel,
@@ -284,6 +284,7 @@ export default async function ErpOrderDetail({
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       {/* UI.22 — a real breadcrumb, replacing three different hand-written back
           links: this screen's `← Back to list`, the client detail's own, and the
           product detail's complete absence. The last crumb is where you are and
@@ -657,6 +658,7 @@ export default async function ErpOrderDetail({
           </>
         )}
       </section>
+      </PageBody>
     </ConsoleShell>
   );
 }

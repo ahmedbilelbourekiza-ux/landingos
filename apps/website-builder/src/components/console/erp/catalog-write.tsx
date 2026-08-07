@@ -115,7 +115,7 @@ export function ProductCreatePanel({
   );
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-product-create">
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-product-create">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold tracking-tight">{s.newProduct}</h2>
         <ActionButton
@@ -336,7 +336,7 @@ export function ProductEditPanel({
   const product = products.find((p) => p.id === selected) ?? products[0];
 
   return (
-    <section className="mt-3 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-product-edit">
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-product-edit">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold tracking-tight">{s.editProduct}</h2>
         <ActionButton
@@ -509,7 +509,7 @@ export function StockAdjustPanel({
   const usable = productId && reason.trim() && Number.isFinite(n) && n !== 0;
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-adjust-panel">
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-adjust-panel">
       <h2 className="text-sm font-semibold tracking-tight">{s.adjustPanel}</h2>
       <p className="mt-1 text-xs text-muted-foreground">{s.adjustHint}</p>
 
@@ -595,7 +595,7 @@ export function StockLotPanel({
   const usable = productId && Number.isInteger(q) && q >= 1;
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-lot-panel">
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-lot-panel">
       <h2 className="text-sm font-semibold tracking-tight">{s.lotPanel}</h2>
       {/* Why a lot exists at all, said where somebody is about to create one. */}
       <p className="mt-1 text-xs text-muted-foreground">{s.lotHint}</p>

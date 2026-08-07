@@ -8,7 +8,7 @@ import { getLocale } from "next-intl/server";
 import { requireConsoleSession } from "@/lib/console/session";
 import { getTranslations } from "next-intl/server";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +44,7 @@ export default async function IntegrationsPage() {
 
   return (
     <ConsoleShell session={session} productId={null}>
+      <PageBody>
       <PageHeader title={t("settings.integrations")} />
       <p className="mt-1 text-sm text-muted-foreground">
         {mayManage
@@ -164,6 +165,7 @@ export default async function IntegrationsPage() {
           },
         ]}
       />
+      </PageBody>
     </ConsoleShell>
   );
 }

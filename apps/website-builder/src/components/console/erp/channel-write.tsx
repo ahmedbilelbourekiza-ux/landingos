@@ -82,7 +82,7 @@ export function ChannelCreatePanel({
   };
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="channel-create">
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="channel-create">
       <button
         type="button"
         data-testid="channel-create-toggle"

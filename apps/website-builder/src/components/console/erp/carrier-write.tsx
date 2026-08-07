@@ -107,7 +107,7 @@ export function CarrierCreatePanel({
   );
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-carrier-create">
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-carrier-create">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold tracking-tight">{s.newCarrier}</h2>
         <ActionButton

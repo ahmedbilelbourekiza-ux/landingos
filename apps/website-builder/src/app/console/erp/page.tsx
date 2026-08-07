@@ -7,7 +7,7 @@ import { toneVars } from "@landingos/ui";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader, Notice, Stat, StatGrid } from "@/components/console/ui/primitives";
+import { PageHeader, Notice, Stat, StatGrid, PageBody } from "@/components/console/ui/primitives";
 import { seesWholeBook, orderScope } from "@/lib/erp/scope";
 import { readSettings } from "@/lib/erp/settings";
 import { rate } from "@/lib/erp/analytics";
@@ -156,6 +156,7 @@ export default async function ErpOverview() {
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       <PageHeader
         title={t("erp.overview.title")}
         description={
@@ -213,6 +214,7 @@ export default async function ErpOverview() {
           />
         ))}
       </StatGrid>
+      </PageBody>
     </ConsoleShell>
   );
 }

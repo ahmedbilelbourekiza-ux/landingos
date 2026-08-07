@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { productRegistry } from "@landingos/product-registry";
 import { requireConsoleSession } from "@/lib/console/session";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageBody } from "@/components/console/ui/primitives";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,7 @@ export default async function ProductHome({
 
   return (
     <ConsoleShell session={session} productId={product.id}>
+      <PageBody>
       <h1 className="text-xl font-semibold">{t(product.nameKey)}</h1>
       <p className="mt-1 text-sm text-muted-foreground">{t(product.descriptionKey)}</p>
 
@@ -66,6 +68,7 @@ export default async function ProductHome({
           ))}
         </ul>
       </div>
+      </PageBody>
     </ConsoleShell>
   );
 }

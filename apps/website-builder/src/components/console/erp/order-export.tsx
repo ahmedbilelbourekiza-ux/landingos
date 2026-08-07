@@ -67,7 +67,7 @@ export function OrderExportPanel({
   const offered = EXPORT_FORMATS.filter((f) => f !== "agents" || maySeeAgentReport);
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-order-export">
+    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-order-export">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h2 className="text-sm font-semibold tracking-tight">{s.title}</h2>
         {/* What the links would actually produce, before anybody clicks one. A

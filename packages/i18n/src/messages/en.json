@@ -745,7 +745,8 @@
     "pageNotFound": "Page not found",
     "pageNotFoundHint": "That address does not lead anywhere in this console.",
     "backToConsole": "Back to the console",
-    "apply": "Apply"
+    "apply": "Apply",
+    "saved": "Saved"
   },
   "join": {
     "title": "Join a workspace",

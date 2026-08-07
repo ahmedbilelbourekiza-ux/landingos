@@ -7,6 +7,7 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 
 import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageBody } from "@/components/console/ui/primitives";
 import { DataTable, StatusPill } from "@/components/console/data-table";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +49,7 @@ export default async function BuilderPagesScreen() {
 
   return (
     <ConsoleShell session={session} productId="website-builder">
+      <PageBody>
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">{t("builder.nav.pages")}</h1>
         {mayEdit ? (
@@ -116,6 +118,7 @@ export default async function BuilderPagesScreen() {
           },
         ]}
       />
+      </PageBody>
     </ConsoleShell>
   );
 }

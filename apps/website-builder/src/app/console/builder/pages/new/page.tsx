@@ -5,6 +5,7 @@ import { can } from "@landingos/auth";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { PageBody } from "@/components/console/ui/primitives";
 import { slugify } from "@/lib/landing/create";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +73,7 @@ export default async function NewLandingPage({
 
   return (
     <ConsoleShell session={session} productId="website-builder">
+      <PageBody>
       <h1 className="text-xl font-semibold">{t("common.create")}</h1>
 
       {error ? (
@@ -128,6 +130,7 @@ export default async function NewLandingPage({
           {t("common.create")}
         </button>
       </form>
+      </PageBody>
     </ConsoleShell>
   );
 }

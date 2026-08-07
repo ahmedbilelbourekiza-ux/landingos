@@ -12,7 +12,7 @@ import { DataTable, StatusPill } from "@/components/console/data-table";
 import { FilterBar } from "@/components/console/filter-bar";
 import { Pager } from "@/components/console/pager";
 import type { FilterField } from "@/components/console/filter-field";
-import { PageHeader } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { ListFrame } from "@/components/console/ui/list-frame";
 import { OrderBulkBar, type BulkStrings } from "@/components/console/erp/order-bulk";
 import { OrderCreatePanel } from "@/components/console/erp/order-create";
@@ -26,8 +26,9 @@ import {
 import { scopedWhere, seesWholeBook, mayTouchOrder } from "@/lib/erp/scope";
 import {
   orderFilters, orderSort, orderFilterFields, orderRowFacts,
-  ORDER_LIST_SELECT, ORDER_STATUSES, BULK_BOOK_LIMIT, ORDER_SORT_FIELDS,
+  ORDER_LIST_SELECT, ORDER_STATUSES, BULK_BOOK_LIMIT,
 } from "@/lib/erp/orders";
+import { ORDER_SORT_FIELDS } from "@/lib/erp/sort-fields";
 import { readSettings } from "@/lib/erp/settings";
 import { exportWhere } from "@/lib/erp/export";
 
@@ -255,7 +256,8 @@ export default async function ErpOrdersScreen({
    * any screen ever set them. A column offers a header link only where its key
    * is one `ORDER_SORT_FIELDS` publishes, so a header cannot promise an
    * ordering the query would ignore. */
-  const sortKeyOf = (key: string) => (ORDER_SORT_FIELDS.includes(key) ? key : undefined);
+  const sortKeyOf = (key: string) =>
+    (ORDER_SORT_FIELDS as readonly string[]).includes(key) ? key : undefined;
 
   /* Built from the same module the route validates against. `agentUserId` is
      offered only to somebody who already sees the whole book — `scopedWhere`
@@ -617,6 +619,7 @@ export default async function ErpOrdersScreen({
 
   return (
     <ConsoleShell session={session} productId="erp">
+      <PageBody>
       <PageHeader
         title={t("erp.orders.title")}
         description={
@@ -626,7 +629,7 @@ export default async function ErpOrdersScreen({
 
       {writePanels}
 
-      <div className="mt-4 space-y-3">
+      <div className="space-y-3">
         <FilterBar
           basePath="/console/erp/orders"
           params={params}
@@ -670,6 +673,7 @@ export default async function ErpOrdersScreen({
           )}
         </ListFrame>
       </div>
+      </PageBody>
     </ConsoleShell>
   );
 }
