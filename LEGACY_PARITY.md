@@ -98,22 +98,39 @@ production blocker in its own right.
 | 🟡 PARTIAL | 20 | 17% | |
 | 🔴 MISSING | 39 | 33% | |
 
-**These counts are the second pass's and have deliberately NOT been re-derived
-slice by slice.** Six slices have landed since (LP.1–LP.6) and each records what
-it closed in its own card; re-scoring the whole board after every slice invites
-the failure §0b exists to name — a number that moves while the workflow behind it
-has not been re-measured. **TIER 1 IS NOW COMPLETE, which is the moment to
-re-measure**: the whole board is due one full pass, at the level of workflows and
-not routes, before Tier 2 is called finished.
+**These counts are the second pass's**, kept as the historical baseline. Every
+slice since records what it closed in its own card, and §4's roadmap is the live
+scoreboard — re-scoring the whole board after every slice invites the failure
+§0b exists to name, a number that moves while the workflow behind it has not been
+re-measured.
 
-**Verdict: TIER 1 IS COMPLETE, and the platform still cannot replace the legacy
-CRM in production — for two reasons that the third pass (§8) narrowed it to.** An
-operator can enter a phone order, find it, correct a product's cost, book a real
-parcel with ZR Express and hand a day's confirmed orders to a carrier with no
-API. What they still cannot do is **be told anything** — M-16's entire transport
-has no consumer, so nothing reaches a signed-in person until they reload — and
-they cannot **see the confirmation rate**, which is the number this business is
-managed by and which no platform screen computes anywhere.
+### FINAL STATE — 7 August 2026: TIERS 1, 2 AND 3 ARE COMPLETE
+
+**Every slice §4 lists through #22 has landed, which is where this document says
+parity is reached.** Twenty-one roadmap slices, plus a fourth measurement pass
+(§9) that did not use this roadmap at all.
+
+Each 🔴 and 🟡 card in §3 now carries its closing slice, and every one of the
+23 findings in §3b (N1–N23) is either closed or recorded as not-a-gap with its
+reason. What remains is **Tier 4 (#23–#27)**, which §4 itself describes as Phase 8
+work the legacy happened to also have (23), a decision to revisit (24),
+preference (25, 26) or a deployment choice (27).
+
+**Verdict: an operator can do the whole working day on this platform.** Take a
+phone order; find it among fifty thousand; work a queue with a tap-to-dial loop;
+change status, agent, carrier and express from the row; act on fifty rows at
+once; book real parcels with two carriers; hand a day's confirmed orders to one
+that has no API; be told the moment anything happens, in sound, on the desktop
+and in the row that changed; open a customer's whole history and correct it; load
+a back catalogue from a spreadsheet and take it back out again; connect a
+storefront and see why an order never arrived; read the confirmation rate seven
+ways; and close a month's books with a calculator that agrees with its own saved
+record.
+
+**§9 is the fourth pass — the independent audit** — which read the legacy module
+by module without using this roadmap, and found nine things it had not: eight
+writer/reader mismatches and one that only appeared when a real order was placed
+through the running console.
 
 **§8 is the module-by-module third pass**, walking every department and every
 cross-cutting dimension. **§7 is the profit/loss calculator**, measured end to
@@ -127,7 +144,7 @@ into an operator's working day.
 
 | Blocker | Why it blocks production |
 |---|---|
-| ~~**No real carrier adapter**~~ | *(Fixed in LP.2 + LP.5. `zr` is registered and books real parcels — territory resolution, Svix webhooks, outbound creation. `ecom` remains, at Tier 3 slice 22.)* |
+| ~~**No real carrier adapter**~~ | *(Closed. LP.2 + LP.5 registered `zr`; LP.22 registered `ecom`, which is also the first adapter that can be POLLED — and closing N17 with it.)* |
 | ~~**No pagination, anywhere**~~ | *(Fixed in LP.3.)* |
 | **No product editing** | *(Fixed in LP.1.)* |
 | ~~**No export**~~ | *(Fixed in LP.6. CSV for ZR Express / Ecom Delivery / Ecotrac plus the performance report, produced from the order list and carrying its filters — which the legacy's separate Export screen could not do.)* |
@@ -1594,3 +1611,70 @@ screens that already ship — the exact product-name match (§7 P2) and the miss
 fixed-cost editor (§7 P3) — and taking the calculator whole rather than 16a alone
 cost three more steps and closed R9, N23 and half of R20 in one slice. **LP.7 is
 next and unchanged.**
+
+---
+
+## 9. Fourth pass — the independent engineering audit (7 August 2026)
+
+**It did not use this roadmap.** After every slice through Tier 3 had landed, the
+legacy was read module by module from its own source — 125 routes, 15 screens,
+`lib/db.js`, `lib/jobs.js`, `lib/inventory.js`, `lib/followup.js`, the platform
+and provider registries — and diffed against the platform. Then the schema was
+walked asking a different question from any pass before it:
+
+> **Which columns does something write that nothing reads, and which does
+> something read that nothing writes?**
+
+That is the shape of every serious defect this project has found: BUG-02
+(`deliveryOutcome` read in eight places, written in none), `IntegrationLog`
+(migrated with its indexes, no caller), `OrderCall.suspicious` (computed, shown
+nowhere), `fakeReason` (written since Phase 5, read by nothing), the confirmation
+rate (computed nowhere at all). **Nine more were there.**
+
+| # | Finding | Severity | Closed by |
+|---|---|---|---|
+| **A1** | AI provider types were TWO lists — the route's `z.enum` and the screen's own `PROVIDER_TYPES` — under a comment claiming they were one | Medium (silent drift) | AUDIT.1 |
+| **A2** | No provider presets: an operator configuring Gemini had to know the base URL from memory, and a wrong one fails at CHAT time | Low (UX) | AUDIT.1 |
+| **A3** | `CatalogProductEvent` — three writers, **no console reader**. The permanent record of what a cost basis used to be | Medium | AUDIT.1 |
+| **A4** | `GET /financial-records/versions` had no reader, and the finance table listed two saves of one week as two equally authoritative lines | Medium | AUDIT.1 |
+| **A5** | **`CatalogProduct`'s lifetime counters were maintained by NOTHING** — schema said "maintained by the order pipeline" since M-06, the API served them, every product read zero forever | **High** | AUDIT.1 |
+| **A6** | `CatalogProductLink` decides revenue attribution and nothing showed which channels a product was linked to | Medium | AUDIT.1 |
+| **A7** | LP.8's overdue-follow-up badge read `callReminderStatus`, which nothing writes — a reader introduced for a dead column | Medium (regression) | AUDIT.1 |
+| **A8** | `access.test.ts`'s hand-written inventory was **34 routes short**, including `POST /orders/[id]/call` — the payroll-fraud surface | Medium (coverage) | AUDIT.2 |
+| **A9** | A duplicated product name attributed every order's counters to whichever row was created first, silently — and double-counted revenue in `/sales-summary` | **High** | AUDIT.3 |
+
+**A5 is the one that matters most**, and it is BUG-02's shape exactly: the port
+brought `upsertClientFromOrder` across as `syncClientFromOrder` and left
+`upsertProductStatsFromOrder` behind. Nothing errored, every number was a real
+number, and a product that had sold two hundred units said it had sold none.
+
+**A9 is the one no test could have found.** AUDIT.1's contract suite passed
+167/167; the counters were then exercised against the RUNNING server and the
+product still read zero. Every test creates its own tenant with one product per
+name. **The method is worth more than the fix: end every slice with a real action
+through the running app.**
+
+**A8 was a guarantee gap, not a hole** — the derived run passed 201/201 first
+time, so every unlisted route was correctly gated. The inventory now derives
+itself from the route files, which is the same general form LP.17 applied to
+navigation.
+
+### What the audit checked and found NOT to be gaps
+
+- Every one of the legacy's **15 screens** has a platform home, including the
+  three that became something else deliberately: Alerts → the `suspicious=true`
+  filter (LP.12), Export → the panel on the order list (D-LP.6.2), Import → the
+  panels on the client and order lists (LP.19).
+- **Every key** in the legacy's `DEFAULT_SETTINGS` exists in `SETTINGS_SCHEMA`,
+  validated, with a control.
+- The legacy's **three job loops** are a subset of the platform's four.
+- `inventory/low-stock` and `orders/stats` have no console caller and correctly
+  so: both screens compute the same answer through the same shared function,
+  which is the server-component pattern rather than a second rule.
+- `GET /api/statuses` and `/api/delivery/statuses` are genuinely absent and are
+  Tier 4 slice 26 (R18) — the vocabularies reach every screen as props and the
+  routes matter only to a future external client.
+- The legacy's `followup_resolved` broadcast has no platform notification, and
+  that is deliberate: it is the agent's own action, and a feed that repeats your
+  own actions back at you is one people stop reading (the same rule
+  `notifyOrderAssigned` follows in the other direction).

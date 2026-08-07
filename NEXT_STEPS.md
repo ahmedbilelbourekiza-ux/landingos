@@ -1,13 +1,59 @@
 # Next Steps
 
-**Phase 5, 6 and 7 are complete. PHASE 8 IS DEFERRED.**
-**THE CURRENT PHASE IS LEGACY PARITY RESTORATION — see `LEGACY_PARITY.md`.**
-Full context is in `PROJECT_STATE.md` — read its "Read this first" section
-before starting.
+**Phase 5, 6 and 7 are complete. LEGACY PARITY IS REACHED — Tiers 1, 2 and 3 of
+`LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that
+did not use the roadmap at all.**
+
+## WHAT IS NEXT, IN ORDER
+
+**1. Tier 4 of the parity roadmap — which is Phase 8 by another name.**
+
+| # | Slice | Why it is not parity |
+|---|---|---|
+| 23 | Rate limiting + `CSRF_ORIGIN` | The legacy had both; they left the product suite in 5.1 because neither belongs in one. **This is the one item a production deployment genuinely needs**, and it is a platform concern rather than an ERP one. |
+| 24 | The offline shell for the queue screen | A decision to revisit (§6.4c), not a missing feature. 6.6e closed it on "a cache keyed by URL survives signing out", which is true and too broad — a SHELL-only cache leaks nothing. |
+| 25 | Order board view, print labels | Preference. The board is a second rendering of a list that already pages, filters and acts. |
+| 26 | Status vocabulary endpoints (R18) | Matters only to a future external client; the vocabularies reach every screen as props today. |
+| 27 | Real model calls for the AI assistant | A deployment choice. `ai/chat` is a stated 501 and the screen says so rather than offering a box that always fails. |
+
+**2. The rest of Phase 8** — adversarial isolation review, load testing,
+backup/restore, runbooks.
+
+**3. The two security actions that need a human** (PROJECT_STATE, *Security
+actions requiring manual intervention*): rotate the Neon credentials and
+`AUTH_SECRET`. Neither blocks development; both should happen before anything
+real ships.
+
+**4. Re-assess `apps/erp`.** PROJECT_STATE's 6.6f decision was to keep it as the
+reference implementation and re-assess "after Phase 7, Phase 8 and production
+readiness are complete". The fourth pass (§9) read it end to end for the fifth
+time and found nine things — which is the argument for keeping it until Phase 8
+has read it once more for its rate limiter and its `CSRF_ORIGIN` check.
+
+## THE THREE THINGS THAT STILL NEED A REAL DEVICE OR REAL CREDENTIALS
+
+None is a gap in the code; each is untestable in this repository by
+construction, and each is stated where it is implemented rather than implied.
+
+- **Web Push has never crossed a real push service**, and whether a browser
+  OFFERS the install prompt needs a device over HTTPS (6.6e).
+- **LP.11's six sound signatures and the desktop notification** need a person
+  with speakers and a real browser. The synthesis is a note-for-note port and
+  the permission handling is asserted structurally.
+- **No request has crossed a real ZR Express or Ecom Delivery endpoint.** Every
+  refusal path is tested against a dead port; the success paths need carrier
+  credentials.
+
+## THE METHOD THE FOURTH PASS ADDED
+
+**End every slice with a real action through the running app.** AUDIT.3 is the
+argument: the contract suite passed 167/167 and the live console was wrong, and no
+test could have seen it because every test creates its own tenant with one
+product per name. Sign up, place an order, confirm it, look at the number.
 
 ---
 
-## LP. Legacy parity restoration — THE CURRENT WORK
+## LP. Legacy parity restoration — COMPLETE
 
 `LEGACY_PARITY.md` compares `apps/erp` (the legacy CRM/ERP: 123 routes, 27
 tables, 15 screens) against the platform ERP (60 route files, 22 models, 12
@@ -223,11 +269,9 @@ was reachable any other way:
    advances `TenantSequence`. `nextReference` now heals itself from the highest
    reference already in use, counting only references it could have minted.
 
-**TIERS 1, 2 AND 3 ARE ALL COMPLETE, AND PARITY IS REACHED.** Every slice
-§4 lists through #22 has landed. What remains is Tier 4 (#23–#27), which that
-section itself describes as Phase 8 work the legacy happened to also have (23), a
-decision to revisit (24), preference (25, 26), or a deployment choice (27) — not
-parity. #11
+**TIERS 1, 2 AND 3 ARE ALL COMPLETE, AND PARITY IS REACHED**, plus a fourth
+measurement pass (§9) that did not use the roadmap and found nine more things.
+#11
 (sound + desktop notification preferences on `ProductSetting`) hangs directly off
 this provider.
 
@@ -503,7 +547,7 @@ payroll report, audit view **[DONE LP.12]**.
 shell decision · (25) board view + print · (26) status vocabularies ·
 (27) real AI calls.
 
-**Parity is reached at the end of Tier 3.**
+**Parity is reached at the end of Tier 3, and it is reached.**
 
 ### Slice rules
 
