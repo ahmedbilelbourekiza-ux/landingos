@@ -490,6 +490,44 @@ describe('every ported screen renders in the shell', { skip }, () => {
   const screens = ['/console/builder/pages', '/console/builder/orders', '/console/builder/categories', '/console/builder/abandoned'];
   const tables = ['landings-table', 'orders-table', 'categories-table', 'abandoned-table'];
 
+  test('every nav item the MANIFEST declares answers, so the next one cannot 404 (LB.4)', async () => {
+    // The general form of LP.17's defect, applied to this product: the
+    // manifest shipped `templates` and `delivery-prices` items for YEARS with
+    // no screen behind them, and the hand-listed `screens` array above could
+    // not see it. Reading the manifest is what makes the next addition fail
+    // here instead of in a customer's sidebar. Redirects are followed — a nav
+    // item may legitimately land on a platform screen — but the destination
+    // must exist.
+    const { websiteBuilder } = await import('@landingos/product-registry');
+    assert.ok(websiteBuilder.nav.length >= 5, 'the manifest still declares a nav');
+    for (const item of websiteBuilder.nav) {
+      const path = `/console/builder${item.path ? `/${item.path}` : ''}`;
+      const r = await fetch(BASE + path, {
+        headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+        redirect: 'follow',
+      });
+      assert.equal(r.status, 200, `nav item "${item.id}" (${path}) must lead to a real screen`);
+    }
+  });
+
+  test("a single-product session's console front door lands on its product (S-01)", async () => {
+    // /console redirects a one-product tenant straight to that product — and
+    // it must redirect INSIDE the console namespace. The bare basePath it
+    // used to redirect to is the storefront namespace, where /builder is a
+    // tenant slug that does not exist: every builder-only customer's front
+    // door answered 404.
+    const r = await fetch(BASE + '/console', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+      redirect: 'manual',
+    });
+    assert.ok(r.status === 307 || r.status === 308 || r.status === 303, `expected redirect, got ${r.status}`);
+    assert.equal(
+      new URL(r.headers.get('location') ?? '', BASE).pathname,
+      '/console/builder',
+      'the redirect stays inside the console',
+    );
+  });
+
   test('each screen loads for an entitled tenant', async () => {
     for (const path of screens) {
       const r = await fetch(BASE + path, {

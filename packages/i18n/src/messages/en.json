@@ -22,6 +22,13 @@
     "navGroup": {
       "content": "Content",
       "selling": "Selling"
+    },
+    "templates": {
+      "hint": "The storefront themes available to your pages. A theme is chosen per page, in the editor's General section.",
+      "buttonSample": "Buy button",
+      "builtIn": "Built-in",
+      "custom": "Custom",
+      "pagesUsing": "{count, plural, =0 {used by no pages} one {used by # page} other {used by # pages}}"
     }
   },
   "erp": {

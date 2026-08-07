@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
+import { productRegistry } from "@landingos/product-registry";
 import { requireConsoleSession } from "@/lib/console/session";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { PageBody } from "@/components/console/ui/primitives";
@@ -17,7 +18,12 @@ export default async function ConsoleHome() {
   const session = await requireConsoleSession("/console");
   const t = await getTranslations();
 
-  if (session.products.length === 1) redirect(session.products[0].basePath);
+  // hrefFor, never the bare basePath: `/builder` is the STOREFRONT namespace
+  // (a tenant could be called "builder"), and redirecting there sent every
+  // single-product customer's console front door to a 404 (BUILDER_AUDIT S-01).
+  if (session.products.length === 1) {
+    redirect(productRegistry.hrefFor(session.products[0].id) ?? "/console/settings");
+  }
 
   return (
     <ConsoleShell session={session} productId={null}>
@@ -32,7 +38,7 @@ export default async function ConsoleHome() {
         {session.products.map((p) => (
           <li key={p.id}>
             <a
-              href={p.basePath}
+              href={productRegistry.hrefFor(p.id) ?? "/console"}
               className="block rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary"
             >
               <span className="font-medium">{t(p.nameKey)}</span>
