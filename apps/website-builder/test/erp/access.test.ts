@@ -116,6 +116,8 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   // enough for the id to be looked up.
   ['POST', '/api/erp/followup/tasks/nonexistent/resolve'],
   ['GET', '/api/erp/followup/dashboard'],
+  // LP.21. Moving a customer to another follow-up agent by hand.
+  ['POST', '/api/erp/followup/assign'],
   ['GET', '/api/erp/financial-records'],
   // LP.16b/c/d. Four surfaces onto the company's P&L, each reachable with a
   // different question — the prorated rent, one period's version history, a

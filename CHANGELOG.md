@@ -12,6 +12,88 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.21 A difficult customer can be moved, and the deadline ticks
+
+[Opus 5]
+Date: 7 August 2026
+Summary: R13 and N14 — `POST /api/erp/followup/assign`, the per-row control on
+the follow-up screen, and a countdown that moves. integrations 63 → **75**,
+access 94 → **95**.
+
+#### R13 — the business case is one sentence
+
+A supervisor cannot move a difficult customer to a senior agent. LP.9 built the
+RULE (`assignFollowupAgent`) and reached it only through the bulk action; this is
+the single-order door, on the screen a supervisor is already looking at.
+
+**`auto: true` is not the same request as an omitted agent.** A body with neither
+`userId` nor `auto: true` is a 422, not a silent automatic assignment — a
+supervisor who meant to name somebody and left the select empty must not discover
+the system picked for them. The control matches: "Automatic" is its own button
+rather than an empty option in the select.
+
+**Two refusals, because they send you to different screens.** `NO_FOLLOWUP_AGENTS`
+means nobody on the team carries the job role at all — a settings problem.
+`NOT_ELIGIBLE` means the person you named cannot take work right now: suspended,
+on a day off, or without `erp:orders:write` (D-06.6). It lists who CAN. A single
+"failed" would send a supervisor to the wrong place.
+
+#### The notification the port dropped with the route
+
+The ERP broadcasts `followup_assigned` to the chosen agent, and the platform had
+no equivalent. Work that lands in a queue silently is work nobody knows they
+have, and follow-up work is a customer WAITING for a call — the whole department
+exists because that call has a deadline.
+
+**Addressed to the PERSON, not to the supervisors**, which is the opposite
+audience from `notifyNewOrder` and deliberately so: a manager who has just pressed
+"assign" does not need telling what they did, and a feed that repeats your own
+actions back at you is a feed people stop reading.
+
+**Only when it MOVED.** Re-assigning somebody to the order they already hold
+notifies nobody; a test asserts it.
+
+#### N14 — the countdown
+
+The legacy ticks every 15 seconds in place. The platform rendered a formatted due
+date and nothing moved — on a screen whose entire subject is a deadline, which is
+most of the information missing: "14:20" answers nothing without knowing what
+time it is now, and "in 3 minutes" answers it exactly.
+
+**It is a client component and that is not a D-06.3 violation.** It derives
+nothing from the server and writes nothing: `dueAt` is the server's fact, and this
+renders the DIFFERENCE between it and the browser's clock. Server-rendering that
+difference would bake in the render time and be wrong by however long the page has
+been open — which is the actual defect on a screen people leave open all day.
+
+**The first render is the server's.** `now` starts null and the absolute time
+shows until the first tick, so there is no hydration mismatch on a timestamp and
+a reader without JavaScript keeps a real answer. The absolute time also stays as
+the `title`: "in 3 minutes" is what to act on, "14:20" is what to write on a note.
+
+**Fifteen seconds, as the legacy.** A per-second tick re-renders a hundred rows
+sixty times a minute for a number whose useful resolution is a minute.
+
+#### Files
+
+- `apps/website-builder/src/app/api/erp/followup/assign/route.ts` — new
+- `apps/website-builder/src/components/console/erp/followup-assign.tsx` — new
+  (the control and the countdown)
+- `apps/website-builder/src/app/console/erp/follow-up/page.tsx`
+- `apps/website-builder/src/lib/erp/notify.ts` — `notifyOrderAssigned`
+- `apps/website-builder/src/lib/console/erp-strings.ts`
+- `packages/i18n/src/messages/{ar,en,fr}.json` — `erp.followUp.*`, 8 keys × 3
+- `apps/website-builder/test/erp/integrations.test.ts` — 12 new tests
+- `apps/website-builder/test/erp/access.test.ts` — 1 new surface
+
+**Migration:** none.
+
+**Risk:** low. The route composes `assignFollowupAgent`, which LP.9 shipped and
+tested; this adds the single-order door, the two refusal codes and the
+notification.
+
+---
+
 ### LP.20 The three inbound paths the port dropped
 
 [Opus 5]

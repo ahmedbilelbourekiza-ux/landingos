@@ -216,7 +216,15 @@
       "problems": "مرتجعة",
       "escalation": "متأخرة",
       "due": "الاستحقاق",
-      "none": "لا شيء للمتابعة"
+      "none": "لا شيء للمتابعة",
+      "assignTo": "وكيل المتابعة",
+      "assign": "تعيين",
+      "auto": "تلقائي",
+      "unassigned": "لا أحد",
+      "inMinutes": "خلال {n} د",
+      "inHours": "خلال {n} س",
+      "overdueBy": "متأخر {n} د",
+      "dueNow": "مستحق الآن"
     },
     "finance": {
       "title": "المالية",

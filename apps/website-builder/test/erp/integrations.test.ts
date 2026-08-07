@@ -1175,3 +1175,209 @@ describe('Shopify sends every topic down one URL (R19)', () => {
     assert.equal(order.status, 'pending', 'a real order belongs in the confirmation queue');
   });
 });
+
+/* =============================================================================
+ * LP.21 / R13, N14 — assigning follow-up by hand, and the live countdown
+ *
+ * LP.9 built the RULE and reached it only in bulk. This is the single-order
+ * door — the one a supervisor uses when a customer has become difficult and
+ * needs a senior agent — plus the countdown on a screen whose entire subject is
+ * a deadline.
+ * ========================================================================== */
+
+describe('a follow-up agent can be assigned by hand (R13)', () => {
+  test('a named person is honoured', async () => {
+    const staged = await makeErpTenant(`fa-${uid()}`);
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Difficult', phone: phone(), price: 3000,
+    })).body.data.id;
+
+    const r = await staged.manager.api('POST', '/api/erp/followup/assign', {
+      orderId: order, userId: staged.agent.userId,
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.data.followupUserId, staged.agent.userId);
+    assert.equal(r.body.data.auto, false);
+
+    const after = (await staged.manager.api('GET', `/api/erp/orders/${order}`)).body.data;
+    assert.equal(after.followupUserId, staged.agent.userId);
+  });
+
+  test('auto: true picks somebody, and an EMPTY body does not', async () => {
+    // The distinction that matters: a supervisor who meant to name somebody and
+    // sent an empty select must not discover the system picked for them.
+    const staged = await makeErpTenant(`fauto-${uid()}`);
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Auto', phone: phone(), price: 100,
+    })).body.data.id;
+
+    const empty = await staged.manager.api('POST', '/api/erp/followup/assign', { orderId: order });
+    assert.equal(empty.status, 422);
+    assert.equal(empty.body.error.code, 'NO_ASSIGNEE');
+
+    const auto = await staged.manager.api('POST', '/api/erp/followup/assign', {
+      orderId: order, auto: true,
+    });
+    assert.equal(auto.status, 200);
+    assert.ok(auto.body.data.followupUserId);
+    assert.equal(auto.body.data.auto, true);
+  });
+
+  test('it OVERWRITES an existing assignee — that is the business case', async () => {
+    const staged = await makeErpTenant(`fmove-${uid()}`);
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Moved', phone: phone(), price: 100,
+    })).body.data.id;
+
+    await staged.manager.api('POST', '/api/erp/followup/assign', {
+      orderId: order, userId: staged.agent.userId,
+    });
+    await staged.manager.api('POST', '/api/erp/followup/assign', {
+      orderId: order, userId: staged.other.userId,
+    });
+
+    const after = (await staged.manager.api('GET', `/api/erp/orders/${order}`)).body.data;
+    assert.equal(after.followupUserId, staged.other.userId);
+  });
+
+  test('an ineligible person is refused with a code that says WHICH problem', async () => {
+    // Two different problems and two different screens to go to: nobody carries
+    // the job role at all, or this person cannot take work right now.
+    const staged = await makeErpTenant(`fine-${uid()}`);
+    const bystander = await makeMember(staged.tenantId, { role: 'MEMBER' });
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Refused', phone: phone(), price: 100,
+    })).body.data.id;
+
+    const r = await staged.manager.api('POST', '/api/erp/followup/assign', {
+      orderId: order, userId: bystander.userId,
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'NOT_ELIGIBLE');
+    assert.ok(Array.isArray(r.body.error.eligible), 'it must say who CAN take it');
+  });
+
+  test('an agent cannot assign — followupUserId is a reassignment field', async () => {
+    const staged = await makeErpTenant(`fperm-${uid()}`);
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Gated', phone: phone(), price: 100, agentUserId: staged.agent.userId,
+    })).body.data.id;
+
+    const r = await staged.agent.api('POST', '/api/erp/followup/assign', {
+      orderId: order, userId: staged.agent.userId,
+    });
+    assert.equal(r.status, 403);
+  });
+
+  test('another tenant’s order is a 404', async () => {
+    const a = await makeErpTenant(`fa1-${uid()}`);
+    const b = await makeErpTenant(`fb1-${uid()}`);
+    const theirs = (await b.manager.api('POST', '/api/erp/orders', {
+      client: 'Theirs', phone: phone(), price: 100,
+    })).body.data.id;
+
+    const r = await a.manager.api('POST', '/api/erp/followup/assign', {
+      orderId: theirs, userId: a.agent.userId,
+    });
+    assert.equal(r.status, 404);
+  });
+
+  test('whoever receives the work is TOLD, and the supervisor is not', async () => {
+    // Work that lands in a queue silently is work nobody knows they have — and
+    // follow-up work is a customer waiting for a call.
+    const staged = await makeErpTenant(`fnotify-${uid()}`);
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Notified', phone: phone(), price: 100,
+    })).body.data.id;
+
+    const before = (await staged.agent.api('GET', '/api/platform/notifications?limit=50'))
+      .body.data.items.length;
+
+    await staged.manager.api('POST', '/api/erp/followup/assign', {
+      orderId: order, userId: staged.agent.userId,
+    });
+
+    const after = (await staged.agent.api('GET', '/api/platform/notifications?limit=50'))
+      .body.data.items;
+    assert.equal(after.length, before + 1, 'the assignee was not told');
+    assert.equal(after[0].type, 'followup_assigned');
+  });
+
+  test('re-assigning the SAME person tells them nothing new', async () => {
+    const staged = await makeErpTenant(`fsame-${uid()}`);
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Same', phone: phone(), price: 100,
+    })).body.data.id;
+
+    await staged.manager.api('POST', '/api/erp/followup/assign', {
+      orderId: order, userId: staged.agent.userId,
+    });
+    const after1 = (await staged.agent.api('GET', '/api/platform/notifications?limit=50'))
+      .body.data.items.length;
+
+    await staged.manager.api('POST', '/api/erp/followup/assign', {
+      orderId: order, userId: staged.agent.userId,
+    });
+    const after2 = (await staged.agent.api('GET', '/api/platform/notifications?limit=50'))
+      .body.data.items.length;
+    assert.equal(after2, after1, 'a no-op assignment notified somebody');
+  });
+
+  test('it writes the same audit row the bulk action does', async () => {
+    const staged = await makeErpTenant(`faudit-${uid()}`);
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Audited', phone: phone(), price: 100,
+    })).body.data.id;
+    await staged.manager.api('POST', '/api/erp/followup/assign', {
+      orderId: order, userId: staged.agent.userId,
+    });
+
+    const audit = await staged.manager.api(
+      'GET', `/api/erp/audit?entity=order&entityId=${order}`,
+    );
+    const actions = audit.body.data.items.map((e: { action: string }) => e.action);
+    assert.ok(actions.includes('followup_assign'), JSON.stringify(actions));
+  });
+});
+
+describe('the follow-up screen offers the control and a live countdown (R13, N14)', () => {
+  test('a manager gets the assignment control on every task row', async () => {
+    const staged = await makeErpTenant(`fui-${uid()}`);
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Task Owner', phone: phone(), price: 100,
+    })).body.data.id;
+    await makeFollowupTask(staged.tenantId, { orderId: order, agentUserId: staged.agent.userId });
+
+    const r = await screen('/console/erp/follow-up', staged.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="followup-assign"/);
+    assert.match(r.body, new RegExp(`data-testid="followup-auto-${order}"`));
+  });
+
+  test('the due date renders as an absolute time the server produced', async () => {
+    // The countdown is a client component; the first paint (and the whole page
+    // without JavaScript) must still carry a real answer rather than an empty
+    // cell — which is also what keeps hydration from mismatching on a clock.
+    const staged = await makeErpTenant(`ftick-${uid()}`);
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Due Soon', phone: phone(), price: 100,
+    })).body.data.id;
+    await makeFollowupTask(staged.tenantId, { orderId: order, agentUserId: staged.agent.userId });
+
+    const r = await screen('/console/erp/follow-up', staged.manager.token);
+    assert.match(r.body, /data-testid="countdown-absolute"/);
+  });
+
+  test('an agent gets their own tasks and NO assignment control', async () => {
+    const staged = await makeErpTenant(`fagent-${uid()}`);
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Agent Task', phone: phone(), price: 100,
+    })).body.data.id;
+    await makeFollowupTask(staged.tenantId, { orderId: order, agentUserId: staged.agent.userId });
+
+    const r = await screen('/console/erp/follow-up', staged.agent.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="erp-followup-table"/);
+    assert.ok(!/data-testid="followup-assign"/.test(r.body), 'the route would answer 403');
+  });
+});

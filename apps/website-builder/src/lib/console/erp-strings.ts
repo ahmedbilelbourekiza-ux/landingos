@@ -19,6 +19,9 @@ import type { NotifyPrefStrings } from "@/components/console/notify-preferences"
 import type { ChannelStrings } from "@/components/console/erp/channel-write";
 import type { VariantEditorStrings } from "@/components/console/erp/variant-editor";
 import type { ImportStrings } from "@/components/console/erp/csv-import";
+import type {
+  FollowupAssignStrings, CountdownStrings,
+} from "@/components/console/erp/followup-assign";
 
 /* =============================================================================
  * The ERP's write-control labels, resolved once per screen.
@@ -551,5 +554,27 @@ export function importStrings(t: (key: string) => string, kind: "clients" | "ord
     rows: t("erp.import.rows"),
     previewFirst: t("erp.import.previewFirst"),
     done: t("erp.import.done"),
+  };
+}
+
+
+/** The follow-up assignment control's labels — LP.21. */
+export function followupAssignStrings(t: (key: string) => string): FollowupAssignStrings {
+  return {
+    saving: t("common.saving"),
+    assignTo: t("erp.followUp.assignTo"),
+    assign: t("erp.followUp.assign"),
+    auto: t("erp.followUp.auto"),
+    unassigned: t("erp.followUp.unassigned"),
+  };
+}
+
+/** The live countdown's labels — LP.21, N14. */
+export function countdownStrings(t: (key: string) => string): CountdownStrings {
+  return {
+    inMinutes: t("erp.followUp.inMinutes"),
+    inHours: t("erp.followUp.inHours"),
+    overdueBy: t("erp.followUp.overdueBy"),
+    dueNow: t("erp.followUp.dueNow"),
   };
 }

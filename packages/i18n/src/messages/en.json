@@ -216,7 +216,15 @@
       "problems": "Returned",
       "escalation": "Overdue",
       "due": "Due",
-      "none": "Nothing to follow up"
+      "none": "Nothing to follow up",
+      "assignTo": "Follow-up agent",
+      "assign": "Assign",
+      "auto": "Automatic",
+      "unassigned": "Nobody",
+      "inMinutes": "in {n} min",
+      "inHours": "in {n} h",
+      "overdueBy": "{n} min overdue",
+      "dueNow": "due now"
     },
     "finance": {
       "title": "Finance",

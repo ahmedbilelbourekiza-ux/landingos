@@ -264,3 +264,35 @@ export function notifyAgentSuspended(db: TenantDb, tenantId: string, count: numb
     audience: { permission: PEOPLE_MANAGER },
   });
 }
+
+/**
+ * Somebody has been given an order to follow up — LP.21, R13.
+ *
+ * The ERP's `broadcast({ type: 'followup_assigned' }, chosen)`, which the port
+ * dropped along with the route that raised it. Work that lands in a queue
+ * silently is work nobody knows they have, and follow-up work in particular is
+ * a customer WAITING for a call — the whole department exists because that call
+ * has a deadline.
+ *
+ * ADDRESSED TO THE PERSON, not to the supervisors. A manager who has just
+ * pressed "assign" does not need telling what they did, and a feed that repeats
+ * your own actions back at you is a feed people stop reading. That is the
+ * opposite audience from `notifyNewOrder`, deliberately.
+ */
+export function notifyOrderAssigned(
+  db: TenantDb,
+  tenantId: string,
+  order: { id: string; reference: string | null; agentUserId: string | null },
+) {
+  if (!order.agentUserId) return Promise.resolve();
+  return notifyQuietly(db, tenantId, {
+    product: ERP,
+    // LP.11 maps an unrecognised type to the neutral assignment chime, which is
+    // exactly right here: work arrived and nothing is wrong.
+    type: "followup_assigned",
+    title: `Follow-up assigned ${label(order)}`,
+    audience: { userId: order.agentUserId },
+    entity: "order",
+    entityId: order.id,
+  });
+}

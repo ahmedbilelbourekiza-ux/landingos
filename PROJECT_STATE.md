@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.20: the three inbound paths*
+**Branch:** `master` · **Last commit:** *LP.21: a difficult customer can be moved*
 **Working tree:** clean, all work committed.
 
 ---
@@ -16,13 +16,13 @@ anything else.
 **Second pass, 6 August 2026 (from `9d1f887`): 115 features compared —
 52 identical · 6 improved · 18 partial · 39 missing.**
 
-**As of 7 August 2026, TIERS 1 AND 2 ARE COMPLETE and NINETEEN of the twenty-seven
-roadmap slices have landed** — LP.1–LP.20 (all but 21 and 22).
+**As of 7 August 2026, TIERS 1 AND 2 ARE COMPLETE and TWENTY of the twenty-seven
+roadmap slices have landed** — LP.1–LP.21 (all but 22).
 Every production blocker §0b named is closed, as is every "computed, stored and
 shown nowhere" defect the three passes found.
 
 **TIER 2 IS COMPLETE** — 7, 8, 9, 10, 11 and 12 are all in.
-**Tier 3: 13–20 are in; only 21 and 22 are not.** Parity is reached at the end of Tier 3, so **two roadmap slices
+**Tier 3: 13–21 are in; only 22 is not.** Parity is reached at the end of Tier 3, so **one roadmap slice
 remain** — the full list is in `LEGACY_PARITY.md` §4 and every one still carries
 its own detail card in §3.
 
@@ -80,6 +80,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.18** product fields, the variant editor, `niche`/`category`/`supplier` | R12 | **DONE** — catalog 55→66, registry 21→23, access 90→92 |
 | **LP.19** customer + order CSV import (preview, per-row reasons, dedup) | R5 (rest), R17 (import) | **DONE** — import 25 (new), access 92→94 |
 | **LP.20** lead capture, product sync, Shopify topic routing | R19 | **DONE** — integrations 47→63 |
+| **LP.21** manual follow-up assignment + the live countdown | R13, N14 | **DONE** — integrations 63→75, access 94→95 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -471,7 +472,7 @@ domain at a time.
 | the customer registry — one record, its history, its correction and its file (LP.10), and the niche filter LP.18 unblocked | registry 23/23 |
 | products (incl. **editing**, LP.1, the **normalised sales-summary match**, LP.16a, and the **variant editor + three classification columns**, LP.18), inventory, stock lots (incl. stock on confirm/cancel), agents, payroll (incl. `periodType`, LP.16b) | catalog 66/66 |
 | carriers (incl. **adapter refusal** LP.2, the **real ZR Express adapter** LP.5, and **test / sync / the integration log** LP.14), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 77/77 |
-| sales channels (incl. the **screen, the adapter registry, test / logs and per-platform parsing**, LP.15), inbound webhooks (incl. **lead capture, product sync and topic routing**, LP.20), AI, follow-up | integrations 63/63 |
+| sales channels (incl. the **screen, the adapter registry, test / logs and per-platform parsing**, LP.15), inbound webhooks (incl. **lead capture, product sync and topic routing**, LP.20), AI, follow-up (incl. **manual assignment**, LP.21) | integrations 75/75 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
 | every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4, the **ZR configuration surface** LP.5, the **export panel** LP.6, the accountability surface LP.12, the **inline row actions + density** LP.8 and the **completed bulk bar** LP.9) | screens 152/152 |
 | the order book as a file — ZR / Ecom / Ecotrac / report (LP.6) | export 31/31 |
@@ -482,9 +483,9 @@ domain at a time.
 | the P&L department — proration, fixed costs, versions, roll-up, the calculator screen (LP.16) | finance 38/38 + calc 20/20 |
 | the confirmation rate and six other breakdowns, plus the dashboard's reaction-time figures (LP.13) | analytics 19/19 |
 | the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
-| every surface, gated | access 94/94 |
+| every surface, gated | access 95/95 |
 
-**822/822** across EIGHTEEN ERP contract files, each verified on its own, plus
+**835/835** across EIGHTEEN ERP contract files, each verified on its own, plus
 **91/91** platform contract (team 62 · billing 19 · signup 10) and **20/20** in
 `test/calc.test.ts` — the one PURE suite, which needs no server at all. Running
 several contract files back to back still trips the documented Neon connection
@@ -946,6 +947,29 @@ guess.
 gated `parseOrder` to `orders/*`, so LP.20's abandoned-marking never ran and a
 `checkouts/create` produced no row at all. **The parser decides SHAPE; the route
 decides MEANING**, and both files now say so.
+
+### LP.21 — a difficult customer can be moved, and the deadline ticks
+
+**R13 and N14.** LP.9 built the assignment RULE and reached it only in bulk; this
+is the single-order door, on the screen a supervisor already has open.
+
+**`auto: true` is not the same request as an omitted agent.** Neither a `userId`
+nor `auto` is a 422, because a supervisor who left the select empty must not
+discover the system picked for them. Two refusal codes, because they send you to
+different screens: `NO_FOLLOWUP_AGENTS` is a settings problem;
+`NOT_ELIGIBLE` names who CAN take it.
+
+**The notification the port dropped with the route.** `followup_assigned` goes to
+the PERSON, not to the supervisors — the opposite audience from
+`notifyNewOrder`, because a feed that repeats your own actions back at you is one
+people stop reading. Only when the assignee actually moved.
+
+**N14 — the countdown is a client component and that is not a D-06.3
+violation.** It derives nothing and writes nothing: `dueAt` is the server's fact
+and this renders the DIFFERENCE against the browser's clock. Server-rendering
+that difference bakes in the render time and is wrong by however long the page
+has been open. The first paint is the server's absolute time (no hydration
+mismatch, and a real answer without JavaScript), which also stays as the tooltip.
 
 ### LP.14 — carriers: three columns nobody wrote, and a log nobody read
 
@@ -1810,7 +1834,7 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 822 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 835 | all pass against a running server |
 | `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
 | `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
@@ -1818,7 +1842,7 @@ fail without it, so check the counts, not just the exit code.
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1478** | green per suite |
+| **Total** | **1491** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

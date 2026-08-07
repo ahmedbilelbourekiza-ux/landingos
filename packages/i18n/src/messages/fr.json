@@ -216,7 +216,15 @@
       "problems": "Retournées",
       "escalation": "En retard",
       "due": "Échéance",
-      "none": "Rien à suivre"
+      "none": "Rien à suivre",
+      "assignTo": "Agent de suivi",
+      "assign": "Assigner",
+      "auto": "Automatique",
+      "unassigned": "Personne",
+      "inMinutes": "dans {n} min",
+      "inHours": "dans {n} h",
+      "overdueBy": "{n} min de retard",
+      "dueNow": "à faire maintenant"
     },
     "finance": {
       "title": "Finances",

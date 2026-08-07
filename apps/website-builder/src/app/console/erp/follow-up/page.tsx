@@ -1,11 +1,15 @@
 import Link from "next/link";
 
 import { withTenant } from "@landingos/db";
+import { can } from "@landingos/auth";
 import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
+import { FollowupAssign, Countdown } from "@/components/console/erp/followup-assign";
+import { followupAssignStrings, countdownStrings } from "@/lib/console/erp-strings";
 import { seesWholeBook } from "@/lib/erp/scope";
 
 export const dynamic = "force-dynamic";
@@ -21,13 +25,19 @@ export const dynamic = "force-dynamic";
  * The buckets are the department's working states, not order statuses. An order
  * can be confirmed and still need chasing, which is the entire reason this
  * screen exists separately from the order list.
+ *
+ * LP.21 added the two things R13 and N14 named: a per-row assignment control
+ * (the business case is a supervisor moving a difficult customer to a senior
+ * agent) and a LIVE countdown. The second matters more than it sounds — this
+ * screen's entire subject is a deadline, and "14:20" answers nothing without
+ * knowing what time it is now.
  */
 export default async function ErpFollowUpScreen() {
   const { session, locale: raw, t } = await requireProduct("erp", "/console/erp/follow-up");
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
   const wholeBook = seesWholeBook(session);
 
-  const { tasks, counts } = await withTenant(session.auth!.tenantId, async (db) => {
+  const { tasks, counts, followupMembers } = await withTenant(session.auth!.tenantId, async (db) => {
     const tasks = await db.followupTask.findMany({
       where: wholeBook ? {} : { agentUserId: session.user.id },
       orderBy: [{ dueAt: "asc" }, { id: "asc" }],
@@ -38,7 +48,22 @@ export default async function ErpFollowUpScreen() {
       },
     });
 
-    if (!wholeBook) return { tasks, counts: null };
+    /* Only people the assignment rule would actually accept — the job role,
+       which is the stable half of `eligibleAgents`. The rest of that rule
+       (suspended, day off, holds `erp:orders:write`) is the ROUTE's and is
+       deliberately not reimplemented here: it changes by the hour, and a screen
+       that copied it would be a second opinion. Offered only where the route
+       accepts an assignment at all (D-06.2) — `followupUserId` is a
+       REASSIGNMENT field, so a non-manager gets a 403. */
+    const followupMembers = wholeBook
+      ? await db.membership.findMany({
+          where: { suspended: false, jobRole: { in: ["followup", "both"] } },
+          orderBy: { createdAt: "asc" },
+          select: { userId: true, user: { select: { name: true, email: true } } },
+        })
+      : [];
+
+    if (!wholeBook) return { tasks, counts: null, followupMembers };
 
     const [waiting, inDelivery, needsContact, problems, escalation] = await Promise.all([
       db.fulfillmentOrder.count({ where: { status: "confirmed", followupUserId: null } }),
@@ -51,8 +76,20 @@ export default async function ErpFollowUpScreen() {
       db.fulfillmentOrder.count({ where: { deliveryOutcome: "returned" } }),
       db.followupTask.count({ where: { status: "overdue" } }),
     ]);
-    return { tasks, counts: { waiting, inDelivery, needsContact, problems, escalation } };
+    return {
+      tasks,
+      counts: { waiting, inDelivery, needsContact, problems, escalation },
+      followupMembers,
+    };
   });
+
+  const memberOptions = followupMembers.map((m) => ({
+    value: m.userId,
+    label: m.user.name || m.user.email,
+  }));
+  const errors = actionErrors(t);
+  const assignStrings = followupAssignStrings(t);
+  const tickStrings = countdownStrings(t);
 
   return (
     <ConsoleShell session={session} productId="erp">
@@ -82,6 +119,7 @@ export default async function ErpFollowUpScreen() {
         empty={t("erp.followUp.none")}
         rows={tasks}
         rowKey={(task) => task.id}
+        rowAttrs={(task) => ({ "data-flash-id": task.orderId })}
         columns={[
           {
             id: "order",
@@ -109,12 +147,40 @@ export default async function ErpFollowUpScreen() {
           {
             id: "due",
             header: t("erp.followUp.due"),
-            cell: (task) => (
-              <span className="text-muted-foreground">
-                {task.dueAt ? formatDate(task.dueAt, locale) : "—"}
-              </span>
-            ),
+            /* N14 — LIVE. The absolute time is what the server rendered and is
+               what shows until the first tick (and forever without JavaScript),
+               so nothing is lost; the countdown is what somebody acts on. */
+            cell: (task) =>
+              task.dueAt ? (
+                <Countdown
+                  dueAt={task.dueAt.toISOString()}
+                  absolute={formatDate(task.dueAt, locale)}
+                  s={tickStrings}
+                />
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              ),
           },
+          /* R13 — the control. Offered only where the route accepts it, which
+             is `seesWholeBook` AND `erp:orders:write`: `followupUserId` is a
+             REASSIGNMENT field and the route refuses anybody else by name. */
+          ...(wholeBook && can(session.auth!, "erp:orders:write")
+            ? [
+                {
+                  id: "assign",
+                  header: t("erp.followUp.assignTo"),
+                  cell: (task: (typeof tasks)[number]) => (
+                    <FollowupAssign
+                      orderId={task.orderId}
+                      current={task.agentUserId ?? ""}
+                      members={memberOptions}
+                      errors={errors}
+                      s={assignStrings}
+                    />
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
     </ConsoleShell>

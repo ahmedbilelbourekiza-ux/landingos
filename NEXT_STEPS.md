@@ -223,10 +223,24 @@ was reachable any other way:
    advances `TenantSequence`. `nextReference` now heals itself from the highest
    reference already in use, counting only references it could have minted.
 
-**TIER 2 IS COMPLETE** (#7–#12) **and #15, #18, #19 and #20 are done.** The
-remaining work is Tier 3: #21 and #22. #11
+**TIER 2 IS COMPLETE** (#7–#12) **and #15, #18–#21 are done.** The remaining work
+is ONE slice: #22, the Ecom adapter. #11
 (sound + desktop notification preferences on `ProductSetting`) hangs directly off
 this provider.
+
+### LP.21 — DONE. Manual follow-up assignment and the countdown (R13, N14)
+
+**Implemented and verified.** integrations 63 → **75**, access 94 → **95**.
+
+**Two things to carry forward:**
+
+- **`auto: true` must stay distinguishable from an omitted agent.** A default of
+  "automatic" means a supervisor who left a select empty gets a choice made for
+  them, silently.
+- **The countdown's first paint is the SERVER's absolute time.** Any future live
+  clock on a server-rendered page inherits that: rendering a relative time on
+  the server bakes in the render moment, and rendering it on the client without a
+  neutral first paint is a hydration mismatch on every load.
 
 ### LP.20 — DONE. The three inbound paths (R19)
 
@@ -464,7 +478,7 @@ payroll report, audit view **[DONE LP.12]**.
 (17) AI screen **[DONE LP.17]** ·
 (18) product fields + variant editor **[DONE LP.18]** ·
 (19) CSV import **[DONE LP.19]** · (20) channel webhooks **[DONE LP.20]** ·
-(21) manual follow-up assignment · (22) Ecom adapter.
+(21) manual follow-up assignment **[DONE LP.21]** · (22) Ecom adapter.
 **Tier 4 — hardening:** (23) rate limiting + `CSRF_ORIGIN` · (24) the offline
 shell decision · (25) board view + print · (26) status vocabularies ·
 (27) real AI calls.

@@ -624,14 +624,17 @@ migration).
 
 ---
 
-### R13 · Manual follow-up assignment — 🟡 PARTIAL *(the bulk half done — LP.9)*
+### R13 · Manual follow-up assignment — ✅ DONE (LP.9 + LP.21)
 **Legacy:** `POST /api/followup/assign` takes either an explicit agent or
 `auto: true` and broadcasts the assignment. Reachable from the order list in bulk.
 **Now:** auto-assignment runs on confirmation (6.6a). There is no way to assign or
 reassign a follow-up agent by hand.
-**Missing:** the route and the control.
-**Business impact:** **Medium.** A supervisor cannot move a difficult customer to a
-senior agent.
+**Now:** `POST /api/erp/followup/assign` (LP.21) plus the bulk action (LP.9),
+both through one `assignFollowupAgent`. The control is on the follow-up screen,
+per row, and "Automatic" is its own button rather than an empty select option —
+because the route refuses a body with neither a person nor `auto: true`.
+**Business impact:** **Medium.** A supervisor could not move a difficult customer
+to a senior agent.
 **Complexity:** **S** — `autoAssignFollowup` and `assign.ts` already hold the rule.
 **Dependencies:** none.
 
@@ -758,7 +761,7 @@ missed all of them.
 | **N13** | **Offline app shell** | service worker precaches the agent shell; network-first with cache fallback, so a dropped 3G connection does not blank the screen | **deliberately none** — see §6.4, where that decision is re-opened | 🔴 |
 | **N15** | **Price breakdown at order entry** | the new-order modal captures unit price, discount and shipping and DERIVES the total (`calcTotal()`), so a manually-entered order carries the same breakdown a storefront order does | `CreateOrder` accepts a flat `price` only. The four breakdown columns exist and are `MANAGER_WRITABLE` — reachable by a `PATCH` immediately after, never at creation | 🟡 |
 | **N16** | **Create/edit authorization agree on a field** | one rule per field | `price` and `carrierCode` are manager-only in `buildPatch` and **ungated in `CreateOrder`** — an agent may set a price on a new order and may not change it a second later. One of the two is wrong; deciding which is a authorization change, not a UI one | 🟡 |
-| **N14** | **Live follow-up countdown** | ticks every 15s in place, and re-sorts the moment a task goes overdue | a formatted due date, static | 🟡 |
+| **N14** | **Live follow-up countdown** | ticks every 15s in place, and re-sorts the moment a task goes overdue | ✅ **CLOSED — LP.21**: ticks every 15s, marks overdue, and keeps the absolute time as the tooltip. The first paint is the SERVER's absolute time, so there is no hydration mismatch on a clock and a reader without JavaScript keeps a real answer. Re-sorting is not restored: the list is ordered by `dueAt` in the QUERY, so a task that goes overdue is already at the top — the legacy re-sorted because it held the whole list in a browser. |
 | **N18** | **The dashboard's reaction-time numbers** | total · confirmed **+ confirmation rate %** · pending · **never called** · revenue, plus an **overdue banner with a count** shown only when > 0 | pending · confirmed · in delivery · delivered · customers · revenue. The **confirmation rate is computed nowhere on the platform**, and the never-called count and the overdue banner are gone. In-delivery / delivered / customers are a genuine gain on the delivery side — this is a trade, and the four that went are the four with the shortest reaction time. Found in the third pass (§8.2). | ✅ **CLOSED — LP.13**: the confirmation rate under the confirmed count, a never-called tile, and an overdue banner judged against the tenant's own `alertMinutes`. In-delivery/delivered/customers stay — the trade is now a gain on both sides. |
 | **N19** | **The two dashboards can never agree** | revenue = **confirmed** orders | revenue = **delivered** orders. The platform is RIGHT — under cash on delivery a phone confirmation is not a sale, which `settleOutcome` says in its own comment — and the numbers will therefore never match. Recorded because somebody comparing them will file a bug against the correct one. | 🔵 |
 | **N20** | **Seven analytics breakdowns from one function** | `tbl(title, keyFn, valueLabel)` called seven times — status · channel · product · wilaya · confirming agent · **marketer/source** · delivery status — each with orders / confirmed / conf-rate (with a bar) / canc-rate / revenue | none. Every one is a `groupBy` over `FulfillmentOrder`. **`marketer` and `source` are populated by the channel webhooks and read by nothing**, so ad attribution is uncomputable today. | ✅ **CLOSED — LP.13**: all seven, each a `groupBy` rather than the whole book in a browser. `marketer`/`source` get their first reader, so ad attribution is computable. |
@@ -932,7 +935,7 @@ from complete** — order export (R4) is all that remains in it.
 | ~~18~~ | ~~Product fields, variant editor, `niche`/`category`/`supplier`~~ | R12 | M | **DONE — LP.18.** `PUT /products/[id]/variants` writes the matrix and the option definitions and moves every stock difference through `applyMovement` (D-LP.18.1); removing a variant that still holds stock is refused by name (D-LP.18.2). The three columns land, and `niche` unblocks the client filter LP.10 had to ship without. |
 | ~~19~~ | ~~Client + order CSV import~~ | R5 (rest), R17 (import) | M | **DONE — LP.19.** Parsed on the SERVER (D-LP.19.1), preview and commit as one request with a required mode (D-LP.19.2), never overwriting a real value (D-LP.19.3), through `createOrder` and silently (D-LP.19.4/5), deduped by external id. Found a defect: a Shopify export repeats the order row per line item, and checking the phone before the id read those as skips. |
 | ~~20~~ | ~~Channel webhooks: lead-capture, product, Shopify HMAC~~ | R19 | M | **DONE — LP.20.** Lead capture with its threat model stated and four bounds each tested (D-LP.20.1–3), product sync creating the `CatalogProductLink` revenue attribution reads first and never updating an existing product, and Shopify topic routing on the one URL a tenant actually configures. Found a defect: the adapter and the route were both interpreting the topic and disagreed, so `checkouts/create` produced no row. |
-| **21** | Manual follow-up assignment · live countdown | R13, N14 | S | |
+| ~~21~~ | ~~Manual follow-up assignment · live countdown~~ | R13, N14 | S | **DONE — LP.21.** `POST /followup/assign` with `auto: true` distinguished from an omitted agent, two refusal codes that send you to different screens, the `followup_assigned` notification the port dropped with the route, and a countdown that ticks every 15s. |
 | **22** | Ecom carrier adapter | R2 (rest) | M | |
 
 ### Tier 4 — hardening and polish (overlaps Phase 8)
