@@ -98,7 +98,7 @@ export function OrderExportPanel({
             download
             data-testid={`export-${format}`}
             data-format={format}
-            className="rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent"
+            className="ui-btn ui-btn-default tap"
           >
             {s.formats[format]}
           </a>

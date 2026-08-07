@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 
 import { ServiceWorkerRegistration } from "@/components/console/service-worker";
+import { DensityScript } from "@/components/console/density-script";
 
 /* The console route group. Auth is enforced by each page's call to
  * requireConsoleSession rather than by middleware, because resolving an opaque
@@ -30,6 +31,10 @@ export const viewport: Viewport = {
 export default function ConsoleLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
+      {/* Before `children`, so the density attribute is on <html> before the
+          first table's CSS is evaluated against it. Console-only: a shopper on
+          a tenant's storefront has no tables and no preference. */}
+      <DensityScript />
       <ServiceWorkerRegistration />
       {children}
     </>

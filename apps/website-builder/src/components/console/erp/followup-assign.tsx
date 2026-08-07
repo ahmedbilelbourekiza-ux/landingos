@@ -57,7 +57,7 @@ export function FollowupAssign({
         value={choice}
         disabled={pending}
         onChange={(e) => setChoice(e.target.value)}
-        className="rounded-md border border-input bg-background px-2 py-1 text-xs"
+        className="ui-control tap px-2 py-1 text-xs"
       >
         <option value="">{s.unassigned}</option>
         {members.map((m) => (

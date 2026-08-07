@@ -134,7 +134,7 @@ export default async function DeliveryPricesPage({
                         min="0"
                         step="1"
                         defaultValue={p?.homePrice != null ? String(p.homePrice) : ""}
-                        className="w-28 rounded-md border border-input bg-background px-2 py-1 text-end text-sm tabular-nums"
+                        className="ui-control tap w-28 px-2 py-1 text-end tabular-nums"
                       />
                     </td>
                     <td className="px-4 py-2 text-end">
@@ -144,7 +144,7 @@ export default async function DeliveryPricesPage({
                         min="0"
                         step="1"
                         defaultValue={p?.deskPrice != null ? String(p.deskPrice) : ""}
-                        className="w-28 rounded-md border border-input bg-background px-2 py-1 text-end text-sm tabular-nums"
+                        className="ui-control tap w-28 px-2 py-1 text-end tabular-nums"
                       />
                     </td>
                   </tr>

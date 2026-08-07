@@ -99,7 +99,7 @@ export function OrderCreatePanel({
 
   const text = (id: keyof typeof form, label: string, extra?: { ltr?: boolean }) => (
     <div>
-      <label htmlFor={`new-order-${id}`} className="block text-xs text-muted-foreground">
+      <label htmlFor={`new-order-${id}`} className="ui-label block">
         {label}
       </label>
       <input
@@ -120,7 +120,7 @@ export function OrderCreatePanel({
     anyLabel: string,
   ) => (
     <div>
-      <label htmlFor={`new-order-${id}`} className="block text-xs text-muted-foreground">
+      <label htmlFor={`new-order-${id}`} className="ui-label block">
         {label}
       </label>
       <select
@@ -176,7 +176,7 @@ export function OrderCreatePanel({
           <div>
             <label
               htmlFor="new-order-quantity"
-              className="block text-xs text-muted-foreground"
+              className="ui-label block"
             >
               {s.quantity}
             </label>
@@ -188,7 +188,7 @@ export function OrderCreatePanel({
           </div>
 
           <div>
-            <label htmlFor="new-order-price" className="block text-xs text-muted-foreground">
+            <label htmlFor="new-order-price" className="ui-label block">
               {s.price}
             </label>
             {/* Text with a decimal keypad, never type="number" — a number input
@@ -215,7 +215,7 @@ export function OrderCreatePanel({
           {members && choose("agentUserId", s.agent, members, s.unassigned)}
 
           <div className="sm:col-span-2 lg:col-span-4">
-            <label htmlFor="new-order-note" className="block text-xs text-muted-foreground">
+            <label htmlFor="new-order-note" className="ui-label block">
               {s.note}
             </label>
             <textarea

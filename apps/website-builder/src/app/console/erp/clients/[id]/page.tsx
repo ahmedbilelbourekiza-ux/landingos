@@ -96,7 +96,7 @@ export default async function ErpClientDetailScreen({
           href={`tel:${client.phoneDisplay || client.phone}`}
           data-testid="client-dial"
           dir="ltr"
-          className="rounded-md border border-input px-3 py-1.5 font-mono text-sm"
+          className="ui-btn ui-btn-default tap font-mono"
         >
           {client.phoneDisplay || client.phone}
         </a>

@@ -171,17 +171,17 @@ export default async function ErpCalculatorScreen({
           <input
             type="date" name="startDate" dir="ltr" aria-label={t("erp.write.from")}
             defaultValue={dayValue(startDate)}
-            className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            className="ui-control tap px-2 py-1.5"
           />
           <input
             type="date" name="endDate" dir="ltr" aria-label={t("erp.write.to")}
             defaultValue={dayValue(endDate)}
-            className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            className="ui-control tap px-2 py-1.5"
           />
           <button
             type="submit"
             data-testid="calc-custom-apply"
-            className="rounded-md border border-input px-3 py-1.5 text-sm"
+            className="ui-btn ui-btn-default tap"
           >
             {t("erp.period.custom")}
           </button>
@@ -234,7 +234,7 @@ export default async function ErpCalculatorScreen({
         <a
           href={`/api/erp/financial-records/export?periodType=${periodType}`}
           data-testid="calc-export"
-          className="rounded-md border border-input px-3 py-1.5 text-sm"
+          className="ui-btn ui-btn-default tap"
         >
           {t("erp.calculator.exportHistory")}
         </a>

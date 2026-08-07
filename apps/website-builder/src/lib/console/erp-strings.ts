@@ -178,6 +178,42 @@ export function filterStrings(t: (key: string) => string): FilterStrings {
   };
 }
 
+/** UI.12 — the sortable-header vocabulary, shared by every list that sorts. */
+export function sortStrings(t: (key: string) => string) {
+  return {
+    sortBy: t("common.sortBy"),
+    ascending: t("common.sortedAsc"),
+    descending: t("common.sortedDesc"),
+  };
+}
+
+/** UI.13 — the density control's labels. */
+export function densityStrings(t: (key: string) => string) {
+  return {
+    density: t("common.density"),
+    comfortable: t("common.densityComfortable"),
+    compact: t("common.densityCompact"),
+  };
+}
+
+/**
+ * UI.12 — what a list says when it has nothing, told apart.
+ *
+ * "No orders yet" on `?status=cancelled` in a tenant with 4,000 orders is
+ * simply false, and it sends the reader to the wrong next action: they go
+ * looking for a create button when what they need is to clear a filter. Only
+ * the caller knows which situation it is in, so the caller passes `filtered`.
+ */
+export function emptyCopy(
+  t: (key: string) => string,
+  filtered: boolean,
+  nothingYet: string,
+) {
+  return filtered
+    ? { title: t("common.noResults"), description: t("common.noResultsHint") }
+    : { title: nothingYet };
+}
+
 /**
  * The new-order panel's labels — LP.4.
  *

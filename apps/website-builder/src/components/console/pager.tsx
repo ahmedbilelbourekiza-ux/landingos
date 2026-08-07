@@ -79,7 +79,7 @@ export function Pager({
       <Link
         href={hrefFor(basePath, params, target)}
         data-testid={id}
-        className="rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent"
+        className="ui-btn ui-btn-default ui-btn-sm tap"
       >
         {label}
       </Link>
@@ -87,7 +87,11 @@ export function Pager({
       <span
         data-testid={`${id}-disabled`}
         aria-disabled="true"
-        className="rounded-md border border-input px-3 py-1.5 text-sm opacity-40"
+        // Not `opacity-40`: opacity is invisible to assistive technology and
+        // drops the label below AA on its own background. Muted foreground on
+        // the sunken surface reads as unavailable in form as well as in weight,
+        // and `aria-disabled` says it outright.
+        className="ui-btn ui-btn-sm tap border border-border bg-surface-sunken text-muted-foreground"
       >
         {label}
       </span>
@@ -95,7 +99,7 @@ export function Pager({
 
   return (
     <nav
-      className="mt-4 flex flex-wrap items-center gap-3"
+      className="flex flex-wrap items-center gap-2"
       data-testid={testId}
       data-page={page}
       data-pages={pages}
@@ -106,7 +110,7 @@ export function Pager({
       {arrow(s.next, page + 1, hasNext, `${testId}-next`)}
       {/* dir="ltr" and tabular-nums: a count is read left-to-right even on an
           RTL page, and the figures should not jump as the page changes. */}
-      <span className="text-xs tabular-nums text-muted-foreground" dir="ltr">
+      <span className="ms-1 text-xs tabular-nums text-muted-foreground" dir="ltr">
         {s.position.replace("{page}", String(page)).replace("{pages}", String(pages))}
         {" · "}
         {s.total.replace("{total}", String(info.total))}

@@ -92,7 +92,7 @@ export function AgentRowActions({
     label: string,
   ) => (
     <div>
-      <label htmlFor={`agent-${k}-${userId}`} className="block text-xs text-muted-foreground">
+      <label htmlFor={`agent-${k}-${userId}`} className="ui-label block">
         {label}
       </label>
       <input
@@ -171,7 +171,7 @@ export function AgentRowActions({
             <div>
               <label
                 htmlFor={`agent-jobRole-${userId}`}
-                className="block text-xs text-muted-foreground"
+                className="ui-label block"
               >
                 {s.jobRole}
               </label>

@@ -96,28 +96,28 @@ export function SignupForm({ labels }: { labels: SignupLabels }) {
       ) : null}
 
       <div className="space-y-1">
-        <label htmlFor="companyName" className="text-sm font-medium">{labels.companyName}</label>
+        <label htmlFor="companyName" className="ui-label">{labels.companyName}</label>
         <input id="companyName" name="companyName" type="text" required className={FIELD} />
       </div>
 
       <div className="space-y-1">
-        <label htmlFor="slug" className="text-sm font-medium">{labels.slug}</label>
+        <label htmlFor="slug" className="ui-label">{labels.slug}</label>
         <input id="slug" name="slug" type="text" required dir="ltr" placeholder="my-shop" className={FIELD} />
         <p className="text-xs text-muted-foreground">{labels.slugHint}</p>
       </div>
 
       <div className="space-y-1">
-        <label htmlFor="name" className="text-sm font-medium">{labels.name}</label>
+        <label htmlFor="name" className="ui-label">{labels.name}</label>
         <input id="name" name="name" type="text" required className={FIELD} />
       </div>
 
       <div className="space-y-1">
-        <label htmlFor="email" className="text-sm font-medium">{labels.email}</label>
+        <label htmlFor="email" className="ui-label">{labels.email}</label>
         <input id="email" name="email" type="email" required autoComplete="username" dir="ltr" className={FIELD} />
       </div>
 
       <div className="space-y-1">
-        <label htmlFor="password" className="text-sm font-medium">{labels.password}</label>
+        <label htmlFor="password" className="ui-label">{labels.password}</label>
         <input id="password" name="password" type="password" required minLength={8} autoComplete="new-password" className={FIELD} />
       </div>
 

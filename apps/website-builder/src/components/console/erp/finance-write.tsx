@@ -79,7 +79,7 @@ export function ChargeAddPanel({
 
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
         <div>
-          <label htmlFor="charge-label" className="block text-xs text-muted-foreground">
+          <label htmlFor="charge-label" className="ui-label block">
             {s.label}
           </label>
           <input
@@ -88,7 +88,7 @@ export function ChargeAddPanel({
           />
         </div>
         <div>
-          <label htmlFor="charge-amount" className="block text-xs text-muted-foreground">
+          <label htmlFor="charge-amount" className="ui-label block">
             {s.amount}
           </label>
           {/* Money is a text input with a decimal keypad, never type="number":
@@ -100,7 +100,7 @@ export function ChargeAddPanel({
           />
         </div>
         <div>
-          <label htmlFor="charge-date" className="block text-xs text-muted-foreground">
+          <label htmlFor="charge-date" className="ui-label block">
             {s.date}
           </label>
           {/* The day it HAPPENED, not the day it was typed in. A repair entered
@@ -192,7 +192,7 @@ export function RecordSavePanel({
 
   const money = (k: keyof typeof f, label: string) => (
     <div>
-      <label htmlFor={`fin-${k}`} className="block text-xs text-muted-foreground">{label}</label>
+      <label htmlFor={`fin-${k}`} className="ui-label block">{label}</label>
       <input
         id={`fin-${k}`} inputMode="decimal" dir="ltr"
         value={f[k]} onChange={(e) => set(k, e.target.value)} className={`mt-1 ${FIELD}`}
@@ -214,7 +214,7 @@ export function RecordSavePanel({
 
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
         <div>
-          <label htmlFor="fin-periodType" className="block text-xs text-muted-foreground">
+          <label htmlFor="fin-periodType" className="ui-label block">
             {s.periodType}
           </label>
           <select
@@ -227,7 +227,7 @@ export function RecordSavePanel({
           </select>
         </div>
         <div>
-          <label htmlFor="fin-startDate" className="block text-xs text-muted-foreground">
+          <label htmlFor="fin-startDate" className="ui-label block">
             {s.from}
           </label>
           <input
@@ -237,7 +237,7 @@ export function RecordSavePanel({
           />
         </div>
         <div>
-          <label htmlFor="fin-endDate" className="block text-xs text-muted-foreground">{s.to}</label>
+          <label htmlFor="fin-endDate" className="ui-label block">{s.to}</label>
           <input
             id="fin-endDate" type="date" dir="ltr"
             value={f.endDate} onChange={(e) => set("endDate", e.target.value)}

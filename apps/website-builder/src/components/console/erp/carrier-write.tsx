@@ -89,7 +89,7 @@ export function CarrierCreatePanel({
 
   const input = (k: keyof typeof f, label: string, secret = false) => (
     <div>
-      <label htmlFor={`carrier-${k}`} className="block text-xs text-muted-foreground">
+      <label htmlFor={`carrier-${k}`} className="ui-label block">
         {label}
       </label>
       <input
@@ -133,7 +133,7 @@ export function CarrierCreatePanel({
             {input("name", s.name)}
             {input("code", s.code)}
             <div>
-              <label htmlFor="carrier-adapter" className="block text-xs text-muted-foreground">
+              <label htmlFor="carrier-adapter" className="ui-label block">
                 {s.adapter}
               </label>
               {/* From the live adapter registry, so a carrier implementation
@@ -477,7 +477,7 @@ export function CarrierRowActions({
             </ul>
           )}
 
-          <label htmlFor={`map-original-${carrierId}`} className="block text-xs text-muted-foreground">
+          <label htmlFor={`map-original-${carrierId}`} className="ui-label block">
             {s.carrierSays}
           </label>
           <input
@@ -486,7 +486,7 @@ export function CarrierRowActions({
             className={FIELD}
           />
 
-          <label htmlFor={`map-crm-${carrierId}`} className="block text-xs text-muted-foreground">
+          <label htmlFor={`map-crm-${carrierId}`} className="ui-label block">
             {s.meansStatus}
           </label>
           {/* A select, not a text box. The CRM side has a fixed vocabulary — the

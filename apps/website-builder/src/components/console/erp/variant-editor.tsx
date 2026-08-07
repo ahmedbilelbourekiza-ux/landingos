@@ -108,7 +108,7 @@ export function VariantEditorPanel({
       {/* D-06.4: rendered always, hidden when closed. */}
       <div hidden={!open}>
         <div className="mt-3">
-          <label htmlFor="variant-product" className="block text-xs text-muted-foreground">
+          <label htmlFor="variant-product" className="ui-label block">
             {s.product}
           </label>
           <select
@@ -219,7 +219,7 @@ function VariantRows({
         {defs.map((def, i) => (
           <div key={i} className="flex flex-wrap items-end gap-2">
             <div>
-              <label className="block text-xs text-muted-foreground">{s.optionName}</label>
+              <label className="ui-label block">{s.optionName}</label>
               <input
                 data-testid={`option-name-${i}`}
                 value={def.name}
@@ -230,7 +230,7 @@ function VariantRows({
               />
             </div>
             <div className="flex-1">
-              <label className="block text-xs text-muted-foreground">{s.optionValues}</label>
+              <label className="ui-label block">{s.optionValues}</label>
               <input
                 data-testid={`option-values-${i}`}
                 value={def.values.join(", ")}
@@ -249,7 +249,7 @@ function VariantRows({
             <button
               type="button"
               onClick={() => setDefs((d) => d.filter((_, idx) => idx !== i))}
-              className="rounded-md border border-input px-2 py-1 text-xs"
+              className="ui-btn ui-btn-default ui-btn-sm tap"
             >
               {s.remove}
             </button>
@@ -262,7 +262,7 @@ function VariantRows({
           type="button"
           data-testid="variant-add-option"
           onClick={() => setDefs((d) => [...d, { name: "", values: [] }])}
-          className="rounded-md border border-input px-2 py-1 text-xs"
+          className="ui-btn ui-btn-default ui-btn-sm tap"
         >
           {s.addOption}
         </button>
@@ -270,7 +270,7 @@ function VariantRows({
           type="button"
           data-testid="variant-generate"
           onClick={generate}
-          className="rounded-md border border-input px-2 py-1 text-xs"
+          className="ui-btn ui-btn-default ui-btn-sm tap"
         >
           {s.generate}
         </button>
@@ -338,7 +338,7 @@ function VariantRows({
                     type="button"
                     data-testid={`variant-remove-${i}`}
                     onClick={() => setRows((r) => r.filter((_, idx) => idx !== i))}
-                    className="rounded-md border border-input px-2 py-1 text-xs"
+                    className="ui-btn ui-btn-default ui-btn-sm tap"
                   >
                     {s.remove}
                   </button>
@@ -356,14 +356,14 @@ function VariantRows({
           onClick={() =>
             setRows((r) => [...r, { name: "", sku: "", stock: 0, threshold: 0, options: {} }])
           }
-          className="rounded-md border border-input px-2 py-1 text-xs"
+          className="ui-btn ui-btn-default ui-btn-sm tap"
         >
           {s.addVariant}
         </button>
         <div>
           {/* One reason for the whole batch, because the editor IS one action.
               It reaches every movement row this save writes. */}
-          <label htmlFor="variant-reason" className="block text-xs text-muted-foreground">
+          <label htmlFor="variant-reason" className="ui-label block">
             {s.reason}
           </label>
           <input

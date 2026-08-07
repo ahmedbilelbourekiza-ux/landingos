@@ -225,12 +225,12 @@ export default async function ErpQueueScreen({
           hydration, which the rest of this screen cannot claim. */}
       <form method="get" className="mt-4 flex flex-wrap items-end gap-3" data-testid="erp-queue-filters">
         <div>
-          <label htmlFor="status" className="block text-xs text-muted-foreground">
+          <label htmlFor="status" className="ui-label block">
             {t("erp.orders.status")}
           </label>
           <select
             id="status" name="status" defaultValue={params.get("status") ?? ""}
-            className="mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="ui-control tap mt-1"
           >
             <option value="">{t("erp.queue.allActive")}</option>
             {ORDER_STATUSES.map((value) => (
@@ -241,17 +241,17 @@ export default async function ErpQueueScreen({
           </select>
         </div>
         <div>
-          <label htmlFor="search" className="block text-xs text-muted-foreground">
+          <label htmlFor="search" className="ui-label block">
             {t("common.search")}
           </label>
           <input
             id="search" name="search" defaultValue={params.get("search") ?? ""}
-            className="mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="ui-control tap mt-1"
           />
         </div>
         <button
           type="submit"
-          className="rounded-md border border-input px-3 py-2 text-sm font-medium"
+          className="ui-btn ui-btn-default tap"
         >
           {t("erp.write.apply")}
         </button>

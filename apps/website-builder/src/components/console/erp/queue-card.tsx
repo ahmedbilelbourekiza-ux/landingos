@@ -236,14 +236,14 @@ export function QueueCard({
       {/* Hidden, not unmounted — the note types are part of the document
           whether or not anybody opened the panel (D-06.4). */}
       <div hidden={!noting} className="mt-2 space-y-2" data-testid="queue-note-panel">
-        <label htmlFor={`qnote-type-${order.id}`} className="block text-xs text-muted-foreground">
+        <label htmlFor={`qnote-type-${order.id}`} className="ui-label block">
           {s.noteKind}
         </label>
         <select
           id={`qnote-type-${order.id}`}
           value={noteType}
           onChange={(e) => setNoteType(e.target.value)}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className="ui-control tap w-full"
         >
           {noteTypes.map((n) => (
             <option key={n.value} value={n.value}>{n.label}</option>
@@ -254,7 +254,7 @@ export function QueueCard({
           rows={2}
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className="ui-control tap w-full"
         />
         <ActionButton
           data-testid="queue-note-save"

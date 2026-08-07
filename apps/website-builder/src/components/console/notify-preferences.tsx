@@ -98,7 +98,7 @@ export function NotifyPreferences({
       </label>
 
       <div className="mt-3 flex items-center gap-3">
-        <label htmlFor="notify-volume" className="text-xs text-muted-foreground">
+        <label htmlFor="notify-volume" className="ui-label">
           {s.volume}
         </label>
         <input
@@ -136,7 +136,7 @@ export function NotifyPreferences({
               type="button"
               data-testid={`notify-test-${f}`}
               onClick={() => playFamily(f, draft.volume)}
-              className="rounded-md border border-input px-2 py-1 text-xs"
+              className="ui-btn ui-btn-default ui-btn-sm tap"
             >
               {s.test}
             </button>

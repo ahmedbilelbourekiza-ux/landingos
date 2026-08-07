@@ -123,7 +123,7 @@ export function CsvImportPanel({
       {/* D-06.4: rendered always, hidden when closed. */}
       <div hidden={!open} className="mt-3 space-y-3">
         <div>
-          <label htmlFor={`${testId}-file`} className="block text-xs text-muted-foreground">
+          <label htmlFor={`${testId}-file`} className="ui-label block">
             {s.file}
           </label>
           <input
@@ -138,7 +138,7 @@ export function CsvImportPanel({
         </div>
 
         <div>
-          <label htmlFor={`${testId}-source`} className="block text-xs text-muted-foreground">
+          <label htmlFor={`${testId}-source`} className="ui-label block">
             {s.source}
           </label>
           <input

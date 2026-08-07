@@ -26,7 +26,7 @@ import { hasActiveFilter } from "./filter-field";
  * point of the file.
  * ========================================================================== */
 
-const CONTROL = "rounded-md border border-input bg-background px-3 py-2 text-sm";
+const CONTROL = "ui-control tap";
 
 export interface FilterStrings {
   readonly apply: string;
@@ -55,14 +55,17 @@ export function FilterBar({
       method="get"
       action={basePath}
       data-testid={testId}
-      className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-border p-3"
+      // A surface rather than an outline on the page ground, and the fields
+      // wrap into a grid at every width instead of a single row that overflows
+      // — nine order filters on a laptop used to push Apply off the end.
+      className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-raised p-3"
     >
       {fields.map((field) => {
         const id = `filter-${field.name}`;
         const value = params.get(field.name) ?? "";
         return (
           <div key={field.name} className={field.wide ? "min-w-56 flex-1" : ""}>
-            <label htmlFor={id} className="block text-xs text-muted-foreground">
+            <label htmlFor={id} className="ui-label block">
               {field.label}
             </label>
 
@@ -102,7 +105,7 @@ export function FilterBar({
       <button
         type="submit"
         data-testid={`${testId}-apply`}
-        className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+        className="ui-btn ui-btn-primary tap"
       >
         {s.apply}
       </button>
@@ -113,7 +116,7 @@ export function FilterBar({
         <Link
           href={basePath}
           data-testid={`${testId}-clear`}
-          className="rounded-md border border-input px-3 py-2 text-sm hover:bg-accent"
+          className="ui-btn ui-btn-default tap"
         >
           {s.clear}
         </Link>

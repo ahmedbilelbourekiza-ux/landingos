@@ -108,11 +108,11 @@ export function ProviderCreatePanel({
       <h2 className="text-sm font-medium">{s.addProvider}</h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div>
-          <label htmlFor="ai-p-name" className="block text-xs text-muted-foreground">{s.name}</label>
+          <label htmlFor="ai-p-name" className="ui-label block">{s.name}</label>
           <input id="ai-p-name" value={f.name} onChange={(e) => set("name", e.target.value)} className={`mt-1 ${FIELD}`} />
         </div>
         <div>
-          <label htmlFor="ai-p-type" className="block text-xs text-muted-foreground">{s.type}</label>
+          <label htmlFor="ai-p-type" className="ui-label block">{s.type}</label>
           <select
             id="ai-p-type"
             value={f.type}
@@ -140,17 +140,17 @@ export function ProviderCreatePanel({
           </select>
         </div>
         <div>
-          <label htmlFor="ai-p-url" className="block text-xs text-muted-foreground">{s.baseUrl}</label>
+          <label htmlFor="ai-p-url" className="ui-label block">{s.baseUrl}</label>
           <input id="ai-p-url" dir="ltr" value={f.baseUrl} onChange={(e) => set("baseUrl", e.target.value)} className={`mt-1 ${FIELD}`} />
         </div>
         <div>
-          <label htmlFor="ai-p-key" className="block text-xs text-muted-foreground">{s.apiKey}</label>
+          <label htmlFor="ai-p-key" className="ui-label block">{s.apiKey}</label>
           {/* type="password" and never read back — the route does not select it. */}
           <input id="ai-p-key" type="password" autoComplete="off" dir="ltr"
             value={f.apiKey} onChange={(e) => set("apiKey", e.target.value)} className={`mt-1 ${FIELD}`} />
         </div>
         <div>
-          <label htmlFor="ai-p-model" className="block text-xs text-muted-foreground">{s.defaultModel}</label>
+          <label htmlFor="ai-p-model" className="ui-label block">{s.defaultModel}</label>
           <input id="ai-p-model" dir="ltr" value={f.defaultModel} onChange={(e) => set("defaultModel", e.target.value)} className={`mt-1 ${FIELD}`} />
         </div>
       </div>
@@ -310,22 +310,22 @@ export function AgentCreatePanel({
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div>
-          <label htmlFor="ai-a-name" className="block text-xs text-muted-foreground">{s.name}</label>
+          <label htmlFor="ai-a-name" className="ui-label block">{s.name}</label>
           <input id="ai-a-name" value={f.name} onChange={(e) => set("name", e.target.value)} className={`mt-1 ${FIELD}`} />
         </div>
         <div>
-          <label htmlFor="ai-a-desc" className="block text-xs text-muted-foreground">{s.description}</label>
+          <label htmlFor="ai-a-desc" className="ui-label block">{s.description}</label>
           <input id="ai-a-desc" value={f.description} onChange={(e) => set("description", e.target.value)} className={`mt-1 ${FIELD}`} />
         </div>
         <div>
-          <label htmlFor="ai-a-provider" className="block text-xs text-muted-foreground">{s.provider}</label>
+          <label htmlFor="ai-a-provider" className="ui-label block">{s.provider}</label>
           <select id="ai-a-provider" value={f.providerId} onChange={(e) => set("providerId", e.target.value)} className={`mt-1 ${FIELD}`}>
             <option value="">{s.none}</option>
             {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
         <div>
-          <label htmlFor="ai-a-role" className="block text-xs text-muted-foreground">{s.role}</label>
+          <label htmlFor="ai-a-role" className="ui-label block">{s.role}</label>
           <select id="ai-a-role" value={f.role} onChange={(e) => set("role", e.target.value)} className={`mt-1 ${FIELD}`}>
             {roles.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
@@ -333,7 +333,7 @@ export function AgentCreatePanel({
       </div>
 
       <div className="mt-3">
-        <label htmlFor="ai-a-prompt" className="block text-xs text-muted-foreground">{s.systemPrompt}</label>
+        <label htmlFor="ai-a-prompt" className="ui-label block">{s.systemPrompt}</label>
         <textarea id="ai-a-prompt" rows={3} value={f.systemPrompt}
           onChange={(e) => set("systemPrompt", e.target.value)} className={`mt-1 ${FIELD}`} />
       </div>

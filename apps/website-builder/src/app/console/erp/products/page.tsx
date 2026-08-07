@@ -23,8 +23,11 @@ import {
   VariantEditorPanel,
   type EditableProductVariants,
 } from "@/components/console/erp/variant-editor";
+import { PageHeader } from "@/components/console/ui/primitives";
+import { ListFrame } from "@/components/console/ui/list-frame";
 import {
   catalogStrings, filterStrings, pagerStrings, variantEditorStrings,
+  densityStrings, emptyCopy,
 } from "@/lib/console/erp-strings";
 import { inventoryView } from "@/lib/erp/inventory";
 import { duplicateProductNames } from "@/lib/erp/product-stats";
@@ -186,47 +189,71 @@ export default async function ErpProductsScreen({
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">
-        {t("erp.products.title")}
-        {archived && (
-          <span className="ms-2 text-sm font-normal text-muted-foreground">
-            {t("erp.products.archived")}
-          </span>
-        )}
-      </h1>
-
-      <FilterBar
-        basePath="/console/erp/products"
-        params={params}
-        fields={[{ name: "search", label: t("erp.filters.search"), kind: "text", wide: true }]}
-        s={filterStrings(t)}
-        testId="erp-products-filters"
+      <PageHeader
+        title={t("erp.products.title")}
+        meta={
+          archived && (
+            <span className="rounded-full border border-border bg-surface-subtle px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              {t("erp.products.archived")}
+            </span>
+          )
+        }
       />
 
-      {/* Not on the archived view: creating a product from a list of things
-          nobody sells any more would put the new row somewhere invisible. */}
-      {mayWrite && !archived && <ProductCreatePanel errors={errors} s={s} />}
+      {/* The write surfaces, grouped above the reading surface rather than
+          strung between the title and the table one at a time. */}
+      {(mayWrite || mayMoveStock) && (
+        <div className="space-y-3">
+          {/* Not on the archived view: creating a product from a list of things
+              nobody sells any more would put the new row somewhere invisible. */}
+          {mayWrite && !archived && <ProductCreatePanel errors={errors} s={s} />}
 
-      {/* Offered on BOTH views. Archiving means "stop selling it", not "freeze
-          it": a wrong cost basis is usually discovered from a report about a
-          product nobody sells any more, and the route accepts the edit either
-          way — so withholding the control here would hide a write the API
-          allows (D-06.2). */}
-      {mayWrite && <ProductEditPanel products={editable} errors={errors} s={s} />}
+          {/* Offered on BOTH views. Archiving means "stop selling it", not
+              "freeze it": a wrong cost basis is usually discovered from a report
+              about a product nobody sells any more, and the route accepts the
+              edit either way — so withholding the control here would hide a
+              write the API allows (D-06.2). */}
+          {mayWrite && <ProductEditPanel products={editable} errors={errors} s={s} />}
 
-      {/* LP.18 — the variant matrix. Gated on the permission the ROUTE checks,
-          which is not the one above it. */}
-      {mayMoveStock && (
-        <VariantEditorPanel
-          products={variantEditable}
-          errors={errors}
-          s={variantEditorStrings(t)}
-        />
+          {/* LP.18 — the variant matrix. Gated on the permission the ROUTE
+              checks, which is not the one above it. */}
+          {mayMoveStock && (
+            <VariantEditorPanel
+              products={variantEditable}
+              errors={errors}
+              s={variantEditorStrings(t)}
+            />
+          )}
+        </div>
       )}
 
+      <ListFrame
+        className="mt-4"
+        density={densityStrings(t)}
+        toolbar={
+          <FilterBar
+            basePath="/console/erp/products"
+            params={params}
+            fields={[{ name: "search", label: t("erp.filters.search"), kind: "text", wide: true }]}
+            s={filterStrings(t)}
+            testId="erp-products-filters"
+          />
+        }
+        pager={
+          <Pager
+            basePath="/console/erp/products"
+            params={params}
+            info={{ page, pageSize: PAGE_SIZE, total }}
+            s={pagerStrings(t)}
+            testId="erp-products-pager"
+          />
+        }
+      >
       <DataTable
         testId="erp-products-table"
         empty={t("erp.products.none")}
+        emptyCopy={emptyCopy(t, Boolean(search), t("erp.products.none"))}
+        caption={t("erp.products.title")}
         rows={products}
         rowKey={(p) => p.id}
         rowAttrs={(p) => ({ "data-product-id": p.id })}
@@ -340,13 +367,7 @@ export default async function ErpProductsScreen({
             : []),
         ]}
       />
-      <Pager
-        basePath="/console/erp/products"
-        params={params}
-        info={{ page, pageSize: PAGE_SIZE, total }}
-        s={pagerStrings(t)}
-        testId="erp-products-pager"
-      />
+      </ListFrame>
     </ConsoleShell>
   );
 }

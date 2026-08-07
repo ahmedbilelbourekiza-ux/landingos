@@ -110,7 +110,7 @@ export default async function StoreSettingsPage({
       >
         {FIELDS.map((f) => (
           <div key={f.name} className="space-y-1">
-            <label htmlFor={f.name} className="text-sm font-medium">
+            <label htmlFor={f.name} className="ui-label">
               {f.label}
             </label>
             <input
@@ -122,7 +122,7 @@ export default async function StoreSettingsPage({
                 settings?.[f.name] ??
                 (f.name === "storeName" ? session.tenant?.name ?? "" : "")
               }
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="ui-control tap w-full"
             />
           </div>
         ))}
@@ -130,7 +130,7 @@ export default async function StoreSettingsPage({
         <div className="sm:col-span-2">
           <button
             type="submit"
-            className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+            className="ui-btn ui-btn-primary tap"
           >
             Save
           </button>

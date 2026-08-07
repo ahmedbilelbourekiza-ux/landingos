@@ -6,9 +6,11 @@ import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { Pager } from "@/components/console/pager";
-import { pagerStrings } from "@/lib/console/erp-strings";
+import { pagerStrings, densityStrings } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable, StatusPill } from "@/components/console/data-table";
+import { PageHeader } from "@/components/console/ui/primitives";
+import { ListFrame } from "@/components/console/ui/list-frame";
 
 export const dynamic = "force-dynamic";
 
@@ -56,11 +58,24 @@ export default async function ErpShipmentsScreen({
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.shipments.title")}</h1>
+      <PageHeader title={t("erp.shipments.title")} />
 
+      <ListFrame
+        density={densityStrings(t)}
+        pager={
+          <Pager
+            basePath="/console/erp/shipments"
+            params={params}
+            info={{ page, pageSize: PAGE_SIZE, total }}
+            s={pagerStrings(t)}
+            testId="erp-shipments-pager"
+          />
+        }
+      >
       <DataTable
         testId="erp-shipments-table"
         empty={t("erp.shipments.none")}
+        caption={t("erp.shipments.title")}
         rows={shipments}
         rowKey={(s) => s.id}
         rowAttrs={(s) => ({ "data-shipment-id": s.id })}
@@ -106,13 +121,7 @@ export default async function ErpShipmentsScreen({
           },
         ]}
       />
-      <Pager
-        basePath="/console/erp/shipments"
-        params={params}
-        info={{ page, pageSize: PAGE_SIZE, total }}
-        s={pagerStrings(t)}
-        testId="erp-shipments-pager"
-      />
+      </ListFrame>
     </ConsoleShell>
   );
 }

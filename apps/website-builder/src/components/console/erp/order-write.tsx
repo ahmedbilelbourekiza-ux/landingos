@@ -102,7 +102,7 @@ export function EditPanel({
 
   const render = (f: EditField) => (
     <div key={f.name} className={f.kind === "textarea" ? "sm:col-span-2" : undefined}>
-      <label htmlFor={`edit-${f.name}`} className="block text-xs text-muted-foreground">
+      <label htmlFor={`edit-${f.name}`} className="ui-label block">
         {f.label}
       </label>
       {f.kind === "select" ? (
@@ -304,7 +304,7 @@ export function ReassignPanel({
     onChange: (v: string) => void,
   ) => (
     <div>
-      <label htmlFor={id} className="block text-xs text-muted-foreground">
+      <label htmlFor={id} className="ui-label block">
         {label}
       </label>
       <select
@@ -422,7 +422,7 @@ export function CallPanel({
         ))}
       </div>
 
-      <label htmlFor="call-note" className="mt-3 block text-xs text-muted-foreground">
+      <label htmlFor="call-note" className="ui-label mt-3 block">
         {s.callNote}
       </label>
       <textarea
@@ -461,7 +461,7 @@ export function NotePanel({
           "customer rang us". The API refuses to; a person should know why. */}
       <p className="mt-1 text-xs text-muted-foreground">{s.noteHint}</p>
 
-      <label htmlFor="note-type" className="mt-3 block text-xs text-muted-foreground">
+      <label htmlFor="note-type" className="ui-label mt-3 block">
         {s.noteKind}
       </label>
       <select
@@ -478,7 +478,7 @@ export function NotePanel({
         ))}
       </select>
 
-      <label htmlFor="note-detail" className="mt-3 block text-xs text-muted-foreground">
+      <label htmlFor="note-detail" className="ui-label mt-3 block">
         {s.noteDetail}
       </label>
       <textarea
@@ -548,7 +548,7 @@ export function ClassifyPanel({
         </div>
       ) : (
         <>
-          <label htmlFor="fake-reason" className="mt-3 block text-xs text-muted-foreground">
+          <label htmlFor="fake-reason" className="ui-label mt-3 block">
             {s.fakeReason}
           </label>
           <input
@@ -559,7 +559,7 @@ export function ClassifyPanel({
             className={`mt-1 ${FIELD}`}
           />
 
-          <label htmlFor="fake-responsible" className="mt-3 block text-xs text-muted-foreground">
+          <label htmlFor="fake-responsible" className="ui-label mt-3 block">
             {s.fakeResponsible}
           </label>
           <input

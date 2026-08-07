@@ -2,8 +2,10 @@
 
 import { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { AlertCircle, Loader2 } from "lucide-react";
 
 import { toneVars } from "@landingos/ui";
+import { button, type ButtonSize, type ButtonVariant } from "./ui/styles";
 
 /* =============================================================================
  * The console's write primitive — Phase 6.3.
@@ -96,10 +98,13 @@ export function ActionError({ message }: { message: string | null }) {
     <p
       role="alert"
       data-testid="action-error"
-      className="mt-3 rounded-md border px-3 py-2 text-sm"
+      className="mt-3 flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
       style={toneVars("danger")}
     >
-      {message}
+      {/* The tone is already carried by colour AND by the sentence; the icon is
+          the third channel, for a reader who has neither. */}
+      <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+      <span>{message}</span>
     </p>
   );
 }
@@ -116,27 +121,35 @@ export function ActionButton({
   pending,
   pendingLabel,
   variant = "default",
+  size = "md",
+  className,
   ...rest
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   pending: boolean;
   pendingLabel: string;
-  variant?: "default" | "primary" | "danger";
+  variant?: ButtonVariant;
+  size?: ButtonSize;
 }) {
-  const styles =
-    variant === "primary"
-      ? "bg-primary text-primary-foreground"
-      : variant === "danger"
-        ? "border"
-        : "border border-input";
-
   return (
     <button
       type="button"
       disabled={pending || rest.disabled}
-      style={variant === "danger" ? toneVars("danger") : undefined}
-      className={`rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${styles}`}
+      // `aria-busy` is what tells a screen reader the control is working. The
+      // label swap says it to everybody else and says nothing to them.
+      aria-busy={pending || undefined}
+      className={button(variant, size, className)}
       {...rest}
     >
+      {/* UI.14 — the spinner, and why the label still changes.
+       *
+       * Swapping the label for "Saving…" was the only busy signal, and it
+       * changes the button's WIDTH mid-action, so a row of controls reflows
+       * under the pointer that just pressed one. The mark is fixed-width and
+       * sits before the text; the text still changes, because "Saving…" is
+       * information and a spinner alone is only "wait". */}
+      {pending && (
+        <Loader2 aria-hidden="true" className="size-3.5 shrink-0 motion-safe:animate-spin" />
+      )}
       {pending ? pendingLabel : children}
     </button>
   );

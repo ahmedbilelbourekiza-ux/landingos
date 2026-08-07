@@ -103,7 +103,7 @@ export function FixedCostsEditor({
         {draft.map((row, i) => (
           <div key={row.id} className="flex items-end gap-2" data-fixed-cost={row.id}>
             <div className="flex-[2]">
-              <label htmlFor={`fc-label-${row.id}`} className="block text-xs text-muted-foreground">
+              <label htmlFor={`fc-label-${row.id}`} className="ui-label block">
                 {i === 0 ? s.label : ""}
               </label>
               <input
@@ -115,7 +115,7 @@ export function FixedCostsEditor({
               />
             </div>
             <div className="flex-1">
-              <label htmlFor={`fc-amount-${row.id}`} className="block text-xs text-muted-foreground">
+              <label htmlFor={`fc-amount-${row.id}`} className="ui-label block">
                 {i === 0 ? s.monthlyAmount : ""}
               </label>
               {/* Money is a text input with a decimal keypad, never
@@ -135,7 +135,7 @@ export function FixedCostsEditor({
               type="button"
               data-testid="fixed-cost-remove"
               onClick={() => setDraft((d) => d.filter((r) => r.id !== row.id))}
-              className="rounded-md border border-input px-3 py-2 text-sm"
+              className="ui-btn ui-btn-default tap"
             >
               {s.remove}
             </button>
@@ -228,7 +228,7 @@ export function ChannelCarrierEditor({
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {channels.map((c) => (
             <div key={c.id} data-channel={c.id}>
-              <label htmlFor={`cc-${c.id}`} className="block text-xs text-muted-foreground">
+              <label htmlFor={`cc-${c.id}`} className="ui-label block">
                 {c.name}
               </label>
               <select

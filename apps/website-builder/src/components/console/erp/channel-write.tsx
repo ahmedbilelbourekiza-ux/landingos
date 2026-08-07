@@ -87,7 +87,7 @@ export function ChannelCreatePanel({
         type="button"
         data-testid="channel-create-toggle"
         onClick={() => setOpen((o) => !o)}
-        className="rounded-md border border-input px-3 py-1.5 text-sm font-medium"
+        className="ui-btn ui-btn-default ui-btn-sm tap"
       >
         {s.newChannel}
       </button>
@@ -98,11 +98,11 @@ export function ChannelCreatePanel({
           clicks. */}
       <div hidden={!open} className="mt-3 grid gap-3 sm:grid-cols-2">
         <div>
-          <label htmlFor="ch-name" className="block text-xs text-muted-foreground">{s.name}</label>
+          <label htmlFor="ch-name" className="ui-label block">{s.name}</label>
           <input id="ch-name" value={draft.name} onChange={(e) => set("name", e.target.value)} className={`mt-1 ${FIELD}`} />
         </div>
         <div>
-          <label htmlFor="ch-platform" className="block text-xs text-muted-foreground">{s.platform}</label>
+          <label htmlFor="ch-platform" className="ui-label block">{s.platform}</label>
           <select
             id="ch-platform"
             value={draft.platform}
@@ -120,19 +120,19 @@ export function ChannelCreatePanel({
           </select>
         </div>
         <div>
-          <label htmlFor="ch-brand" className="block text-xs text-muted-foreground">{s.brand}</label>
+          <label htmlFor="ch-brand" className="ui-label block">{s.brand}</label>
           <input id="ch-brand" value={draft.brand} onChange={(e) => set("brand", e.target.value)} className={`mt-1 ${FIELD}`} />
         </div>
         <div>
-          <label htmlFor="ch-url" className="block text-xs text-muted-foreground">{s.apiUrl}</label>
+          <label htmlFor="ch-url" className="ui-label block">{s.apiUrl}</label>
           <input id="ch-url" value={draft.apiUrl} onChange={(e) => set("apiUrl", e.target.value)} className={`mt-1 ${FIELD}`} dir="ltr" />
         </div>
         <div>
-          <label htmlFor="ch-key" className="block text-xs text-muted-foreground">{s.apiKey}</label>
+          <label htmlFor="ch-key" className="ui-label block">{s.apiKey}</label>
           <input id="ch-key" type="password" autoComplete="off" value={draft.apiKey} onChange={(e) => set("apiKey", e.target.value)} className={`mt-1 ${FIELD}`} />
         </div>
         <div>
-          <label htmlFor="ch-webhook-secret" className="block text-xs text-muted-foreground">{s.webhookSecret}</label>
+          <label htmlFor="ch-webhook-secret" className="ui-label block">{s.webhookSecret}</label>
           <input id="ch-webhook-secret" type="password" autoComplete="off" value={draft.webhookSecret} onChange={(e) => set("webhookSecret", e.target.value)} className={`mt-1 ${FIELD}`} />
         </div>
 

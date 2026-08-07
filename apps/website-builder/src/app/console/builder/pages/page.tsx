@@ -53,7 +53,7 @@ export default async function BuilderPagesScreen() {
         {mayEdit ? (
           <Link
             href="/console/builder/pages/new"
-            className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+            className="ui-btn ui-btn-primary tap"
           >
             {t("common.create")}
           </Link>

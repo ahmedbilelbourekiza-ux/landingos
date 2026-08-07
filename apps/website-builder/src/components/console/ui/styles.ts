@@ -59,7 +59,7 @@ export const sectionTitle = "text-sm font-semibold tracking-tight text-foregroun
 export const subTitle = "text-xs font-semibold uppercase tracking-wide text-muted-foreground";
 
 /** A form label, or a `<dt>`. Foreground — see rule 3. */
-export const fieldLabel = "text-xs font-medium text-foreground";
+export const fieldLabel = "ui-label";
 
 /** Explanatory text under a title or a field. */
 export const hint = "text-xs text-muted-foreground";
@@ -118,26 +118,18 @@ export const stackLoose = "space-y-6";
  * needs to change.
  * -------------------------------------------------------------------------- */
 
-const CONTROL_BASE =
-  "block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground " +
-  "transition-colors duration-(--duration-fast) ease-standard " +
-  "placeholder:text-muted-foreground/70 " +
-  "hover:border-muted-foreground/40 " +
-  "disabled:cursor-not-allowed disabled:opacity-60 " +
-  // `aria-invalid` is what binds a refusal to the field that caused it. The
-  // ring is not the message — the message is bound by `aria-describedby` — but
-  // a form of eleven fields needs to SHOW which one, not only say it.
-  "aria-[invalid=true]:border-(--danger-fg) aria-[invalid=true]:bg-(--danger-bg)";
+/* The declarations are in `globals.css` under `@layer components` — see the
+ * comment there for why. These names are the contract; a component composes
+ * them and never re-declares the box. */
 
-/** A text, search, date, tel or decimal input. */
-export const control = cn(CONTROL_BASE, "tap");
+/** A text, search, date, tel or decimal input. Add `w-full` where it belongs. */
+export const control = "ui-control tap";
 
-/** A `<select>`. Same box; the arrow is the platform's, deliberately — a
- *  custom one is a listbox to build, test and translate. */
-export const select = cn(CONTROL_BASE, "tap", "cursor-pointer");
+/** A `<select>`. Same box, platform arrow. */
+export const select = "ui-control tap";
 
-/** A `<textarea>`. */
-export const textarea = cn(CONTROL_BASE, "min-h-20 resize-y");
+/** A `<textarea>`. No `tap` — it is already taller than any touch target. */
+export const textarea = "ui-control";
 
 /** A checkbox or radio. Sized up from the browser default, which is 13px and
  *  below every touch guideline there is. */
@@ -157,28 +149,12 @@ export const checkbox =
 export type ButtonVariant = "primary" | "default" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";
 
-const BUTTON_BASE =
-  "inline-flex items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap " +
-  "transition-[background-color,border-color,color,box-shadow] duration-(--duration-fast) ease-standard " +
-  "disabled:pointer-events-none disabled:opacity-50 tap";
-
 const BUTTON_SIZE: Record<ButtonSize, string> = {
   // Dense enough to live in a table row, and `tap` still lifts it to 44px on a
   // touch screen — which is the screen the agent queue is used on.
-  sm: "h-8 px-2.5 text-xs",
-  md: "h-9 px-3 text-sm",
-  lg: "h-10 px-4 text-sm",
-};
-
-const BUTTON_VARIANT: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-primary-foreground hover:bg-(--primary-hover) shadow-e1",
-  default: "border border-input bg-background text-foreground hover:bg-surface-hover",
-  ghost: "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
-  // The tone triplet, exactly as a status chip uses it — so the destructive
-  // action and the state it produces are visibly the same idea, and neither is
-  // brand crimson (R-14).
-  danger:
-    "border border-(--danger-border) bg-(--danger-bg) text-(--danger-fg) hover:brightness-95",
+  sm: "ui-btn-sm",
+  md: "",
+  lg: "ui-btn-lg",
 };
 
 export function button(
@@ -186,14 +162,14 @@ export function button(
   size: ButtonSize = "md",
   extra?: string,
 ): string {
-  return cn(BUTTON_BASE, BUTTON_SIZE[size], BUTTON_VARIANT[variant], extra);
+  return cn("ui-btn tap", `ui-btn-${variant}`, BUTTON_SIZE[size], extra);
 }
 
 /** A square button holding only an icon. Needs an `aria-label` at the call
  *  site; there is no such thing as an unlabelled icon control. */
 export function iconButton(variant: ButtonVariant = "ghost", size: ButtonSize = "md"): string {
-  const square = size === "sm" ? "h-8 w-8 p-0" : size === "lg" ? "h-10 w-10 p-0" : "h-9 w-9 p-0";
-  return cn(BUTTON_BASE, BUTTON_VARIANT[variant], square);
+  const square = size === "sm" ? "size-8 px-0" : size === "lg" ? "size-10 px-0" : "size-9 px-0";
+  return cn("ui-btn tap", `ui-btn-${variant}`, square);
 }
 
 /* -----------------------------------------------------------------------------

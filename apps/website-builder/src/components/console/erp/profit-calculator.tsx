@@ -475,7 +475,7 @@ export function ProfitCalculator({
                     onClick={() =>
                       patch(b.pid, { exchanges: b.exchanges.filter((y) => y.id !== x.id) })
                     }
-                    className="rounded-md border border-input px-2 py-1 text-sm"
+                    className="ui-btn ui-btn-default ui-btn-sm tap"
                   >
                     ×
                   </button>
@@ -551,7 +551,7 @@ export function ProfitCalculator({
 
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <div className="flex-1">
-              <label htmlFor="calc-notes" className="block text-xs text-muted-foreground">
+              <label htmlFor="calc-notes" className="ui-label block">
                 {s.notes}
               </label>
               <input
@@ -638,7 +638,7 @@ export function ProfitCalculator({
 function field(label: string, id: string, value: string, onChange: (v: string) => void) {
   return (
     <div className="mt-2 first:mt-0">
-      <label htmlFor={id} className="block text-xs text-muted-foreground">{label}</label>
+      <label htmlFor={id} className="ui-label block">{label}</label>
       {/* Money is a text input with a decimal keypad, never type="number" — a
           number input hands back a JS float and every one of these is parsed as
           an exact decimal (M-06, lib/money.ts). */}

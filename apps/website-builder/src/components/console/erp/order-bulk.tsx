@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { useApiAction, ActionError, ActionButton } from "@/components/console/api-action";
 import type { ActionErrors } from "@/lib/console/action-errors";
 import type { WriteOption } from "@/components/console/edit-field";
+import { cn } from "@/lib/utils";
 
 /* =============================================================================
  * Bulk actions over the order book — Phase 6.3b.
@@ -27,6 +28,7 @@ import type { WriteOption } from "@/components/console/edit-field";
 export interface BulkStrings {
   readonly saving: string;
   readonly selected: string;
+  readonly selectAll: string;
   readonly changeStatus: string;
   readonly apply: string;
   readonly assignTo: string;
@@ -95,6 +97,14 @@ export function OrderBulkBar({
 
   const ids = () =>
     form.current ? (new FormData(form.current).getAll("orderId") as string[]) : [];
+
+  /** Every selectable row on THIS page — what "all" means. The route is bounded
+   *  per call and the page is fifty rows, so "all" can never mean the whole
+   *  book, which is the version of this control that ends in an accident. */
+  const boxes = (): HTMLInputElement[] =>
+    form.current
+      ? Array.from(form.current.querySelectorAll<HTMLInputElement>('input[name="orderId"]'))
+      : [];
 
   /**
    * The ticked rows, as a file.
@@ -187,21 +197,90 @@ export function OrderBulkBar({
     >
       <div
         data-testid="erp-bulk-bar"
-        className="mt-6 flex flex-wrap items-end gap-3 rounded-lg border border-border p-3"
+        /* UI.16 — it follows you down the list.
+         *
+         * The bar sat above the table in the flow, so selecting row 40 meant
+         * scrolling back to the top to act on it — on the one screen where the
+         * whole point is acting on many rows at once. `sticky` under the shell
+         * header keeps it in view while the table scrolls past.
+         *
+         * It also changes state rather than only reporting one: with nothing
+         * ticked it is a muted strip, and with a selection it takes the
+         * selected tint the rows themselves have, so "these rows and this bar
+         * are one thing" is said in colour rather than in prose. Every control
+         * stays rendered in both states (D-06.4) and stays disabled at zero,
+         * which is the rule it already followed. */
+        className={cn(
+          "sticky top-[calc(var(--console-header-h)+0.5rem)] z-20 flex flex-wrap items-end gap-3",
+          "rounded-lg border p-3 backdrop-blur-sm transition-colors duration-(--duration-base)",
+          count > 0
+            ? "border-surface-selected-border bg-surface-selected shadow-e2"
+            : "border-border bg-surface-raised/90",
+        )}
       >
-        <span className="text-sm text-muted-foreground" data-testid="bulk-selected">
-          {count} {s.selected}
+        <span
+          className="flex items-center gap-2 text-sm font-medium"
+          data-testid="bulk-selected"
+          // The count changes without anything moving on screen, so it is
+          // announced. A supervisor ticking fifty rows with the keyboard has no
+          // other way to know where they are.
+          aria-live="polite"
+        >
+          <span
+            className={cn(
+              "inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-xs tabular-nums",
+              count > 0
+                ? "bg-primary text-primary-foreground"
+                : "bg-surface-sunken text-muted-foreground",
+            )}
+            dir="ltr"
+          >
+            {count}
+          </span>
+          <span className={count > 0 ? "text-foreground" : "text-muted-foreground"}>
+            {s.selected}
+          </span>
         </span>
 
+        {/* UI.16 — select all.
+         *
+         * There was none, so "confirm every pending order in Alger from
+         * yesterday" — the exact workflow the filter bar exists to enable —
+         * ended in ticking up to fifty boxes by hand.
+         *
+         * It lives here rather than in the table's header cell because the
+         * table is a SERVER component and the form is this one's: a control in
+         * the header would need its own client boundary and its own way to
+         * reach the same checkboxes, which is a second owner of one selection.
+         * `indeterminate` is set through a ref because it is a DOM property
+         * with no attribute — the state that says "some, not all", which a
+         * two-state box cannot express. */}
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <input
+            ref={(el) => {
+              if (el) el.indeterminate = count > 0 && count < boxes().length;
+            }}
+            type="checkbox"
+            data-testid="bulk-select-all"
+            checked={count > 0 && count === boxes().length}
+            onChange={(e) => {
+              for (const box of boxes()) box.checked = e.target.checked;
+              setCount(ids().length);
+            }}
+            className="size-4 shrink-0 cursor-pointer rounded-sm border-input accent-(--primary)"
+          />
+          {s.selectAll}
+        </label>
+
         <div>
-          <label htmlFor="bulk-status" className="block text-xs text-muted-foreground">
+          <label htmlFor="bulk-status" className="ui-label block">
             {s.changeStatus}
           </label>
           <select
             id="bulk-status"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="ui-control tap mt-1"
           >
             {statuses.map((o) => (
               <option key={o.value} value={o.value}>
@@ -241,14 +320,14 @@ export function OrderBulkBar({
             orders fake and not fifty. The reason travels with the mark, because
             a bulk flag with no reason is the one that gets disputed later. */}
         <div>
-          <label htmlFor="bulk-fake-reason" className="block text-xs text-muted-foreground">
+          <label htmlFor="bulk-fake-reason" className="ui-label block">
             {s.fakeReason}
           </label>
           <input
             id="bulk-fake-reason"
             value={fakeReason}
             onChange={(e) => setFakeReason(e.target.value)}
-            className="mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="ui-control tap mt-1"
           />
         </div>
         <ActionButton
@@ -275,14 +354,14 @@ export function OrderBulkBar({
         {managesBook && (
           <>
             <div>
-              <label htmlFor="bulk-assign" className="block text-xs text-muted-foreground">
+              <label htmlFor="bulk-assign" className="ui-label block">
                 {s.assignTo}
               </label>
               <select
                 id="bulk-assign"
                 value={assignee}
                 onChange={(e) => setAssignee(e.target.value)}
-                className="mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                className="ui-control tap mt-1"
               >
                 <option value="">—</option>
                 {members.map((m) => (
@@ -310,14 +389,14 @@ export function OrderBulkBar({
             {followupMembers.length > 0 && (
               <>
                 <div>
-                  <label htmlFor="bulk-followup" className="block text-xs text-muted-foreground">
+                  <label htmlFor="bulk-followup" className="ui-label block">
                     {s.followupAgent}
                   </label>
                   <select
                     id="bulk-followup"
                     value={followup}
                     onChange={(e) => setFollowup(e.target.value)}
-                    className="mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="ui-control tap mt-1"
                   >
                     <option value="">{s.autoAssign}</option>
                     {followupMembers.map((m) => (
@@ -364,14 +443,14 @@ export function OrderBulkBar({
             {carriers.length > 0 && (
               <>
                 <div>
-                  <label htmlFor="bulk-carrier" className="block text-xs text-muted-foreground">
+                  <label htmlFor="bulk-carrier" className="ui-label block">
                     {s.carrier}
                   </label>
                   <select
                     id="bulk-carrier"
                     value={carrier}
                     onChange={(e) => setCarrier(e.target.value)}
-                    className="mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="ui-control tap mt-1"
                   >
                     <option value="">—</option>
                     {carriers.map((c) => (

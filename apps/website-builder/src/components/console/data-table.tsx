@@ -1,21 +1,107 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
+import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 
-/**
- * The console's table.
+import { cn } from "@/lib/utils";
+import { EmptyState } from "./ui/primitives";
+
+/* =============================================================================
+ * The console's table — UI.12.
  *
  * Extracted the moment a second screen needed one, not before. Every product's
  * list screen renders through this, which is most of what makes the ERP's
- * tables look like the builder's when Phase 6 arrives.
+ * tables look like the builder's.
  *
- * Wide content scrolls inside its own container so the page body never scrolls
- * sideways, and numeric columns are tabular so digits line up down the column.
- */
+ * ERP operators spend their day here, so this is the component where the
+ * modernisation has the most to buy. Six things it now does that it did not,
+ * and each is a finding in UI_UX_AUDIT §4:
+ *
+ *   **UX-20 — the headers sort.** `orderSort` has read `?sort=`/`?dir=` since
+ *   Phase 5 and nothing ever set them: an operator could not sort the order
+ *   book by value or by date, though the query always could. The header is a
+ *   LINK, like the pager, so sorting lives in the URL — bookmarkable, shareable,
+ *   working before JavaScript, and assertable by a contract test. A column
+ *   offers a sort only where the screen hands it a `sortKey`, and the screens
+ *   take those from `ORDER_SORT_FIELDS`, which lives in the module that
+ *   validates them (D-LP.3).
+ *
+ *   **UX-21 — the header sticks.** Fifty rows is roughly 3,000px of scroll and
+ *   nine columns of which four are money or counts; by row 12 the operator was
+ *   reading unlabelled numbers. The table gets its own capped scroll region
+ *   from `md` up so the header can stick to something — on a phone it scrolls
+ *   with the page, because a nested scroll region on a small screen is worse
+ *   than the problem.
+ *
+ *   **UX-22 — rows respond.** A hover tint, and a SELECTED tint driven by
+ *   `has-[:checked]` so ticking a box changes the row without a line of
+ *   JavaScript and without a second copy of what is ticked.
+ *
+ *   **UX-24 — density is a choice.** See `density-toggle.tsx`.
+ *
+ *   **UX-25 — the scroll edges are visible.** A wide table simply ended, with
+ *   no sign that *status* and *actions* were off-screen.
+ *
+ *   **UX-26/28 — semantics and honest emptiness.** `scope="col"`, `aria-sort`, a
+ *   caption, and an empty state that distinguishes "nothing yet" from "nothing
+ *   matched" — the same sentence for both told an operator filtering to
+ *   `?status=cancelled` that they had no orders at all.
+ *
+ * What has NOT changed: it is still a server component, it still holds no
+ * selection state, and the filter, the scope and the page are all still in the
+ * query (PERF-02).
+ * ========================================================================== */
+
 export interface Column<T> {
   readonly id: string;
   readonly header: string;
   readonly align?: "start" | "end";
   readonly numeric?: boolean;
+  /**
+   * The `?sort=` key this column orders by. Set ONLY where the endpoint reads
+   * it — an unbacked key silently sorts by something else.
+   */
+  readonly sortKey?: string;
+  /** Keep on one line: references, dates, tracking numbers. */
+  readonly nowrap?: boolean;
+  /** A minimum for this column, so a dense cell does not collapse. */
+  readonly width?: string;
   readonly cell: (row: T) => ReactNode;
+}
+
+export interface SortState {
+  /** Where the header links point. */
+  readonly basePath: string;
+  /** Every other filter, preserved — losing them on a sort is the classic bug. */
+  readonly params: URLSearchParams;
+  readonly active: string | null;
+  readonly dir: "asc" | "desc";
+  readonly s: {
+    /** "Sort by {column}" */
+    readonly sortBy: string;
+    readonly ascending: string;
+    readonly descending: string;
+  };
+}
+
+export interface EmptyCopy {
+  readonly title: string;
+  readonly description?: string;
+  readonly action?: ReactNode;
+}
+
+function sortHref(sort: SortState, key: string): string {
+  const next = new URLSearchParams(sort.params);
+  // Clicking the ACTIVE column flips direction; clicking a new one starts
+  // descending, because every column here is "most recent / largest / latest
+  // first" on first look.
+  const dir = sort.active === key && sort.dir === "desc" ? "asc" : "desc";
+  next.set("sort", key);
+  next.set("dir", dir);
+  // Sorting reshuffles the whole list, so page 3 of the old order is a
+  // meaningless place to land. Same reasoning as the filter bar's reset.
+  next.delete("page");
+  const query = next.toString();
+  return query ? `${sort.basePath}?${query}` : sort.basePath;
 }
 
 export function DataTable<T>({
@@ -24,56 +110,144 @@ export function DataTable<T>({
   rowKey,
   rowAttrs,
   empty,
+  emptyCopy,
   testId,
+  sort,
+  caption,
+  /** A header-cell node for the selection column — "select all" lives here. */
+  selectAll,
 }: {
   columns: readonly Column<T>[];
   rows: readonly T[];
   rowKey: (row: T) => string;
   rowAttrs?: (row: T) => Record<string, string>;
+  /** The one-line fallback. Kept for every caller that has not moved to
+   *  `emptyCopy`, and for the case where there genuinely is one sentence. */
   empty: string;
+  emptyCopy?: EmptyCopy;
   testId?: string;
+  sort?: SortState;
+  caption?: string;
+  selectAll?: ReactNode;
 }) {
   if (rows.length === 0) {
     // Carries the same testId as the populated table, and says it is empty
     // rather than missing. A screen with no rows and a screen that failed to
     // render look identical to a test otherwise.
     return (
-      <p
-        data-testid={testId}
-        data-empty="true"
-        className="mt-6 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground"
-      >
-        {empty}
-      </p>
+      <EmptyState
+        testId={testId}
+        title={emptyCopy?.title ?? empty}
+        description={emptyCopy?.description}
+        action={emptyCopy?.action}
+      />
     );
   }
 
   return (
-    <div className="mt-6 overflow-x-auto rounded-lg border border-border">
-      <table className="w-full min-w-[640px] text-sm" data-testid={testId}>
-        <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-          <tr>
-            {columns.map((c) => (
-              <th
-                key={c.id}
-                className={`px-4 py-3 font-medium ${c.align === "end" ? "text-end" : "text-start"} ${
-                  c.numeric ? "tabular-nums" : ""
-                }`}
-              >
-                {c.header}
-              </th>
-            ))}
+    <div
+      className={cn(
+        "scroll-shadow-x overflow-auto rounded-lg border border-border bg-surface-raised",
+        // The cap only exists where there is room for it. Below `md` the table
+        // scrolls with the page: a nested vertical scroll region on a phone is
+        // a trap, and the sticky header it would buy is worth less than the
+        // trap costs.
+        "md:max-h-[calc(100dvh-var(--console-header-h)-13rem)]",
+      )}
+    >
+      <table className="console-table w-full min-w-[640px] text-sm" data-testid={testId}>
+        {caption && <caption className="sr-only">{caption}</caption>}
+        <thead className="sticky top-0 z-10 bg-surface-subtle text-xs text-muted-foreground">
+          <tr className="border-b border-border">
+            {columns.map((c) => {
+              const sortable = Boolean(sort && c.sortKey);
+              const active = sortable && sort!.active === c.sortKey;
+              const ariaSort = active
+                ? sort!.dir === "asc"
+                  ? ("ascending" as const)
+                  : ("descending" as const)
+                : sortable
+                  ? ("none" as const)
+                  : undefined;
+
+              return (
+                <th
+                  key={c.id}
+                  scope="col"
+                  aria-sort={ariaSort}
+                  style={c.width ? { minWidth: c.width } : undefined}
+                  className={cn(
+                    "px-3 py-2.5 font-medium whitespace-nowrap",
+                    c.align === "end" ? "text-end" : "text-start",
+                    c.numeric && "tabular-nums",
+                  )}
+                >
+                  {sortable ? (
+                    <Link
+                      href={sortHref(sort!, c.sortKey!)}
+                      data-sort={c.sortKey}
+                      data-sort-active={active ? sort!.dir : undefined}
+                      // The direction is stated in words for anybody who cannot
+                      // see which way the arrow points. `aria-sort` above says
+                      // the CURRENT state; this says what the link DOES.
+                      aria-label={`${sort!.s.sortBy.replace("{column}", c.header)} — ${
+                        active && sort!.dir === "desc" ? sort!.s.ascending : sort!.s.descending
+                      }`}
+                      className={cn(
+                        "group inline-flex items-center gap-1 rounded-sm",
+                        "transition-colors duration-(--duration-fast) hover:text-foreground",
+                        active && "text-foreground",
+                        c.align === "end" && "flex-row-reverse",
+                      )}
+                    >
+                      {c.header}
+                      {active ? (
+                        sort!.dir === "asc" ? (
+                          <ArrowUp aria-hidden="true" className="size-3" />
+                        ) : (
+                          <ArrowDown aria-hidden="true" className="size-3" />
+                        )
+                      ) : (
+                        <ChevronsUpDown
+                          aria-hidden="true"
+                          className="size-3 opacity-0 transition-opacity duration-(--duration-fast) group-hover:opacity-60"
+                        />
+                      )}
+                    </Link>
+                  ) : c.id === "select" && selectAll ? (
+                    selectAll
+                  ) : (
+                    c.header
+                  )}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={rowKey(row)} {...(rowAttrs?.(row) ?? {})} className="border-t border-border">
+            <tr
+              key={rowKey(row)}
+              {...(rowAttrs?.(row) ?? {})}
+              className={cn(
+                "border-t border-border transition-colors duration-(--duration-fast)",
+                "hover:bg-surface-hover",
+                // The selected state comes from the DOM's own checkbox rather
+                // than from React state, so there is no second copy of what is
+                // ticked to drift from what is on screen — the property the
+                // plain-checkbox selection was chosen for in the first place.
+                "has-[input[type=checkbox]:checked]:bg-surface-selected",
+              )}
+            >
               {columns.map((c) => (
                 <td
                   key={c.id}
-                  className={`px-4 py-3 ${c.align === "end" ? "text-end" : ""} ${
-                    c.numeric ? "tabular-nums" : ""
-                  }`}
+                  className={cn(
+                    "px-3 align-top",
+                    c.align === "end" && "text-end",
+                    c.numeric && "tabular-nums",
+                    c.nowrap && "whitespace-nowrap",
+                  )}
                 >
                   {c.cell(row)}
                 </td>
@@ -99,7 +273,7 @@ export function StatusPill({
   return (
     <span
       data-status={status}
-      className="inline-block rounded-full border px-2 py-0.5 text-xs"
+      className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium"
       style={vars}
     >
       {label}

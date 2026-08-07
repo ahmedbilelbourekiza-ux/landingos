@@ -95,18 +95,18 @@ export default async function NewLandingPage({
         className="mt-6 max-w-lg space-y-4 rounded-lg border border-border bg-card p-4"
       >
         <div className="space-y-1">
-          <label htmlFor="title" className="text-sm font-medium">Title</label>
+          <label htmlFor="title" className="ui-label">Title</label>
           <input
             id="title" name="title" required maxLength={200}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="ui-control tap w-full"
           />
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="slug" className="text-sm font-medium">Address</label>
+          <label htmlFor="slug" className="ui-label">Address</label>
           <input
             id="slug" name="slug" maxLength={120} placeholder="derived from the title"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="ui-control tap w-full"
           />
           <p className="text-xs text-muted-foreground">
             Leave blank to generate one. Another company using the same address does not affect you.
@@ -114,16 +114,16 @@ export default async function NewLandingPage({
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="price" className="text-sm font-medium">Price</label>
+          <label htmlFor="price" className="ui-label">Price</label>
           <input
             id="price" name="price" type="number" min="0" step="1" required defaultValue="0"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm tabular-nums"
+            className="ui-control tap w-full tabular-nums"
           />
         </div>
 
         <button
           type="submit"
-          className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+          className="ui-btn ui-btn-primary tap"
         >
           {t("common.create")}
         </button>

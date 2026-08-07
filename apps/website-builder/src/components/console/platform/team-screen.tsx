@@ -155,7 +155,7 @@ function InvitePanel({
         }}
       >
         <div className="grow">
-          <label htmlFor="team-invite-email" className="block text-xs text-muted-foreground">
+          <label htmlFor="team-invite-email" className="ui-label block">
             {s.email}
           </label>
           <input
@@ -169,7 +169,7 @@ function InvitePanel({
           />
         </div>
         <div>
-          <label htmlFor="team-invite-role" className="block text-xs text-muted-foreground">
+          <label htmlFor="team-invite-role" className="ui-label block">
             {s.inviteRole}
           </label>
           <select

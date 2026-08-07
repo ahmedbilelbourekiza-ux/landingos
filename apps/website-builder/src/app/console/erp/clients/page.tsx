@@ -8,7 +8,10 @@ import { FilterBar } from "@/components/console/filter-bar";
 import { Pager } from "@/components/console/pager";
 import {
   filterStrings, pagerStrings, clientExportStrings, importStrings,
+  densityStrings, emptyCopy,
 } from "@/lib/console/erp-strings";
+import { PageHeader } from "@/components/console/ui/primitives";
+import { ListFrame } from "@/components/console/ui/list-frame";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
 import { ClientExportPanel } from "@/components/console/erp/client-export";
@@ -109,8 +112,11 @@ export default async function ErpClientsScreen({
 
   return (
     <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.clients.title")}</h1>
+      <PageHeader title={t("erp.clients.title")} />
 
+      <ListFrame
+        density={densityStrings(t)}
+        toolbar={<>
       {/* LP.10 widened this from one control to eight, built from
           `clientFilterFields` — which lives beside `clientFilters` for the
           reason `orderFilterFields` lives beside `orderFilters` (D-LP.3). A bar
@@ -139,6 +145,17 @@ export default async function ErpClientsScreen({
         testId="erp-clients-filters"
       />
 
+        </>}
+        pager={
+          <Pager
+            basePath="/console/erp/clients"
+            params={params}
+            info={{ page, pageSize: PAGE_SIZE, total }}
+            s={pagerStrings(t)}
+            testId="erp-clients-pager"
+          />
+        }
+      >
       {/* The file IS the list, carrying the same query string (D-LP.6.2), which
           is why it lives here rather than on a screen of its own. */}
       <ClientExportPanel params={params} s={clientExportStrings(t)} total={total} />
@@ -159,6 +176,8 @@ export default async function ErpClientsScreen({
       <DataTable
         testId="erp-clients-table"
         empty={t("erp.clients.none")}
+        emptyCopy={emptyCopy(t, [...params.keys()].some((k) => k !== "page"), t("erp.clients.none"))}
+        caption={t("erp.clients.title")}
         rows={clients.map(withDerived)}
         rowKey={(c) => c.id}
         rowAttrs={(c) => ({ "data-client-id": c.id, "data-flash-id": c.id })}
@@ -252,13 +271,7 @@ export default async function ErpClientsScreen({
           },
         ]}
       />
-      <Pager
-        basePath="/console/erp/clients"
-        params={params}
-        info={{ page, pageSize: PAGE_SIZE, total }}
-        s={pagerStrings(t)}
-        testId="erp-clients-pager"
-      />
+      </ListFrame>
     </ConsoleShell>
   );
 }

@@ -94,7 +94,7 @@ export function ProductCreatePanel({
 
   const money = (id: keyof typeof form, label: string) => (
     <div>
-      <label htmlFor={`new-${id}`} className="block text-xs text-muted-foreground">{label}</label>
+      <label htmlFor={`new-${id}`} className="ui-label block">{label}</label>
       {/* Text with a decimal keypad, never type="number" — a number input hands
           back a JS float and these are Decimal columns (M-06). */}
       <input
@@ -106,7 +106,7 @@ export function ProductCreatePanel({
 
   const whole = (id: keyof typeof form, label: string) => (
     <div>
-      <label htmlFor={`new-${id}`} className="block text-xs text-muted-foreground">{label}</label>
+      <label htmlFor={`new-${id}`} className="ui-label block">{label}</label>
       <input
         id={`new-${id}`} type="number" min={0} dir="ltr"
         value={form[id]} onChange={(e) => set(id, e.target.value)} className={`mt-1 ${FIELD}`}
@@ -133,7 +133,7 @@ export function ProductCreatePanel({
         <>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="sm:col-span-2">
-              <label htmlFor="new-name" className="block text-xs text-muted-foreground">
+              <label htmlFor="new-name" className="ui-label block">
                 {s.name}
               </label>
               <input
@@ -143,7 +143,7 @@ export function ProductCreatePanel({
               />
             </div>
             <div>
-              <label htmlFor="new-sku" className="block text-xs text-muted-foreground">{s.sku}</label>
+              <label htmlFor="new-sku" className="ui-label block">{s.sku}</label>
               <input
                 id="new-sku" dir="ltr"
                 value={form.sku} onChange={(e) => set("sku", e.target.value)}
@@ -151,7 +151,7 @@ export function ProductCreatePanel({
               />
             </div>
             <div>
-              <label htmlFor="new-brand" className="block text-xs text-muted-foreground">
+              <label htmlFor="new-brand" className="ui-label block">
                 {s.brand}
               </label>
               <input
@@ -257,7 +257,7 @@ function ProductEditFields({
           const id = `edit-${field.name}`;
           return (
             <div key={field.name} className={field.kind === "textarea" ? "sm:col-span-2 lg:col-span-4" : ""}>
-              <label htmlFor={id} className="block text-xs text-muted-foreground">
+              <label htmlFor={id} className="ui-label block">
                 {field.label}
               </label>
               {field.kind === "textarea" ? (
@@ -355,7 +355,7 @@ export function ProductEditPanel({
           contract test can assert and no screen reader can reach. */}
       <div hidden={!open}>
         <div className="mt-3">
-          <label htmlFor="edit-product" className="block text-xs text-muted-foreground">
+          <label htmlFor="edit-product" className="ui-label block">
             {s.product}
           </label>
           <select
@@ -444,7 +444,7 @@ function ProductPicker({
   return (
     <>
       <div>
-        <label htmlFor={`${idPrefix}-product`} className="block text-xs text-muted-foreground">
+        <label htmlFor={`${idPrefix}-product`} className="ui-label block">
           {s.product}
         </label>
         <select
@@ -466,7 +466,7 @@ function ProductPicker({
       </div>
 
       <div>
-        <label htmlFor={`${idPrefix}-variant`} className="block text-xs text-muted-foreground">
+        <label htmlFor={`${idPrefix}-variant`} className="ui-label block">
           {s.variant}
         </label>
         <select
@@ -524,7 +524,7 @@ export function StockAdjustPanel({
           s={s}
         />
         <div>
-          <label htmlFor="adjust-delta" className="block text-xs text-muted-foreground">
+          <label htmlFor="adjust-delta" className="ui-label block">
             {s.change}
           </label>
           {/* Signed, and no absolute figure anywhere on this panel. */}
@@ -535,7 +535,7 @@ export function StockAdjustPanel({
           />
         </div>
         <div>
-          <label htmlFor="adjust-reason" className="block text-xs text-muted-foreground">
+          <label htmlFor="adjust-reason" className="ui-label block">
             {s.reason}
           </label>
           <input
@@ -611,7 +611,7 @@ export function StockLotPanel({
           s={s}
         />
         <div>
-          <label htmlFor="lot-mode" className="block text-xs text-muted-foreground">{s.mode}</label>
+          <label htmlFor="lot-mode" className="ui-label block">{s.mode}</label>
           <select
             id="lot-mode"
             value={mode}
@@ -623,7 +623,7 @@ export function StockLotPanel({
           </select>
         </div>
         <div>
-          <label htmlFor="lot-qty" className="block text-xs text-muted-foreground">
+          <label htmlFor="lot-qty" className="ui-label block">
             {s.quantity}
           </label>
           <input
@@ -637,7 +637,7 @@ export function StockLotPanel({
             happened — so the field is not offered for one. */}
         {mode === "purchase" && (
           <div>
-            <label htmlFor="lot-unit-cost" className="block text-xs text-muted-foreground">
+            <label htmlFor="lot-unit-cost" className="ui-label block">
               {s.unitCost}
             </label>
             <input

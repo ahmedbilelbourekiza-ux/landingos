@@ -12,6 +12,8 @@ import { DataTable, StatusPill } from "@/components/console/data-table";
 import { FilterBar } from "@/components/console/filter-bar";
 import { Pager } from "@/components/console/pager";
 import type { FilterField } from "@/components/console/filter-field";
+import { PageHeader } from "@/components/console/ui/primitives";
+import { ListFrame } from "@/components/console/ui/list-frame";
 import { OrderBulkBar, type BulkStrings } from "@/components/console/erp/order-bulk";
 import { OrderCreatePanel } from "@/components/console/erp/order-create";
 import { OrderExportPanel } from "@/components/console/erp/order-export";
@@ -19,12 +21,12 @@ import { OrderRowActions } from "@/components/console/erp/order-row-actions";
 import { CsvImportPanel } from "@/components/console/erp/csv-import";
 import {
   filterStrings, pagerStrings, orderCreateStrings, orderExportStrings, rowActionStrings,
-  importStrings,
+  importStrings, sortStrings, densityStrings, emptyCopy,
 } from "@/lib/console/erp-strings";
 import { scopedWhere, seesWholeBook, mayTouchOrder } from "@/lib/erp/scope";
 import {
   orderFilters, orderSort, orderFilterFields, orderRowFacts,
-  ORDER_LIST_SELECT, ORDER_STATUSES, BULK_BOOK_LIMIT,
+  ORDER_LIST_SELECT, ORDER_STATUSES, BULK_BOOK_LIMIT, ORDER_SORT_FIELDS,
 } from "@/lib/erp/orders";
 import { readSettings } from "@/lib/erp/settings";
 import { exportWhere } from "@/lib/erp/export";
@@ -190,6 +192,7 @@ export default async function ErpOrdersScreen({
   const bulkStrings: BulkStrings = {
     saving: t("common.saving"),
     selected: t("erp.write.selected"),
+    selectAll: t("common.selectAll"),
     changeStatus: t("erp.write.changeStatus"),
     apply: t("erp.write.apply"),
     assignTo: t("erp.write.assignTo"),
@@ -246,10 +249,45 @@ export default async function ErpOrdersScreen({
   const money = (v: { toString(): string } | null | undefined) =>
     formatMoney((v ?? 0).toString(), locale, currency);
 
+  /* UI.12 — the sort state, built from the module that VALIDATES it.
+   *
+   * `orderSort` has read these two parameters since Phase 5 and no control on
+   * any screen ever set them. A column offers a header link only where its key
+   * is one `ORDER_SORT_FIELDS` publishes, so a header cannot promise an
+   * ordering the query would ignore. */
+  const sortKeyOf = (key: string) => (ORDER_SORT_FIELDS.includes(key) ? key : undefined);
+
+  /* Built from the same module the route validates against. `agentUserId` is
+     offered only to somebody who already sees the whole book — `scopedWhere`
+     ANDs the scope in regardless, so the control would be a filter that cannot
+     change anything for an agent, which teaches the wrong model of what they
+     can see. */
+  const fields: readonly FilterField[] = orderFilterFields({
+    t,
+    statuses: statusChoices,
+    members: managesBook ? memberOptions : undefined,
+  });
+
+  /* Whether the reader narrowed the list, so an empty table can say which of
+     the two empties it is. `sort`, `dir` and `page` are not filters — a list
+     sorted by price still contains everything it contained. */
+  const hasFilter = fields.some((f) => (params.get(f.name) ?? "").trim() !== "");
+
+  const sortState = {
+    basePath: "/console/erp/orders",
+    params,
+    active: params.get("sort"),
+    dir: (params.get("dir") ?? "").toLowerCase() === "asc" ? ("asc" as const) : ("desc" as const),
+    s: sortStrings(t),
+  };
+
   const table = (
     <DataTable
         testId="erp-orders-table"
         empty={t("erp.orders.noneYet")}
+        emptyCopy={emptyCopy(t, hasFilter, t("erp.orders.noneYet"))}
+        caption={t("erp.orders.title")}
+        sort={sortState}
         rows={orders}
         rowKey={(o) => o.id}
         // `data-flash-id` is what `row-flash.ts` looks for (N22). It carries the
@@ -284,6 +322,10 @@ export default async function ErpOrdersScreen({
           {
             id: "reference",
             header: t("erp.orders.reference"),
+            // The order book's default ordering is by arrival, so this is the
+            // column that carries it.
+            sortKey: sortKeyOf("createdAt"),
+            width: "11rem",
             /* LP.8 / N10, N21 — THE ROW SAYS WHAT KIND OF ORDER THIS IS.
              *
              * The measured density gap was 8 facts against 14, and this column
@@ -368,6 +410,7 @@ export default async function ErpOrdersScreen({
           {
             id: "customer",
             header: t("erp.orders.customer"),
+            sortKey: sortKeyOf("client"),
             cell: (o) => (
               <>
                 <span className="font-medium">{o.client || "—"}</span>
@@ -410,6 +453,7 @@ export default async function ErpOrdersScreen({
             header: t("erp.orders.total"),
             numeric: true,
             align: "end",
+            sortKey: sortKeyOf("price"),
             /* THE BREAKDOWN, NOT ONLY THE TOTAL. A customer disputing 4,900 is
              * disputing one of three numbers, and the legacy row shows all
              * three. Rendered only where they exist: an order typed in over the
@@ -449,6 +493,7 @@ export default async function ErpOrdersScreen({
           {
             id: "status",
             header: t("erp.orders.status"),
+            sortKey: sortKeyOf("status"),
             cell: (o) => {
               // The tone comes from @landingos/ui, so a pending order here
               // looks like the equivalent state anywhere else on the platform.
@@ -525,17 +570,6 @@ export default async function ErpOrdersScreen({
       />
   );
 
-  /* Built from the same module the route validates against. `agentUserId` is
-     offered only to somebody who already sees the whole book — `scopedWhere`
-     ANDs the scope in regardless, so the control would be a filter that cannot
-     change anything for an agent, which teaches the wrong model of what they
-     can see. */
-  const fields: readonly FilterField[] = orderFilterFields({
-    t,
-    statuses: statusChoices,
-    members: managesBook ? memberOptions : undefined,
-  });
-
   const pager = (
     <Pager
       basePath="/console/erp/orders"
@@ -546,77 +580,96 @@ export default async function ErpOrdersScreen({
     />
   );
 
-  return (
-    <ConsoleShell session={session} productId="erp">
-      <h1 className="text-xl font-semibold">{t("erp.orders.title")}</h1>
-
+  /* UI.15 — the four write panels move ABOVE the header's fold, into the
+   * header's own action row, and the reading surface starts at the filters.
+   *
+   * They were rendered in sequence between the title and the table, so a
+   * manager opening the busiest screen in the building scrolled past four
+   * collapsed write surfaces to reach the data. Every one of them still renders
+   * its contents in the DOM (D-06.4) and is still gated on exactly the
+   * permission its route checks (D-06.2) — what changed is where they sit. */
+  const writePanels = mayWrite && (
+    <div className="space-y-3">
       {/* `erp:orders:write` is what POST /api/erp/orders checks, so it is what
           decides whether the panel exists (D-06.2). An agent may take an order
           too — the route accepts one from them; only naming the assignee is a
           manager's call, which is why `members` is conditional and the panel is
           not. */}
-      {mayWrite && (
-        <OrderCreatePanel
-          errors={actionErrors(t)}
-          s={orderCreateStrings(t)}
-          statuses={statusChoices}
-          members={managesBook ? memberOptions : undefined}
-          carriers={carrierOptions}
-        />
-      )}
+      <OrderCreatePanel
+        errors={actionErrors(t)}
+        s={orderCreateStrings(t)}
+        statuses={statusChoices}
+        members={managesBook ? memberOptions : undefined}
+        carriers={carrierOptions}
+      />
 
       {/* LP.19 / R17 — how a new tenant's history arrives. Beside the create
           panel because both are "an order that did not come from a customer
           pressing buy", and gated on the same `erp:orders:write`. */}
-      {mayWrite && (
-        <CsvImportPanel
-          endpoint="/api/erp/orders/import"
-          errors={actionErrors(t)}
-          s={importStrings(t, "orders")}
-          testId="erp-order-import"
+      <CsvImportPanel
+        endpoint="/api/erp/orders/import"
+        errors={actionErrors(t)}
+        s={importStrings(t, "orders")}
+        testId="erp-order-import"
+      />
+    </div>
+  );
+
+  return (
+    <ConsoleShell session={session} productId="erp">
+      <PageHeader
+        title={t("erp.orders.title")}
+        description={
+          managesBook ? t("erp.overview.wholeBook") : t("erp.overview.myQueue")
+        }
+      />
+
+      {writePanels}
+
+      <div className="mt-4 space-y-3">
+        <FilterBar
+          basePath="/console/erp/orders"
+          params={params}
+          fields={fields}
+          s={filterStrings(t)}
+          testId="erp-orders-filters"
         />
-      )}
 
-      <FilterBar
-        basePath="/console/erp/orders"
-        params={params}
-        fields={fields}
-        s={filterStrings(t)}
-        testId="erp-orders-filters"
-      />
+        {/* Below the bar and above the table, because the file it produces IS
+            the filtered list — the legacy's separate Export screen could only
+            ever export "all confirmed" and never what an operator had narrowed
+            to. */}
+        <OrderExportPanel
+          params={params}
+          s={orderExportStrings(t)}
+          confirmedCount={confirmedCount}
+          filteredTotal={total}
+          maySeeAgentReport={can(session.auth!, "erp:agents:manage")}
+        />
 
-      {/* Below the bar and above the table, because the file it produces IS the
-          filtered list — the legacy's separate Export screen could only ever
-          export "all confirmed" and never what an operator had narrowed to. */}
-      <OrderExportPanel
-        params={params}
-        s={orderExportStrings(t)}
-        confirmedCount={confirmedCount}
-        filteredTotal={total}
-        maySeeAgentReport={can(session.auth!, "erp:agents:manage")}
-      />
-
-      {mayWrite ? (
-        <OrderBulkBar
-          errors={actionErrors(t)}
-          s={bulkStrings}
-          statuses={statusChoices}
-          members={memberOptions}
-          managesBook={managesBook}
-          followupMembers={followupOptions}
-          carriers={managesBook ? carrierOptions : []}
-          // `erp:shipments:write` is what `POST /orders/[id]/shipment` checks
-          // and what the bulk route checks for both booking actions (D-06.2).
-          mayBook={can(session.auth!, "erp:shipments:write")}
-          bookLimit={BULK_BOOK_LIMIT}
-        >
-          {table}
-        </OrderBulkBar>
-      ) : (
-        table
-      )}
-
-      {pager}
+        <ListFrame pager={pager} density={densityStrings(t)}>
+          {mayWrite ? (
+            <OrderBulkBar
+              errors={actionErrors(t)}
+              s={bulkStrings}
+              statuses={statusChoices}
+              members={memberOptions}
+              managesBook={managesBook}
+              followupMembers={followupOptions}
+              carriers={managesBook ? carrierOptions : []}
+              // `erp:shipments:write` is what `POST /orders/[id]/shipment`
+              // checks and what the bulk route checks for both booking actions
+              // (D-06.2).
+              mayBook={can(session.auth!, "erp:shipments:write")}
+              bookLimit={BULK_BOOK_LIMIT}
+            >
+              {table}
+            </OrderBulkBar>
+          ) : (
+            table
+          )}
+        </ListFrame>
+      </div>
     </ConsoleShell>
   );
 }

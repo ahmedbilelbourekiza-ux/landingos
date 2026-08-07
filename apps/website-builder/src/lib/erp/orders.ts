@@ -350,6 +350,22 @@ const ORDER_SORT_COLUMNS: Record<string, keyof Prisma.FulfillmentOrderOrderByWit
 };
 
 /**
+ * The sort keys a control may offer — D-LP.3's rule, applied to ordering.
+ *
+ * `orderSort` has read `?sort=` since Phase 5 and **no control anywhere set
+ * it**: an operator could not sort the order book by value, by date or by
+ * customer, though the query has always supported it. That is the shape of
+ * defect this project has now caught six times — a capability computed,
+ * whitelisted and reachable by nothing.
+ *
+ * Exported from the module that VALIDATES it, beside `orderFilterFields`, so a
+ * column header cannot offer a key `orderSort` would ignore and a key added
+ * here cannot go unoffered. A header bound to a key outside this list is a
+ * control that silently reorders by `createdAt` and says it did something else.
+ */
+export const ORDER_SORT_FIELDS = Object.keys(ORDER_SORT_COLUMNS) as readonly string[];
+
+/**
  * Resolve `?sort=` against a whitelist.
  *
  * An unknown column falls back to `createdAt` rather than erroring, which is

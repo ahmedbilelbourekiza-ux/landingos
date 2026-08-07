@@ -161,7 +161,7 @@ export default async function OrderDetailPage({
                     <button
                       type="submit"
                       data-transition={s}
-                      className="rounded-md border border-input px-3 py-1.5 text-sm"
+                      className="ui-btn ui-btn-default tap"
                     >
                       {t(d.labelKey)}
                     </button>

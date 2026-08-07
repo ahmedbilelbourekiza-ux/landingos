@@ -66,7 +66,7 @@ export function ClientEditPanel({
 
   const field = (k: keyof typeof initial, label: string) => (
     <div>
-      <label htmlFor={`client-${k}`} className="block text-xs text-muted-foreground">
+      <label htmlFor={`client-${k}`} className="ui-label block">
         {label}
       </label>
       <input

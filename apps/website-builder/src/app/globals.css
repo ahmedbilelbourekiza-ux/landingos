@@ -275,6 +275,190 @@
   }
 }
 
+/* =============================================================================
+ * UI.6 — the console's control primitives, as classes.
+ *
+ * WHY CSS AND NOT ONLY THE TYPESCRIPT VOCABULARY. Both exist and they name the
+ * same thing: `components/console/ui/styles.ts` exports these class names, so a
+ * component composes `control` and the browser resolves `.ui-control`. The
+ * declaration lives HERE because the sweep that replaced nine hand-written
+ * copies of the text input — across server screens and client panels, in files
+ * with entirely different imports — could then be a class-name change rather
+ * than an import graph.
+ *
+ * `@layer components` and not `@layer base`: Tailwind's utilities are emitted
+ * after this layer, so `w-full`, `h-9` or `text-xs` in a className still win.
+ * A primitive that could not be overridden locally is one people stop using.
+ *
+ * DELIBERATELY NO WIDTH. `.ui-control` sizes itself to its box and the caller
+ * says `w-full` where it belongs. A width baked in here would turn every
+ * toolbar select into a full-width bar the day somebody adopted the class.
+ * ========================================================================== */
+@layer components {
+  .ui-control {
+    border-radius: calc(var(--radius) - 2px);
+    border: 1px solid var(--input);
+    background-color: var(--background);
+    padding-inline: 0.75rem;
+    padding-block: 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: var(--foreground);
+    transition:
+      border-color var(--duration-fast) var(--ease-standard),
+      background-color var(--duration-fast) var(--ease-standard);
+  }
+  .ui-control::placeholder {
+    color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+  }
+  .ui-control:hover:not(:disabled):not([readonly]) {
+    border-color: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
+  }
+  .ui-control:disabled,
+  .ui-control[readonly] {
+    background-color: var(--surface-sunken);
+    color: var(--muted-foreground);
+    cursor: not-allowed;
+  }
+  /* Bound to the message by `aria-describedby` in `<Field>`; this is the half
+     that says WHICH control on a panel of eleven. */
+  .ui-control[aria-invalid="true"] {
+    border-color: var(--danger-fg);
+    background-color: var(--danger-bg);
+  }
+  select.ui-control {
+    cursor: pointer;
+    /* The platform's own arrow, deliberately: a custom one is a listbox to
+       build, test, translate and make keyboard-accessible in three languages. */
+    padding-inline-end: 2rem;
+  }
+  textarea.ui-control {
+    min-block-size: 5rem;
+    resize: vertical;
+  }
+
+  /* A form label. Foreground rather than muted — muted is right for a value
+     being scanned and wrong for the word telling somebody what to type. */
+  .ui-label {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    color: var(--foreground);
+  }
+
+  .ui-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    white-space: nowrap;
+    border-radius: calc(var(--radius) - 2px);
+    border: 1px solid transparent;
+    padding-inline: 0.75rem;
+    block-size: 2.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      border-color var(--duration-fast) var(--ease-standard),
+      color var(--duration-fast) var(--ease-standard);
+  }
+  .ui-btn:disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .ui-btn-sm {
+    block-size: 2rem;
+    padding-inline: 0.625rem;
+    font-size: 0.75rem;
+  }
+  .ui-btn-lg {
+    block-size: 2.5rem;
+    padding-inline: 1rem;
+  }
+  .ui-btn-default {
+    border-color: var(--input);
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+  .ui-btn-default:hover:not(:disabled) {
+    background-color: var(--surface-hover);
+  }
+  .ui-btn-primary {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+    box-shadow: var(--shadow-e1);
+  }
+  .ui-btn-primary:hover:not(:disabled) {
+    background-color: var(--primary-hover);
+  }
+  .ui-btn-ghost {
+    color: var(--muted-foreground);
+  }
+  .ui-btn-ghost:hover:not(:disabled) {
+    background-color: var(--surface-hover);
+    color: var(--foreground);
+  }
+  /* The tone triplet a status chip uses, so the destructive action and the
+     state it produces read as the same idea — and neither is brand crimson,
+     which is what R-14 separated them for. */
+  .ui-btn-danger {
+    border-color: var(--danger-border);
+    background-color: var(--danger-bg);
+    color: var(--danger-fg);
+  }
+  .ui-btn-danger:hover:not(:disabled) {
+    background-color: color-mix(in oklab, var(--danger-fg) 12%, var(--danger-bg));
+  }
+}
+
+/* -----------------------------------------------------------------------------
+ * UI.12 — table density, and the edges of a table that scrolls.
+ *
+ * DENSITY IS A PER-DEVICE VIEWING PREFERENCE, WHICH IS WHY IT IS NOT A
+ * `ProductSetting`. D-LP.11.1 put the notification preferences in the database
+ * rather than in `localStorage`, and the reason it gave was specific: a manager
+ * who mutes the manipulation siren on one machine must not be un-muted on the
+ * next, and a supervisor must be able to tell whether an agent has silenced the
+ * alert that watches them. Neither applies to row height. The right density on
+ * a 4K desk monitor is the wrong one on a 13" laptop, and nobody supervises it —
+ * so it follows the DEVICE, and costs no query on every console render.
+ *
+ * The attribute lives on <html>, so one class on the table reads it and no
+ * component has to be told which mode it is in.
+ * -------------------------------------------------------------------------- */
+.console-table td {
+  padding-block: 0.75rem;
+}
+:root[data-density="compact"] .console-table td {
+  padding-block: 0.375rem;
+}
+:root[data-density="compact"] .console-table th {
+  padding-block: 0.375rem;
+}
+
+/* The scroll edges.
+ *
+ * A wide table simply ended — on a narrow window the last two columns of the
+ * order book are STATUS and ACTIONS, and there was no shadow, no fade and no
+ * hint that they existed. This is the `background-attachment: local` technique:
+ * the two cover panels scroll WITH the content and the two shadows do not, so a
+ * shadow is revealed exactly when there is something hidden under it, on either
+ * side, with no JavaScript and no scroll listener. Direction-neutral by
+ * construction — both edges are drawn — which is what it has to be with Arabic
+ * as the default locale. */
+.scroll-shadow-x {
+  background-image:
+    linear-gradient(to right, var(--surface-raised), transparent),
+    linear-gradient(to left, var(--surface-raised), transparent),
+    linear-gradient(to right, color-mix(in oklab, var(--foreground) 14%, transparent), transparent),
+    linear-gradient(to left, color-mix(in oklab, var(--foreground) 14%, transparent), transparent);
+  background-position: left center, right center, left center, right center;
+  background-repeat: no-repeat;
+  background-size: 2rem 100%, 2rem 100%, 0.75rem 100%, 0.75rem 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+
 /* Where the skip link lands. It is off-screen until focused and then sits
    above everything — including the sticky header — because a skip link that
    renders behind the chrome is a skip link nobody can see they have. */
