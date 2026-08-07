@@ -51,7 +51,8 @@
       "myQueue": "Votre file",
       "wholeBook": "Tout le carnet",
       "overdue": "Commandes que personne n’a appelées",
-      "overdueHint": "En attente depuis plus de {minutes} minutes sans appel enregistré."
+      "overdueHint": "En attente depuis plus de {minutes} minutes sans appel enregistré.",
+      "revenue": "Chiffre livré"
     },
     "orders": {
       "title": "Commandes",

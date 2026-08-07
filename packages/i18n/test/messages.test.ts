@@ -218,3 +218,75 @@ describe('formatting', () => {
     }
   });
 });
+
+
+/* =============================================================================
+ * THE AUDIT'S FINDING — the catalogues agreed with each other and not with the
+ * CODE.
+ *
+ * Everything above asks whether the three locales carry the same keys, and
+ * whether every key the MANIFESTS and the STATUS REGISTRIES name exists. Both
+ * are derived, which is why they have held. Neither looks at the one place keys
+ * are actually used: a `t("...")` call in a component.
+ *
+ * The audit caught `erp.overview.revenue` in a server log — a product screen
+ * asked for a key nobody had added. `next-intl` throws MISSING_MESSAGE at RENDER
+ * time, in the missing locale only, so the failure is a 500 on one screen for
+ * Arabic readers and a green suite for everybody else. Arabic is the default
+ * locale here, which is the only reason it surfaced at all.
+ *
+ * This reads every `t("literal")` in the console source and asserts the key
+ * exists in every locale. It is the same general form as LP.17's navigation
+ * test and AUDIT.2's route inventory: derive the list rather than maintain one.
+ *
+ * WHAT IT CANNOT SEE, stated rather than implied: a key built at runtime —
+ * `t(\`erp.period.${type}\`)`, `t(tone.labelKey)` — is invisible to a static
+ * scan. Those are covered by the manifest and status-registry checks above and
+ * by the contract suites that render the screens.
+ * ========================================================================== */
+
+const CONSOLE_SRC = path.join(
+  import.meta.dirname, '..', '..', '..', 'apps', 'website-builder', 'src',
+);
+
+function sourceFiles(dir: string, out: string[] = []): string[] {
+  if (!fs.existsSync(dir)) return out;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) sourceFiles(full, out);
+    else if (/\.tsx?$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
+
+describe('every key the code asks for exists in every locale', () => {
+  const files = sourceFiles(CONSOLE_SRC);
+
+  test('the scan found source files', () => {
+    // A glob that silently matches nothing makes the assertion below vacuous.
+    assert.ok(files.length > 100, `only ${files.length} source files were scanned`);
+  });
+
+  test('no t("…") names a key that does not exist', () => {
+    const missing: string[] = [];
+    let scanned = 0;
+
+    for (const file of files) {
+      const source = fs.readFileSync(file, 'utf8');
+      // Only STRING-LITERAL keys. A template literal is a runtime key and is
+      // out of scope by construction — see the header.
+      for (const m of source.matchAll(/\bt\(\s*"([a-zA-Z][\w.]*\.[\w.]+)"/g)) {
+        const key = m[1];
+        scanned += 1;
+        for (const locale of LOCALES) {
+          if (lookup(catalogues[locale], key) === undefined) {
+            missing.push(`${key} (${locale}) — ${path.basename(file)}`);
+          }
+        }
+      }
+    }
+
+    assert.ok(scanned > 200, `only ${scanned} keys were found in the source; the scan is not working`);
+    assert.deepEqual(missing, [], `keys used in code but missing from a catalogue:\n${missing.join('\n')}`);
+  });
+});

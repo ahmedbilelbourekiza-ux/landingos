@@ -51,7 +51,8 @@
       "myQueue": "Your queue",
       "wholeBook": "The whole order book",
       "overdue": "Orders nobody has called",
-      "overdueHint": "Waiting more than {minutes} minutes with no call logged."
+      "overdueHint": "Waiting more than {minutes} minutes with no call logged.",
+      "revenue": "Delivered revenue"
     },
     "orders": {
       "title": "Orders",

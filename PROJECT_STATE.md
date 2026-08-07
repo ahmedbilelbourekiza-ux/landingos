@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *AUDIT.3: a duplicated product name*
+**Branch:** `master` · **Last commit:** *AUDIT.4: a translation key that only existed in the code*
 **Working tree:** clean, all work committed.
 
 ---
@@ -88,6 +88,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **AUDIT.1** the independent audit: 7 findings, all writer/reader mismatches | — | **DONE** — screens 152→167 |
 | **AUDIT.2** the access inventory derives itself from the route files | — | **DONE** — access 95→201 |
 | **AUDIT.3** a duplicated product name attributes to neither row, visibly | — | **DONE** — screens 167→169 |
+| **AUDIT.4** a `t()` key that existed only in code, and the scan that closes the class | — | **DONE** — i18n 18→20 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -1007,6 +1008,31 @@ claim (`lastPolledAt`) is committed in its own short transaction BEFORE the
 network call, and both callers changed as N17 predicted: the route runs it
 through `afterCommit`, the worker's tick no longer wraps it. There is still
 exactly one ingest path — the poll composes `refreshShipmentForOrder`.
+
+### AUDIT.4 — a translation key that only existed in the code
+
+AUDIT.1's product screen asked for `t("erp.overview.revenue")` and **no catalogue
+had it.** `next-intl` throws `MISSING_MESSAGE` at RENDER time and only in the
+missing locale, so it is a 500 on one screen for one language's readers and a
+green suite for everybody else — and Arabic is the DEFAULT here, which is the
+only reason it surfaced. It surfaced in the server log while a live order was
+being driven through the console.
+
+**The existing i18n test could not see it.** It asks whether the three locales
+agree with EACH OTHER and whether every key the manifests and status registries
+name exists — both derived, both sound, and neither looking at a `t("…")` call in
+a component. The catalogues agreed with each other perfectly and with the code
+not at all.
+
+The suite now scans every `t("literal")` in the console source (300+ keys) and
+asserts it exists in every locale — LP.17's and AUDIT.2's general form again.
+**Verified to fail**: the key was deleted from `ar.json`, the suite went red
+naming it and the file, then it was restored. What it cannot see is a runtime key
+(`` t(`erp.period.${type}`) ``), and the file says so.
+
+**A second defect on the same line:** the overview's revenue tile was borrowing
+`erp.overview.delivered`, so the dashboard showed two tiles with the same label
+and different numbers — a delivered COUNT and a delivered VALUE.
 
 ### AUDIT.3 — a duplicated product name, found by driving a real order
 
@@ -1959,8 +1985,8 @@ fail without it, so check the counts, not just the exit code.
 | `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
-| `packages/i18n` | 18 | all pass |
-| **Total** | **1625** | green per suite |
+| `packages/i18n` | 20 | all pass — including a scan of every `t("literal")` in the console source |
+| **Total** | **1627** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

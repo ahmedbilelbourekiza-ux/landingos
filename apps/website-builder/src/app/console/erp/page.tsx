@@ -139,7 +139,13 @@ export default async function ErpOverview() {
   if (stats.revenue) {
     tiles.push({
       id: "revenue",
-      label: t("erp.overview.delivered"),
+      /* The audit found `erp.overview.revenue` missing when the product detail
+         screen asked for it — a `t()` key that does not exist throws
+         MISSING_MESSAGE at RENDER time in the missing locale only, which is
+         Arabic here and therefore the default. It exists now, and this tile
+         uses it: it was borrowing "Delivered", so the overview showed two
+         tiles with the same label and different numbers. */
+      label: t("erp.overview.revenue"),
       // Formatted from the Decimal's STRING form. Going through a JS number
       // here would undo M-06 at the last step, in the one place a person reads.
       value: formatMoney((stats.revenue._sum.price ?? 0).toString(), locale, session.tenant!.currency),

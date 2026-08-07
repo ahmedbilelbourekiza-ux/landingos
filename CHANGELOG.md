@@ -12,6 +12,70 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### AUDIT.4 A translation key that only existed in the code
+
+[Opus 5]
+Date: 7 August 2026
+Summary: the audit's tenth finding, read out of the running server's log — and
+the test that closes the class. i18n 18 → **20**.
+
+#### The finding
+
+AUDIT.1's product-detail screen asked for `t("erp.overview.revenue")`. **That key
+did not exist in any catalogue.** `next-intl` throws `MISSING_MESSAGE` at RENDER
+time and only in the missing locale, so it is a 500 on one screen for the readers
+of one language and a green suite for everybody else — and Arabic is the DEFAULT
+locale here, which is the only reason it surfaced.
+
+It surfaced in the server log while a live order was being driven through the
+console, not in any test.
+
+#### Why the existing test could not see it
+
+`packages/i18n/test/messages.test.ts` asks two questions, both derived and both
+sound: do the three locales carry the same keys, and does every key the PRODUCT
+MANIFESTS and the STATUS REGISTRIES name exist. Its own header says the keys "are
+read from the product manifests and the status registries, so a product added
+later is covered automatically rather than only if somebody remembers to extend a
+test".
+
+Neither question looks at the place keys are actually used: a `t("…")` call in a
+component. The catalogues agreed with each other perfectly and with the code not
+at all.
+
+#### The fix, and the class it closes
+
+The suite now reads every `t("literal")` in the console source and asserts the
+key exists in every locale — the same general form as LP.17's navigation test and
+AUDIT.2's route inventory: **derive the list rather than maintain one.** It
+scans 300+ keys.
+
+**Verified to fail.** The key was deleted from `ar.json` and the suite went red
+naming it and the file; then it was restored. A test that has never been seen to
+fail is a test nobody should trust, and this one was written for a defect that
+had already shipped.
+
+**What it cannot see, stated in the file rather than implied:** a key built at
+runtime — `` t(`erp.period.${type}`) ``, `t(tone.labelKey)` — is invisible to a
+static scan. Those are covered by the manifest and status-registry checks above
+it and by the contract suites that render the screens.
+
+#### And the second, smaller defect on the same line
+
+The overview's revenue tile was borrowing `erp.overview.delivered` for its label,
+so the dashboard showed **two tiles with the same label and different numbers** —
+a delivered COUNT and a delivered VALUE. It has its own label now.
+
+#### Files
+
+- `packages/i18n/test/messages.test.ts` — the code scan
+- `packages/i18n/src/messages/{ar,en,fr}.json` — `erp.overview.revenue`
+- `apps/website-builder/src/app/console/erp/page.tsx`
+
+**Migration:** none. **Risk:** none.
+
+---
+
 ### AUDIT.3 A duplicated product name, found by driving a real order
 
 [Opus 5]

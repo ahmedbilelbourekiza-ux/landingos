@@ -128,9 +128,9 @@ ways; and close a month's books with a calculator that agrees with its own saved
 record.
 
 **§9 is the fourth pass — the independent audit** — which read the legacy module
-by module without using this roadmap, and found nine things it had not: eight
-writer/reader mismatches and one that only appeared when a real order was placed
-through the running console.
+by module without using this roadmap, and found ten things it had not: eight
+writer/reader mismatches, one that only appeared when a real order was placed
+through the running console, and one read out of that same run's server log.
 
 **§8 is the module-by-module third pass**, walking every department and every
 cross-cutting dimension. **§7 is the profit/loss calculator**, measured end to
@@ -1629,7 +1629,7 @@ That is the shape of every serious defect this project has found: BUG-02
 (`deliveryOutcome` read in eight places, written in none), `IntegrationLog`
 (migrated with its indexes, no caller), `OrderCall.suspicious` (computed, shown
 nowhere), `fakeReason` (written since Phase 5, read by nothing), the confirmation
-rate (computed nowhere at all). **Nine more were there.**
+rate (computed nowhere at all). **Ten more were there.**
 
 | # | Finding | Severity | Closed by |
 |---|---|---|---|
@@ -1642,6 +1642,7 @@ rate (computed nowhere at all). **Nine more were there.**
 | **A7** | LP.8's overdue-follow-up badge read `callReminderStatus`, which nothing writes — a reader introduced for a dead column | Medium (regression) | AUDIT.1 |
 | **A8** | `access.test.ts`'s hand-written inventory was **34 routes short**, including `POST /orders/[id]/call` — the payroll-fraud surface | Medium (coverage) | AUDIT.2 |
 | **A9** | A duplicated product name attributed every order's counters to whichever row was created first, silently — and double-counted revenue in `/sales-summary` | **High** | AUDIT.3 |
+| **A10** | `t("erp.overview.revenue")` named a key no catalogue had — a render-time 500 in the missing locale only, which is the DEFAULT one here. The i18n suite compared the catalogues to each other and to the manifests, never to the code | Medium | AUDIT.4 |
 
 **A5 is the one that matters most**, and it is BUG-02's shape exactly: the port
 brought `upsertClientFromOrder` across as `syncClientFromOrder` and left
