@@ -25,11 +25,43 @@
  *   WORKER_TARGET   the platform's origin, e.g. https://app.landingos.example
  *   WORKER_SECRET   must equal the platform's; the tick 404s otherwise
  *   WORKER_INTERVAL_MS   optional, default 60000
+ *   WORKER_TIMEOUT_MS    optional, default 10 × the interval — see AUDIT.9
  * ========================================================================== */
 
 const target = process.env.WORKER_TARGET;
 const secret = process.env.WORKER_SECRET;
 const intervalMs = Number(process.env.WORKER_INTERVAL_MS) || 60_000;
+
+/* AUDIT.9 — WHY THE REQUEST NEEDS A DEADLINE OF ITS OWN.
+ *
+ * `fetch` has no default timeout. Without one, a platform that accepts the
+ * connection and never answers holds `running` true forever: every subsequent
+ * tick logs "previous tick still in flight, skipping this one" and **the
+ * scheduled work stops permanently.** The only evidence is a warn line
+ * repeating once an interval, which reads like the tick is merely slow.
+ *
+ * That is precisely the outcome the `catch` below exists to prevent — its
+ * comment says "the scheduled work would stop until somebody noticed. The next
+ * tick retries" — and with no deadline there IS no next tick. An unbounded
+ * request defeated the guarantee the file states.
+ *
+ * TEN INTERVALS, not one. The tick legitimately takes longer than an interval
+ * on a large deployment: it iterates every entitled tenant and `tracking-poll`
+ * reaches real carriers. A deadline near the interval would abort healthy work
+ * and turn a slow pass into no pass at all. Ten is far beyond any honest pass
+ * and far short of forever.
+ *
+ * THE FLOOR APPLIES TO THE DERIVED DEFAULT AND NOT TO AN EXPLICIT SETTING, and
+ * the test caught the first version doing the opposite. A tiny interval — the
+ * suite drives one — must not make the deadline the flaky part, which is what
+ * the floor is for. But a value somebody typed is an instruction, and clamping
+ * it silently means an operator sets `WORKER_TIMEOUT_MS` and watches nothing
+ * change. An override that is quietly ignored is worse than no override.
+ */
+const explicitDeadline = Number(process.env.WORKER_TIMEOUT_MS);
+const deadlineMs = explicitDeadline > 0
+  ? explicitDeadline
+  : Math.max(intervalMs * 10, 30_000);
 
 if (!target || !secret) {
   console.error(
@@ -59,6 +91,9 @@ async function tick(): Promise<void> {
     const res = await fetch(`${target}/api/jobs/tick`, {
       method: "POST",
       headers: { authorization: `Bearer ${secret}` },
+      // AUDIT.9. See `deadlineMs`. Aborting frees `running` in the `finally`,
+      // so the next interval genuinely retries rather than skipping forever.
+      signal: AbortSignal.timeout(deadlineMs),
     });
 
     if (!res.ok) {
@@ -78,6 +113,19 @@ async function tick(): Promise<void> {
   } catch (error) {
     // Never rethrow: an unhandled rejection would take the process down and the
     // scheduled work would stop until somebody noticed. The next tick retries.
+    //
+    // AUDIT.9: a timeout is named rather than lumped in with every other
+    // failure, because the two need different things done about them. "The
+    // platform did not answer in 10 minutes" means look at the platform; a
+    // connection refused means look at WORKER_TARGET.
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      console.error(
+        `[worker] tick did not answer within ${deadlineMs}ms — aborted so the next one can run. `
+        + "If this repeats, the platform is not completing a pass: check its logs, "
+        + "and WORKER_TIMEOUT_MS if the deployment is genuinely large.",
+      );
+      return;
+    }
     console.error("[worker] tick failed", error);
   } finally {
     running = false;

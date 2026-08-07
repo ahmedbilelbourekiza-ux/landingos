@@ -12,6 +12,89 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### AUDIT.9 A request with no deadline, which stopped every scheduled job
+
+[Opus 5]
+Date: 7 August 2026
+Summary: the audit's fifteenth finding, in the one process that had never been
+tested — and the first test it has ever had. worker 0 → **4**.
+
+#### How it surfaced
+
+Not by reading. `test/erp/jobs.test.ts` failed twice on the worker-tick test with
+`UND_ERR_HEADERS_TIMEOUT` after **308 seconds**, which is easy to dismiss as a
+slow test on a loaded database. Asking *why is it slow* led to the tick's own
+code, which iterates every entitled tenant and — since LP.22 — reaches real
+carriers.
+
+#### The defect
+
+`fetch` has no default timeout. A platform that accepts the connection and never
+answers holds the worker's `running` flag true **forever**: every subsequent tick
+logs "previous tick still in flight, skipping this one" and **the scheduled work
+stops permanently.** Escalations, the overdue sweep, carrier polling, stale-order
+alerts and the notification prune all stop, for every tenant.
+
+The only evidence is a warn line once an interval, which reads exactly like a
+tick that is merely slow.
+
+**It defeated the guarantee the file itself states.** The `catch` carries this
+comment:
+
+> Never rethrow: an unhandled rejection would take the process down and the
+> scheduled work would stop until somebody noticed. The next tick retries.
+
+With no deadline there IS no next tick. The reasoning was right and one line
+elsewhere made it false — the same shape as AUDIT.5, where a deferral's stated
+reason did not survive reading the source it described.
+
+#### The fix
+
+`AbortSignal.timeout(deadlineMs)`, defaulting to **ten intervals**. Not one: the
+tick legitimately outlasts an interval on a large deployment, and a deadline near
+the interval would abort healthy work and turn a slow pass into no pass at all.
+Ten is far beyond any honest pass and far short of forever.
+
+A timeout is **named separately** in the log, because the two failures need
+different things done about them: "the platform did not answer in ten minutes"
+means look at the platform; a connection refused means look at `WORKER_TARGET`.
+
+#### The second defect, which the test found in the fix
+
+The first version was
+`Math.max(Number(WORKER_TIMEOUT_MS) || intervalMs * 10, 30_000)` — so the floor
+clamped an EXPLICIT setting too, and the test's own `WORKER_TIMEOUT_MS=2000` was
+silently raised to 30 seconds. The floor exists to stop a tiny interval making
+the deadline flaky; **a value somebody typed is an instruction.** An operator
+would have set it and watched nothing change. The floor applies to the derived
+default only.
+
+#### The first test this process has ever had
+
+~90 lines holding no business logic, which is why it had none — and those lines
+decide whether ANY of the jobs run at all.
+
+It runs the worker as a **real child process** against a server that accepts the
+connection and never responds, because the failure is about what happens BETWEEN
+ticks: the defect is a call that never happens, and no unit test of `tick()` can
+observe a call that is skipped. The assertions are: it gives up on its deadline;
+**a second request reaches the server**, which is the proof the guard released;
+and a hung tick never prints a line that looks like a completed pass.
+
+**Verified causally**: with `signal:` removed the suite fails 2/4 with the
+original symptom ("previous tick still in flight" repeating); restored, 4/4.
+
+#### Files
+
+- `services/worker/src/index.ts`
+- `services/worker/test/tick.test.ts` (new)
+- `services/worker/package.json` — a `test` script, which it had no need of before
+
+**Migration:** none. `WORKER_TIMEOUT_MS` is optional. **Risk:** low — the default
+is ten intervals, so a pass that completes today is unaffected.
+
+---
+
 ### AUDIT.8 The question that found most of this, asked on every run
 
 [Opus 5]

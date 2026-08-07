@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *AUDIT.8: the question that found most of this, asked on every run*
+**Branch:** `master` · **Last commit:** *AUDIT.9: a request with no deadline, which stopped every scheduled job*
 **Working tree:** clean, all work committed.
 
 ---
@@ -93,6 +93,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **AUDIT.6** "run it now" had no button; the roster did not say where people come from | — | **DONE** — jobs 27→31 |
 | **AUDIT.7** the webhook dropped `externalProductId`/`VariantId`/`OrderAt` — the link branch had never run | — | **DONE** — integrations 75→80 |
 | **AUDIT.8** a column nothing names fails the build; nine found on the way in | — | **DONE** — db 29→33 |
+| **AUDIT.9** the worker's tick had no deadline — a hung platform stopped every job forever | — | **DONE** — worker 0→4 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -1012,6 +1013,38 @@ claim (`lastPolledAt`) is committed in its own short transaction BEFORE the
 network call, and both callers changed as N17 predicted: the route runs it
 through `afterCommit`, the worker's tick no longer wraps it. There is still
 exactly one ingest path — the poll composes `refreshShipmentForOrder`.
+
+### AUDIT.9 — a request with no deadline, which stopped every scheduled job
+
+**Surfaced from a slow test, not from reading.** `jobs.test.ts` failed twice on
+the worker tick with `UND_ERR_HEADERS_TIMEOUT` after 308 seconds — easy to
+dismiss as a loaded database. Asking WHY it was slow led to the code.
+
+`fetch` has no default timeout. A platform that accepts the connection and never
+answers held the worker's `running` flag true **forever**: every later tick
+logged "previous tick still in flight, skipping this one" and **the scheduled
+work stopped permanently** — escalations, the overdue sweep, carrier polling,
+stale-order alerts and the notification prune, for every tenant. The only
+evidence was a warn line once an interval, which reads like a tick that is merely
+slow.
+
+**It defeated the guarantee the file states.** Its `catch` says "the scheduled
+work would stop until somebody noticed. The next tick retries" — and with no
+deadline there was no next tick. AUDIT.5's shape again: sound reasoning, and one
+line elsewhere making it false.
+
+`AbortSignal.timeout`, defaulting to TEN intervals — the tick legitimately
+outlasts one on a large deployment, and a tight deadline would turn a slow pass
+into no pass. **The test then caught a second defect in the fix**: the floor
+clamped an EXPLICIT `WORKER_TIMEOUT_MS` too, so an operator would set it and
+watch nothing change. A value somebody typed is an instruction; the floor applies
+to the derived default only.
+
+**The first test this process has ever had.** It runs the worker as a real child
+process against a server that never responds, because the defect is a call that
+never happens and no unit test of `tick()` can observe a skipped call. Verified
+causally: with `signal:` removed the suite fails 2/4 with the original symptom;
+restored, 4/4.
 
 ### AUDIT.8 — the question that found most of this, asked on every run
 
@@ -2100,7 +2133,8 @@ fail without it, so check the counts, not just the exit code.
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 20 | all pass — including a scan of every `t("literal")` in the console source |
-| **Total** | **1653** | green per suite |
+| `services/worker` | 4 | all pass — AUDIT.9, the first tests this process has had. Runs it as a real child process against a server that never answers. |
+| **Total** | **1657** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

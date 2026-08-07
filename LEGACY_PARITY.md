@@ -128,10 +128,10 @@ ways; and close a month's books with a calculator that agrees with its own saved
 record.
 
 **§9 is the fourth pass — the independent audit** — which read the legacy module
-by module without using this roadmap, and found fourteen things it had not: ten
+by module without using this roadmap, and found fifteen things it had not: ten
 writer/reader mismatches, one that only appeared when a real order was placed
-through the running console, one read out of that same run's server log, and two
-routes with no screen calling them.
+through the running console, one read out of that same run's server log, two
+routes with no screen calling them, and one found by asking why a test was slow.
 
 **§8 is the module-by-module third pass**, walking every department and every
 cross-cutting dimension. **§7 is the profit/loss calculator**, measured end to
@@ -1630,7 +1630,7 @@ That is the shape of every serious defect this project has found: BUG-02
 (`deliveryOutcome` read in eight places, written in none), `IntegrationLog`
 (migrated with its indexes, no caller), `OrderCall.suspicious` (computed, shown
 nowhere), `fakeReason` (written since Phase 5, read by nothing), the confirmation
-rate (computed nowhere at all). **Fourteen more were there.**
+rate (computed nowhere at all). **Fifteen more were there.**
 
 | # | Finding | Severity | Closed by |
 |---|---|---|---|
@@ -1648,6 +1648,7 @@ rate (computed nowhere at all). **Fourteen more were there.**
 | **A12** | `POST /jobs/[job]` — **no screen has ever called it**, while its own comment says "a manager needs to be able to say 'run it now'". Reachable only by typing a URL | Medium | AUDIT.6 |
 | **A13** | The staff roster has no "add a person" control (correct — M-02) and no sentence saying where people ARE added. LP.17's defect inverted | Low | AUDIT.6 |
 | **A14** | The channel parser dropped `externalProductId`, `externalVariantId` and `externalOrderAt`. `resolveProduct`'s exact-link branch **had never run**, so every channel order matched by name — which AUDIT.3 had just made refuse on a duplicate | **High** | AUDIT.7 |
+| **A15** | The worker's tick had no request deadline. A platform that accepts a connection and never answers held `running` true forever, so **every scheduled job stopped permanently** — visible only as a warn line that reads like slowness | **High** | AUDIT.9 |
 
 **A5 is the one that matters most**, and it is BUG-02's shape exactly: the port
 brought `upsertClientFromOrder` across as `syncClientFromOrder` and left
@@ -1675,6 +1676,13 @@ a workflow existing, and a route covered by an access test and driven by a
 contract suite can still be one no operator can reach. Grep the path across
 `.tsx`; an empty result on a route documented as an operator action is the
 finding.
+
+**A15 came from refusing to dismiss a slow test.** The worker-tick test failed
+twice with a 308-second timeout, which on a free-tier database looks like noise.
+Asking *why* found a `fetch` with no deadline that would stop every scheduled job
+on the platform, permanently, the first time a deployment hung. **A flaky test is
+a hypothesis, not a verdict** — and the standing explanation for flakiness here
+(Neon capacity) is exactly what made this one easy to file away.
 
 **A14 is the one whose coverage looked complete.** `delivery.test.ts` proves the
 exact-link branch correct in four tests, including the hardest case — and reaches

@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "M-15 — the scheduler. Calls the platform's job tick on an interval; holds no business logic and no database connection.",
+  "description": "M-15 \u2014 the scheduler. Calls the platform's job tick on an interval; holds no business logic and no database connection.",
   "main": "./src/index.ts",
   "scripts": {
-    "start": "node src/index.ts"
+    "start": "node src/index.ts",
+    "test": "node --test --test-concurrency=1 \"test/*.test.ts\""
   },
-  "engines": { "node": ">=22.6" }
+  "engines": {
+    "node": ">=22.6"
+  }
 }
