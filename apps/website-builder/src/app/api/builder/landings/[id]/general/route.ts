@@ -14,6 +14,11 @@ const Body = z.object({
   ctaButtonText: z.string().trim().max(120).optional().nullable(),
   categoryId: z.string().optional().nullable(),
   themeId: z.string().optional().nullable(),
+  // The SEO columns: read by the public page's generateMetadata since the
+  // port, writable nowhere until LB.6. Length caps are storage bounds; the
+  // editor advises on display budgets.
+  seoTitle: z.string().trim().max(200).optional().nullable(),
+  seoDescription: z.string().trim().max(500).optional().nullable(),
 });
 
 export const PATCH = tenantRoute<Params>("website-builder:pages:write", async ({ db, req, params, session, afterCommit }) => {

@@ -29,6 +29,10 @@
       "builtIn": "Built-in",
       "custom": "Custom",
       "pagesUsing": "{count, plural, =0 {used by no pages} one {used by # page} other {used by # pages}}"
+    },
+    "pages": {
+      "duplicate": "Duplicate",
+      "view": "View"
     }
   },
   "erp": {

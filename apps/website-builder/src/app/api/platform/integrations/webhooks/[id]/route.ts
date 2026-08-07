@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
 import { encryptToken } from "@/lib/meta/crypto";
+import { refuseWebhookUrl } from "@/lib/webhooks/url-guard";
 
 export const dynamic = "force-dynamic";
 type Params = { id: string };
@@ -16,8 +17,9 @@ const Body = z.object({
 export const PATCH = tenantRoute<Params>("platform:integrations:manage", async ({ db, req, params }) => {
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");
-  if (parsed.data.url && !parsed.data.url.startsWith("https://")) {
-    return apiError(422, "INSECURE_URL", "A webhook endpoint must use https.");
+  if (parsed.data.url) {
+    const refusal = refuseWebhookUrl(parsed.data.url);
+    if (refusal) return apiError(422, "INSECURE_URL", refusal);
   }
 
   // A replaced secret is encrypted like a created one; an omitted secret

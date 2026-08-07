@@ -29,6 +29,10 @@
       "builtIn": "Intégré",
       "custom": "Personnalisé",
       "pagesUsing": "{count, plural, =0 {utilisé par aucune page} one {utilisé par # page} other {utilisé par # pages}}"
+    },
+    "pages": {
+      "duplicate": "Dupliquer",
+      "view": "Voir"
     }
   },
   "erp": {

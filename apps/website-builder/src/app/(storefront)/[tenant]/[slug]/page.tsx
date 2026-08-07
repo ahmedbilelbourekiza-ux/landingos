@@ -54,12 +54,36 @@ export async function generateMetadata({
   const found = await load(tenant, slug);
   if (!found) return { title: "Not found" };
 
+  const title = found.page.seoTitle || found.page.title;
+  const description = found.page.seoDescription || found.page.description || undefined;
+  // The hero image — the first GALLERY media — is what a shared link shows.
+  // For a product sold through ads, the link preview IS the ad creative half
+  // the time (LB.6).
+  const hero = found.page.media.find((m: any) => m.placement === "GALLERY");
+  const path = `/${found.tenant.slug}/${found.page.slug}`;
+
   return {
-    title: found.page.seoTitle || found.page.title,
-    description: found.page.seoDescription || found.page.description || undefined,
+    title,
+    description,
     // A storefront IS meant to be indexed, unlike the console, which sets
     // noindex in the root layout.
     robots: { index: true, follow: true },
+    // Path-only canonical: correct relative to whichever host served it, so a
+    // custom domain canonicalises to itself rather than to the platform.
+    alternates: { canonical: path },
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      locale: "ar_DZ",
+      ...(hero ? { images: [{ url: hero.url, alt: hero.altText ?? title }] } : {}),
+    },
+    twitter: {
+      card: hero ? "summary_large_image" : "summary",
+      title,
+      description,
+      ...(hero ? { images: [hero.url] } : {}),
+    },
   };
 }
 
@@ -74,8 +98,31 @@ export default async function StorefrontLandingPage({
   // answer: it does not exist here.
   if (!found) notFound();
 
+  // Product structured data, so search results can carry the price. Values
+  // come from the same row the page renders — never a second computation.
+  const hero = found.page.media.find((m: any) => m.placement === "GALLERY");
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: found.page.title,
+    ...(found.page.description ? { description: found.page.description } : {}),
+    ...(hero ? { image: [hero.url] } : {}),
+    offers: {
+      "@type": "Offer",
+      price: String(found.page.price),
+      priceCurrency: found.page.currency,
+      availability: "https://schema.org/InStock",
+    },
+  };
+
   return (
     <div data-tenant={found.tenant.slug} data-page-slug={found.page.slug}>
+      <script
+        type="application/ld+json"
+        // Serialized server-side from our own row; the replace hardens against
+        // a description containing a literal </script>.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+      />
       {/* Every request the template makes — the wilaya list, draft capture,
           checkout — goes to THIS tenant's storefront API. Without the provider
           the purchase form would post to whatever base it defaulted to, which

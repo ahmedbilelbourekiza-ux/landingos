@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { withTenant } from "@landingos/db";
 
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
+import { allowRequest, clientIp, draftLimit } from "@/lib/storefront/rate-limit";
 import { DraftBody } from "@/lib/storefront/contract";
 import { triggerDraftOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 import { dispatchTrackingEvent } from "@/lib/tracking/dispatch";
@@ -33,6 +34,14 @@ export async function POST(
   req: NextRequest,
   ctx: { params: Promise<{ tenant: string }> },
 ) {
+  // Over budget answers the same silent 204 as every other refusal here — a
+  // background capture must never error at a customer, and a 429 would tell a
+  // scraper exactly where the limit sits (LB.6, G-01). Sixty per five minutes
+  // absorbs the debounced typing pattern with a wide margin.
+  if (!allowRequest("draft", clientIp(req), draftLimit(), 5 * 60 * 1000)) {
+    return new NextResponse(null, { status: 204 });
+  }
+
   const { tenant: slug } = await ctx.params;
   const tenant = await tenantBySlug(slug);
   if (!tenant) return new NextResponse(null, { status: 204 });

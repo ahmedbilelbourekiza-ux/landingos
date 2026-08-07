@@ -70,6 +70,7 @@ export default async function ConsoleEditLandingPage({
         landingSlug={page.slug}
         publicPath={`/${session.tenant!.slug}/${page.slug}`}
         initialPreview={toPreviewState(page)}
+        initialSeo={{ seoTitle: page.seoTitle ?? "", seoDescription: page.seoDescription ?? "" }}
         initialStatus={(page.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT") as PublishStatus}
       />
       </StorefrontApiProvider>

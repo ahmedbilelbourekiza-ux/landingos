@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
 import { encryptToken } from "@/lib/meta/crypto";
+import { refuseWebhookUrl } from "@/lib/webhooks/url-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -39,9 +40,11 @@ export const POST = tenantRoute("platform:integrations:manage", async ({ db, req
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");
 
-  // http:// would send a signed payload containing customer data in clear text.
-  if (!parsed.data.url.startsWith("https://")) {
-    return apiError(422, "INSECURE_URL", "A webhook endpoint must use https.");
+  // https-only (clear-text would carry customer data), and never a private or
+  // internal host — this server POSTs there with retries (G-02).
+  {
+    const refusal = refuseWebhookUrl(parsed.data.url);
+    if (refusal) return apiError(422, "INSECURE_URL", refusal);
   }
 
   const created = await (db as any).webhookEndpoint.create({

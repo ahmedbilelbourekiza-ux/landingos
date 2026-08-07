@@ -117,8 +117,11 @@ export default async function NewLandingPage({
 
         <div className="space-y-1">
           <label htmlFor="price" className="ui-label">Price</label>
+          {/* Text with a decimal keypad, never type="number": the column is a
+              Decimal and a number input hands back a JS float (M-06 / D-06). */}
           <input
-            id="price" name="price" type="number" min="0" step="1" required defaultValue="0"
+            id="price" name="price" type="text" inputMode="decimal"
+            pattern="[0-9]*[.,]?[0-9]*" required defaultValue="0"
             className="ui-control tap w-full tabular-nums"
           />
         </div>

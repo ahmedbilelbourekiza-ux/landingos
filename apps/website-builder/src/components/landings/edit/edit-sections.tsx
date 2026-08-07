@@ -28,6 +28,7 @@ import { ReviewsSection } from "./sections/reviews-section";
 import { OrderFormSection } from "./sections/order-form-section";
 import { DescriptionImagesSection } from "./sections/description-images-section";
 import { ShippingSection } from "./sections/shipping-section";
+import { SeoSection, type SeoValues } from "./sections/seo-section";
 const SECTIONS: {
   id: string;
   title: string;
@@ -52,6 +53,7 @@ export function EditSections({
   preview,
   onPreviewChange,
   landingId,
+  initialSeo,
 }: {
   preview: PreviewState;
   onPreviewChange: <K extends keyof PreviewState>(
@@ -59,6 +61,7 @@ export function EditSections({
     values: PreviewState[K],
   ) => void;
   landingId: string;
+  initialSeo: SeoValues;
 }) {
   const callbacks = React.useMemo(
     () => ({
@@ -156,6 +159,42 @@ export function EditSections({
               initialValues={preview.orderForm}
               onPreviewChange={callbacks.orderForm}
             />
+          );
+        }
+        if (section.id === "seo") {
+          return (
+            <SeoSection
+              key={section.id}
+              landingId={landingId}
+              pageTitle={preview.general.title}
+              initialValues={initialSeo}
+            />
+          );
+        }
+        if (section.id === "integrations") {
+          // Not "coming soon" — it EXISTS, at the workspace level. Tracking
+          // pixels and webhooks are configured once per company (LB.5), and a
+          // per-page panel would be a second place for the same settings. The
+          // signpost is the fix A13 prescribes: state where a thing lives
+          // rather than leaving a reader guessing.
+          return (
+            <EditSectionCard
+              key={section.id}
+              id={section.id}
+              title={section.title}
+              description="Tracking pixels and webhooks."
+              icon={section.icon}
+            >
+              <p className="text-sm text-muted-foreground">
+                Tracking (Meta, TikTok, GA4, Tag Manager, Google Ads) and outgoing
+                webhooks are configured once for the whole workspace and apply to
+                every page automatically —{" "}
+                <a href="/console/settings/integrations" className="underline">
+                  open Settings → Integrations
+                </a>
+                .
+              </p>
+            </EditSectionCard>
           );
         }
         return (

@@ -19,6 +19,7 @@ export function EditWorkspace({
   publicPath,
   initialPreview,
   initialStatus,
+  initialSeo,
 }: {
   landingId: string;
   landingTitle: string;
@@ -32,6 +33,7 @@ export function EditWorkspace({
   publicPath: string;
   initialPreview: PreviewState;
   initialStatus: PublishStatus;
+  initialSeo: { seoTitle: string; seoDescription: string };
 }) {
   // Where this editor sends its requests. The legacy dashboard and the
   // console mount the same components against different bases.
@@ -92,13 +94,15 @@ export function EditWorkspace({
     if (hasUnsavedChanges) {
       setLeaveDialogOpen(true);
     } else {
-      router.push("/dashboard/landings");
+      // The console list — the legacy /dashboard/landings this pushed to was
+      // deleted in 4.5 and now 404s as a reserved slug (LB.6).
+      router.push("/console/builder/pages");
     }
   };
 
   const handleLeaveConfirm = () => {
     setLeaveDialogOpen(false);
-    router.push("/dashboard/landings");
+    router.push("/console/builder/pages");
   };
 
   return (
@@ -120,6 +124,7 @@ export function EditWorkspace({
             preview={preview}
             onPreviewChange={handlePreviewChange}
             landingId={landingId}
+            initialSeo={initialSeo}
           />
           <div className="hidden lg:block">
             <PreviewPanel preview={preview} />

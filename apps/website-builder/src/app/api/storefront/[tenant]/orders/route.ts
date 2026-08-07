@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { Prisma, withTenant } from "@landingos/db";
 
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
+import { allowRequest, clientIp, checkoutLimit } from "@/lib/storefront/rate-limit";
 import { CheckoutBody } from "@/lib/storefront/contract";
 import { triggerOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 import { dispatchTrackingEvent } from "@/lib/tracking/dispatch";
@@ -37,6 +38,13 @@ export async function POST(
   req: NextRequest,
   ctx: { params: Promise<{ tenant: string }> },
 ) {
+  // Per-IP bound BEFORE any database work: a fake COD order costs the store a
+  // courier and an agent's call, so a script must run out of budget fast. Ten
+  // orders in five minutes from one address is nobody's real buying pattern.
+  if (!allowRequest("checkout", clientIp(req), checkoutLimit(), 5 * 60 * 1000)) {
+    return fail(429, "RATE_LIMITED", "Too many orders from this connection — wait a few minutes.");
+  }
+
   const { tenant: slug } = await ctx.params;
   const tenant = await tenantBySlug(slug);
   if (!tenant) return fail(404, "NOT_FOUND", "That store does not exist.");

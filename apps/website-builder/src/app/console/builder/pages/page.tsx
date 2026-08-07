@@ -9,6 +9,8 @@ import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { PageBody } from "@/components/console/ui/primitives";
 import { DataTable, StatusPill } from "@/components/console/data-table";
+import { PageRowActions } from "@/components/console/builder/page-row-actions";
+import { actionErrors } from "@/lib/console/action-errors";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +32,8 @@ export default async function BuilderPagesScreen() {
   const { session, locale: raw, t } = await requireProduct("website-builder", "/console/builder/pages");
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
   const mayEdit = can(session.auth!, "website-builder:pages:write");
+  const errors = actionErrors(t);
+  const tenantSlug = session.tenant!.slug;
 
   const pages = await forTenant(session.auth!.tenantId).landingPage.findMany({
     orderBy: { createdAt: "desc" },
@@ -39,6 +43,7 @@ export default async function BuilderPagesScreen() {
       title: true,
       slug: true,
       status: true,
+      published: true,
       price: true,
       currency: true,
       createdAt: true,
@@ -116,6 +121,29 @@ export default async function BuilderPagesScreen() {
               );
             },
           },
+          // The row's doors, where the API would accept the caller (D-06.2):
+          // before LB.6 this list had NO way into the editor at all.
+          ...(mayEdit
+            ? [
+                {
+                  id: "actions",
+                  header: "",
+                  cell: (p: (typeof pages)[number]) => (
+                    <PageRowActions
+                      id={p.id}
+                      publicPath={`/${tenantSlug}/${p.slug}`}
+                      published={p.published}
+                      labels={{
+                        edit: t("common.edit"),
+                        duplicate: t("builder.pages.duplicate"),
+                        view: t("builder.pages.view"),
+                      }}
+                      errors={errors}
+                    />
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
       </PageBody>
