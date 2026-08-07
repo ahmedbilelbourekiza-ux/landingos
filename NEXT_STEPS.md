@@ -1,5 +1,22 @@
 # Next Steps
 
+**PHASE LB (the Landing Page Builder as a commercial product) IS COMPLETE —
+see `BUILDER_AUDIT.md` (the before), `BUILDER_HANDOFF.md` (the after, with the
+readiness checklist and roadmap), and PROJECT_STATE's *Phase LB* section. The
+ERP is deliberately paused with its PM work committed.**
+
+## WHAT PHASE LB LEFT — the builder's own queue
+
+Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
+
+| # | Slice | Size | Why |
+|---|---|---|---|
+| **LB.9** | Benefits + FAQ end to end (routes + editor sections + unhardcode `toLandingPageData`) | S | The last two "Coming Soon" stubs; tables and storefront renderers already exist |
+| **LB.10** | `website-builder:orders:write` in the manifest, gating the status route and UI | S | Today `orders:read` gates a WRITE (audit B-08) — an authorization fix of N16's class |
+| **LB.11** | Editor i18n (the 54 legacy components speak English in an ar/fr console) | M | Commercial for the Arabic-first market |
+| **LB.12** | Real-credential smoke test: Meta/TikTok/GA4 with test pixels + `testCode` | S | No request has crossed the REAL endpoints — the ZR/Ecom precedent; do before first ad spend |
+| **LB.13** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13.5–13.7 |
+
 **Phase 5, 6 and 7 are complete. LEGACY PARITY IS REACHED — Tiers 1, 2 and 3 of
 `LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that
 did not use the roadmap at all. PHASE UI (the UI/UX modernisation) IS COMPLETE

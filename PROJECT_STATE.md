@@ -1,9 +1,56 @@
 # LandingOS — Project State
 
-**Last updated:** 7 August 2026
-**Branch:** `master` · **Last commit:** *PM: the product maturity pass*
-**Working tree:** the PM slices are on disk and verified live; commit them
-together or one per slice, per the project's one-slice-per-commit rule.
+**Last updated:** 7 August 2026 (second session)
+**Branch:** `master` · **Last commit:** *LB.7/LB.8 — validation and the handoff*
+
+---
+
+## PHASE LB — THE LANDING PAGE BUILDER BECOMES A COMMERCIAL PRODUCT: COMPLETE
+
+The ERP is deliberately paused (its PM work was committed as `ee1f442`). This
+phase treated the builder as its own commercial SaaS product, per the
+launch-readiness mission: audit first, then repair, then the integration
+platform, then validation as a real customer.
+
+**Two documents own this phase and are deliberately separate from the ERP's:**
+
+- **`BUILDER_AUDIT.md`** — the before-measurement. Its headline: the API layer
+  was production-grade and the BROWSER half was broken end to end — the public
+  page crashed for every customer, the editor crashed on load, checkout could
+  not post a body the API accepted, no analytics event had ever fired, no
+  webhook had ever been delivered (three independent kills in one pipeline),
+  and a builder-only tenant's console front door was a 404. Every finding was
+  observed in the running app, not inferred; every contract suite was green
+  throughout, because the breakage lived between the browser and the API the
+  suites drive directly.
+- **`BUILDER_HANDOFF.md`** — the after: architecture, the tracking and webhook
+  platforms, standalone vs integrated deployment, testing performed, readiness
+  checklist, known limitations, roadmap. It stands alone from the ERP handoff.
+
+| Slice | What it closed |
+|---|---|
+| **LB.1** | The storefront client speaks the API's vocabulary again — `lib/storefront/contract.ts` shared by both sides; checkout, wilayas, thank-you redirect, draft capture and draft CONVERSION all work in a real browser |
+| **LB.2** | The editor stops crashing and its saves stop lying — every consumer on the platform envelope, placement-scoped media, the order-form route accepts the editor's own shape, Copy Link stops handing out dead `/l/` URLs |
+| **LB.3** | Webhooks become first-class — the Json-array/plaintext-secret/in-transaction-trigger kills fixed, page/product/lead/order events all fire, console write surface + delivery log + signed send-test, 9 delivery tests against a real receiver |
+| **LB.4** | Standalone mode's front door and the two manifest nav 404s; the templates screen; the manifest-driven screen test (LP.17's guard, generalised to this product) |
+| **LB.5** | The tracking pipeline — one canonical event model, adapters for Meta (pixel+CAPI), TikTok (pixel+Events API), GA4/GTM/Google Ads, a storefront layout mounting one loader, server events after commit, `TrackingIntegration` (RLS 48/48), console surface, 12 tests incl. a real checkout fanning Purchase to three stubbed platforms with one dedup id |
+| **LB.6** | SEO writer + OG/JSON-LD, page duplication + the pages list's first row actions, per-IP rate limits on the two public writes, webhook SSRF guard, the Decimal-safe money input |
+| **LB.7** | Validation as a real customer, in a real browser: duplicate → configure → publish → variant-priced checkout (8 200 DA computed correctly) → Lead + Purchase observed at Meta/GA4 receivers → order confirmed through the UI → ERP record in the same transaction; the standalone tenant walkthrough end to end with zero ERP rows |
+
+**The rule Phase LB adds to the method:** *a green contract suite proves the
+API, never the page* — every LB.1/LB.2 defect was a vocabulary duplicated
+across the browser/API boundary, drifted, with the suite posting the route's
+own shape. The fix that closes the CLASS is a shared contract module imported
+by both sides, plus suites that exercise the consumer's exact shape (the
+webhook receiver tests, the tracking stub tests, the manifest-driven screen
+test). And its corollary, three times over: **a Prisma Json column returns the
+value — `JSON.parse` on it throws**, which alone had silently killed webhook
+subscriptions, order-form configs and payload variants.
+
+**Suite totals for this product:** storefront 27 · builder-sections 50 ·
+builder-api 22 · webhooks 9 (new) · tracking 12 (new) · hardening 10 (new) ·
+console-shell 13 — per file, against the running server, with the delivery
+suites driving real HTTP receivers. ERP suites untouched.
 
 ---
 

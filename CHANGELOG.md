@@ -10,6 +10,54 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## Phase LB — the Landing Page Builder becomes a commercial product
+
+**Recorded differently from every phase before it, deliberately.** This phase's
+findings live in `BUILDER_AUDIT.md` (the before-measurement, taken in the
+running app), its architecture and verification in `BUILDER_HANDOFF.md` (a
+handoff that stands alone from the ERP's), and each slice's full reasoning in
+its commit message — LB.1 through LB.6 plus the validation run, commits
+`6d44262..410d7c5`. The summaries:
+
+- **LB.1** the storefront client speaks the API's vocabulary again (the public
+  page crashed for every customer; checkout could not post an acceptable body;
+  the abandoned-lead capture had never landed a row). One shared contract
+  module, both sides import it. Draft conversion gets its first writer.
+- **LB.2** the editor stops crashing and its saves stop lying (envelope drift
+  in every consumer; four sections posting vocabularies their routes refuse or
+  ignore; a media replace that deleted the other placement's images; Copy Link
+  handing out dead legacy URLs).
+- **LB.3** webhooks become first-class: three independent kills fixed
+  (Json-array subscriptions, plaintext secrets under a decrypting reader,
+  triggers racing their own transaction), every declared event now fires,
+  page.published/unpublished added, console write surface + delivery log +
+  signed send-test, and the platform's first real-receiver delivery suite.
+- **LB.4** the console front door stops 404ing builder-only tenants; the two
+  manifest nav items with no screens get theirs; the manifest-driven screen
+  test generalises LP.17's guard to this product.
+- **LB.5** the tracking pipeline: one canonical event model with provider
+  adapters — Meta pixel + Conversions API (advanced matching, event_id dedup,
+  test codes), TikTok pixel + Events API, GA4, GTM, Google Ads — a new
+  RLS-scoped `TrackingIntegration` table with encrypted server credentials and
+  the platform-managed/customer-owned split as data, one storefront loader
+  mounted by a new layout, server-side Purchase/Lead after commit, and a suite
+  that drives a real checkout into stubbed provider endpoints.
+- **LB.6** SEO gets its writer (+ OG/Twitter/JSON-LD on the public page), pages
+  get duplication and their first row actions, the two public writes get
+  per-IP rate limits, webhook destinations get an SSRF guard, and the create
+  page's money input stops being `type="number"`.
+- **LB.7/LB.8** validation as a real customer in a real browser (variant-priced
+  checkout, Lead + Purchase observed at receiver stubs, order confirmed through
+  the UI, the ERP record in the same transaction, the standalone walkthrough
+  with zero ERP rows), and the two documents above.
+
+**Migration:** one additive table (`TrackingIntegration`), RLS applied (48/48).
+**Risk:** provider adapters are spec-built and stub-verified; no request has
+crossed the real Meta/TikTok/GA4 endpoints (the ZR/Ecom precedent — verify with
+test pixels before first ad spend).
+
+---
+
 ## Phase PM — product maturity
 
 **This phase is not a styling pass.** Phase UI was presentation-only by
