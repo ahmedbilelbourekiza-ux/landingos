@@ -740,3 +740,66 @@ running page, not in review.** It compiles, it appears in the class list, it
 survives every contract test that asserts on HTML — and it produces no CSS. The
 two defects above were both found by measuring the live document, which is the
 method NEXT_STEPS already records as the fourth pass's contribution.
+
+---
+
+## 13. Phase PM — what a second reading found, measured 7 August 2026
+
+§12 closed this document on the seven UI passes. **This section is a different
+measurement**, taken by reading the console again as an operator rather than
+against the 87 findings above — and the important thing about it is that almost
+nothing it found is in §1.
+
+That is not a failure of §1. §1 asked *can an operator see what the platform
+knows, reach it without thinking, and still be reading accurately at 17:00*, and
+it answered honestly. What it could not ask — because it measured
+PRESENTATION, by declaration, in §0 — is the question underneath: **is the
+platform showing what it knows at all?**
+
+### The shape all three of the serious findings share
+
+| Column | Written by | Returned by | Rendered by |
+|---|---|---|---|
+| `CatalogProduct.image` | `POST`/`PATCH /products` since Phase 5 | `PRODUCT_SELECT`, every caller | **nothing, anywhere** |
+| `variants[].image` | `PUT /products/[id]/variants` since LP.18 | `inventoryView` | **nothing, anywhere** |
+| `Notification.entity` / `entityId` | six notifiers since M-16 | the API and every SSE frame | `flashEntity` only — which does nothing unless the row is already on your screen |
+
+Each passes `packages/db/test/orphans.test.ts` cleanly, because that suite is a
+NAME check: the column is named, in several files. Each is invisible to a
+contract test, because the route returns it correctly. Each is invisible to a
+UI audit that scores hierarchy, density and contrast, because there is nothing
+on screen to score.
+
+**The question that finds them is: for every column an API returns, which SCREEN
+renders it?** It is the same shape AUDIT.2 applied to routes ("for every route,
+which screen calls it?") and LP.17 applied to nav items, and it is recorded as
+PM.11 in `NEXT_STEPS.md`.
+
+### And one that was not the ERP's at all
+
+`GET /api/uploads/[...path]` refused any key that was not a single path segment
+— while `POST /api/builder/upload` has written `tenants/<tenantId>/<uuid>.<ext>`
+since the platform port. **Every image uploaded through the console 404s unless
+the deployment has a public R2 bucket.** Shipped, live, and in the BUILDER's
+path rather than the ERP's. Found by uploading a real file through the running
+console and asking for it back — the AUDIT.3 method, which is now the fifth
+defect it has produced that no test could have.
+
+### What §12's open list looks like now
+
+| | State |
+|---|---|
+| **UX-80** dashboard | **Superseded.** §8 called it "six equal tiles in declaration order… no trend, no period, no comparison" and scored it 🟡. It was the most serious finding in the document and was scored as the least. Rebuilt in PM.1. |
+| **UX-85** analytics has no chart | **Closed differently.** LEGACY_PARITY §8's "neither system has ever had a chart" is no longer true — the DASHBOARD has one, server-rendered from `<div>`s rather than from `recharts` (D-PM.1.2). Analytics itself is still seven tables, and now at least renders them in the shared `Section` with the dashboard's period control. |
+| **UX-29** hand-rolled tables | **Partly.** Analytics moved onto `Section`/`Stat`/`StatGrid` and was the last LIST doing its own thing. `settings/delivery-prices` and the calculator still hand-roll, and both are edit grids rather than lists — unchanged reasoning. |
+| **UX-72** disabled by opacity alone | **Closed, and it was worse than scored.** §7 marked it 🟠 for assistive technology. The measurement in PM.6 found the other half: `opacity: 0.5` puts a disabled label at the same grey as `--muted-foreground`, so a caption and a dead control were the same colour for everybody. |
+| **UX-61** `loading.tsx` | Still open, still structural, still UI.6. |
+| **UX-08** three switchers · **UX-30** roving tabindex · **UX-50** residue · **UX-86** calculator | Unchanged. |
+
+### What this document should measure next time
+
+§0 says "nothing in this document proposes changing what the software does",
+and that constraint is what produced a 🟡 for the dashboard. A presentation
+audit and a product audit are different instruments and the second one was never
+run. **PM.8–PM.11 in `NEXT_STEPS.md` are what the second instrument found and
+did not have time to fix.**

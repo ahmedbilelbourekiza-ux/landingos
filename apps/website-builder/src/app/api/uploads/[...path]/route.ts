@@ -39,29 +39,55 @@ export async function GET(
   try {
     const { path: segments } = await params;
 
-    // Uploads are stored flat — one directory, "<uuid>.<ext>" filenames. A
-    // nested path can only be a traversal attempt or a bad record, so reject
-    // anything that is not a single safe segment rather than trying to
-    // normalize it.
-    if (!segments || segments.length !== 1) {
+    /* PM.2 — A NESTED KEY IS THE NORMAL CASE NOW, AND THIS REFUSED IT.
+     *
+     * This route was written when uploads were flat — one directory, one
+     * `<uuid>.<ext>` per file — and it rejected anything that was not a single
+     * segment, on the sound reasoning that a nested path could only be a
+     * traversal attempt or a bad record. Then the platform port changed the
+     * WRITER: `POST /api/builder/upload` has stored
+     * `tenants/<tenantId>/<uuid>.<ext>` ever since, so one tenant's uploads are
+     * a distinct prefix in the bucket rather than loose files sharing a
+     * namespace.
+     *
+     * The two halves have disagreed since. Every image uploaded through the
+     * console 404s here unless `R2_PUBLIC_BASE_URL` is set — and even the
+     * private-bucket branch looked the object up under the bare filename rather
+     * than the key it was stored at. It is invisible on a deployment with a
+     * public bucket and total on every other one, which is why four audits
+     * walked past it: the writer, the storage and the URL are all correct, and
+     * only the reader disagrees. Found by uploading a real file through the
+     * running console and asking for it back.
+     *
+     * The traversal guard is kept and applied per SEGMENT, which is stricter
+     * than a normalise-and-hope: `isSafeUploadFilename` already refuses `..`,
+     * slashes and anything outside `[A-Za-z0-9._-]`, so a segment that passes
+     * cannot escape the directory it is joined into. The depth cap is there so
+     * a malformed record cannot turn into an unbounded directory walk.
+     */
+    if (!segments || segments.length < 1 || segments.length > 4) {
+      return new Response("Not found", { status: 404 });
+    }
+    if (!segments.every(isSafeUploadFilename)) {
       return new Response("Not found", { status: 404 });
     }
 
-    const filename = segments[0];
-    if (!isSafeUploadFilename(filename)) {
-      return new Response("Not found", { status: 404 });
-    }
+    const filename = segments[segments.length - 1];
+    // The object key is the path as stored — `tenants/<id>/<uuid>.<ext>` — and
+    // it is always `/`-joined, including on Windows, because it is a bucket key
+    // rather than a filesystem path.
+    const key = segments.join("/");
 
     // 1. Public bucket / custom domain — hand the browser straight to
     //    Cloudflare so this server never carries the image bytes.
-    const publicUrl = getPublicUrl(filename);
+    const publicUrl = getPublicUrl(key);
     if (publicUrl) {
       return Response.redirect(publicUrl, 302);
     }
 
     // 2. Private R2 bucket — proxy the object through this route.
     if (isR2Configured()) {
-      const object = await getObject(filename);
+      const object = await getObject(key);
       if (object) {
         return new Response(new Uint8Array(object.body), {
           status: 200,
@@ -78,13 +104,16 @@ export async function GET(
 
     // 3. Local disk.
     const uploadsDir = getUploadsDir();
-    const filePath = path.join(uploadsDir, filename);
+    const filePath = path.join(uploadsDir, ...segments);
 
-    // Defence in depth: even after the filename check, confirm the resolved
+    // Defence in depth: even after the per-segment check, confirm the resolved
     // path really is inside the uploads directory before reading it.
     const resolvedDir = path.resolve(uploadsDir);
     const resolvedFile = path.resolve(filePath);
-    if (resolvedFile !== path.join(resolvedDir, filename)) {
+    if (
+      resolvedFile !== resolvedDir &&
+      !resolvedFile.startsWith(resolvedDir + path.sep)
+    ) {
       return new Response("Not found", { status: 404 });
     }
 

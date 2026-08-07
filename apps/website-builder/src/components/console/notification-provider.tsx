@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, X } from "lucide-react";
+import { ArrowUpRight, Bell, X } from "lucide-react";
 
 import { toneVars } from "@landingos/ui";
 
 import { flashEntity } from "@/components/console/row-flash";
 import { playFamily } from "@/components/console/notification-sound";
 import { soundFamilyOf, type NotifyPrefs } from "@/lib/platform/notify-vocab";
+import { notificationHref } from "@/lib/platform/notification-href";
 
 /* =============================================================================
  * The notification consumer — LP.7, closing N2, N3, L1 and L2.
@@ -72,6 +74,8 @@ export interface NotificationStrings {
   readonly live: string;
   readonly reconnecting: string;
   readonly loading: string;
+  /** "Open" — the toast's action, PM.4. */
+  readonly openLabel: string;
 }
 
 interface Feed {
@@ -377,35 +381,71 @@ export function NotificationProvider({
               </p>
             ) : (
               <ul className="mt-3 space-y-2">
-                {items.map((n) => (
-                  <li
-                    key={n.id}
-                    data-testid="notification-item"
-                    data-notification-id={n.id}
-                    data-product={n.product}
-                    // Unread is marked by a DOT and a surface, not by fading the
-                    // read ones: `opacity-60` on read items drops their text
-                    // below AA, so the notifications you have already seen
-                    // become the ones you cannot read.
-                    className={`relative rounded-md border p-2 ps-4 text-sm ${
-                      n.read
-                        ? "border-border bg-surface-raised"
-                        : "border-surface-selected-border bg-surface-selected"
-                    }`}
-                  >
-                    {!n.read && (
-                      <span
-                        aria-hidden="true"
-                        className="absolute inset-y-2 start-1.5 w-1 rounded-full bg-primary"
-                      />
-                    )}
-                    <p className="font-medium">{label(n)}</p>
-                    {n.body && <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p>}
-                    <p className="mt-1 text-2xs text-muted-foreground">
-                      {productNames[n.product] ?? n.product}
-                    </p>
-                  </li>
-                ))}
+                {items.map((n) => {
+                  /* PM.4 — THE ROW OPENS THE THING IT IS ABOUT.
+                   *
+                   * `entity` and `entityId` have been written, stored and
+                   * streamed since M-16, and the console read them for one
+                   * purpose: flashing a row you were already looking at. So
+                   * "delivery problem — ORD-0042" meant opening the order list,
+                   * finding ORD-0042 and opening it — three navigations to
+                   * reach a record the notification was holding the id of. */
+                  const href = notificationHref(n);
+                  const body = (
+                    <>
+                      {!n.read && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-y-2 start-1.5 w-1 rounded-full bg-primary"
+                        />
+                      )}
+                      <p className="flex items-start gap-1.5 font-medium">
+                        <span className="min-w-0 flex-1">{label(n)}</span>
+                        {href && (
+                          <ArrowUpRight
+                            aria-hidden="true"
+                            className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+                          />
+                        )}
+                      </p>
+                      {n.body && <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p>}
+                      <p className="mt-1 text-2xs text-muted-foreground">
+                        {productNames[n.product] ?? n.product}
+                      </p>
+                    </>
+                  );
+                  // Unread is marked by a DOT and a surface, not by fading the
+                  // read ones: `opacity-60` on read items drops their text
+                  // below AA, so the notifications you have already seen
+                  // become the ones you cannot read.
+                  const shell = `relative block rounded-md border p-2 ps-4 text-sm ${
+                    n.read
+                      ? "border-border bg-surface-raised"
+                      : "border-surface-selected-border bg-surface-selected"
+                  } ${href ? "transition-colors duration-(--duration-fast) hover:border-muted-foreground/40" : ""}`;
+
+                  return (
+                    <li
+                      key={n.id}
+                      data-testid="notification-item"
+                      data-notification-id={n.id}
+                      data-product={n.product}
+                    >
+                      {href ? (
+                        <Link
+                          href={href}
+                          data-notification-href={href}
+                          onClick={() => setOpen(false)}
+                          className={shell}
+                        >
+                          {body}
+                        </Link>
+                      ) : (
+                        <div className={shell}>{body}</div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
 
@@ -434,7 +474,9 @@ export function NotificationProvider({
         // than the viewport — a fixed 18rem panel at 360px hung off the side.
         className="pointer-events-none fixed bottom-4 end-4 z-50 flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-2"
       >
-        {toasts.map((n) => (
+        {toasts.map((n) => {
+          const href = notificationHref(n);
+          return (
           <div
             key={n.id}
             data-testid="notification-toast"
@@ -444,8 +486,25 @@ export function NotificationProvider({
             <div className="min-w-0 flex-1">
               <p className="font-medium">{label(n)}</p>
               {n.body && <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p>}
-              <p className="mt-1 text-2xs text-muted-foreground">
-                {productNames[n.product] ?? n.product}
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 text-2xs text-muted-foreground">
+                <span>{productNames[n.product] ?? n.product}</span>
+                {/* PM.4 — the toast is the ONE moment an operator is already
+                    looking at this event. A six-second window with no way to act
+                    on it is a six-second window that costs three navigations
+                    afterwards. */}
+                {href && (
+                  <Link
+                    href={href}
+                    data-notification-href={href}
+                    onClick={() =>
+                      setToasts((current) => current.filter((x) => x.id !== n.id))
+                    }
+                    className="inline-flex items-center gap-0.5 font-medium text-foreground underline-offset-2 hover:underline"
+                  >
+                    {s.openLabel}
+                    <ArrowUpRight aria-hidden="true" className="size-3" />
+                  </Link>
+                )}
               </p>
             </div>
             {/* UI.19 — a toast can be put away.
@@ -466,7 +525,8 @@ export function NotificationProvider({
               <X aria-hidden="true" className="size-3.5" />
             </button>
           </div>
-        ))}
+          );
+        })}
       </div>
     </>
   );

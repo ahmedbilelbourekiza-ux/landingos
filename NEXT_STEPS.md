@@ -4,7 +4,25 @@
 `LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that
 did not use the roadmap at all. PHASE UI (the UI/UX modernisation) IS COMPLETE
 — see `UI_UX_AUDIT.md`, and PROJECT_STATE's *Phase UI* section for the
-decisions.**
+decisions. PHASE PM (product maturity) IS COMPLETE — see PROJECT_STATE's
+*Phase PM* section and CHANGELOG §PM.1–PM.7.**
+
+## WHAT PHASE PM LEFT
+
+Full reasoning in CHANGELOG §PM. Four things are recorded rather than done, and
+each is a slice rather than polish:
+
+| # | Slice | Size | Why it is worth doing |
+|---|---|---|---|
+| **PM.8** | The order detail's summary rail | M | 653 lines, eleven sections, one column below `lg`. The status and the actions are still ~400 px apart vertically, and the screen has no in-page navigation. UX-82 was closed on *tokens*, not on *shape*. A sticky summary carrying the status, the value, the customer and the primary action is the missing half. |
+| **PM.9** | `/console/erp/analytics` gets the dashboard's comparison | S | It has the design system now and still reports nine absolute figures with no previous period. The arithmetic already exists in `lib/erp/dashboard.ts` (`dashboardWindow`, `changePercent`, `changePoints`); this is wiring, not design. It is also the slowest screen in the console at **3.7 s**, for the reason D-PM.1.3 documents — eight breakdowns × three passes each. `performance()`'s single-pass `groupBy` is the fix and it is already written. |
+| **PM.10** | The quick search on a phone | S | It is `hidden md:block`, because UI.5 measured the header cluster at 319 px against a 375 px viewport and this is the width the drawer work exists for. A phone needs the lookup MORE than a desktop does, not less; it needs its own affordance (a search item in the drawer, or a full-width sheet) rather than a box squeezed into that row. |
+| **PM.11** | A screen-coverage test for API-returned columns | S | The three findings PM.2 and PM.4 opened were all *written, stored, returned by an API, rendered by no screen*. `orphans.test.ts` is a NAME check and passes them cleanly. The general form — for every column an API `SELECT` returns, grep the console for a reader — is the next mechanical guard, and it is the same shape AUDIT.2 applied to routes and LP.17 to nav items. |
+
+**One rule Phase PM added to the method:** *a column with a writer and no reader
+is not done; it is a feature nobody can use.* The question the schema scan
+cannot ask is **for every column an API returns, which SCREEN renders it** — see
+PM.11 above.
 
 ## WHAT PHASE UI LEFT, AND WHAT IT IS WORTH
 

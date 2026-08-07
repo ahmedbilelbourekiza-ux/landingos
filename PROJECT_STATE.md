@@ -1,8 +1,142 @@
 # LandingOS — Project State
 
 **Last updated:** 7 August 2026
-**Branch:** `master` · **Last commit:** *UI.5: the final product audit*
-**Working tree:** clean, all work committed.
+**Branch:** `master` · **Last commit:** *PM: the product maturity pass*
+**Working tree:** the PM slices are on disk and verified live; commit them
+together or one per slice, per the project's one-slice-per-commit rule.
+
+---
+
+## PHASE PM — PRODUCT MATURITY: COMPLETE
+
+Phase UI was **presentation only by declaration** and said so in every entry.
+This phase is the other half: it is allowed to change what a screen SHOWS, and
+does. What it does not change is the domain — no calculation moved, no
+permission widened, no tenant scoping touched, and every D-06 rule still holds.
+
+**The finding it was built from, in one sentence.** The console had reached
+parity and a coherent visual language and was still built to be READ rather than
+to be WORKED.
+
+| Slice | What it closed |
+|---|---|
+| **PM.1** the operational dashboard | The front door was six LIFETIME counts with no period, no comparison and no trend — it answered "how many confirmed orders exist" and never "is today going better or worse than yesterday" |
+| **PM.2** the photograph that had no reader | `CatalogProduct.image` and every variant's `image` — columns since M-06, writable since Phase 5, **rendered by nothing anywhere**, and with no way to upload a file at all |
+| **PM.3** variants, and one-pass creation | A 45-row flat matrix with no grouping; a product with fifteen variants took three passes through two panels that did not know about each other |
+| **PM.4** notifications that open the record | `entity`/`entityId` written, stored, streamed — and read only to flash a row you were already looking at |
+| **PM.5** one stock vocabulary | `stock <= threshold` was one bit for "restock next week" and "cannot ship this order", and a product with no threshold could sit at zero unlisted |
+| **PM.6** secondary text vs. a dead control | `opacity: 0.5` put a disabled label exactly where `--muted-foreground` lives |
+| **PM.7** the question the product is opened with | "A customer is on the phone and gives me a number" cost four navigations |
+
+### The three findings that were capabilities, not styling — for the tenth time
+
+1. **`CatalogProduct.image` and `variants[].image`.** Accepted by two routes,
+   returned by `PRODUCT_SELECT`, rendered by no screen, and with no control that
+   could produce one. The legacy shows a photograph on the product grid, the
+   stock screen, the variant editor and every order row.
+2. **`Notification.entity` / `entityId`.** Written by six ERP notifiers, carried
+   on every SSE frame, and consumed only by `flashEntity` — which does nothing
+   unless the row happens to be on the screen you are already reading.
+3. **`/api/uploads/[...path]` refused the keys `/api/builder/upload` writes.**
+   Not an ERP gap: a shipped, live defect in the PLATFORM. The writer moved to
+   `tenants/<id>/<file>` at the platform port and the reader kept refusing
+   anything that was not one segment, so every console-uploaded image 404s
+   unless the deployment has a PUBLIC R2 bucket. Four audits walked past it
+   because the writer, the storage and the URL are all correct and only the
+   reader disagrees.
+
+### D-PM.1.3 — on a pinned transaction, the query count IS the latency
+
+`withTenant` opens an interactive transaction, so `Promise.all` around nine
+Prisma calls does not parallelise them — it queues them on one connection. The
+first build of the dashboard issued ~35 round trips and measured **3.2–4.8 s**
+on the screen a manager opens first. `groupBy` consolidation (one pass by
+`status` answers four of the old counts, one by `deliveryOutcome` answers three,
+`[dimension, status]` replaces two passes per breakdown) brought it to **~2.0 s**
+— level with the order list and under the untouched analytics screen, against a
+0.86 s floor for a near-queryless page on this connection.
+
+**What was not done for that speed:** the record scope was not hand-written into
+SQL. `orderScope` is a Prisma `where`, and a second copy of "which orders may
+this person see" expressed as a string is the one place being wrong leaks a
+colleague's queue.
+
+### D-PM.7.1 — the shell must never learn what a product SEARCHES either
+
+`ProductManifest.search` declares the path, the query parameter and the
+placeholder. A header hard-coding `/console/erp/orders?search=` would be the
+shell knowing what an ERP is — D-UI.1's argument, one field further on. The
+parameter is `search`, the one `orderFilters` already validates, so the box and
+the list cannot disagree about what was asked.
+
+### D-PM.A — a control's gate and its DESTINATION's gate are two questions
+
+Phase PM's own review caught it in Phase PM's own code. Three alert cards on the
+new dashboard counted correctly and linked into a 404: the two integration cards
+were gated on `erp:settings:read` — **a permission that is not in the ERP's
+manifest at all**, so `can()` answered it by role glob — while pointing at
+screens that check `erp:shipments:write` and `erp:settings:write`; and the stock
+cards were ungated while pointing at a screen whose nav gate is
+`erp:inventory:write`.
+
+D-06.2 says render a control only where the API would ACCEPT it, and every route
+here was gated correctly. What was wrong is a question D-06.2 does not ask: **is
+the person allowed to reach where this control SENDS them?** It is only visible
+by reading the manifest's nav permissions beside the screen's own, which no
+route-shaped review does. Every flag on `AlertInput` now names the permission its
+destination checks, and a stock alert for somebody who cannot open the stockroom
+points at the products list instead.
+
+### The rule Phase PM adds to the method
+
+**A column with a writer and no reader is not "done"; it is a feature nobody can
+use.** This project has caught that shape nine times by asking *which columns
+does something write that nothing reads*. `packages/db/test/orphans.test.ts`
+made the cheap half mechanical — but it is a NAME check, so a column that is
+written, selected, returned by an API and rendered by no screen passes it
+cleanly. All three findings above are that residue. **The question the schema
+scan cannot ask is: for every column an API returns, which SCREEN renders it?**
+
+### Verification (Phase PM)
+
+Per suite, live, against the running server.
+
+| Suite | Result |
+|---|---|
+| `packages/ui` | **42/42** (was 26 — the oklch ground is measurable now) |
+| `packages/i18n` | 20/20 |
+| `packages/product-registry` | 36/36 |
+| ERP `catalog` | **72/72** (was 66 — the photograph round trip) |
+| ERP `screens` | 173/173 |
+| ERP `notifications` + `access` | 252/252 |
+| `console-shell` + ERP `analytics` + `listing` | 62/62 |
+| ERP `orders` + `registry` + `export` + `calc` | 132/132 per suite |
+| ERP `integrations` | 80/80 |
+
+**Two red runs, both environmental, both re-verified green — recorded because a
+green table with no explanation of what went red is worth less than one that
+says.**
+
+`registry.test.ts` failed 2/23 in a four-suite back-to-back run and passes 23/23
+on its own — the documented Neon capacity limit, and the reason this table is
+per suite. The failing run's two tests completed in 623 ms against 8,195 ms
+alone, which is a connection failure's signature rather than an assertion's.
+
+`integrations.test.ts` failed 3/80, all three rendering assertions on the
+follow-up screen, **because `npm run builder:build` was run while the suite was
+in flight and replaced `.next` under the serving process.** Re-run against a
+stable build: 3/3. It is rule 5 of *Read this first* biting from the other
+direction — that rule warns about verifying a change against a stale server, and
+this is the mirror image, a stable test against a server whose build moved. **A
+build is a write to the thing under test.**
+
+**The role walkthrough is mechanical, not anecdotal.** 21 screens × 4 demo roles
+= 84 pairs driven over HTTP: every 200 renders inside the console shell, no
+screen leaks a raw i18n key as text, and the only 404s are the 18
+permission-shaped ones. Measured in the running page at 375 px and at desktop:
+no horizontal overflow on the dashboard or the products grid, the create panel's
+fields present in the DOM while hidden (D-06.4), and the expandable row
+`display: none` → `table-row` on the checkbox alone.
 
 ---
 

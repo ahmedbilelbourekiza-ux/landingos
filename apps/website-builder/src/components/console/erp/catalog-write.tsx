@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useApiAction, ActionError, ActionButton } from "@/components/console/api-action";
 import type { ActionErrors } from "@/lib/console/action-errors";
 import type { EditField } from "@/components/console/edit-field";
+import { ImageInput, type ImageInputStrings } from "./image-input";
 
 /* =============================================================================
  * The catalogue's and the stockroom's write controls — Phase 6.3c.
@@ -25,7 +26,11 @@ import type { EditField } from "@/components/console/edit-field";
  * honour.
  * ========================================================================== */
 
-const FIELD = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
+/* One declaration, not a tenth hand-written copy of the text input. UX-14
+   counted nine of these across the console and `styles.ts` replaced them; this
+   file kept its own until PM.3, which is how a design system quietly acquires
+   an exception. */
+const FIELD = "ui-control tap w-full";
 
 export interface CatalogStrings {
   readonly saving: string;
@@ -62,6 +67,7 @@ export interface CatalogStrings {
   readonly quantity: string;
   readonly unitCost: string;
   readonly addLot: string;
+  readonly image: ImageInputStrings;
 }
 
 /** A product the stockroom panels can act on, with its variant names. */
@@ -69,147 +75,6 @@ export interface StockProduct {
   readonly id: string;
   readonly name: string;
   readonly variants: readonly string[];
-}
-
-/* -----------------------------------------------------------------------------
- * A new product
- * -------------------------------------------------------------------------- */
-
-export function ProductCreatePanel({
-  errors,
-  s,
-}: {
-  readonly errors: ActionErrors;
-  readonly s: CatalogStrings;
-}) {
-  const { run, pending, error } = useApiAction(errors);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
-    name: "", sku: "", brand: "",
-    price: "", costPrice: "", packagingCost: "",
-    threshold: "", stock: "",
-  });
-
-  const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
-
-  const money = (id: keyof typeof form, label: string) => (
-    <div>
-      <label htmlFor={`new-${id}`} className="ui-label block">{label}</label>
-      {/* Text with a decimal keypad, never type="number" — a number input hands
-          back a JS float and these are Decimal columns (M-06). */}
-      <input
-        id={`new-${id}`} inputMode="decimal" dir="ltr"
-        value={form[id]} onChange={(e) => set(id, e.target.value)} className={`mt-1 ${FIELD}`}
-      />
-    </div>
-  );
-
-  const whole = (id: keyof typeof form, label: string) => (
-    <div>
-      <label htmlFor={`new-${id}`} className="ui-label block">{label}</label>
-      <input
-        id={`new-${id}`} type="number" min={0} dir="ltr"
-        value={form[id]} onChange={(e) => set(id, e.target.value)} className={`mt-1 ${FIELD}`}
-      />
-    </div>
-  );
-
-  return (
-    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-product-create">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-tight">{s.newProduct}</h2>
-        <ActionButton
-          data-testid="product-create-toggle"
-          aria-expanded={open}
-          pending={false}
-          pendingLabel={s.saving}
-          onClick={() => setOpen((o) => !o)}
-        >
-          {open ? s.save : s.newProduct}
-        </ActionButton>
-      </div>
-
-      {open && (
-        <>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="sm:col-span-2">
-              <label htmlFor="new-name" className="ui-label block">
-                {s.name}
-              </label>
-              <input
-                id="new-name" required
-                value={form.name} onChange={(e) => set("name", e.target.value)}
-                className={`mt-1 ${FIELD}`}
-              />
-            </div>
-            <div>
-              <label htmlFor="new-sku" className="ui-label block">{s.sku}</label>
-              <input
-                id="new-sku" dir="ltr"
-                value={form.sku} onChange={(e) => set("sku", e.target.value)}
-                className={`mt-1 ${FIELD}`}
-              />
-            </div>
-            <div>
-              <label htmlFor="new-brand" className="ui-label block">
-                {s.brand}
-              </label>
-              <input
-                id="new-brand"
-                value={form.brand} onChange={(e) => set("brand", e.target.value)}
-                className={`mt-1 ${FIELD}`}
-              />
-            </div>
-            {money("price", s.price)}
-            {/* Both cost fields are offered, and that is not padding: an earlier
-                version of the create route dropped them, nothing failed, and the
-                product simply appeared with a zero cost basis — which makes every
-                profit figure derived from it wrong rather than absent. */}
-            {money("costPrice", s.cost)}
-            {money("packagingCost", s.packaging)}
-            {whole("stock", s.stock)}
-            {whole("threshold", s.threshold)}
-          </div>
-
-          <div className="mt-4">
-            <ActionButton
-              data-testid="product-create-submit"
-              pending={pending}
-              pendingLabel={s.saving}
-              variant="primary"
-              disabled={!form.name.trim()}
-              onClick={async () => {
-                const { ok } = await run("POST", "/api/erp/products", {
-                  name: form.name.trim(),
-                  ...(form.sku.trim() ? { sku: form.sku.trim() } : {}),
-                  ...(form.brand.trim() ? { brand: form.brand.trim() } : {}),
-                  ...(form.price.trim() ? { price: form.price.trim() } : {}),
-                  ...(form.costPrice.trim() ? { costPrice: form.costPrice.trim() } : {}),
-                  ...(form.packagingCost.trim()
-                    ? { packagingCost: form.packagingCost.trim() }
-                    : {}),
-                  ...(form.stock.trim() ? { stock: form.stock.trim() } : {}),
-                  ...(form.threshold.trim() ? { threshold: form.threshold.trim() } : {}),
-                });
-                if (ok) {
-                  setForm({
-                    name: "", sku: "", brand: "",
-                    price: "", costPrice: "", packagingCost: "",
-                    threshold: "", stock: "",
-                  });
-                  setOpen(false);
-                }
-              }}
-            >
-              {s.create}
-            </ActionButton>
-          </div>
-
-          <ActionError message={error} />
-        </>
-      )}
-    </section>
-  );
 }
 
 /* -----------------------------------------------------------------------------
@@ -255,6 +120,19 @@ function ProductEditFields({
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {product.fields.map((field) => {
           const id = `edit-${field.name}`;
+          if (field.kind === "image") {
+            return (
+              <div key={field.name} className="sm:col-span-2">
+                <ImageInput
+                  value={form[field.name] ?? ""}
+                  onChange={(next) => set(field.name, next)}
+                  alt={form.name ?? ""}
+                  s={{ ...s.image, label: field.label }}
+                  testId="product-edit-image"
+                />
+              </div>
+            );
+          }
           return (
             <div key={field.name} className={field.kind === "textarea" ? "sm:col-span-2 lg:col-span-4" : ""}>
               <label htmlFor={id} className="ui-label block">

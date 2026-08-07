@@ -2,7 +2,7 @@ import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  skip, uid, phone, makeErpTenant, makeMember, cleanup,
+  skip, uid, phone, makeErpTenant, makeMember, cleanup, raw, ONE_PIXEL_PNG,
   contractTest as test,
 } from './helpers.ts';
 
@@ -1038,5 +1038,97 @@ describe('the variant editor writes the matrix and moves stock through the ledge
       (await acme.manager.api('PUT', `/api/erp/products/${theirs}/variants`, { variants: [] })).status,
       404,
     );
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * Photographs — PM.2
+ *
+ * `CatalogProduct.image` and each variant's `image` have been writable since
+ * Phase 5, and until this slice nothing could put a FILE into either and nothing
+ * rendered one. Building the consumer found a defect on the way in that no
+ * route inventory could have seen: the WRITER stores
+ * `tenants/<tenantId>/<uuid>.<ext>` and the READER refused any key that was not
+ * a single path segment, so every image uploaded through the console 404'd
+ * unless the deployment happened to have a PUBLIC R2 bucket.
+ *
+ * The round trip is the assertion, deliberately. A test that only checks the
+ * upload answers 200 is a test of half a feature — and it is exactly the half
+ * that was already correct.
+ * -------------------------------------------------------------------------- */
+
+describe('a product photograph survives the round trip', () => {
+  test('upload, then fetch the URL it returned', async () => {
+    const form = new FormData();
+    form.append('file', new Blob([ONE_PIXEL_PNG], { type: 'image/png' }), 'pixel.png');
+
+    const posted = await raw('POST', '/api/erp/uploads', acme.manager.token, form);
+    assert.equal(posted.status, 200);
+    const envelope = await posted.json();
+    assert.ok(envelope.success);
+
+    const url = envelope.data.url as string;
+    assert.match(url, /^\/uploads\/tenants\//, 'the key is scoped to the tenant');
+
+    // THE HALF THAT WAS BROKEN. Anonymous on purpose: a storefront customer has
+    // no session and product images must still resolve.
+    const served = await raw('GET', url, undefined);
+    assert.equal(served.status, 200, 'the URL the uploader returned must resolve');
+    assert.match(served.headers.get('content-type') ?? '', /^image\//);
+  });
+
+  test('the upload is gated on the permission that stores the result', async () => {
+    // `erp:products:write`. Somebody who cannot attach an image to anything has
+    // no business filling a bucket with them.
+    const reader = await makeMember(acme.tenantId, { role: 'MEMBER', jobRole: 'confirmation' });
+    const form = new FormData();
+    form.append('file', new Blob([ONE_PIXEL_PNG], { type: 'image/png' }), 'pixel.png');
+    const r = await raw('POST', '/api/erp/uploads', reader.token, form);
+    assert.equal(r.status, 403);
+  });
+
+  test('a request with no file is refused by name', async () => {
+    const r = await raw('POST', '/api/erp/uploads', acme.manager.token, new FormData());
+    assert.equal(r.status, 400);
+    assert.equal((await r.json()).error.code, 'NO_FILE');
+  });
+
+  test('a file that is not an image is refused by name', async () => {
+    const form = new FormData();
+    form.append('file', new Blob(['#!/bin/sh\nrm -rf /'], { type: 'text/plain' }), 'x.sh');
+    const r = await raw('POST', '/api/erp/uploads', acme.manager.token, form);
+    assert.equal(r.status, 400);
+    assert.equal((await r.json()).error.code, 'INVALID_FILE_TYPE');
+  });
+
+  test('the serving route still refuses to walk out of its directory', async () => {
+    // The nesting fix widened what the reader accepts, so the guard it widened
+    // is asserted rather than assumed. Every segment must be safe, and the
+    // depth is capped — a malformed record must not become a directory walk.
+    for (const bad of [
+      '/uploads/tenants/..%2F..%2Fetc/passwd',
+      '/uploads/..%2F..%2Fpackage.json',
+      '/uploads/a/b/c/d/e/f.png',
+    ]) {
+      const r = await raw('GET', bad, undefined);
+      assert.equal(r.status, 404, `${bad} must not resolve`);
+    }
+  });
+
+  test('a variant carries its own photograph, and the product is the fallback', async () => {
+    // The legacy's rule, and now this one's: a variant with no image of its own
+    // shows the product's. The API half is asserted here; the resolution lives
+    // in `lib/erp/order-product.ts` for every screen that renders one.
+    const product = await newProduct({ image: '/uploads/tenants/x/product.png' });
+    const r = await acme.manager.api('PUT', `/api/erp/products/${product.id}/variants`, {
+      variants: [
+        { name: 'Blue', stock: 5, image: '/uploads/tenants/x/blue.png' },
+        { name: 'Red', stock: 5 },
+      ],
+    });
+    assert.equal(r.status, 200);
+    const variants = r.body.data.variants as Array<{ name: string; image?: string }>;
+    assert.equal(variants.find((v) => v.name === 'Blue')?.image, '/uploads/tenants/x/blue.png');
+    assert.equal(variants.find((v) => v.name === 'Red')?.image ?? '', '');
   });
 });

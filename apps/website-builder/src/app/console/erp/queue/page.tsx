@@ -12,6 +12,8 @@ import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { QueueCard, type QueueStrings, type QueueOrder } from "@/components/console/erp/queue-card";
 import { FollowupResolve } from "@/components/console/erp/followup-resolve";
 import { scopedWhere, seesWholeBook, followupScope } from "@/lib/erp/scope";
+import { resolveOrderProducts } from "@/lib/erp/order-product";
+import { stockLabels } from "@/lib/console/erp-strings";
 import {
   ACTIVE_STATUSES, TERMINAL_STATUSES, ORDER_STATUSES,
   CALL_RESULTS, NOTE_TYPES, ORDER_LIST_SELECT, orderFilters,
@@ -101,7 +103,7 @@ export default async function ErpQueueScreen({
     }));
   };
 
-  const { orders, followup, settings, counts } = await withTenant(session.auth.tenantId, async (db) => {
+  const { orders, followup, settings, counts, catalog } = await withTenant(session.auth.tenantId, async (db) => {
     const filters = orderFilters(params);
     // A chosen status wins; otherwise the queue is everything still to be
     // worked. `scopedWhere` ANDs rather than spreads, so neither can widen the
@@ -111,14 +113,21 @@ export default async function ErpQueueScreen({
       ...(filters.status ? {} : { status: { in: [...ACTIVE_STATUSES] } }),
     });
 
+    const orders = await db.fulfillmentOrder.findMany({
+      where,
+      // The longest-waiting customer first. This IS the work order.
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: PAGE_SIZE,
+      select: { ...ORDER_LIST_SELECT, calls: { select: { note: true }, orderBy: { time: "desc" }, take: 1 } },
+    });
+
     return {
-      orders: await db.fulfillmentOrder.findMany({
-        where,
-        // The longest-waiting customer first. This IS the work order.
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        take: PAGE_SIZE,
-        select: { ...ORDER_LIST_SELECT, calls: { select: { note: true }, orderBy: { time: "desc" }, take: 1 } },
-      }),
+      orders,
+      /* PM.2 / PM.5 — the photograph and the level of the exact variant each
+         card is about, resolved for the PAGE in two reads. This is the screen
+         somebody says "yes" on, and it has never said whether there was any
+         stock left to say yes to. */
+      catalog: await resolveOrderProducts(db, orders),
       followup: await followupWithOrders(db),
       settings: await readSettings(db),
       counts: {
@@ -164,6 +173,8 @@ export default async function ErpQueueScreen({
     open: t("erp.queue.open"),
   };
 
+  const stock = stockLabels(t);
+
   const cards: QueueOrder[] = orders.map((o) => ({
     id: o.id,
     reference: o.reference ?? "",
@@ -184,6 +195,14 @@ export default async function ErpQueueScreen({
       ? formatDate(o.pendingCallStart, locale, { timeStyle: "short" })
       : null,
     lastNote: o.calls[0]?.note ?? null,
+    image: catalog.get(o.id)?.image ?? null,
+    stock: catalog.has(o.id)
+      ? {
+          level: catalog.get(o.id)!.stock,
+          threshold: catalog.get(o.id)!.threshold,
+          labels: stock,
+        }
+      : null,
     // Only when a parcel exists. The full event timeline is on the order
     // detail; this is the one line a customer rings back to ask about.
     delivery: o.deliveryStatus || o.trackingNumber

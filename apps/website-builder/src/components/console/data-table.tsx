@@ -1,6 +1,6 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
+import { Fragment, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, ChevronRight, ChevronsUpDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { EmptyState } from "./ui/primitives";
@@ -116,6 +116,8 @@ export function DataTable<T>({
   caption,
   /** A header-cell node for the selection column — "select all" lives here. */
   selectAll,
+  rowDetail,
+  expandLabel,
 }: {
   columns: readonly Column<T>[];
   rows: readonly T[];
@@ -129,6 +131,29 @@ export function DataTable<T>({
   sort?: SortState;
   caption?: string;
   selectAll?: ReactNode;
+  /**
+   * A second, full-width row this one opens out into — PM.3.
+   *
+   * The ERP asks for it in one place and it is the place the whole catalogue is
+   * managed from: a product row carries a variant COUNT and a rolled-up stock
+   * figure, and the question an operator actually has is which of the twelve
+   * variants is gone. A 200-unit shoe is not fine if 199 of them are size 45,
+   * and the roll-up says 200 either way.
+   *
+   * IT IS A CHECKBOX AND A CSS RULE, NOT STATE. `.console-table` in
+   * `globals.css` hides `tr[data-row-detail]` and reveals it with
+   * `tr:has(input[data-row-expand]:checked) + tr[data-row-detail]`. So this
+   * table stays a server component, a catalogue of 200 products ships no
+   * JavaScript to open one of them, the contents are in the HTML for a contract
+   * test to assert (D-06.4's principle applied to a read surface), and the
+   * disclosure survives the density toggle and a `router.refresh()`.
+   *
+   * Return `null` for a row with nothing to open — the toggle is then not
+   * rendered, rather than rendered and doing nothing.
+   */
+  rowDetail?: (row: T) => ReactNode;
+  /** Accessible name for the disclosure control. Required with `rowDetail`. */
+  expandLabel?: string;
 }) {
   if (rows.length === 0) {
     // Carries the same testId as the populated table, and says it is empty
@@ -168,6 +193,7 @@ export function DataTable<T>({
         {caption && <caption className="sr-only">{caption}</caption>}
         <thead className="sticky top-0 z-10 bg-surface-subtle text-xs text-muted-foreground">
           <tr className="border-b border-border">
+            {rowDetail && <th scope="col" className="w-8 px-1 py-2.5" />}
             {columns.map((c) => {
               const sortable = Boolean(sort && c.sortKey);
               const active = sortable && sort!.active === c.sortKey;
@@ -234,35 +260,67 @@ export function DataTable<T>({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr
-              key={rowKey(row)}
-              {...(rowAttrs?.(row) ?? {})}
-              className={cn(
-                "border-t border-border transition-colors duration-(--duration-fast)",
-                "hover:bg-surface-hover",
-                // The selected state comes from the DOM's own checkbox rather
-                // than from React state, so there is no second copy of what is
-                // ticked to drift from what is on screen — the property the
-                // plain-checkbox selection was chosen for in the first place.
-                "has-[input[type=checkbox]:checked]:bg-surface-selected",
-              )}
-            >
-              {columns.map((c) => (
-                <td
-                  key={c.id}
-                  className={cn(
-                    "px-3 align-top",
-                    c.align === "end" && "text-end",
-                    c.numeric && "tabular-nums",
-                    c.nowrap && "whitespace-nowrap",
-                  )}
+          {rows.map((row) => {
+            const key = rowKey(row);
+            const detail = rowDetail?.(row) ?? null;
+            return (
+              // The selected state comes from the DOM's own checkbox rather
+              // than from React state, so there is no second copy of what is
+              // ticked to drift from what is on screen — the property the
+              // plain-checkbox selection was chosen for in the first place. The
+              // rule lives in `globals.css` because it now has to exclude the
+              // EXPANDER checkbox, and a Tailwind arbitrary variant carrying
+              // `:not(...)` is exactly the shape this project has a rule about.
+              <Fragment key={key}>
+                <tr
+                  {...(rowAttrs?.(row) ?? {})}
+                  className="border-t border-border transition-colors duration-(--duration-fast) hover:bg-surface-hover"
                 >
-                  {c.cell(row)}
-                </td>
-              ))}
-            </tr>
-          ))}
+                  {rowDetail && (
+                    <td className="w-8 px-1 align-top">
+                      {detail && (
+                        <label
+                          className="tap inline-flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--duration-fast) hover:bg-surface-hover hover:text-foreground"
+                          title={expandLabel}
+                        >
+                          <input
+                            type="checkbox"
+                            data-row-expand={key}
+                            aria-label={expandLabel}
+                            className="peer sr-only"
+                          />
+                          <ChevronRight
+                            aria-hidden="true"
+                            className="size-4 transition-transform duration-(--duration-fast) peer-checked:rotate-90 rtl:-scale-x-100"
+                          />
+                        </label>
+                      )}
+                    </td>
+                  )}
+                  {columns.map((c) => (
+                    <td
+                      key={c.id}
+                      className={cn(
+                        "px-3 align-top",
+                        c.align === "end" && "text-end",
+                        c.numeric && "tabular-nums",
+                        c.nowrap && "whitespace-nowrap",
+                      )}
+                    >
+                      {c.cell(row)}
+                    </td>
+                  ))}
+                </tr>
+                {detail && (
+                  <tr data-row-detail={key} className="border-t border-border bg-surface-subtle">
+                    <td colSpan={columns.length + 1} className="px-4 py-3">
+                      {detail}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>

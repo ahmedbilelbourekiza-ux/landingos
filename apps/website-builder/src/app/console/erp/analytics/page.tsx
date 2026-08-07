@@ -6,7 +6,7 @@ import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader, PageBody } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody, Section, Stat, StatGrid } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { orderFilters } from "@/lib/erp/orders";
 import { scopedWhere, seesWholeBook } from "@/lib/erp/scope";
@@ -115,7 +115,6 @@ export default async function ErpAnalyticsScreen({
       label: t("erp.analytics.confirmationRate"),
       value: `${totals.confirmationRate}%`,
       sub: `${totals.confirmed} ${t("erp.overview.confirmed")}`,
-      lead: true,
     },
     {
       id: "cancellation-rate",
@@ -168,64 +167,63 @@ export default async function ErpAnalyticsScreen({
       />
 
       {/* The window, as links carrying the ORDER LIST's own `range=` vocabulary
-          — so a filter applied there survives arriving here, and vice versa. */}
-      <nav className="flex flex-wrap gap-2" data-testid="analytics-ranges">
-        <Link
-          href={rangeHref("")}
-          data-range="all"
-          aria-current={activeRange === "" ? "page" : undefined}
-          className={`rounded-md border px-3 py-1.5 text-sm ${
-            activeRange === "" ? "border-primary font-medium" : "border-input"
-          }`}
-        >
-          {t("erp.filters.any")}
-        </Link>
-        {RANGES.map((r) => (
-          <Link
-            key={r}
-            href={rangeHref(r)}
-            data-range={r}
-            aria-current={activeRange === r ? "page" : undefined}
-            className={`rounded-md border px-3 py-1.5 text-sm ${
-              activeRange === r ? "border-primary font-medium" : "border-input"
-            }`}
-          >
-            {t(`erp.filters.range.${r}`)}
-          </Link>
-        ))}
+          — so a filter applied there survives arriving here, and vice versa.
+          PM.6 gave it the same segmented control the dashboard uses: two
+          screens offering the same four periods in two different shapes is how
+          a console stops looking like one product. */}
+      <nav
+        className="inline-flex flex-wrap items-center rounded-md border border-border bg-surface-subtle p-0.5"
+        data-testid="analytics-ranges"
+      >
+        {[{ value: "", label: t("erp.filters.any"), key: "all" }, ...RANGES.map((r) => ({
+          value: r,
+          label: t(`erp.filters.range.${r}` as "erp.filters.range.today"),
+          key: r,
+        }))].map((r) => {
+          const current = activeRange === r.value;
+          return (
+            <Link
+              key={r.key}
+              href={rangeHref(r.value)}
+              data-range={r.key}
+              aria-current={current ? "page" : undefined}
+              className={`tap rounded-[calc(var(--radius)-4px)] px-3 py-1.5 text-xs font-medium transition-colors duration-(--duration-fast) ${
+                current
+                  ? "bg-surface-raised text-foreground shadow-e1"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {r.label}
+            </Link>
+          );
+        })}
       </nav>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="analytics-tiles">
+      <StatGrid testId="analytics-tiles">
         {tiles.map((tile) => (
-          <div
+          <Stat
             key={tile.id}
-            data-tile={tile.id}
-            className={`rounded-lg border p-4 ${
-              tile.lead ? "border-primary" : "border-border"
-            }`}
-          >
-            <span className="block text-xs text-muted-foreground">{tile.label}</span>
-            <span className="mt-1 block text-2xl font-semibold tabular-nums" dir="ltr">
-              {tile.value}
-            </span>
-            {tile.sub && (
-              <span className="mt-0.5 block text-xs text-muted-foreground" dir="ltr">
-                {tile.sub}
-              </span>
-            )}
-          </div>
+            id={tile.id}
+            label={tile.label}
+            value={tile.value}
+            sub={tile.sub}
+          />
         ))}
-      </div>
+      </StatGrid>
 
       {/* N19, said on the page rather than left for somebody to discover:
           the two revenue figures are both real and are not the same number. */}
-      <p className="mt-3 text-xs text-muted-foreground" data-testid="analytics-revenue-note">
+      <p className="text-xs text-muted-foreground" data-testid="analytics-revenue-note">
         {t("erp.analytics.revenueNote")}
       </p>
 
       {offered.map((dimension) => (
-        <section key={dimension} className="mt-8" data-dimension={dimension}>
-          <h2 className="text-sm font-semibold tracking-tight">{DIMENSION_LABEL[dimension]}</h2>
+        <Section
+          key={dimension}
+          title={DIMENSION_LABEL[dimension]}
+          flush
+          data-dimension={dimension}
+        >
           <DataTable
             testId={`analytics-${dimension}`}
             empty={t("common.empty")}
@@ -278,7 +276,7 @@ export default async function ErpAnalyticsScreen({
               },
             ]}
           />
-        </section>
+        </Section>
       ))}
       </PageBody>
     </ConsoleShell>

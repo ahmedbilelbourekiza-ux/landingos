@@ -314,11 +314,24 @@
   .ui-control:hover:not(:disabled):not([readonly]) {
     border-color: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
   }
-  .ui-control:disabled,
+  /* PM.6 — READ-ONLY AND DISABLED ARE NOT THE SAME STATE, and they were sharing
+     one declaration. A read-only box holds a REAL VALUE somebody has to read —
+     a computed total, a generated reference — so it keeps full foreground text
+     and only loses the white field behind it. A disabled box holds a value that
+     does not currently apply, and it says so with a dimmer label than any live
+     text on the screen. */
   .ui-control[readonly] {
     background-color: var(--surface-sunken);
-    color: var(--muted-foreground);
+    cursor: default;
+  }
+  .ui-control:disabled {
+    background-color: var(--control-disabled-bg);
+    border-color: var(--control-disabled-border);
+    color: var(--control-disabled-fg);
     cursor: not-allowed;
+  }
+  .ui-control:disabled::placeholder {
+    color: var(--control-disabled-fg);
   }
   /* Bound to the message by `aria-describedby` in `<Field>`; this is the half
      that says WHICH control on a panel of eleven. */
@@ -363,9 +376,26 @@
       border-color var(--duration-fast) var(--ease-standard),
       color var(--duration-fast) var(--ease-standard);
   }
+  /* PM.6 — AN UNAVAILABLE BUTTON IS A FILLED INERT BOX, NOT A FADED ONE.
+   *
+   * `opacity: 0.5` moved a button's label to whatever grey sits halfway to the
+   * background, which is exactly where secondary text lives — so a disabled
+   * control and a caption ended up the same colour and an operator had to work
+   * out which one was information. Opacity is also invisible to assistive
+   * technology (UX-72), and it faded the BORDER as well as the label, so the
+   * control lost the one shape that said it was still a control.
+   *
+   * `pointer-events` is deliberately NOT removed: a disabled `<button>` fires
+   * no click by specification, and suppressing pointer events also suppresses
+   * `cursor: not-allowed` and any `title` explaining WHY it is unavailable —
+   * which is the half an operator actually needs.
+   */
   .ui-btn:disabled {
-    opacity: 0.5;
-    pointer-events: none;
+    background-color: var(--control-disabled-bg);
+    border-color: var(--control-disabled-border);
+    color: var(--control-disabled-fg);
+    box-shadow: none;
+    cursor: not-allowed;
   }
   .ui-btn-sm {
     block-size: 2rem;
@@ -410,6 +440,32 @@
   .ui-btn-danger:hover:not(:disabled) {
     background-color: color-mix(in oklab, var(--danger-fg) 12%, var(--danger-bg));
   }
+
+  /* A ghost button has no box to begin with, so filling one when it becomes
+     unavailable would draw MORE attention to the control that cannot be used —
+     and a table row full of them would grow forty grey rectangles. It loses its
+     colour and keeps its emptiness. Placed after `.ui-btn:disabled`, which it
+     ties with on specificity. */
+  .ui-btn-ghost:disabled {
+    background-color: transparent;
+    border-color: transparent;
+    color: var(--control-disabled-fg);
+  }
+
+  /* The same state on something that is not a `<button>` — a pager arrow at the
+     end of the list, a nav item for a page you are already on. `aria-disabled`
+     is what those carry, because a LINK cannot be `:disabled` and removing the
+     href would take it out of the tab order entirely. */
+  .ui-btn[aria-disabled="true"] {
+    background-color: var(--control-disabled-bg);
+    border-color: var(--control-disabled-border);
+    color: var(--control-disabled-fg);
+    cursor: not-allowed;
+  }
+  .ui-btn-ghost[aria-disabled="true"] {
+    background-color: transparent;
+    border-color: transparent;
+  }
 }
 
 /* -----------------------------------------------------------------------------
@@ -429,6 +485,31 @@
  * -------------------------------------------------------------------------- */
 .console-table td {
   padding-block: 0.75rem;
+}
+
+/* -----------------------------------------------------------------------------
+ * PM.3 — a row that opens out.
+ *
+ * A checkbox and one `:has()` rule, rather than client state. The catalogue's
+ * variant breakdown is server-rendered inside the detail row, so a page of 200
+ * products ships no JavaScript to open one of them, the contents are in the
+ * HTML for a contract test to assert, and an open row survives the debounced
+ * `router.refresh()` the notification provider fires.
+ *
+ * The SELECTED tint moved here from a Tailwind `has-[...]` variant on the row,
+ * because it now has to exclude the expander — a bulk bar counts ticked boxes,
+ * and an opened product is not a selected one. An arbitrary variant carrying
+ * `:not(...)` is precisely the shape Phase UI's rule warns about: it compiles,
+ * it appears in the class list, and it can emit nothing.
+ * -------------------------------------------------------------------------- */
+.console-table tr[data-row-detail] {
+  display: none;
+}
+.console-table tr:has(input[data-row-expand]:checked) + tr[data-row-detail] {
+  display: table-row;
+}
+.console-table tbody tr:has(input[type="checkbox"]:not([data-row-expand]):checked) {
+  background-color: var(--surface-selected);
 }
 :root[data-density="compact"] .console-table td {
   padding-block: 0.375rem;

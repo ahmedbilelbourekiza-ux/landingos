@@ -98,7 +98,50 @@ export interface ProductManifest {
   readonly permissions: readonly string[];
   /** The product's navigation, in display order. */
   readonly nav: readonly ProductNavItem[];
+  /**
+   * The one lookup this product is opened for, if it has one — PM.7.
+   *
+   * WHY IT IS DECLARED HERE. A customer rings a support desk and says a phone
+   * number, and the console's answer was: open the product, open the order
+   * list, open the filter bar, type, submit. Four navigations for the single
+   * most frequent question anybody asks this software, on every call.
+   *
+   * A search box in the header fixes that and cannot live in the header's own
+   * code, because the header is rendered for EVERY product and the thing being
+   * searched is the product's. Putting it there would be the shell knowing what
+   * an ERP is — the one thing this contract exists to prevent, and the same
+   * argument `ProductNavItem.group` already makes.
+   *
+   * So the product says where its lookup goes and what to call it, exactly as
+   * it says what its navigation contains. A manifest declaring none renders no
+   * box, which is what the builder does today.
+   */
+  readonly search?: ProductSearch;
   readonly status: ProductStatus;
+}
+
+/** Where a product's quick lookup submits, and what it is called. */
+export interface ProductSearch {
+  /**
+   * Path RELATIVE to the product's basePath, no leading slash — the screen
+   * that already knows how to render results. It is a plain GET form, so the
+   * result is a URL somebody can bookmark and hand to a colleague.
+   */
+  readonly path: string;
+  /**
+   * The query-string key the destination reads. Named by the product because
+   * the product owns the vocabulary its filters are validated against — the
+   * shell inventing `?q=` would be a second name for a parameter
+   * `orderFilters` already reads as `search`.
+   */
+  readonly param: string;
+  /** i18n key for the placeholder. Never a literal. */
+  readonly placeholderKey: string;
+  /**
+   * Permission required to reach the destination. Omitted means every member.
+   * A search box that submits into a 404 is worse than no search box.
+   */
+  readonly permission?: string;
 }
 
 /**

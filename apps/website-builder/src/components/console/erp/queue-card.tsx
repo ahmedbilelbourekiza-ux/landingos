@@ -5,6 +5,8 @@ import { useState } from "react";
 import { useApiAction, ActionError, ActionButton } from "@/components/console/api-action";
 import type { ActionErrors } from "@/lib/console/action-errors";
 import type { WriteOption } from "@/components/console/edit-field";
+import { ProductThumb } from "./product-thumb";
+import { StockChip, type StockLabels } from "./stock-chip";
 
 /* =============================================================================
  * One order in the confirmation agent's queue — Phase 6.4a.
@@ -59,6 +61,17 @@ export interface QueueOrder {
   /** Formatted when `pendingCallStart` is set; null otherwise. */
   readonly callingSince: string | null;
   readonly lastNote: string | null;
+  /** PM.2 — the variant's photograph, falling back to the product's own. */
+  readonly image: string | null;
+  /**
+   * PM.5 — the level of the exact variant this order is for.
+   *
+   * `null` when no catalogue row matches, which is a real state and not a zero:
+   * an order whose product name matches nothing moves no stock at all, and
+   * showing "0 out of stock" would be a claim about a product that does not
+   * exist here.
+   */
+  readonly stock: { level: number; threshold: number; labels: StockLabels } | null;
   /** Where the parcel is, when there is one. Null while nothing is booked. */
   readonly delivery: { label: string; tracking: string | null } | null;
   /** False once the order reaches a terminal status — see TERMINAL_STATUSES. */
@@ -127,21 +140,44 @@ export function QueueCard({
         </div>
       </div>
 
-      <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
-        <div className="col-span-2">
-          <dt className="sr-only">{order.product}</dt>
-          <dd className="text-muted-foreground">
-            {order.product || "—"}
-            {order.price ? ` · ${order.price}` : ""}
-          </dd>
-        </div>
-        <div>
-          <dd className="text-muted-foreground">{order.destination || "—"}</dd>
-        </div>
-        <div className="text-end">
-          <dd className="text-muted-foreground">{order.placed}</dd>
-        </div>
-      </dl>
+      {/* PM.2 / PM.5 — WHAT IS BEING SOLD, AND WHETHER THERE IS ANY LEFT.
+       *
+       * This is the screen an agent says "yes" on, and until now it was the
+       * screen with the least information about the thing they were promising:
+       * a product NAME, no photograph, and no idea whether the size the
+       * customer asked for ran out this morning. Confirming a variant that is
+       * gone dispatches a courier for nothing and gets the customer rung back
+       * to be told no — and the legacy CRM, which shows a photograph on every
+       * order, at least made the product recognisable.
+       *
+       * The chip only appears when the level is a problem (`onlyWhenAlert`): a
+       * green pill on every card is how the two that matter disappear. */}
+      <div className="mt-3 flex items-start gap-3">
+        <ProductThumb src={order.image} alt="" size="sm" />
+        <dl className="min-w-0 flex-1 text-sm">
+          <div>
+            <dt className="sr-only">{order.product}</dt>
+            <dd className="flex flex-wrap items-center gap-2">
+              <span className="truncate text-foreground">{order.product || "—"}</span>
+              {order.stock && (
+                <StockChip
+                  stock={order.stock.level}
+                  threshold={order.stock.threshold}
+                  labels={order.stock.labels}
+                  onlyWhenAlert
+                />
+              )}
+            </dd>
+          </div>
+          <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 text-muted-foreground">
+            <dd>
+              {order.destination || "—"}
+              {order.price ? ` · ${order.price}` : ""}
+            </dd>
+            <dd>{order.placed}</dd>
+          </div>
+        </dl>
+      </div>
 
       {order.lastNote && (
         <p className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-sm">{order.lastNote}</p>

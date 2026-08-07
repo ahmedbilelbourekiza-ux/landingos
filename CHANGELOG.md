@@ -10,6 +10,394 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## Phase PM — product maturity
+
+**This phase is not a styling pass.** Phase UI was presentation-only by
+declaration; this one is allowed to change what a screen SHOWS, and does — a
+dashboard that answers a different question, columns that had readers for the
+first time, an upload route, a search box in the header. What it does not change
+is the domain: no calculation moved, no permission widened, no tenant scoping
+touched. Every D-06 rule still holds, and the contract suites that assert on
+rendered HTML were kept green rather than relaxed — including the two
+assertions that are BOUNDARIES rather than markup (`data-tile="customers"` is
+absent for an agent, D-05.1; the confirmation rate renders with the count it is
+derived from).
+
+**Its finding, in one sentence.** The console had reached parity and a coherent
+visual language, and was still built to be READ rather than to be WORKED: the
+front door was six lifetime counts with no period and no comparison; the product
+photograph, the variant image and the per-variant stock level had columns,
+writers and no reader anywhere; a notification carried the id of the record it
+was about and linked nowhere; and "is this running out" was answered four
+different ways on four screens.
+
+### PM.1 The front door becomes an operational dashboard
+
+[Opus 5]
+Date: 7 August 2026
+
+**What.** `/console/erp` was six lifetime counts and an overdue banner. It is
+now four bands, in the order a shift is actually run:
+
+1. **What needs a person** — overdue calls, confirmed orders with no parcel
+   booked, follow-ups past their deadline, out-of-stock and critically low
+   variants, flagged calls, and carrier / sales-channel failures in the last 24
+   hours. Only what is non-zero renders; each card links to the screen where the
+   thing gets FIXED rather than to a screen that describes it. When nothing is
+   wrong the page says so in one line instead of showing six zeros.
+2. **What the period did** — nine figures (orders, confirmation rate, never
+   called, confirmed value, delivered value, delivery rate, return rate, average
+   order, new customers), each against **the same length of time immediately
+   before it**, with the direction coloured by whether a rise is good. A return
+   rate climbing is never green.
+3. **The shape over time** — orders per day with the confirmed share filled in,
+   for the chosen window.
+4. **Who and what** — agent roster (bar length is workload, colour is
+   conversion), carrier delivery rates, top products, and the ten worst stock
+   levels.
+
+**Why.** Every figure on the old screen was a lifetime total, so the page
+answered "how many confirmed orders exist" — a question nobody has — and never
+"is today going better or worse than yesterday", which is the only question a
+manager opens a dashboard with. The one thing on it that WAS a decision (the
+overdue banner) had to compete with a grid of tiles for attention.
+
+**Files.** `src/lib/erp/dashboard.ts` (new), `src/lib/erp/stock-level.ts` (new),
+`src/components/console/erp/dashboard-parts.tsx` (new),
+`src/components/console/erp/stock-chip.tsx` (new),
+`src/app/console/erp/page.tsx`, `src/lib/erp/orders.ts` (exports
+`rangeBounds`), the three i18n catalogues (+44 keys, and four the rewrite
+orphaned removed rather than left — 867 keys in each of the three, still
+exactly equal).
+
+**D-PM.1.1 — the window is `rangeBounds`, exported rather than recomputed.**
+Every tile links to the order list carrying the same `range=` word. A dashboard
+that resolved "today" itself would eventually disagree with the list it links
+to, and the symptom is a tile reading 14 that opens a list of 11. D-LP.3's rule,
+one screen further out.
+
+**D-PM.1.2 — no chart library.** `recharts` is installed and unused, and it is a
+client component that mounts, measures and re-renders to draw fourteen
+rectangles. Fourteen rectangles are fourteen `<div>`s with a percentage height:
+server-rendered, nothing to hydrate, themed by the same tokens as everything
+else, correct before JavaScript — the property every other read surface in this
+console already has. A visually-hidden `<table>` carries the same numbers for a
+screen reader.
+
+**D-PM.1.3 — the query count IS the latency, because the transaction is
+pinned.** `withTenant` opens an interactive transaction, so `Promise.all` around
+nine Prisma calls does not parallelise them — it queues them on one connection.
+The first build issued ~35 round trips and measured **3.2–4.8 s** on the screen a
+manager opens first. Consolidating with `groupBy` (one pass by `status` answers
+four of the old counts; one by `deliveryOutcome` answers three; `[dimension,
+status]` replaces two passes per breakdown; both integration counts became one
+grouped read) brought it to **~2.0 s steady state** — level with the order list
+(2.1 s) and well under the untouched analytics screen (3.7 s), against a floor
+of 0.86 s for a near-queryless page on this connection.
+
+**And what was NOT done for that speed:** the scope was not hand-written into
+SQL. `orderScope`'s record-level rule is a Prisma `where`, and a second copy of
+"which orders may this person see" expressed as a string is the one place being
+wrong leaks a colleague's queue rather than merely disagreeing about a filter.
+
+**Risk.** The dashboard reads more than any other screen. Every section that is
+supervision data is withheld with the permission its API equivalent checks —
+`erp:agents:manage` for the roster and the carriers, `erp:clients:read` for the
+customer count (absent, never zero), `followupScope` for the follow-up count —
+and an agent's figures are their own queue through `orderScope`, verified live
+for all four demo roles.
+
+**A defect this slice introduced, and the review that caught it.** The first
+build gated the two integration alert cards on `erp:settings:read` — a
+permission that **is not in the ERP's manifest at all**, so `can()` answered it
+by role glob — and pointed them at `/console/erp/carriers` and
+`/console/erp/sales-channels`, which check `erp:shipments:write` and
+`erp:settings:write`. The stock cards had the same shape: unconditional, aimed
+at `/console/erp/inventory`, whose nav gate is `erp:inventory:write`. Three
+cards that count correctly and link into a 404 — the exact failure the same
+slice wrote a rule about for the header search box.
+
+**The check that finds it is not a route review.** Every route was gated
+correctly; what was wrong was the pairing between a control's gate and its
+DESTINATION's gate, which is only visible by reading the manifest's nav
+permissions beside the screen's. Each flag on `AlertInput` now names the
+permission its destination checks, and a stock alert for somebody who cannot
+open the stockroom points at the products list instead — verified live: the
+demo agent's card reads `/console/erp/products`, the manager's reads
+`/console/erp/inventory`.
+
+### PM.2 The product photograph, which had columns and no reader
+
+[Opus 5]
+Date: 7 August 2026
+
+**What.** `CatalogProduct.image` and each variant's `image` have existed since
+M-06, are accepted by `POST /products` and `PUT /products/[id]/variants`, and
+were **rendered by nothing anywhere in the console** — while the legacy CRM shows
+a photograph on the product grid, on the stock screen, in the variant editor and
+on every order row. There was also no way to put a FILE into either: the
+products screen offered a text box for a URL, and its own comment said so.
+
+Now: `POST /api/erp/uploads` (gated on `erp:products:write`), an `ImageInput`
+control on the product create panel, the edit panel and every variant row, a
+bulk "one photograph for this whole colour" upload on each variant group, and
+thumbnails on the products grid, the product detail, the inventory list, the
+dashboard's stock panel, the order list, the order detail and the agent's queue
+card.
+
+**Why it is more than decoration on the order screens.** The same lookup that
+finds the photograph knows the stock level of the exact variant somebody is
+about to confirm. An agent on the phone saying yes to a size that ran out this
+morning is a courier dispatched for nothing and a customer rung back to be told
+no — and the screen where that decision is taken said nothing about it.
+
+**Files.** `src/lib/image-upload.ts` (new, shared),
+`src/app/api/erp/uploads/route.ts` (new), `src/app/api/builder/upload/route.ts`
+(now composes the shared uploader), `src/lib/erp/order-product.ts` (new),
+`src/components/console/erp/{image-input,product-thumb}.tsx` (new),
+`catalog-write.tsx`, `queue-card.tsx`, the products / inventory / orders / order
+detail / queue / dashboard screens, `edit-field.ts` (`kind: "image"`),
+`test/erp/catalog.test.ts` (+6), `test/erp/helpers.ts`.
+
+**THE DEFECT IT FOUND, and it was shipped, live, and not the ERP's.**
+`POST /api/builder/upload` has stored `tenants/<tenantId>/<uuid>.<ext>` since the
+platform port. `GET /api/uploads/[...path]` refused any key that was not a
+SINGLE path segment — its comment still said "uploads are stored flat" — and its
+private-R2 branch looked objects up under the bare filename rather than the key
+they were written at. **So every image uploaded through the console 404'd unless
+the deployment happened to have a public R2 bucket**, which is why four audits
+walked past it: the writer, the storage and the returned URL are all correct and
+only the reader disagrees. Found by uploading a real file through the running
+console and asking for it back. `test/erp/catalog.test.ts` now asserts the ROUND
+TRIP, not the upload — a test that only checks the POST answers 200 tests the
+half that already worked — plus the traversal guard the fix widened.
+
+**D-PM.2.1 — plain `<img>`, not `next/image`.** Two shapes live in that column:
+the `/uploads/...` key this platform writes, and the `data:image/...;base64` URL
+a tenant migrated from the legacy arrives with (M-14 is the move off that, and
+until it happens both are live). `next/image` cannot render a data URL, so using
+it would mean a migrated catalogue showing broken images with no error anywhere.
+
+**D-PM.2.2 — one uploader, two gates.** The processing is shared; the permission
+is not. `/api/builder/upload` stays `website-builder:pages:write` and the ERP's
+is `erp:products:write` — the permission the routes that STORE the resulting
+string check. A shared uploader carrying its own gate would be one permission
+for two products, which is the shape the product registry exists to prevent.
+
+**D-PM.2.3 — the catalogue is resolved for the PAGE, never per row.**
+`resolveOrderProducts` reads the catalogue once and matches in memory, because
+the match is on a normalised name Postgres has no index for. Fifty orders would
+otherwise be a hundred round trips on the screen an agent lives in — PERF-02,
+and the same reason `ORDER_LIST_SELECT` joins no call history. Resolution order
+is `resolveProduct`'s: the channel link first and exclusively (AUDIT.7), then a
+normalised name, and a duplicated name resolves to NOTHING (AUDIT.3) rather than
+showing the first row's photograph while the counters attribute to neither.
+
+### PM.3 Variants that can be navigated, and a product created in one pass
+
+[Opus 5]
+Date: 7 August 2026
+
+**What.** Three changes to the same workflow:
+
+- **The products grid opens out.** A row with variants gets a disclosure that
+  reveals the matrix grouped by its first option axis, with a thumbnail, a stock
+  chip and a per-group total. The grid's `variants` column was a COUNT and its
+  `stock` column the roll-up — both true, and neither the question anybody has,
+  which is "of the twelve, which are gone". A 200-unit shoe is not fine if 199
+  of them are size 45.
+- **The variant editor groups and collapses.** Three colours × five sizes is
+  fifteen rows and a length axis makes it forty-five; LP.18 generated them
+  correctly and rendered them as one flat list of text inputs. Groups now
+  collapse to one line carrying a cover photograph, a count and a running stock
+  total, and one upload can be applied to every variant in a group.
+- **A product and its variants are created together.** Adding a product with
+  fifteen variants took three passes through two panels that did not know about
+  each other — create a bare product, find it again in the EDIT panel for the
+  classification fields, find it a third time in the variant editor. `POST
+  /api/erp/products` has always accepted the whole thing in one request.
+
+**Files.** `src/components/console/erp/{variant-matrix,variant-breakdown,
+product-create}.tsx` (new), `variant-editor.tsx` (rebuilt on the shared matrix),
+`catalog-write.tsx` (the old create panel removed), `data-table.tsx`
+(`rowDetail`), `globals.css`, `src/app/console/erp/products/page.tsx`.
+
+**D-PM.3.1 — the disclosure is a checkbox and a `:has()` rule, not state.**
+`.console-table tr:has(input[data-row-expand]:checked) + tr[data-row-detail]`.
+So the table stays a server component, a page of 200 products ships no
+JavaScript to open one of them, the contents are in the HTML for a contract test
+to assert (D-06.4's principle applied to a read surface), and an opened row
+survives the debounced `router.refresh()` the notification provider fires. The
+SELECTED-row tint moved out of a Tailwind `has-[…]` variant and into
+`globals.css` because it now has to exclude the expander — an arbitrary variant
+carrying `:not(…)` is exactly the shape Phase UI's rule warns about.
+
+**Two live violations this closed.** The old create panel used `{open && …}`,
+which mounts on click — a D-06.4 violation in the panel a manager uses most,
+verified fixed in the running page (`input#new-name` is in the DOM while the
+panel is hidden). And `catalog-write.tsx` still carried its own hand-written
+copy of the text input, the tenth of the nine UX-14 replaced.
+
+### PM.4 A notification that opens the thing it is about
+
+[Opus 5]
+Date: 7 August 2026
+
+**What.** `Notification.entity` and `entityId` are written on every ERP
+notification about one order, stored, returned by the API and carried on every
+SSE frame — and the console read them for exactly one purpose: flashing a row
+you were already looking at. Panel rows were `<li>`s with no link. So "delivery
+problem — ORD-0042" meant opening the order list, finding ORD-0042 and opening
+it: three navigations to reach a record the notification was holding the id of.
+
+`src/lib/platform/notification-href.ts` maps `(product, entity, entityId)` to a
+destination, falling back to a per-TYPE one for the notifications that carry a
+count instead of an id (`followup_overdue` → the follow-up queue, `stale_orders`
+→ pending orders oldest-first, `agent_suspended` → the roster, `suspicious_call`
+→ `?suspicious=true`). Panel rows are links; the toast gains an action, which is
+the one moment somebody is already looking at the event.
+
+**D-PM.4.1 — an unknown type resolves to nothing rather than to a guess.** A
+notification type added later reads correctly and simply is not a link until
+somebody adds it. A destination that 404s is worse than a row that does not
+move — D-LP.2's argument about fabricated tracking numbers, applied to a URL.
+
+**The table says which entries are LIVE.** `erp`/`order` is the only one
+anything writes today; the rest are ahead of a writer and say so, with the work
+that would make each reachable — the discipline `orphans.test.ts`'s exemption
+list uses for a schema column. Writing that down caught one:
+`landingPage` pointed at `/console/builder/pages/{id}`, and the route that
+exists is `/pages/{id}/edit`. A lookup table is the easiest place in a codebase
+for a plausible-looking path to sit and look like a fact.
+
+**Verified in the running page**: the panel's 22 rows are 22 links, each at
+`/console/erp/orders/<the id the notification carries>`.
+
+### PM.5 One answer to "is this running out"
+
+[Opus 5]
+Date: 7 August 2026
+
+**What.** `stock <= threshold` is one bit for two situations a warehouse treats
+completely differently: a variant at 18 against a threshold of 24 is a restock to
+schedule, and a variant at 0 is an order the call centre is about to confirm and
+cannot ship. Both were the same red, so the second was invisible inside a list of
+the first — and a product with NO threshold could sit at zero and never appear on
+the low-stock screen at all.
+
+`lib/erp/stock-level.ts` is the one vocabulary — `out` / `critical` (at or under
+half the threshold) / `low` / `ok` — and `StockChip` renders it identically on
+the products grid, the expanded variant matrix, the variant editor, the
+inventory list, the order list, the order detail, the agent's queue card and the
+dashboard. The inventory screen leads with counts per severity and orders the
+list worst-first.
+
+**A green pill is never shown on a healthy row.** `onlyWhenAlert` exists because
+a page where every row is decorated is a page where the two rows that matter
+disappear.
+
+### PM.6 Secondary text stops looking like a control nobody may press
+
+[Opus 5]
+Date: 7 August 2026
+
+**What.** Disabled controls were `opacity: 0.5`, which puts a label at whatever
+grey sits halfway to the background — and that is precisely where
+`--muted-foreground` lives. So a caption and a control nobody may press were the
+same colour and the operator had to work out which one was information. Opacity
+is also invisible to assistive technology (UX-72), and it faded the BORDER as
+well as the label, so the control lost the one shape that said it was still a
+control.
+
+- `--muted-foreground` firmer in both themes (light 0.48 → 0.45, dark 0.68 →
+  0.72): measured **6.55 → 7.30** on a card in dark, 6.55 → ~7.3 in light.
+- New `--control-disabled-{bg,fg,border}`: a filled inert box, a label below
+  every live grey, `cursor: not-allowed`, and `pointer-events` deliberately NOT
+  removed — a disabled `<button>` fires no click by specification, and
+  suppressing pointer events also suppresses the cursor and any `title`
+  explaining WHY. The light value was measured in the running page at 2.63:1
+  and darkened to clear **3:1** — the floor the test asserts, chosen because it
+  is WCAG's own non-text threshold rather than because it is what the token
+  happened to measure.
+- **Read-only and disabled stopped sharing one declaration.** A read-only box
+  holds a real value somebody has to read; it keeps full foreground text.
+- Dark theme: surfaces lifted one step (raised 0.185 → 0.20), borders and hover
+  firmed, so a card reads as a card without the border carrying the whole job.
+
+**`packages/ui/test/tokens.test.ts` gained an oklch→sRGB converter and 16
+tests.** The status palette is hex and has been measurable since M-13; the
+GROUND is `oklch(…)` and was measurable by nobody — so the one contrast question
+an eight-hour reader actually has was the one the contrast test could not ask.
+It now asserts secondary text clears 4.5:1 on all three surfaces in both themes,
+body text clears AAA, a raised surface differs from the page, a hovered row
+differs from a raised one, and — the load-bearing one — that disabled text is
+**measurably weaker than secondary text and still above 3:1**. Verified to fail:
+setting `--control-disabled-fg` near `--muted-foreground` turns it red, naming
+the ratio. 26 → 42 tests.
+
+### PM.7 The question this product is opened with
+
+[Opus 5]
+Date: 7 August 2026
+
+**What.** "A customer is on the phone and gives me a number" is the most
+frequent question anybody asks this software, and answering it cost four
+navigations: open the product, open the order list, open the filter bar, type,
+submit. `orderFilters` has read `search` since LP.3 and it reaches the
+reference, the customer name and the phone number — the capability was there and
+the distance to it was the whole cost. There is now a search box in the console
+header, focused from anywhere with `/`.
+
+**D-PM.7.1 — the product declares it; the shell renders it.**
+`ProductManifest.search` carries the path, the query parameter and the
+placeholder key. A header that hard-coded `/console/erp/orders?search=` would be
+the shell knowing what an ERP is — the one thing the registry exists to prevent,
+and the same argument `ProductNavItem.group` already makes. The builder declares
+none and gets no box. The parameter is `search`, the one `orderFilters`
+validates, so the box and the list cannot disagree about what was asked; it is
+gated on `erp:orders:read`, because a search box that submits into a 404 is
+worse than no search box.
+
+A plain GET form, like the filter bar and the pager: the answer is a URL
+somebody can bookmark or hand to a colleague, and it works before JavaScript.
+
+### Verification
+
+Live, against the running server on a real Neon database.
+
+| Suite | Result |
+|---|---|
+| `packages/ui` | **42/42** (was 26 — the oklch ground is measurable now) |
+| `packages/i18n` | 20/20 |
+| `packages/product-registry` | 36/36 |
+| ERP `catalog` | **72/72** (was 66 — the photograph round trip) |
+| ERP `screens` | 173/173 |
+| ERP `notifications` + `access` | 252/252 |
+| `console-shell` + ERP `analytics` + `listing` | 62/62 |
+| ERP `orders` + `registry` + `export` + `calc` | 132/132 per suite |
+| ERP `integrations` | 80/80 |
+
+**Two red runs, both environmental and both re-verified.** `registry` failed
+2/23 in a four-suite back-to-back run (the documented Neon capacity limit; its
+two tests completed in 623 ms against 8,195 ms alone, which is a connection
+failure's signature) and passes 23/23 alone. `integrations` failed 3/80 because
+a build was run while the suite was in flight and replaced `.next` under the
+serving process — 3/3 on a stable build. **A build is a write to the thing under
+test**, which is rule 5 of PROJECT_STATE's *Read this first* seen from the other
+direction.
+
+**The role walkthrough is mechanical rather than anecdotal.** 21 screens × 4
+demo roles = 84 pairs driven over HTTP: every 200 renders inside the console
+shell, no screen leaks a raw i18n key as text, and the only 404s are the 18
+permission-shaped ones (an agent and a follow-up agent reaching clients,
+carriers, channels, finance, the calculator, the roster, automation, team and
+billing). Measured in the running page at 375 px and at desktop width: no
+horizontal overflow on the dashboard or the products grid, the create panel's
+fields present in the DOM while hidden, and the expandable row `display: none` →
+`table-row` on the checkbox alone.
+
+---
+
 ## Phase UI — UI/UX modernisation
 
 **Presentation only.** No business logic, no calculation, no API behaviour, no

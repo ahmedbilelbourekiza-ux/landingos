@@ -83,13 +83,33 @@
   --secondary: oklch(0.96 0.003 75);
   --secondary-foreground: oklch(0.18 0.01 250);
   --muted: oklch(0.96 0.003 75);
-  --muted-foreground: oklch(0.48 0.01 250);
+  /* PM.6 — SECONDARY TEXT IS TEXT, NOT DECORATION.
+     Was 0.48, which measured 6.5:1 on a card and sat within a tenth of a
+     lightness step of a control faded to 50%. Two things read as "greyer than
+     the foreground" and an operator at 17:00 has to work out which of them is
+     information. This is the darker half of the fix; `--control-disabled-fg`
+     below is the other half, and `packages/ui/test/tokens.test.ts` now asserts
+     the gap between them so it cannot close again. */
+  --muted-foreground: oklch(0.45 0.012 250);
   --accent: oklch(0.95 0.015 85);
   --accent-foreground: oklch(0.18 0.01 250);
 
-  --border: oklch(0.91 0.003 75);
-  --input: oklch(0.91 0.003 75);
+  /* A shade firmer than the 0.91 it was. A table of forty rows is read by its
+     separators, and a border a tenth of a step off the ground it sits on is a
+     table that reads as a wall of text. */
+  --border: oklch(0.895 0.004 75);
+  --input: oklch(0.885 0.004 75);
   --ring: #991b1b;
+
+  /* --- Unavailable --------------------------------------------------------
+     A control that cannot be used says so with FORM as well as value: a filled
+     inert box, a dimmer label than any real text on the screen, and a cursor
+     that refuses. Opacity alone could not do this — it moves a control's text
+     to whatever grey happens to be halfway to the background, which is exactly
+     where secondary text lives. */
+  --control-disabled-bg: oklch(0.945 0.004 75);
+  --control-disabled-fg: oklch(0.615 0.008 250);
+  --control-disabled-border: oklch(0.915 0.004 75);
 
   /* --- Status -------------------------------------------------------------
      Each is a triplet: text, tint, edge. A chip is `color: --*-fg` on
@@ -174,9 +194,11 @@
      could not express.
      ========================================================================= */
   --surface-raised: oklch(1 0 0);
-  --surface-subtle: oklch(0.975 0.003 75);
+  --surface-subtle: oklch(0.972 0.003 75);
   --surface-sunken: oklch(0.955 0.004 75);
-  --surface-hover: oklch(0.965 0.004 75);
+  /* Hover has to be legible while a row is ALSO striped by nothing else. A
+     step of 0.042 off a white card is visible without becoming a highlight. */
+  --surface-hover: oklch(0.958 0.005 75);
   /* A crimson breath, not a crimson. A selected row is still readable text on
      a light ground; the tint only has to survive being seen next to an
      unselected one. */
@@ -244,9 +266,9 @@
   --background: oklch(0.14 0.005 250);
   --foreground: oklch(0.95 0.003 75);
 
-  --card: oklch(0.18 0.005 250);
+  --card: oklch(0.2 0.005 250);
   --card-foreground: oklch(0.95 0.003 75);
-  --popover: oklch(0.18 0.005 250);
+  --popover: oklch(0.2 0.005 250);
   --popover-foreground: oklch(0.95 0.003 75);
 
   /* Crimson is too dark to carry a filled button on a dark ground — it reads
@@ -258,13 +280,23 @@
   --secondary: oklch(0.24 0.005 250);
   --secondary-foreground: oklch(0.95 0.003 75);
   --muted: oklch(0.24 0.005 250);
-  --muted-foreground: oklch(0.68 0.01 250);
+  /* PM.6, the dark half. Lifted from 0.68 for the same reason light was
+     darkened: eight hours of a dense console is read mostly in secondary text,
+     and a dark theme that saves its contrast budget for headings is a dark
+     theme people turn off. */
+  --muted-foreground: oklch(0.72 0.012 250);
   --accent: oklch(0.26 0.008 250);
   --accent-foreground: oklch(0.95 0.003 75);
 
-  --border: oklch(0.28 0.006 250);
-  --input: oklch(0.28 0.006 250);
+  --border: oklch(0.31 0.007 250);
+  --input: oklch(0.33 0.007 250);
   --ring: #e5837d;
+
+  /* Unavailable, inverted: on a dark ground an inert control is DARKER than
+     the surface it sits on, and its label sits below every live grey. */
+  --control-disabled-bg: oklch(0.16 0.005 250);
+  --control-disabled-fg: oklch(0.5 0.008 250);
+  --control-disabled-border: oklch(0.26 0.006 250);
 
   --success-fg: #4ade80;
   --success-bg: #0d2920;
@@ -311,10 +343,14 @@
      Inverted, not mirrored: on a dark ground a raised surface is LIGHTER than
      the page and a sunken one is darker, which is the same physical claim the
      light theme makes and the opposite arithmetic. */
-  --surface-raised: oklch(0.185 0.005 250);
-  --surface-subtle: oklch(0.215 0.005 250);
-  --surface-sunken: oklch(0.115 0.005 250);
-  --surface-hover: oklch(0.235 0.006 250);
+  /* Lifted one step in PM.6. A card at 0.185 against a 0.14 ground is a card
+     you have to look for; at 0.20 the panel edges read without the border
+     having to carry the whole job, which is what "elevation" is supposed to
+     mean on a dark theme. */
+  --surface-raised: oklch(0.2 0.005 250);
+  --surface-subtle: oklch(0.235 0.005 250);
+  --surface-sunken: oklch(0.125 0.005 250);
+  --surface-hover: oklch(0.255 0.007 250);
   --surface-selected: oklch(0.25 0.028 20);
   --surface-selected-border: oklch(0.4 0.06 20);
 

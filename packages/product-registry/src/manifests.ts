@@ -124,6 +124,26 @@ export const erp: ProductManifest = {
     // ProductSetting rows and the route is still PUT /api/erp/settings.
     { id: 'automation', titleKey: 'erp.nav.automation', path: 'automation', icon: 'settings', permission: 'erp:settings:write', group: 'erp.navGroup.admin' },
   ],
+  /* PM.7 — THE QUESTION THIS PRODUCT IS OPENED WITH.
+   *
+   * A customer rings and says a phone number. Answering it took four
+   * navigations — product, order list, open the filter bar, type, submit — on
+   * every single call, in a building where that call happens hundreds of times
+   * a day. `orderFilters` has read `search` since LP.3 and it reaches the
+   * reference, the customer name and the phone number, so the capability was
+   * always there and the distance to it was the whole cost.
+   *
+   * `search`, not `q`: the parameter is the one `orderFilters` already
+   * validates, so the box and the list cannot disagree about what was asked.
+   * Gated on `erp:orders:read` because a box that submits into a 404 is worse
+   * than no box.
+   */
+  search: {
+    path: 'orders',
+    param: 'search',
+    placeholderKey: 'erp.filters.searchPlaceholder',
+    permission: 'erp:orders:read',
+  },
   status: 'stable',
 };
 

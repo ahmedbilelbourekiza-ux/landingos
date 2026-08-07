@@ -65,6 +65,34 @@ type ApiFn = (method: string, path: string, body?: unknown, init?: RequestInit) 
 /** An unauthenticated call. */
 export const anon: ApiFn = (method, path, body, init = {}) => call(method, path, body, undefined, init);
 
+/**
+ * A raw request, for the one surface that is not JSON — PM.2.
+ *
+ * `call` sets `content-type: application/json` and stringifies the body, which
+ * is right for every other route and wrong for a multipart upload: setting the
+ * header by hand strips the boundary `FormData` generates, and the server sees
+ * a body it cannot parse. This carries the session and touches nothing else.
+ */
+export async function raw(
+  method: string,
+  path: string,
+  token: string | undefined,
+  body?: BodyInit,
+): Promise<Response> {
+  return fetch(BASE + path, {
+    method,
+    headers: token ? { cookie: `${SESSION_COOKIE}=${token}` } : {},
+    body,
+    redirect: 'manual',
+  });
+}
+
+/** The smallest real PNG — a 1×1 pixel, so `sharp` has something to decode. */
+export const ONE_PIXEL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
 async function call(
   method: string,
   path: string,

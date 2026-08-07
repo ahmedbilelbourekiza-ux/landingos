@@ -45,18 +45,53 @@
     },
     "overview": {
       "title": "Aperçu",
-      "subtitle": "La journée en bref",
+      "subtitle": "Ce qui demande une intervention, et comment se passe la période",
       "pending": "À appeler",
       "confirmed": "Confirmées",
-      "inDelivery": "En livraison",
       "delivered": "Livrées",
       "customers": "Clients",
-      "lowStock": "Stock faible",
       "myQueue": "Votre file",
       "wholeBook": "Tout le carnet",
-      "overdue": "Commandes que personne n’a appelées",
       "overdueHint": "En attente depuis plus de {minutes} minutes sans appel enregistré.",
-      "revenue": "Chiffre livré"
+      "revenue": "Chiffre livré",
+      "period": "Période",
+      "vsPrevious": "vs {period} précédent(s)",
+      "noComparison": "Aucune période antérieure à comparer",
+      "attention": "Demande une intervention",
+      "attentionHint": "Tout ici a quelqu’un qui attend. Chaque élément ouvre l’écran où le régler.",
+      "allClear": "Rien ne demande d’intervention.",
+      "allClearHint": "Aucun appel en retard, aucun colis non réservé, aucune alerte de stock et aucune intégration en échec.",
+      "alertOverdue": "Commandes jamais appelées",
+      "alertUnbooked": "Confirmées, sans colis réservé",
+      "alertUnbookedHint": "Le client a accepté et rien n’a été remis à un transporteur.",
+      "alertFollowup": "Suivis en retard",
+      "alertFollowupHint": "Tâches ouvertes dont l’échéance est dépassée.",
+      "alertStockOut": "En rupture",
+      "alertStockOutHint": "Confirmer une commande dessus promet une livraison impossible.",
+      "alertStockCritical": "Stock critique",
+      "alertStockCriticalHint": "À la moitié du seuil ou moins — le réapprovisionnement est en retard.",
+      "alertSuspicious": "Appels signalés comme suspects",
+      "alertSuspiciousHint": "Marquées confirmées après un appel plus court que le minimum défini.",
+      "alertCarrier": "Échecs transporteur (24 h)",
+      "alertChannel": "Échecs canal de vente (24 h)",
+      "alertIntegrationHint": "Requêtes refusées ou jamais abouties. Une commande peut ne pas être arrivée.",
+      "returnRate": "Taux de retour",
+      "trend": "Commandes par jour",
+      "trendHint": "La partie pleine de chaque barre correspond aux confirmations.",
+      "trendEmpty": "Aucune commande sur cette période.",
+      "day": "Jour",
+      "openAnalytics": "Analytique complète",
+      "recentOrders": "Dernières commandes",
+      "viewAll": "Tout voir",
+      "stockAlerts": "Alertes de stock",
+      "stockHealthyHint": "Chaque produit et variante est au-dessus de son seuil.",
+      "agentPerformance": "Agents",
+      "agentPerformanceHint": "La longueur de la barre est la charge ; la couleur est le taux de confirmation.",
+      "carrierPerformance": "Transporteurs",
+      "carrierPerformanceHint": "Colis réglés par le transporteur sur la période, et combien sont arrivés.",
+      "topProducts": "Meilleurs produits",
+      "topProductsHint": "Par volume de commandes, avec la valeur confirmée de chacun.",
+      "ofTotal": "{n} sur {total}"
     },
     "orders": {
       "title": "Commandes",
@@ -126,7 +161,9 @@
       "fake": "Marquée fausse",
       "backToList": "Retour aux commandes",
       "audit": "Qui a changé quoi",
-      "auditEmpty": "Rien n’a encore été enregistré pour cette commande."
+      "auditEmpty": "Rien n’a encore été enregistré pour cette commande.",
+      "unknownVariant": "Cette variante n’est pas au catalogue — le niveau affiché est le total du produit.",
+      "noCatalogMatch": "Aucun produit du catalogue ne correspond à cette ligne : ni le stock ni les compteurs de revenu ne bougent."
     },
     "clients": {
       "title": "Clients",
@@ -167,7 +204,8 @@
       "timeline": "Chronologie",
       "noEvents": "Rien n'a encore changé sur ce produit.",
       "ambiguous": "Nom en double",
-      "ambiguousHint": "Deux fiches produit répondent à ce nom : une commande qui le nomme ne peut être attribuée ni à l'une ni à l'autre — ses compteurs à vie ne bougent pas et le résumé des ventes compterait son chiffre deux fois. Renommez-en une."
+      "ambiguousHint": "Deux fiches produit répondent à ce nom : une commande qui le nomme ne peut être attribuée ni à l'une ni à l'autre — ses compteurs à vie ne bougent pas et le résumé des ventes compterait son chiffre deux fois. Renommez-en une.",
+      "image": "Photo"
     },
     "inventory": {
       "title": "Inventaire",
@@ -178,7 +216,12 @@
       "movements": "Mouvements récents",
       "change": "Variation",
       "reason": "Motif",
-      "after": "Après"
+      "after": "Après",
+      "out": "Rupture",
+      "critical": "Critique",
+      "low": "Bas",
+      "ok": "En stock",
+      "lowStockHint": "D’abord les ruptures, puis le stock critique, puis à réapprovisionner. Un produit sans seuil peut quand même être en rupture."
     },
     "shipments": {
       "title": "Expéditions",
@@ -378,7 +421,21 @@
       "createShipments": "Créer les colis",
       "sendToDelivery": "Envoyer au transporteur",
       "bookingHint": "Création de colis limitée par lot à",
-      "image": "URL de l'image"
+      "image": "URL de l'image",
+      "uploadImage": "Téléverser",
+      "uploading": "Envoi…",
+      "removeImage": "Retirer l’image",
+      "imageUrlHint": "…ou collez une URL d’image",
+      "uploadFailed": "L’image n’a pas pu être téléversée.",
+      "sectionIdentity": "Identité",
+      "sectionClassification": "Classement",
+      "sectionMoney": "Prix et coût",
+      "sectionStock": "Stock",
+      "variantsHint": "Définissez les axes d’options, générez la matrice, puis renseignez un niveau et une photo par variante. Tout est enregistré avec le produit en une seule requête.",
+      "costHint": "La base de tout calcul de marge. Un produit créé sans ce coût affiche une marge fausse, pas absente.",
+      "thresholdHint": "En dessous, le produit est signalé comme bientôt épuisé.",
+      "stockHint": "Le niveau d’ouverture. Ignoré si la matrice ci-dessous contient des variantes — chacune porte le sien.",
+      "nameRequired": "Un nom est requis."
     },
     "settings": {
       "title": "Règles d'automatisation",
@@ -467,7 +524,8 @@
         "month": "30 derniers jours"
       },
       "suspicious": "Qualité d’appel",
-      "suspiciousOnly": "Appels signalés uniquement"
+      "suspiciousOnly": "Appels signalés uniquement",
+      "searchPlaceholder": "Commande, client ou téléphone"
     },
     "export": {
       "title": "Exporter",
@@ -551,7 +609,8 @@
       "marketer": "Marketeur / source",
       "deliveryStatus": "Statut de livraison",
       "unknown": "Non renseigné",
-      "revenueNote": "Le montant confirmé est ce que les clients ont accepté au téléphone ; le montant livré est ce que le livreur a réellement payé. En paiement à la livraison ce sont deux nombres différents, et l’écart est celui qu’il faut expliquer."
+      "revenueNote": "Le montant confirmé est ce que les clients ont accepté au téléphone ; le montant livré est ce que le livreur a réellement payé. En paiement à la livraison ce sont deux nombres différents, et l’écart est celui qu’il faut expliquer.",
+      "deliveredValue": "Valeur livrée"
     },
     "ai": {
       "title": "Assistant IA",
@@ -598,7 +657,15 @@
       "generateHint": "Les variantes existantes conservent leur stock.",
       "addVariant": "Ajouter une variante",
       "remove": "Supprimer",
-      "noVariants": "Aucune variante — ce produit est suivi comme une seule ligne de stock."
+      "noVariants": "Aucune variante — ce produit est suivi comme une seule ligne de stock.",
+      "groupTotal": "Total",
+      "other": "Autres",
+      "collapse": "Réduire",
+      "expand": "Développer",
+      "groupImage": "Photo du groupe",
+      "open": "Modifier les variantes",
+      "show": "Afficher les variantes",
+      "hide": "Masquer les variantes"
     },
     "import": {
       "panel": "Importer un fichier",

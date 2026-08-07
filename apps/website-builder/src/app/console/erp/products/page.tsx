@@ -12,12 +12,12 @@ import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
 import {
-  ProductCreatePanel,
   ProductEditPanel,
   ProductRowActions,
   type CatalogStrings,
   type EditableProduct,
 } from "@/components/console/erp/catalog-write";
+import { ProductCreatePanel } from "@/components/console/erp/product-create";
 import { editFingerprint, type EditField } from "@/components/console/edit-field";
 import {
   VariantEditorPanel,
@@ -25,9 +25,12 @@ import {
 } from "@/components/console/erp/variant-editor";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { ListFrame } from "@/components/console/ui/list-frame";
+import { ProductThumb } from "@/components/console/erp/product-thumb";
+import { StockChip } from "@/components/console/erp/stock-chip";
+import { VariantBreakdown } from "@/components/console/erp/variant-breakdown";
 import {
   catalogStrings, filterStrings, pagerStrings, variantEditorStrings,
-  densityStrings, emptyCopy,
+  productCreateStrings, stockLabels, densityStrings, emptyCopy,
 } from "@/lib/console/erp-strings";
 import { inventoryView } from "@/lib/erp/inventory";
 import { duplicateProductNames } from "@/lib/erp/product-stats";
@@ -149,7 +152,12 @@ export default async function ErpProductsScreen({
          own surface" — it does not: it is a URL like any other text field, and
          the R2 move (M-14) changes what goes IN it, not whether it can be
          typed. What still has no control is uploading a file. */
-      { name: "image", label: t("erp.write.image"), value: p.image ?? "", kind: "text" },
+      /* The product-level photograph — used wherever a variant has none of its
+         own, which is the legacy's rule and now this one's. PM.2 turned it from
+         a text box holding a URL nobody had into an uploader: the column has
+         existed since M-06, `POST`/`PATCH` have accepted it since Phase 5, and
+         until now nothing could put a FILE into it and nothing rendered it. */
+      { name: "image", label: t("erp.write.image"), value: p.image ?? "", kind: "image" },
     ];
     return {
       id: p.id,
@@ -175,6 +183,12 @@ export default async function ErpProductsScreen({
         sku: v.sku ?? "",
         stock: v.stock,
         threshold: v.threshold,
+        // PM.2 — carried into the editor so a save can send it back. Before
+        // this the panel dropped it silently on every round trip; the route's
+        // `v.image ?? existing?.image` is the only reason that was not a data
+        // loss, and a form that relies on the server to remember what it threw
+        // away is one edit away from being one.
+        image: v.image ?? "",
         options: (v.options ?? {}) as Record<string, string>,
       })),
       optionDefs: defs.map((d) => ({
@@ -207,7 +221,9 @@ export default async function ErpProductsScreen({
         <div className="space-y-3">
           {/* Not on the archived view: creating a product from a list of things
               nobody sells any more would put the new row somewhere invisible. */}
-          {mayWrite && !archived && <ProductCreatePanel errors={errors} s={s} />}
+          {mayWrite && !archived && (
+            <ProductCreatePanel errors={errors} s={productCreateStrings(t)} />
+          )}
 
           {/* Offered on BOTH views. Archiving means "stop selling it", not
               "freeze it": a wrong cost basis is usually discovered from a report
@@ -257,36 +273,78 @@ export default async function ErpProductsScreen({
         rows={products}
         rowKey={(p) => p.id}
         rowAttrs={(p) => ({ "data-product-id": p.id })}
+        expandLabel={t("erp.variants.show")}
+        /* PM.3 — the row opens out into its variant matrix, so "which of the
+           twelve is gone" stops being a second screen. `null` where there is
+           nothing to open, so the control is absent rather than inert. */
+        rowDetail={(p) => {
+          const view = inventoryView(p);
+          if (!view.variants.length) return null;
+          const defs = (Array.isArray(p.optionDefs) ? p.optionDefs : []) as {
+            name?: string; values?: string[];
+          }[];
+          return (
+            <VariantBreakdown
+              productImage={p.image ?? null}
+              emptyLabel={t("erp.variants.noVariants")}
+              labels={{
+                ...stockLabels(t),
+                groupTotal: t("erp.variants.groupTotal"),
+                other: t("erp.variants.other"),
+              }}
+              optionDefs={defs.map((d) => ({
+                name: String(d.name ?? ""),
+                values: Array.isArray(d.values) ? d.values.map(String) : [],
+              }))}
+              variants={view.variants.map((v) => ({
+                name: v.name,
+                sku: v.sku,
+                stock: v.stock,
+                threshold: v.threshold,
+                image: v.image,
+                options: (v.options ?? {}) as Record<string, string>,
+              }))}
+            />
+          );
+        }}
         columns={[
           {
             id: "product",
             header: t("erp.products.title"),
+            width: "16rem",
             cell: (p) => (
-              <>
-                {/* The audit's finding: the product's lifetime counters, its
-                    event timeline and the channels it is linked to were all
-                    written and read by nothing. The row opens the record that
-                    shows them. */}
-                <Link
-                  href={`/console/erp/products/${p.id}`}
-                  className="font-medium underline-offset-2 hover:underline"
-                >
-                  {p.name || "—"}
-                </Link>
-                {ambiguous.has(p.id) && (
-                  <span
-                    data-badge="ambiguous-name"
-                    title={t("erp.products.ambiguousHint")}
-                    className="ms-2 rounded-full border px-1.5 py-0.5 text-[10px]"
-                    style={toneVars("danger")}
+              <div className="flex items-start gap-2.5">
+                {/* PM.2 — the photograph. The column has existed since M-06 and
+                    no screen has ever rendered one, so a catalogue of forty
+                    products was forty lines of text an operator had to read
+                    rather than recognise. */}
+                <ProductThumb src={p.image} alt="" size="sm" />
+                <div className="min-w-0">
+                  {/* The audit's finding: the product's lifetime counters, its
+                      event timeline and the channels it is linked to were all
+                      written and read by nothing. The row opens the record that
+                      shows them. */}
+                  <Link
+                    href={`/console/erp/products/${p.id}`}
+                    className="font-medium underline-offset-2 hover:underline"
                   >
-                    {t("erp.products.ambiguous")}
+                    {p.name || "—"}
+                  </Link>
+                  {ambiguous.has(p.id) && (
+                    <span
+                      data-badge="ambiguous-name"
+                      title={t("erp.products.ambiguousHint")}
+                      className="ms-2 rounded-full border px-1.5 py-0.5 text-2xs"
+                      style={toneVars("danger")}
+                    >
+                      {t("erp.products.ambiguous")}
+                    </span>
+                  )}
+                  <span className="mt-0.5 block font-mono text-xs text-muted-foreground" dir="ltr">
+                    {p.reference ?? ""}
                   </span>
-                )}
-                <span className="mt-0.5 block font-mono text-xs text-muted-foreground" dir="ltr">
-                  {p.reference ?? ""}
-                </span>
-              </>
+                </div>
+              </div>
             ),
           },
           {
@@ -327,13 +385,24 @@ export default async function ErpProductsScreen({
             align: "end",
             cell: (p) => {
               const view = inventoryView(p);
-              // Low stock is judged per variant elsewhere; this column is the
-              // rolled-up figure the grid has always shown, flagged when the
-              // total is at or under the threshold.
+              /* PM.5 — the roll-up, judged by the one severity vocabulary the
+                 dashboard, the inventory screen and the order detail all use.
+                 It was a bare number with a `data-low` attribute nobody could
+                 see and a `font-medium` that read as emphasis rather than as an
+                 alarm. `data-low` is kept: the catalogue suite asserts on it.
+
+                 The roll-up is only ever half the answer for a product with
+                 variants — 200 units is not fine if 199 are size 45 — which is
+                 what the expandable row beside it exists to say. */
               const low = view.threshold > 0 && view.stock <= view.threshold;
               return (
-                <span data-low={low ? "true" : "false"} className={low ? "font-medium" : ""}>
-                  {view.stock}
+                <span data-low={low ? "true" : "false"}>
+                  <StockChip
+                    stock={view.stock}
+                    threshold={view.threshold}
+                    labels={stockLabels(t)}
+                    showLabel={false}
+                  />
                 </span>
               );
             },

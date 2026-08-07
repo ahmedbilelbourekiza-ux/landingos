@@ -631,6 +631,34 @@ difference through the ledger; a removal that would lose stock refused by name),
 and `optionDefs` gets its first writer. **What still has no control is UPLOADING
 an image file** — the field is a URL, which is the honest state until M-14 moves
 these to R2.
+
+**CORRECTION (PM.2) — R12 was marked ✅ with its image half unbuilt, twice
+over.** The paragraph above is accurate about the upload and silent about the
+two things that mattered more:
+
+1. **The VARIANT editor had no image field at all.** The legacy's has one per
+   row plus a bulk "apply this photograph to the whole colour". LP.18's panel
+   dropped `image` on every round trip, and the only reason that was not a data
+   loss is that the route falls back to the stored value when the client omits
+   it — a form that relies on the server to remember what it threw away.
+2. **Neither image was RENDERED anywhere.** Not on the products grid, not on the
+   stock screen, not in the editor, and not on an order — while the legacy shows
+   one in all four places and resolves it per order through `variantImageFor`.
+   The parity comparison measured what the API accepts, which is the same
+   mistake §0b records the FIRST pass making about workflows.
+
+Closed in PM.2: `POST /api/erp/uploads`, an uploader on the product form and on
+every variant row, the legacy's group upload, and thumbnails on the products
+grid, the product detail, inventory, the order list, the order detail, the agent
+queue and the dashboard. Building it found a live platform defect — the uploads
+SERVING route refused the nested keys the uploader has written since the
+platform port, so every console-uploaded image 404s without a public R2 bucket.
+See CHANGELOG §PM.2.
+
+**The lesson for this document.** "The API accepts it" and "an operator can do
+it" are different claims, and the second one is the one a parity report is for.
+§0b caught that once, for workflows; R12 is the same error one level down, for a
+field.
 **Was missing:** three form fields, the variant editor route + screen, three
 columns.
 **Business impact:** **Medium.** Multi-dimensional variants are how a clothing or

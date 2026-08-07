@@ -4,9 +4,17 @@ import { useState } from "react";
 
 import { useApiAction, ActionError, ActionButton } from "@/components/console/api-action";
 import type { ActionErrors } from "@/lib/console/action-errors";
+import { Section } from "@/components/console/ui/primitives";
+import * as s2 from "@/components/console/ui/styles";
+import {
+  VariantMatrix,
+  type VariantRow,
+  type OptionDef,
+  type VariantMatrixStrings,
+} from "./variant-matrix";
 
 /* =============================================================================
- * The variant editor — LP.18, restoring R12.
+ * The variant editor — LP.18 (R12), rebuilt on the shared matrix in PM.3.
  *
  * A variant could be created once, in the product's `variants` array at
  * creation, and never renamed, never removed and never given a threshold — and
@@ -22,6 +30,12 @@ import type { ActionErrors } from "@/lib/console/action-errors";
  * its option MAP — which is what makes "how much Blue is left, in any size" a
  * question with an answer.
  *
+ * PM.3 MOVED THE GRID ITSELF INTO `variant-matrix.tsx`, for a reason that is
+ * about workflow rather than tidiness: the same matrix now appears while
+ * CREATING a product, so a manager enters a product and its fifteen variants in
+ * one pass instead of creating a bare product, finding it in a picker, and
+ * opening a second panel. One editor, two callers, one behaviour.
+ *
  * D-06.3 STILL HOLDS, WITH ONE STATED EXCEPTION. The rows are local while being
  * edited, because a variant matrix is a form and not a switch — nothing is sent
  * until Save. Every number that comes BACK is the server's: the response is the
@@ -34,25 +48,15 @@ import type { ActionErrors } from "@/lib/console/action-errors";
  * no movement row behind it, and the FIFO cost basis stops adding up.
  * ========================================================================== */
 
-export interface VariantEditorStrings {
+export interface VariantEditorStrings extends VariantMatrixStrings {
   readonly saving: string;
   readonly panel: string;
   readonly hint: string;
   readonly product: string;
-  readonly optionName: string;
-  readonly optionValues: string;
-  readonly addOption: string;
-  readonly generate: string;
-  readonly generateHint: string;
-  readonly variant: string;
-  readonly sku: string;
-  readonly stock: string;
-  readonly threshold: string;
-  readonly addVariant: string;
-  readonly remove: string;
   readonly reason: string;
   readonly save: string;
-  readonly noVariants: string;
+  readonly open: string;
+  readonly close: string;
 }
 
 export interface EditableVariant {
@@ -60,6 +64,7 @@ export interface EditableVariant {
   sku: string;
   stock: number;
   threshold: number;
+  image: string;
   options: Record<string, string>;
 }
 
@@ -71,8 +76,6 @@ export interface EditableProductVariants {
   /** What the server currently holds, so a save remounts the panel on it. */
   readonly fingerprint: string;
 }
-
-const FIELD = "w-full rounded-md border border-input bg-background px-2 py-1 text-sm";
 
 export function VariantEditorPanel({
   products,
@@ -90,9 +93,11 @@ export function VariantEditorPanel({
   const product = products.find((p) => p.id === selected) ?? products[0];
 
   return (
-    <section className="mt-3 rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-variant-editor">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-tight">{s.panel}</h2>
+    <Section
+      testId="erp-variant-editor"
+      title={s.panel}
+      description={s.hint}
+      actions={
         <ActionButton
           data-testid="variant-editor-toggle"
           aria-expanded={open}
@@ -100,25 +105,28 @@ export function VariantEditorPanel({
           pendingLabel={s.saving}
           onClick={() => setOpen((o) => !o)}
         >
-          {s.panel}
+          {open ? s.close : s.open}
         </ActionButton>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">{s.hint}</p>
-
-      {/* D-06.4: rendered always, hidden when closed. */}
+      }
+    >
+      {/* D-06.4: rendered always, hidden when closed — so a contract test can
+          assert the offered vocabulary and assistive tech can reach it before
+          anybody clicks. */}
       <div hidden={!open}>
-        <div className="mt-3">
-          <label htmlFor="variant-product" className="ui-label block">
+        <div className="max-w-sm">
+          <label htmlFor="variant-product" className={s2.fieldLabel + " block"}>
             {s.product}
           </label>
           <select
             id="variant-product"
             value={product.id}
             onChange={(e) => setSelected(e.target.value)}
-            className={`mt-1 ${FIELD}`}
+            className="ui-control tap mt-1 w-full"
           >
             {products.map((p) => (
-              <option key={p.id} value={p.id}>{p.label}</option>
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
             ))}
           </select>
         </div>
@@ -132,7 +140,7 @@ export function VariantEditorPanel({
           s={s}
         />
       </div>
-    </section>
+    </Section>
   );
 }
 
@@ -146,49 +154,14 @@ function VariantRows({
   readonly s: VariantEditorStrings;
 }) {
   const { run, pending, error } = useApiAction(errors);
-  const [rows, setRows] = useState<EditableVariant[]>(() => product.variants.map((v) => ({ ...v })));
-  const [defs, setDefs] = useState(() => product.optionDefs.map((d) => ({ ...d, values: [...d.values] })));
+  const [rows, setRows] = useState<VariantRow[]>(() =>
+    product.variants.map((v) => ({ ...v, image: v.image ?? "" })),
+  );
+  const [defs, setDefs] = useState<OptionDef[]>(() =>
+    product.optionDefs.map((d) => ({ ...d, values: [...d.values] })),
+  );
   const [reason, setReason] = useState("");
   const [refused, setRefused] = useState<string[] | null>(null);
-
-  const setRow = (i: number, patch: Partial<EditableVariant>) =>
-    setRows((r) => r.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
-
-  /**
-   * The cross product of every option definition.
-   *
-   * Rows that already exist are KEPT with their stock — a generator that
-   * replaced the matrix would silently zero every level it regenerated, which
-   * is a stock loss with no movement row and exactly what D-LP.18.1 forbids.
-   * New combinations arrive at zero and take their opening stock as a movement
-   * like everything else.
-   */
-  const generate = () => {
-    const usable = defs.filter((d) => d.name.trim() && d.values.filter(Boolean).length);
-    if (!usable.length) return;
-
-    let combos: Record<string, string>[] = [{}];
-    for (const def of usable) {
-      const next: Record<string, string>[] = [];
-      for (const combo of combos) {
-        for (const value of def.values.filter(Boolean)) {
-          next.push({ ...combo, [def.name.trim()]: value });
-        }
-      }
-      combos = next;
-    }
-
-    const byName = new Map(rows.map((r) => [r.name, r]));
-    setRows(
-      combos.map((options) => {
-        // The name is the values joined, in definition order — stable, so
-        // regenerating after adding a size does not rename everything.
-        const name = usable.map((d) => options[d.name.trim()]).join(" / ");
-        const existing = byName.get(name);
-        return existing ?? { name, sku: "", stock: 0, threshold: 0, options };
-      }),
-    );
-  };
 
   const save = async () => {
     setRefused(null);
@@ -198,6 +171,9 @@ function VariantRows({
         sku: r.sku,
         stock: r.stock,
         threshold: r.threshold,
+        // PM.2 — the photograph is sent with the row it belongs to. The route
+        // has accepted it since LP.18 and no control has ever produced one.
+        image: r.image,
         options: r.options,
       })),
       optionDefs: defs
@@ -214,156 +190,13 @@ function VariantRows({
 
   return (
     <div className="mt-4">
-      {/* The option definitions. */}
-      <div className="space-y-2" data-testid="variant-options">
-        {defs.map((def, i) => (
-          <div key={i} className="flex flex-wrap items-end gap-2">
-            <div>
-              <label className="ui-label block">{s.optionName}</label>
-              <input
-                data-testid={`option-name-${i}`}
-                value={def.name}
-                onChange={(e) =>
-                  setDefs((d) => d.map((x, idx) => (idx === i ? { ...x, name: e.target.value } : x)))
-                }
-                className={`mt-1 ${FIELD}`}
-              />
-            </div>
-            <div className="flex-1">
-              <label className="ui-label block">{s.optionValues}</label>
-              <input
-                data-testid={`option-values-${i}`}
-                value={def.values.join(", ")}
-                onChange={(e) =>
-                  setDefs((d) =>
-                    d.map((x, idx) =>
-                      idx === i
-                        ? { ...x, values: e.target.value.split(",").map((v) => v.trim()) }
-                        : x,
-                    ),
-                  )
-                }
-                className={`mt-1 ${FIELD}`}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => setDefs((d) => d.filter((_, idx) => idx !== i))}
-              className="ui-btn ui-btn-default ui-btn-sm tap"
-            >
-              {s.remove}
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-2 flex flex-wrap gap-2">
-        <button
-          type="button"
-          data-testid="variant-add-option"
-          onClick={() => setDefs((d) => [...d, { name: "", values: [] }])}
-          className="ui-btn ui-btn-default ui-btn-sm tap"
-        >
-          {s.addOption}
-        </button>
-        <button
-          type="button"
-          data-testid="variant-generate"
-          onClick={generate}
-          className="ui-btn ui-btn-default ui-btn-sm tap"
-        >
-          {s.generate}
-        </button>
-        <span className="self-center text-xs text-muted-foreground">{s.generateHint}</span>
-      </div>
-
-      {/* The matrix itself. */}
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[560px] text-sm" data-testid="variant-rows">
-          <thead className="text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="px-2 py-1 text-start">{s.variant}</th>
-              <th className="px-2 py-1 text-start">{s.sku}</th>
-              <th className="px-2 py-1 text-end">{s.stock}</th>
-              <th className="px-2 py-1 text-end">{s.threshold}</th>
-              <th className="px-2 py-1" />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-2 py-3 text-xs text-muted-foreground">
-                  {s.noVariants}
-                </td>
-              </tr>
-            )}
-            {rows.map((row, i) => (
-              <tr key={i} data-variant-row={row.name}>
-                <td className="px-2 py-1">
-                  <input
-                    data-testid={`variant-name-${i}`}
-                    value={row.name}
-                    onChange={(e) => setRow(i, { name: e.target.value })}
-                    className={FIELD}
-                  />
-                </td>
-                <td className="px-2 py-1">
-                  <input
-                    data-testid={`variant-sku-${i}`}
-                    value={row.sku}
-                    onChange={(e) => setRow(i, { sku: e.target.value })}
-                    className={FIELD}
-                  />
-                </td>
-                <td className="px-2 py-1">
-                  <input
-                    data-testid={`variant-stock-${i}`}
-                    inputMode="numeric"
-                    value={String(row.stock)}
-                    onChange={(e) => setRow(i, { stock: Number(e.target.value) || 0 })}
-                    className={`${FIELD} text-end`}
-                  />
-                </td>
-                <td className="px-2 py-1">
-                  <input
-                    data-testid={`variant-threshold-${i}`}
-                    inputMode="numeric"
-                    value={String(row.threshold)}
-                    onChange={(e) => setRow(i, { threshold: Number(e.target.value) || 0 })}
-                    className={`${FIELD} text-end`}
-                  />
-                </td>
-                <td className="px-2 py-1">
-                  <button
-                    type="button"
-                    data-testid={`variant-remove-${i}`}
-                    onClick={() => setRows((r) => r.filter((_, idx) => idx !== i))}
-                    className="ui-btn ui-btn-default ui-btn-sm tap"
-                  >
-                    {s.remove}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <VariantMatrix rows={rows} setRows={setRows} defs={defs} setDefs={setDefs} s={s} />
 
       <div className="mt-3 flex flex-wrap items-end gap-3">
-        <button
-          type="button"
-          data-testid="variant-add-row"
-          onClick={() =>
-            setRows((r) => [...r, { name: "", sku: "", stock: 0, threshold: 0, options: {} }])
-          }
-          className="ui-btn ui-btn-default ui-btn-sm tap"
-        >
-          {s.addVariant}
-        </button>
-        <div>
+        <div className="min-w-[14rem] flex-1">
           {/* One reason for the whole batch, because the editor IS one action.
               It reaches every movement row this save writes. */}
-          <label htmlFor="variant-reason" className="ui-label block">
+          <label htmlFor="variant-reason" className={s2.fieldLabel + " block"}>
             {s.reason}
           </label>
           <input
@@ -371,11 +204,12 @@ function VariantRows({
             data-testid="variant-reason"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className={`mt-1 ${FIELD}`}
+            className="ui-control tap mt-1 w-full"
           />
         </div>
         <ActionButton
           data-testid="variant-save"
+          variant="primary"
           pending={pending}
           pendingLabel={s.saving}
           onClick={() => void save()}
@@ -385,7 +219,7 @@ function VariantRows({
       </div>
 
       {refused && (
-        <p role="alert" data-testid="variant-refused" className="mt-2 text-xs text-destructive">
+        <p role="alert" data-testid="variant-refused" className="mt-2 text-xs font-medium text-(--danger-fg)">
           {refused.join(", ")}
         </p>
       )}

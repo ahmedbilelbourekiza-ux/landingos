@@ -68,6 +68,73 @@ function contrast(a: string, b: string): number | null {
   return (l1 + 0.05) / (l2 + 0.05);
 }
 
+/* --- oklch, for the tokens that are not hex ------------------------------
+ *
+ * PM.6. The status palette is hex and was measurable from the day this file was
+ * written; the GROUND — background, surfaces, borders and the two greys an
+ * operator reads secondary text in — is `oklch(...)` and was measurable by
+ * nobody. So the one contrast question an eight-hour reader actually has ("can
+ * I read the caption under this figure") was the one question the contrast test
+ * could not ask, and the answer drifted for four passes until somebody
+ * measured the running page by hand.
+ *
+ * Roughly forty lines of colour maths buys the whole ground under the same
+ * mechanical rule the status chips already have. AUDIT.8's principle:
+ * mechanical, not vigilant.
+ * ---------------------------------------------------------------------- */
+
+function oklchToRgb(value: string): [number, number, number] | null {
+  const m = value
+    .trim()
+    .match(/^oklch\(\s*([\d.]+)%?\s+([\d.]+)\s+([\d.]+)\s*\)$/i);
+  if (!m) return null;
+  const Lraw = Number(m[1]);
+  const L = value.includes('%') ? Lraw / 100 : Lraw;
+  const C = Number(m[2]);
+  const hDeg = Number(m[3]);
+  const h = (hDeg * Math.PI) / 180;
+
+  // Oklab → LMS' → LMS → linear sRGB (Björn Ottosson's matrices).
+  const a = C * Math.cos(h);
+  const b = C * Math.sin(h);
+
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.291485548 * b;
+
+  const l = l_ ** 3;
+  const mm = m_ ** 3;
+  const s = s_ ** 3;
+
+  const lr = +4.0767416621 * l - 3.3077115913 * mm + 0.2309699292 * s;
+  const lg = -1.2684380046 * l + 2.6097574011 * mm - 0.3413193965 * s;
+  const lb = -0.0041960863 * l - 0.7034186147 * mm + 1.707614701 * s;
+
+  const gamma = (c: number) => {
+    const v = c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
+    // Clamp rather than reject: a token slightly outside the sRGB gamut is
+    // still what a browser will paint, and refusing to measure it would mean
+    // the assertion silently skips the value it was written for.
+    return Math.round(Math.min(1, Math.max(0, v)) * 255);
+  };
+
+  return [gamma(lr), gamma(lg), gamma(lb)];
+}
+
+/** A token in either notation. `null` for anything neither parser understands. */
+function toRgb(value: string | undefined): [number, number, number] | null {
+  if (!value) return null;
+  return hexToRgb(value) ?? oklchToRgb(value);
+}
+
+function ratio(a: string | undefined, b: string | undefined): number | null {
+  const ra = toRgb(a);
+  const rb = toRgb(b);
+  if (!ra || !rb) return null;
+  const [l1, l2] = [luminance(ra), luminance(rb)].sort((x, y) => y - x);
+  return (l1 + 0.05) / (l2 + 0.05);
+}
+
 describe('the token file parsed', () => {
   test('both themes define tokens', () => {
     assert.ok(light.size > 30, `light theme has ${light.size} tokens`);
@@ -94,6 +161,85 @@ describe('status colours are legible (WCAG AA)', () => {
         );
       });
     }
+  }
+});
+
+describe('the ground is legible, and stays that way (PM.6)', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    const tokens = theme === 'light' ? light : dark;
+    const surfaces = ['--background', '--surface-raised', '--surface-subtle'] as const;
+
+    test(`${theme}: the oklch parser resolved the ground`, () => {
+      // A parser that silently returns null makes every assertion below vacuous
+      // — the same failure the access suite guards with "the glob found
+      // something".
+      for (const name of [...surfaces, '--foreground', '--muted-foreground']) {
+        assert.ok(toRgb(tokens.get(name)), `${theme} ${name} = ${tokens.get(name)} did not parse`);
+      }
+    });
+
+    for (const surface of surfaces) {
+      test(`${theme}: secondary text on ${surface} clears 4.5:1`, () => {
+        const r = ratio(tokens.get('--muted-foreground'), tokens.get(surface));
+        assert.ok(r !== null);
+        assert.ok(
+          r! >= 4.5,
+          `${theme}: --muted-foreground on ${surface} is ${r!.toFixed(2)}:1. ` +
+            'Most of a dense console is read in this colour.',
+        );
+      });
+    }
+
+    test(`${theme}: body text clears AAA on the page ground`, () => {
+      const r = ratio(tokens.get('--foreground'), tokens.get('--background'));
+      assert.ok(r! >= 7, `${theme}: --foreground is ${r!.toFixed(2)}:1`);
+    });
+
+    test(`${theme}: an unavailable control cannot be mistaken for secondary text`, () => {
+      /* THE DEFECT THIS EXISTS FOR. Disabled controls were `opacity: 0.5`,
+       * which puts a label at whatever grey sits halfway to the background —
+       * and that is precisely where `--muted-foreground` lives. So a caption
+       * and a control nobody may press were the same colour, and the operator
+       * had to work out which one was information.
+       *
+       * Both halves are asserted. The disabled grey must be MEASURABLY weaker
+       * than secondary text, so the two can never converge again; and it must
+       * still clear 3:1, because "unavailable" is not the same instruction as
+       * "invisible" — somebody has to be able to read WHICH control is off. */
+      const mutedOnSurface = ratio(tokens.get('--muted-foreground'), tokens.get('--surface-raised'))!;
+      const disabledOnBox = ratio(
+        tokens.get('--control-disabled-fg'),
+        tokens.get('--control-disabled-bg'),
+      );
+      assert.ok(disabledOnBox !== null, `${theme}: --control-disabled-fg/bg did not parse`);
+      assert.ok(
+        disabledOnBox! <= mutedOnSurface * 0.72,
+        `${theme}: disabled text is ${disabledOnBox!.toFixed(2)}:1 against secondary text's ` +
+          `${mutedOnSurface.toFixed(2)}:1 — too close to tell apart`,
+      );
+      assert.ok(
+        disabledOnBox! >= 3,
+        `${theme}: disabled text is ${disabledOnBox!.toFixed(2)}:1 — inert is not the same as illegible`,
+      );
+    });
+
+    test(`${theme}: a raised surface is distinguishable from the page`, () => {
+      const raised = toRgb(tokens.get('--surface-raised'))!;
+      const ground = toRgb(tokens.get('--background'))!;
+      assert.notDeepEqual(
+        raised,
+        ground,
+        `${theme}: a card that is the same colour as the page is an outline, not a surface`,
+      );
+    });
+
+    test(`${theme}: a hovered row is distinguishable from a raised one`, () => {
+      // Not a contrast threshold — a hover tint is deliberately quiet. What
+      // must hold is that it differs at all, because the ERP's tables have no
+      // zebra and hover is the only thing tracking a row across nine columns.
+      assert.notEqual(tokens.get('--surface-hover'), tokens.get('--surface-raised'));
+      assert.notEqual(tokens.get('--surface-hover'), tokens.get('--surface-selected'));
+    });
   }
 });
 

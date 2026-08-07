@@ -1,13 +1,19 @@
+import Link from "next/link";
+
 import { withTenant } from "@landingos/db";
 import { can } from "@landingos/auth";
+import { toneVars } from "@landingos/ui";
 import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
-import { catalogStrings } from "@/lib/console/erp-strings";
+import { catalogStrings, stockLabels } from "@/lib/console/erp-strings";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader, PageBody } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody, Section } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
+import { ProductThumb } from "@/components/console/erp/product-thumb";
+import { StockChip } from "@/components/console/erp/stock-chip";
+import { stockLevel, STOCK_TONE, type StockSeverity } from "@/lib/erp/stock-level";
 import {
   StockAdjustPanel,
   StockLotPanel,
@@ -39,41 +45,63 @@ export default async function ErpInventoryScreen() {
   const { low, movements, stockProducts } = await withTenant(session.auth!.tenantId, async (db) => {
     const products = await db.catalogProduct.findMany({
       where: { archived: false },
-      select: { id: true, reference: true, name: true, sku: true, stock: true, threshold: true, variants: true },
+      select: {
+        id: true, reference: true, name: true, sku: true, image: true,
+        stock: true, threshold: true, variants: true,
+      },
     });
 
     const low: Array<{
-      key: string; name: string; variantName: string | null;
-      sku: string | null; stock: number; threshold: number;
+      key: string; productId: string; name: string; variantName: string | null;
+      sku: string | null; image: string | null; stock: number; threshold: number;
+      severity: StockSeverity;
     }> = [];
 
     for (const product of products) {
       const view = inventoryView(product);
       if (view.variants.length) {
         for (const variant of view.variants) {
-          if (variant.threshold > 0 && variant.stock <= variant.threshold) {
-            low.push({
-              key: `${product.id}:${variant.name}`,
-              name: product.name ?? "",
-              variantName: variant.name,
-              sku: variant.sku ?? product.sku,
-              stock: variant.stock,
-              threshold: variant.threshold,
-            });
-          }
+          /* PM.5 — three states, not one. `stock <= threshold` is one bit for
+             two situations a warehouse treats completely differently: a variant
+             at 18 against a threshold of 24 is a restock to schedule, and a
+             variant at 0 is an order the call centre is about to confirm and
+             cannot ship. Both were the same row, so the second was invisible
+             inside a list of the first — and a product with NO threshold set
+             could be at zero and never appear here at all, which is the case
+             this now catches. */
+          const severity = stockLevel(variant.stock, variant.threshold);
+          if (severity === "ok") continue;
+          low.push({
+            key: `${product.id}:${variant.name}`,
+            productId: product.id,
+            name: product.name ?? "",
+            variantName: variant.name,
+            sku: variant.sku ?? product.sku,
+            image: variant.image || product.image || null,
+            stock: variant.stock,
+            threshold: variant.threshold,
+            severity,
+          });
         }
-      } else if (view.threshold > 0 && view.stock <= view.threshold) {
-        low.push({
-          key: product.id,
-          name: product.name ?? "",
-          variantName: null,
-          sku: product.sku,
-          stock: view.stock,
-          threshold: view.threshold,
-        });
+      } else {
+        const severity = stockLevel(view.stock, view.threshold);
+        if (severity !== "ok") {
+          low.push({
+            key: product.id,
+            productId: product.id,
+            name: product.name ?? "",
+            variantName: null,
+            sku: product.sku,
+            image: product.image || null,
+            stock: view.stock,
+            threshold: view.threshold,
+            severity,
+          });
+        }
       }
     }
-    low.sort((a, b) => a.stock - b.stock);
+    const rank: Record<StockSeverity, number> = { out: 0, critical: 1, low: 2, ok: 3 };
+    low.sort((a, b) => rank[a.severity] - rank[b.severity] || a.stock - b.stock);
 
     const movements = await db.inventoryMovement.findMany({
       orderBy: [{ ts: "desc" }, { id: "desc" }],
@@ -104,6 +132,36 @@ export default async function ErpInventoryScreen() {
   const errors = actionErrors(t);
   const s = catalogStrings(t);
 
+  /* The three counts, as chips on the section header. A list of forty rows
+     answers "what is running low"; the chips answer "how bad is it" before
+     anybody reads a row — and the two that matter are the two that are not
+     "low". A count of zero is omitted rather than shown grey, for the reason
+     the dashboard's alert band filters itself: a zero is furniture. */
+  const severityLabels: Array<[StockSeverity, string]> = [
+    ["out", t("erp.inventory.out")],
+    ["critical", t("erp.inventory.critical")],
+    ["low", t("erp.inventory.low")],
+  ];
+  const severityCounts = (
+    <>
+      {severityLabels.map(([severity, label]) => {
+        const n = low.filter((r) => r.severity === severity).length;
+        if (!n) return null;
+        return (
+          <span
+            key={severity}
+            data-severity-count={severity}
+            style={toneVars(STOCK_TONE[severity])}
+            className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium"
+          >
+            <span className="tabular-nums" dir="ltr">{n}</span>
+            {label}
+          </span>
+        );
+      })}
+    </>
+  );
+
   return (
     <ConsoleShell session={session} productId="erp">
       <PageBody>
@@ -116,25 +174,45 @@ export default async function ErpInventoryScreen() {
         </>
       )}
 
-      <h2 className="mt-6 text-sm font-semibold tracking-tight">{t("erp.inventory.lowStock")}</h2>
+      <Section
+        title={t("erp.inventory.lowStock")}
+        description={t("erp.inventory.lowStockHint")}
+        flush
+        testId="erp-low-stock"
+        actions={severityCounts}
+      >
       <DataTable
         testId="erp-low-stock-table"
         empty={t("erp.inventory.healthy")}
+        emptyCopy={{
+          title: t("erp.inventory.healthy"),
+          description: t("erp.overview.stockHealthyHint"),
+        }}
+        caption={t("erp.inventory.lowStock")}
         rows={low}
         rowKey={(r) => r.key}
+        rowAttrs={(r) => ({ "data-stock-severity": r.severity })}
         columns={[
           {
             id: "product",
             header: t("erp.products.title"),
             cell: (r) => (
-              <>
-                <span className="font-medium">{r.name || "—"}</span>
-                {r.variantName && (
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
-                    {t("erp.inventory.variant")}: {r.variantName}
-                  </span>
-                )}
-              </>
+              <div className="flex items-start gap-2.5">
+                <ProductThumb src={r.image} alt="" size="sm" />
+                <div className="min-w-0">
+                  <Link
+                    href={`/console/erp/products/${r.productId}`}
+                    className="font-medium underline-offset-2 hover:underline"
+                  >
+                    {r.name || "—"}
+                  </Link>
+                  {r.variantName && (
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {t("erp.inventory.variant")}: {r.variantName}
+                    </span>
+                  )}
+                </div>
+              </div>
             ),
           },
           {
@@ -149,9 +227,10 @@ export default async function ErpInventoryScreen() {
           {
             id: "stock",
             header: t("erp.products.stock"),
-            numeric: true,
             align: "end",
-            cell: (r) => <span className="font-medium">{r.stock}</span>,
+            cell: (r) => (
+              <StockChip stock={r.stock} threshold={r.threshold} labels={stockLabels(t)} />
+            ),
           },
           {
             id: "threshold",
@@ -162,8 +241,9 @@ export default async function ErpInventoryScreen() {
           },
         ]}
       />
+      </Section>
 
-      <h2 className="mt-8 text-sm font-semibold tracking-tight">{t("erp.inventory.movements")}</h2>
+      <Section title={t("erp.inventory.movements")} flush testId="erp-movements">
       <DataTable
         testId="erp-movements-table"
         empty={t("common.empty")}
@@ -218,6 +298,7 @@ export default async function ErpInventoryScreen() {
           },
         ]}
       />
+      </Section>
       </PageBody>
     </ConsoleShell>
   );

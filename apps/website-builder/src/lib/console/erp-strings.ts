@@ -18,6 +18,10 @@ import type { ClientExportStrings } from "@/components/console/erp/client-export
 import type { NotifyPrefStrings } from "@/components/console/notify-preferences";
 import type { ChannelStrings } from "@/components/console/erp/channel-write";
 import type { VariantEditorStrings } from "@/components/console/erp/variant-editor";
+import type { VariantMatrixStrings } from "@/components/console/erp/variant-matrix";
+import type { ImageInputStrings } from "@/components/console/erp/image-input";
+import type { StockLabels } from "@/components/console/erp/stock-chip";
+import type { ProductCreateStrings } from "@/components/console/erp/product-create";
 import type { ImportStrings } from "@/components/console/erp/csv-import";
 import type {
   FollowupAssignStrings, CountdownStrings,
@@ -69,6 +73,7 @@ export function catalogStrings(t: (key: string) => string): CatalogStrings {
     quantity: t("erp.orders.quantity"),
     unitCost: t("erp.write.unitCost"),
     addLot: t("erp.write.addLot"),
+    image: imageStrings(t),
   };
 }
 
@@ -552,12 +557,37 @@ export function channelStrings(t: (key: string) => string): ChannelStrings {
 
 
 /** The variant editor's labels — LP.18. */
-export function variantEditorStrings(t: (key: string) => string): VariantEditorStrings {
+/** The photograph control's labels — PM.2. One bundle, four callers. */
+export function imageStrings(t: (key: string) => string): ImageInputStrings {
   return {
-    saving: t("common.saving"),
-    panel: t("erp.variants.panel"),
-    hint: t("erp.variants.hint"),
-    product: t("erp.write.product"),
+    label: t("erp.write.image"),
+    upload: t("erp.write.uploadImage"),
+    uploading: t("erp.write.uploading"),
+    remove: t("erp.write.removeImage"),
+    urlHint: t("erp.write.imageUrlHint"),
+    failed: t("erp.write.uploadFailed"),
+  };
+}
+
+/** The stock-severity vocabulary — PM.5. One answer, wherever a level shows. */
+export function stockLabels(t: (key: string) => string): StockLabels {
+  return {
+    out: t("erp.inventory.out"),
+    critical: t("erp.inventory.critical"),
+    low: t("erp.inventory.low"),
+    ok: t("erp.inventory.ok"),
+    threshold: t("erp.inventory.threshold"),
+  };
+}
+
+/**
+ * The variant grid's labels — PM.3.
+ *
+ * Shared by the editor AND the create panel, because both render the same
+ * matrix. Building it twice is how one of them ends up a key behind the other.
+ */
+export function variantMatrixStrings(t: (key: string) => string): VariantMatrixStrings {
+  return {
     optionName: t("erp.variants.optionName"),
     optionValues: t("erp.variants.optionValues"),
     addOption: t("erp.variants.addOption"),
@@ -569,9 +599,60 @@ export function variantEditorStrings(t: (key: string) => string): VariantEditorS
     threshold: t("erp.inventory.threshold"),
     addVariant: t("erp.variants.addVariant"),
     remove: t("erp.variants.remove"),
+    noVariants: t("erp.variants.noVariants"),
+    groupTotal: t("erp.variants.groupTotal"),
+    other: t("erp.variants.other"),
+    collapse: t("erp.variants.collapse"),
+    expand: t("erp.variants.expand"),
+    groupImage: t("erp.variants.groupImage"),
+    image: imageStrings(t),
+    stockLabels: stockLabels(t),
+  };
+}
+
+export function variantEditorStrings(t: (key: string) => string): VariantEditorStrings {
+  return {
+    ...variantMatrixStrings(t),
+    saving: t("common.saving"),
+    panel: t("erp.variants.panel"),
+    hint: t("erp.variants.hint"),
+    product: t("erp.write.product"),
     reason: t("erp.inventory.reason"),
     save: t("common.save"),
-    noVariants: t("erp.variants.noVariants"),
+    open: t("erp.variants.open"),
+    close: t("common.cancel"),
+  };
+}
+
+/** The single-pass product form — PM.3. */
+export function productCreateStrings(t: (key: string) => string): ProductCreateStrings {
+  return {
+    ...variantMatrixStrings(t),
+    saving: t("common.saving"),
+    newProduct: t("erp.write.newProduct"),
+    open: t("erp.write.newProduct"),
+    close: t("common.cancel"),
+    create: t("erp.write.create"),
+    identity: t("erp.write.sectionIdentity"),
+    classification: t("erp.write.sectionClassification"),
+    money: t("erp.write.sectionMoney"),
+    stockSection: t("erp.write.sectionStock"),
+    variantsSection: t("erp.variants.panel"),
+    variantsHint: t("erp.write.variantsHint"),
+    name: t("erp.products.title"),
+    sku: t("erp.products.sku"),
+    brand: t("erp.orders.brand"),
+    niche: t("erp.products.niche"),
+    category: t("erp.products.category"),
+    supplier: t("erp.products.supplier"),
+    price: t("erp.products.price"),
+    cost: t("erp.products.cost"),
+    packaging: t("erp.write.packaging"),
+    costHint: t("erp.write.costHint"),
+    thresholdHint: t("erp.write.thresholdHint"),
+    stockHint: t("erp.write.stockHint"),
+    imageStrings: imageStrings(t),
+    required: t("erp.write.nameRequired"),
   };
 }
 

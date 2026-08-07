@@ -21,8 +21,11 @@ import { OrderRowActions } from "@/components/console/erp/order-row-actions";
 import { CsvImportPanel } from "@/components/console/erp/csv-import";
 import {
   filterStrings, pagerStrings, orderCreateStrings, orderExportStrings, rowActionStrings,
-  importStrings, sortStrings, densityStrings, emptyCopy,
+  importStrings, sortStrings, densityStrings, emptyCopy, stockLabels,
 } from "@/lib/console/erp-strings";
+import { ProductThumb } from "@/components/console/erp/product-thumb";
+import { StockChip } from "@/components/console/erp/stock-chip";
+import { resolveOrderProducts } from "@/lib/erp/order-product";
 import { scopedWhere, seesWholeBook, mayTouchOrder } from "@/lib/erp/scope";
 import {
   orderFilters, orderSort, orderFilterFields, orderRowFacts,
@@ -83,7 +86,7 @@ export default async function ErpOrdersScreen({
 
   const {
     orders, total, members, carriers, confirmedCount, alertMinutes, flagged, notes,
-    followupOverdue,
+    followupOverdue, catalog: catalogByOrder,
   } =
     await withTenant(session.auth!.tenantId, async (db) => {
     const total = await db.fulfillmentOrder.count({ where });
@@ -146,6 +149,11 @@ export default async function ErpOrdersScreen({
     return {
     total,
     orders,
+    /* PM.2 / PM.5 — the catalogue row behind each line, resolved for the PAGE.
+       Two reads for fifty orders, never two per row: the match is on a
+       normalised name Postgres has no index for, so it cannot be a join, and a
+       query per row is exactly the cost PERF-02 refuses. */
+    catalog: await resolveOrderProducts(db, orders),
     alertMinutes: Number((await readSettings(db)).alertMinutes) || 60,
     flagged: new Set(flaggedRows.map((r) => r.orderId)),
     notes: new Map(noteRows.map((r) => [r.orderId, r.note as string])),
@@ -215,6 +223,7 @@ export default async function ErpOrdersScreen({
   };
 
   const rowStrings = rowActionStrings(t);
+  const stock = stockLabels(t);
   const memberOptions = members.map((m) => ({
     value: m.userId,
     label: m.user.name || m.user.email,
@@ -436,19 +445,44 @@ export default async function ErpOrdersScreen({
           {
             id: "product",
             header: t("erp.orders.product"),
-            cell: (o) => (
-              <div className="min-w-[7rem]">
-                <span>{o.product || "—"}</span>
-                {o.productVariant && (
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
-                    {o.productVariant}
-                  </span>
-                )}
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {t("erp.orders.quantity")}: {o.quantity ?? 1}
-                </span>
-              </div>
-            ),
+            cell: (o) => {
+              /* PM.2 / PM.5 — the thing being sold, and whether there is any of
+                 it left. The legacy shows a photograph on every order row; the
+                 platform ported the column and none of the readers. The
+                 catalogue is read ONCE for the page (`resolveOrderProducts`),
+                 never per row — PERF-02's rule, and the same reason
+                 `ORDER_LIST_SELECT` joins no call history. */
+              const catalog = catalogByOrder.get(o.id);
+              return (
+                <div className="flex min-w-[9rem] items-start gap-2">
+                  <ProductThumb src={catalog?.image} alt="" size="xs" />
+                  <div className="min-w-0">
+                    <span className="block truncate">{o.product || "—"}</span>
+                    {o.productVariant && (
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                        {o.productVariant}
+                      </span>
+                    )}
+                    <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                      <span>
+                        {t("erp.orders.quantity")}: {o.quantity ?? 1}
+                      </span>
+                      {/* Only when it is a problem. A green pill on every row is
+                          how the two that matter disappear. */}
+                      {catalog && (
+                        <StockChip
+                          stock={catalog.stock}
+                          threshold={catalog.threshold}
+                          labels={stock}
+                          showLabel={false}
+                          onlyWhenAlert
+                        />
+                      )}
+                    </span>
+                  </div>
+                </div>
+              );
+            },
           },
           {
             id: "total",

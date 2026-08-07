@@ -21,7 +21,11 @@ import {
   type OrderWriteStrings,
 } from "@/components/console/erp/order-write";
 import { editFingerprint, type EditField } from "@/components/console/edit-field";
+import { ProductThumb } from "@/components/console/erp/product-thumb";
+import { StockChip } from "@/components/console/erp/stock-chip";
+import { stockLabels } from "@/lib/console/erp-strings";
 import { mayTouchOrder, seesWholeBook } from "@/lib/erp/scope";
+import { resolveOrderProduct } from "@/lib/erp/order-product";
 import { CALL_RESULTS, NOTE_TYPES, ORDER_STATUSES } from "@/lib/erp/orders";
 
 export const dynamic = "force-dynamic";
@@ -143,12 +147,20 @@ export default async function ErpOrderDetail({
         })
       : null;
 
-    return { order, calls, shipment, members, audit };
+    /* PM.2 / PM.5 — the catalogue row this order is about.
+       The legacy shows a photograph on every order and the platform ported the
+       column and none of the readers. The same lookup carries the level of the
+       exact variant somebody is about to confirm, which is the fact this screen
+       has never said and the one that decides whether confirming is a promise
+       anybody can keep. */
+    const catalog = await resolveOrderProduct(db, order);
+
+    return { order, calls, shipment, members, audit, catalog };
   });
 
   if (!data || !mayTouchOrder(session, data.order)) notFound();
 
-  const { order, calls, shipment, members, audit } = data;
+  const { order, calls, shipment, members, audit, catalog } = data;
   const actorNames = new Map(members.map((m) => [m.userId, m.user.name || m.user.email]));
   const currency = session.tenant!.currency;
   const tone = resolveStatus("confirmation", order.status ?? "");
@@ -371,10 +383,56 @@ export default async function ErpOrderDetail({
           data-testid="order-summary"
         >
           <h2 className="text-sm font-semibold tracking-tight">{t("erp.orders.product")}</h2>
-          <p className="mt-2">
-            {order.product || "—"}
-            {order.productVariant ? ` · ${order.productVariant}` : ""}
-          </p>
+          {/* PM.2 — the thing being sold, shown rather than described. PM.5 —
+              and whether there is any of it left, which is the fact that
+              decides whether confirming this order is a promise the warehouse
+              can keep. Both come from ONE catalogue lookup, resolved the way
+              `resolveProduct` resolves it (the link first, exclusively, then a
+              normalised name) so the photograph cannot disagree with the
+              revenue counters on the same product. */}
+          <div className="mt-2 flex items-start gap-3" data-testid="order-product">
+            <ProductThumb src={catalog?.image} alt="" size="md" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">
+                {catalog ? (
+                  <Link
+                    href={`/console/erp/products/${catalog.productId}`}
+                    className="underline-offset-2 hover:underline"
+                  >
+                    {order.product || "—"}
+                  </Link>
+                ) : (
+                  (order.product || "—")
+                )}
+                {order.productVariant ? (
+                  <span className="text-muted-foreground"> · {order.productVariant}</span>
+                ) : null}
+              </p>
+              {catalog && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <StockChip
+                    stock={catalog.stock}
+                    threshold={catalog.threshold}
+                    labels={stockLabels(t)}
+                  />
+                  {catalog.unknownVariant && (
+                    <span className="text-2xs text-muted-foreground">
+                      {t("erp.order.unknownVariant")}
+                    </span>
+                  )}
+                </div>
+              )}
+              {/* Absent rather than silent. An order whose product matches no
+                  catalogue row — or matches two (AUDIT.3) — moves no counters
+                  and reserves no stock, and until now the only evidence was a
+                  figure that never changed. */}
+              {!catalog && order.product && (
+                <p className="mt-1.5 text-2xs text-muted-foreground">
+                  {t("erp.order.noCatalogMatch")}
+                </p>
+              )}
+            </div>
+          </div>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
             <div>
               <dt className="text-muted-foreground">{t("erp.orders.quantity")}</dt>

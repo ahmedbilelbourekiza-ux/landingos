@@ -422,8 +422,17 @@ function toBound(value: string, endOfDay = false): Date {
   return endOfDay ? new Date(y, m - 1, d, 23, 59, 59, 999) : new Date(y, m - 1, d);
 }
 
-/** Start-of-day in the server's zone; `null` for a value that names no window. */
-function rangeBounds(range: string, now = new Date()): { gte?: Date; lte?: Date } | null {
+/**
+ * Start-of-day in the server's zone; `null` for a value that names no window.
+ *
+ * EXPORTED for the dashboard (PM.1), and that is the point rather than a
+ * convenience. The overview leads with "today" and links every figure to the
+ * order list filtered by the same word — so if it resolved its own window, a
+ * tile reading 14 could open a list showing 11 the moment one of the two
+ * definitions moved. It is the D-LP.3 rule applied to a screen: one function,
+ * one answer.
+ */
+export function rangeBounds(range: string, now = new Date()): { gte?: Date; lte?: Date } | null {
   const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const today = startOfDay(now);
 

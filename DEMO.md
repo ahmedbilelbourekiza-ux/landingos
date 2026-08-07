@@ -43,6 +43,17 @@ The **owner** is the account to use for a full walkthrough. The **agent** shows
 the scoped call-centre experience. Sign in as each to see how the platform's
 role model changes what a person reaches.
 
+### What to look at first (Phase PM)
+
+| Where | What it shows |
+|---|---|
+| `/console/erp` | The operational dashboard. Change the period and watch every figure gain a comparison against the same length of time before it. The **Needs attention** band renders only what is non-zero and each card opens the screen where that thing gets fixed. |
+| Sign in as `manager@` then `agent@`, same URL | The dashboard is scoped. The agent sees their own queue's figures, no customer count (D-05.1), no agent or carrier league table, and their stock alerts point at the catalogue rather than the stockroom they cannot open. |
+| `/console/erp/products` | Upload a photograph on **New product**, add two option axes, generate the matrix, set a level per variant — one save. Then open a row's chevron: the variants come out grouped, with per-group stock totals. |
+| `/console/erp/orders` and `/console/erp/queue` | The product photograph and the level of the exact variant on every row and card, resolved for the page rather than per row. |
+| The header search, or press `/` | Type a reference, a customer name or a phone number from anywhere in the console. |
+| The theme toggle | The dark palette was re-measured in PM.6 — secondary text at 7.3:1 on a card, and a disabled control that no longer looks like a caption. |
+
 ---
 
 ## URLs

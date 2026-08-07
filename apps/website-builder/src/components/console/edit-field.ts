@@ -33,7 +33,21 @@ export interface EditField {
   readonly name: string;
   readonly label: string;
   readonly value: string;
-  readonly kind: "text" | "number" | "money" | "textarea" | "select" | "checkbox";
+  /**
+   * `image` is a string field like any other — what it holds is a URL — and it
+   * is a KIND rather than a bespoke panel because the alternative was what
+   * shipped before PM.2: a bare text box labelled "Image" that only somebody
+   * who already had the file hosted somewhere could use. The control that
+   * renders it uploads a file and puts the resulting key in the same string.
+   */
+  readonly kind:
+    | "text"
+    | "number"
+    | "money"
+    | "textarea"
+    | "select"
+    | "checkbox"
+    | "image";
   readonly options?: readonly WriteOption[];
   readonly manager?: boolean;
 }

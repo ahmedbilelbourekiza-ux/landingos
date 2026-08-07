@@ -17,6 +17,7 @@ import { ConsoleDrawer } from "./console-sidebar";
 import { SignOutButton } from "./sign-out-button";
 import { NotificationProvider } from "./notification-provider";
 import { ThemeSwitcher } from "./theme-switcher";
+import { QuickSearch } from "./quick-search";
 import { ActionFeedback } from "./action-feedback";
 import { NavIcon } from "./ui/icon";
 import { pageContainer } from "./ui/styles";
@@ -110,6 +111,21 @@ export async function ConsoleShell({
   const productNames = Object.fromEntries(
     productRegistry.list().map((p) => [p.id, t(p.nameKey)]),
   );
+
+  /* PM.7 — the active product's quick lookup, resolved HERE so the header
+     component holds no registry and no permission logic. Withheld when the
+     manifest declares none (the builder), and when the person cannot reach the
+     destination — a search box that submits into a 404 is worse than no box,
+     which is the same rule the nav filter applies to every item above it. */
+  const declared = product?.search;
+  const quickSearch =
+    declared && (!declared.permission || session.permissions.includes(declared.permission))
+      ? {
+          action: `${productRegistry.hrefFor(product!.id)}/${declared.path}`,
+          param: declared.param,
+          placeholderKey: declared.placeholderKey,
+        }
+      : null;
 
   /* The navigation tree, rendered once on the server and handed to the frame,
      which draws it in the rail and in the drawer. Two calls would be two
@@ -235,6 +251,19 @@ export async function ConsoleShell({
             activeId={session.tenant?.id ?? null}
             label={t("common.switchTenant")}
           />
+          {/* PM.7 — the one lookup this product is opened for, if it declares
+              one. The shell learns nothing about what is being searched: the
+              path, the parameter and the placeholder all come off the manifest,
+              exactly as the navigation does. */}
+          {quickSearch && (
+            <QuickSearch
+              action={quickSearch.action}
+              param={quickSearch.param}
+              placeholder={t(quickSearch.placeholderKey)}
+              label={t("common.search")}
+              shortcutHint="/"
+            />
+          )}
           <div className="ms-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
             {/* ONE subscription per session, not per screen: this shell is on
                 every console page, and a provider per screen would open N
@@ -254,6 +283,7 @@ export async function ConsoleShell({
                   live: t("notifications.live"),
                   reconnecting: t("notifications.reconnecting"),
                   loading: t("common.loading"),
+                  openLabel: t("notifications.open"),
                 }}
               />
             )}

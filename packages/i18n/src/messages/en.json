@@ -45,18 +45,53 @@
     },
     "overview": {
       "title": "Overview",
-      "subtitle": "Today at a glance",
+      "subtitle": "What needs a person, and how the period is going",
       "pending": "Awaiting a call",
       "confirmed": "Confirmed",
-      "inDelivery": "Out for delivery",
       "delivered": "Delivered",
       "customers": "Customers",
-      "lowStock": "Low stock",
       "myQueue": "Your queue",
       "wholeBook": "The whole order book",
-      "overdue": "Orders nobody has called",
       "overdueHint": "Waiting more than {minutes} minutes with no call logged.",
-      "revenue": "Delivered revenue"
+      "revenue": "Delivered revenue",
+      "period": "Period",
+      "vsPrevious": "vs the previous {period}",
+      "noComparison": "No earlier period to compare",
+      "attention": "Needs attention",
+      "attentionHint": "Everything here has somebody waiting on it. Each one opens where it gets fixed.",
+      "allClear": "Nothing needs attention.",
+      "allClearHint": "No overdue calls, no unbooked parcels, no stock warnings and no failing integrations.",
+      "alertOverdue": "Orders nobody has called",
+      "alertUnbooked": "Confirmed, no parcel booked",
+      "alertUnbookedHint": "The customer said yes and nothing has been handed to a carrier.",
+      "alertFollowup": "Follow-ups past their deadline",
+      "alertFollowupHint": "Open tasks whose due time has passed.",
+      "alertStockOut": "Out of stock",
+      "alertStockOutHint": "Confirming an order for these promises a delivery the warehouse cannot make.",
+      "alertStockCritical": "Critically low stock",
+      "alertStockCriticalHint": "At or under half the alert threshold — the restock is late, not due.",
+      "alertSuspicious": "Calls flagged as suspicious",
+      "alertSuspiciousHint": "Marked confirmed after a call shorter than the minimum you set.",
+      "alertCarrier": "Carrier failures (24h)",
+      "alertChannel": "Sales-channel failures (24h)",
+      "alertIntegrationHint": "Requests that were refused or never completed. An order may not have arrived.",
+      "returnRate": "Return rate",
+      "trend": "Orders per day",
+      "trendHint": "The filled part of each bar is what was confirmed.",
+      "trendEmpty": "No orders in this period.",
+      "day": "Day",
+      "openAnalytics": "Full analytics",
+      "recentOrders": "Latest orders",
+      "viewAll": "View all",
+      "stockAlerts": "Stock alerts",
+      "stockHealthyHint": "Every product and variant is above its threshold.",
+      "agentPerformance": "Agents",
+      "agentPerformanceHint": "Bar length is workload; colour is the confirmation rate.",
+      "carrierPerformance": "Carriers",
+      "carrierPerformanceHint": "Parcels the carrier settled in this period, and how many arrived.",
+      "topProducts": "Top products",
+      "topProductsHint": "By order volume, with the confirmed value of each.",
+      "ofTotal": "{n} of {total}"
     },
     "orders": {
       "title": "Orders",
@@ -126,7 +161,9 @@
       "fake": "Marked fake",
       "backToList": "Back to orders",
       "audit": "Who changed what",
-      "auditEmpty": "Nothing has been recorded for this order yet."
+      "auditEmpty": "Nothing has been recorded for this order yet.",
+      "unknownVariant": "This variant is not in the catalogue — the level shown is the product's total.",
+      "noCatalogMatch": "No catalogue product matches this line, so stock and revenue counters do not move for it."
     },
     "clients": {
       "title": "Customers",
@@ -167,7 +204,8 @@
       "timeline": "Timeline",
       "noEvents": "Nothing has changed on this product yet.",
       "ambiguous": "Duplicate name",
-      "ambiguousHint": "Two catalogue rows answer to this name, so an order naming it cannot be attributed to either — its lifetime counters stay still and the sales summary would count its revenue twice. Rename one."
+      "ambiguousHint": "Two catalogue rows answer to this name, so an order naming it cannot be attributed to either — its lifetime counters stay still and the sales summary would count its revenue twice. Rename one.",
+      "image": "Photo"
     },
     "inventory": {
       "title": "Inventory",
@@ -178,7 +216,12 @@
       "movements": "Recent movements",
       "change": "Change",
       "reason": "Reason",
-      "after": "After"
+      "after": "After",
+      "out": "Out",
+      "critical": "Critical",
+      "low": "Low",
+      "ok": "In stock",
+      "lowStockHint": "Out of stock first, then critically low, then due for a restock. A product with no threshold set can still be out."
     },
     "shipments": {
       "title": "Shipments",
@@ -378,7 +421,21 @@
       "createShipments": "Book parcels",
       "sendToDelivery": "Send to carrier",
       "bookingHint": "Booking is limited per run to",
-      "image": "Image URL"
+      "image": "Image URL",
+      "uploadImage": "Upload",
+      "uploading": "Uploading…",
+      "removeImage": "Remove image",
+      "imageUrlHint": "…or paste an image URL",
+      "uploadFailed": "The image could not be uploaded.",
+      "sectionIdentity": "Identity",
+      "sectionClassification": "Classification",
+      "sectionMoney": "Pricing and cost",
+      "sectionStock": "Stock",
+      "variantsHint": "Define the option axes, generate the matrix, then set a level and a photograph per variant. Everything below is saved with the product in one request.",
+      "costHint": "The basis every profit figure is computed from. A product created without it reports a margin that is wrong rather than absent.",
+      "thresholdHint": "Below this, the product is flagged as running low.",
+      "stockHint": "The opening level. Ignored when the matrix below has variants — each one carries its own.",
+      "nameRequired": "A name is required."
     },
     "settings": {
       "title": "Automation rules",
@@ -467,7 +524,8 @@
         "month": "Last 30 days"
       },
       "suspicious": "Call quality",
-      "suspiciousOnly": "Flagged calls only"
+      "suspiciousOnly": "Flagged calls only",
+      "searchPlaceholder": "Order, customer or phone"
     },
     "export": {
       "title": "Export",
@@ -551,7 +609,8 @@
       "marketer": "Marketer / source",
       "deliveryStatus": "Delivery status",
       "unknown": "Not recorded",
-      "revenueNote": "Confirmed value is what customers agreed to on the phone; delivered value is what the carrier actually paid. Under cash on delivery those are different numbers, and the gap between them is the one worth explaining."
+      "revenueNote": "Confirmed value is what customers agreed to on the phone; delivered value is what the carrier actually paid. Under cash on delivery those are different numbers, and the gap between them is the one worth explaining.",
+      "deliveredValue": "Delivered value"
     },
     "ai": {
       "title": "AI assistant",
@@ -598,7 +657,15 @@
       "generateHint": "Existing variants keep their stock.",
       "addVariant": "Add a variant",
       "remove": "Remove",
-      "noVariants": "No variants — this product is tracked as one stock line."
+      "noVariants": "No variants — this product is tracked as one stock line.",
+      "groupTotal": "Total",
+      "other": "Other",
+      "collapse": "Collapse",
+      "expand": "Expand",
+      "groupImage": "Photo for the group",
+      "open": "Edit variants",
+      "show": "Show variants",
+      "hide": "Hide variants"
     },
     "import": {
       "panel": "Import a file",
