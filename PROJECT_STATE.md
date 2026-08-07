@@ -2124,8 +2124,8 @@ fail without it, so check the counts, not just the exit code.
 | Suite | Tests | State |
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
-| `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 991 | all pass against a running server |
+| `apps/website-builder` | 102 | all pass (builder-api 22, builder-sections 45, console-shell 13, storefront 22) |
+| `apps/website-builder` — ERP contract | 989 | all pass against a running server (18 suites, each verified individually) |
 | `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
 | `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
@@ -2134,7 +2134,7 @@ fail without it, so check the counts, not just the exit code.
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 20 | all pass — including a scan of every `t("literal")` in the console source |
 | `services/worker` | 4 | all pass — AUDIT.9, the first tests this process has had. Runs it as a real child process against a server that never answers. |
-| **Total** | **1657** | green per suite |
+| **Total** | **1655** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and
