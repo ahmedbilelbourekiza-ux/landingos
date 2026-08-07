@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { SESSION_COOKIE } from '@landingos/auth';
 
 import {
-  skip, uid, BASE, makeErpTenant, makeMember, makeFollowupTask, cleanup, slugOf,
+  skip, uid, phone, BASE, makeErpTenant, makeMember, makeFollowupTask, cleanup, slugOf,
   contractTest as test,
 } from './helpers.ts';
 
@@ -817,5 +817,361 @@ describe('the sales-channel screen exists (R8)', () => {
 
     const orders = await screen('/console/erp/orders', acme.agent.token);
     assert.ok(!/\/console\/erp\/sales-channels/.test(orders.body), 'the nav must hide it too');
+  });
+});
+
+/* =============================================================================
+ * LP.20 / R19 — lead capture, product sync, and Shopify topic routing
+ *
+ * Three inbound paths the port dropped. The first is a real revenue path: a
+ * phone number typed into a checkout form and never submitted is a callable
+ * lead, and no platform event exposes one — the legacy confirmed that against
+ * six real-webhook tests before building a route that bypasses the event system
+ * entirely.
+ * ========================================================================== */
+
+describe('a phone typed into a checkout and abandoned is captured (R19)', () => {
+  test('it creates an abandoned lead, and nothing that looks like money', async () => {
+    const staged = await makeErpTenant(`lead-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Lead Store', platform: 'lightfunnels',
+    })).body.data.id;
+    const p = phone();
+
+    const res = await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}/lead-capture`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: p, name: 'Walk Away', wilaya: 'Alger', pageUrl: 'https://shop/checkout' }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).created, true);
+
+    const orders = await staged.manager.api('GET', '/api/erp/orders');
+    const order = orders.body.data.items[0];
+    assert.equal(order.client, 'Walk Away');
+    assert.equal(order.orderType, 'abandoned');
+    assert.equal(order.status, 'abandoned', 'a lead must never look like a placed order');
+    // D-LP.20.1: nothing this endpoint creates may look like a sale.
+    assert.equal(Number(order.price), 0);
+  });
+
+  test('a second keystroke MERGES rather than creating a second lead', async () => {
+    // The checkout script fires on every debounce: name, then phone, then
+    // wilaya. Without the merge that is four leads for one person.
+    const staged = await makeErpTenant(`merge-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Merge Store', platform: 'lightfunnels',
+    })).body.data.id;
+    const p = phone();
+    const post = (body: object) =>
+      fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}/lead-capture`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+    await post({ phone: p });
+    await post({ phone: p, name: 'Typed Later' });
+    await post({ phone: p, wilaya: 'Oran' });
+
+    const orders = await staged.manager.api('GET', '/api/erp/orders');
+    assert.equal(orders.body.data.total, 1, 'three keystrokes became three leads');
+    const order = orders.body.data.items[0];
+    assert.equal(order.client, 'Typed Later', 'a later keystroke must fill a blank field');
+    assert.equal(order.wilaya, 'Oran');
+  });
+
+  test('a merge never blanks a field an earlier call set', async () => {
+    const staged = await makeErpTenant(`noblank-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'NoBlank Store', platform: 'lightfunnels',
+    })).body.data.id;
+    const p = phone();
+    const post = (body: object) =>
+      fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}/lead-capture`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+    await post({ phone: p, name: 'First Name', wilaya: 'Alger' });
+    await post({ phone: p, name: '', wilaya: 'Oran' });
+
+    const order = (await staged.manager.api('GET', '/api/erp/orders')).body.data.items[0];
+    assert.equal(order.client, 'First Name');
+    assert.equal(order.wilaya, 'Alger', 'a real value was replaced');
+  });
+
+  test('nothing phone-shaped yet is a 200 that writes nothing', async () => {
+    // The script fires on every debounce; a 4xx in a browser console teaches
+    // somebody to remove the snippet.
+    const staged = await makeErpTenant(`nolead-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Empty Store', platform: 'lightfunnels',
+    })).body.data.id;
+
+    const res = await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}/lead-capture`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: '05', name: 'Too Early' }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).lead, false);
+    assert.equal((await staged.manager.api('GET', '/api/erp/orders')).body.data.total, 0);
+  });
+
+  test('a disabled channel accepts nothing — the tenant can turn it off', async () => {
+    // D-LP.20.1's fourth bound: this endpoint has no signature by design, so a
+    // tenant being abused needs a switch, and it is the one LP.15 renders.
+    const staged = await makeErpTenant(`off-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Off Store', platform: 'lightfunnels',
+    })).body.data.id;
+    await staged.manager.api('DELETE', `/api/erp/sales-channels/${channel}`);
+
+    await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}/lead-capture`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: phone(), name: 'Blocked' }),
+    });
+    assert.equal((await staged.manager.api('GET', '/api/erp/orders')).body.data.total, 0);
+  });
+
+  test('an unknown tenant answers exactly like a known one', async () => {
+    // A webhook endpoint must not be usable to enumerate customers.
+    const res = await fetch(`${BASE}/api/erp/webhooks/no-such-tenant/channel/x/lead-capture`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: phone() }),
+    });
+    assert.equal(res.status, 200);
+  });
+
+  test('the preflight is answered, because the caller is a public page', async () => {
+    const res = await fetch(`${BASE}/api/erp/webhooks/x/channel/y/lead-capture`, {
+      method: 'OPTIONS',
+    });
+    assert.equal(res.status, 204);
+    assert.equal(res.headers.get('access-control-allow-origin'), '*');
+  });
+
+  test('every call is recorded, so abuse is visible rather than inferred', async () => {
+    const staged = await makeErpTenant(`leadlog-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Logged Lead', platform: 'lightfunnels',
+    })).body.data.id;
+
+    await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}/lead-capture`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: phone(), name: 'Recorded' }),
+    });
+
+    const logs = await staged.manager.api('GET', `/api/erp/sales-channels/${channel}/logs`);
+    const events = logs.body.data.items.map((l: { event: string }) => l.event);
+    assert.ok(events.includes('lead_capture'), JSON.stringify(events));
+  });
+});
+
+describe('a product created on the storefront becomes a catalogue row (R19)', () => {
+  const shopifyProduct = {
+    id: 8899, title: 'Synced Serum',
+    variants: [
+      { title: '30ml', sku: 'SER-30', price: '2500.00' },
+      { title: '50ml', sku: 'SER-50', price: '3900.00' },
+    ],
+    images: [{ src: 'https://cdn/serum.png' }],
+  };
+
+  test('it creates the product AND the link revenue attribution reads first', async () => {
+    const staged = await makeErpTenant(`prod-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Product Store', platform: 'shopify',
+    })).body.data.id;
+
+    const res = await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}/product`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shopify-topic': 'products/create' },
+      body: JSON.stringify(shopifyProduct),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.created, true);
+
+    const products = await staged.manager.api('GET', '/api/erp/products?search=Synced');
+    const product = products.body.data.items[0];
+    assert.equal(product.name, 'Synced Serum');
+    assert.equal(String(product.price), '2500');
+    assert.equal(product.variants.length, 2);
+    // D-LP.18.1 — a variant from a webhook starts at zero; a level here would
+    // be a level with no movement row behind it.
+    assert.equal(product.variants[0].stock, 0);
+    assert.ok(product.reference, 'a catalogue row must carry its own number');
+  });
+
+  test('a second delivery of the same product creates NOTHING', async () => {
+    const staged = await makeErpTenant(`dupe-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Dupe Store', platform: 'shopify',
+    })).body.data.id;
+    const post = () =>
+      fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}/product`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(shopifyProduct),
+      });
+
+    await post();
+    const second = await (await post()).json();
+    assert.equal(second.created, false);
+    assert.equal(second.duplicate, true);
+    assert.equal((await staged.manager.api('GET', '/api/erp/products')).body.data.total, 1);
+  });
+
+  test('an existing product is never UPDATED by a webhook', async () => {
+    // The catalogue carries `costPrice`, `packagingCost` and a stock ledger the
+    // storefront knows nothing about. A `products/update` echoing a retail
+    // price back over a cost basis would corrupt every margin.
+    const staged = await makeErpTenant(`noupd-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'NoUpdate Store', platform: 'shopify',
+    })).body.data.id;
+    await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}/product`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(shopifyProduct),
+    });
+
+    const id = (await staged.manager.api('GET', '/api/erp/products')).body.data.items[0].id;
+    await staged.manager.api('PATCH', `/api/erp/products/${id}`, { costPrice: 900 });
+
+    await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}/product`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...shopifyProduct, title: 'Renamed', variants: [{ title: 'x', price: '1' }] }),
+    });
+
+    const after = (await staged.manager.api('GET', `/api/erp/products/${id}`)).body.data;
+    assert.equal(after.name, 'Synced Serum', 'a webhook renamed a catalogue product');
+    assert.equal(String(after.costPrice), '900', 'a webhook overwrote a cost basis');
+  });
+
+  test('a platform with no product integration refuses to guess', async () => {
+    // D-LP.2's rule: a catalogue row invented from a misread payload is worse
+    // than no row, because somebody prices from it.
+    const staged = await makeErpTenant(`noadapter-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Unknown Store', platform: 'justsell',
+    })).body.data.id;
+
+    const res = await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}/product`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(shopifyProduct),
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).created, false);
+    assert.equal((await staged.manager.api('GET', '/api/erp/products')).body.data.total, 0);
+
+    const logs = await staged.manager.api('GET', `/api/erp/sales-channels/${channel}/logs`);
+    const events = logs.body.data.items.map((l: { event: string }) => l.event);
+    assert.ok(events.includes('webhook_unparsed'), 'and it must be visible');
+  });
+
+  test('the signature IS checked here — the caller is the platform', async () => {
+    const staged = await makeErpTenant(`prodsig-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Signed Store', platform: 'shopify', webhookSecret: 'shh',
+    })).body.data.id;
+
+    const res = await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}/product`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shopify-hmac-sha256': 'wrong' },
+      body: JSON.stringify(shopifyProduct),
+    });
+    assert.equal(res.status, 200, 'a rejected payload is acknowledged, not refused');
+    assert.equal((await staged.manager.api('GET', '/api/erp/products')).body.data.total, 0);
+  });
+});
+
+describe('Shopify sends every topic down one URL (R19)', () => {
+  test('a checkouts/create topic on the ORDER endpoint lands as abandoned', async () => {
+    // The legacy's own reason: an abandoned checkout carries a DIFFERENT
+    // payload shape, so force-fitting it into the order pipeline produces a
+    // "sale" nobody made.
+    const staged = await makeErpTenant(`topic-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Topic Store', platform: 'shopify',
+    })).body.data.id;
+
+    await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shopify-topic': 'checkouts/create' },
+      body: JSON.stringify({
+        id: 7001, phone: '0555667788', total_price: '1500',
+        shipping_address: { name: 'Half Way', province: 'Alger', city: 'Kouba' },
+        line_items: [{ name: 'Cart Item', quantity: 1, price: '1500' }],
+      }),
+    });
+
+    const order = (await staged.manager.api('GET', '/api/erp/orders')).body.data.items[0];
+    assert.ok(order, 'the checkout topic produced no row at all');
+    assert.equal(order.orderType, 'abandoned', 'a checkout became a placed order');
+  });
+
+  test('a draft_orders topic is marked as a draft, not dropped and not a sale', async () => {
+    const staged = await makeErpTenant(`draft-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Draft Store', platform: 'shopify',
+    })).body.data.id;
+
+    await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shopify-topic': 'draft_orders/create' },
+      body: JSON.stringify({
+        id: 7002, phone: '0555112244', total_price: '2000', name: '#D1',
+        shipping_address: { name: 'Assistant Typed', province: 'Oran', city: 'Es Senia' },
+        line_items: [{ name: 'Draft Item', quantity: 1, price: '2000' }],
+      }),
+    });
+
+    const order = (await staged.manager.api('GET', '/api/erp/orders')).body.data.items[0];
+    assert.ok(order, 'the draft topic produced no row');
+    assert.equal(order.orderType, 'draft');
+  });
+
+  test('an orders/create topic is still an ordinary order', async () => {
+    const staged = await makeErpTenant(`plain-${uid()}`);
+    const slug = await slugOf(staged.tenantId);
+    const channel = (await staged.manager.api('POST', '/api/erp/sales-channels', {
+      name: 'Plain Store', platform: 'shopify',
+    })).body.data.id;
+
+    await fetch(`${BASE}/api/erp/webhooks/${slug}/channel/${channel}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shopify-topic': 'orders/create' },
+      body: JSON.stringify({
+        id: 7003, phone: '0555998811', total_price: '3000',
+        shipping_address: { name: 'Real Buyer', province: 'Alger', city: 'Hydra' },
+        line_items: [{ name: 'Real Item', quantity: 1, price: '3000' }],
+      }),
+    });
+
+    const order = (await staged.manager.api('GET', '/api/erp/orders')).body.data.items[0];
+    assert.equal(order.orderType, 'normal');
+    assert.equal(order.status, 'pending', 'a real order belongs in the confirmation queue');
   });
 });

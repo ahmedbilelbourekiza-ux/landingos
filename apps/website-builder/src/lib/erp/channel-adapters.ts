@@ -105,13 +105,23 @@ const shopify: ChannelAdapter = {
    * parsed: M-06 moved 37 money columns to `numeric`, and the point of that is
    * lost the moment a total passes through a JS double.
    *
-   * TOPIC-GATED. Shopify sends dozens of topics down one endpoint, and only
-   * `orders/*` and `draft_orders/*` are orders — `checkouts/*` is an abandoned
-   * cart, which the checkout route handles differently. Returning null for the
-   * rest is not an error; the caller decides.
+   * TOPIC-GATED, and the gate is about SHAPE rather than about meaning.
+   *
+   * Shopify sends dozens of topics down one endpoint. `orders/*`,
+   * `draft_orders/*` and `checkouts/*` all carry the same order-ish shape —
+   * `line_items`, `shipping_address`, `total_price` — and this reads all three.
+   * Everything else (`products/*`, `customers/*`, `refunds/*`, `app/uninstalled`)
+   * carries a different shape entirely and returns null.
+   *
+   * WHAT a parsed payload MEANS is the route's decision, not this function's:
+   * `webhook-route.ts` reads the topic again and marks a checkout `abandoned`
+   * and a draft `draft`. A parser that also decided the order type would be a
+   * second place the topic is interpreted, and LP.20's first build proved that
+   * splits: the adapter refused `checkouts/create` outright and the route's
+   * abandoned-marking never ran, so the topic produced no row at all.
    */
   parseOrder(body, topic) {
-    if (topic && !/^(orders|draft_orders)\//.test(topic)) return null;
+    if (topic && !/^(orders|draft_orders|checkouts)\//.test(topic)) return null;
 
     const billing = (body.billing_address ?? {}) as Record<string, unknown>;
     const shipping = (body.shipping_address ?? {}) as Record<string, unknown>;

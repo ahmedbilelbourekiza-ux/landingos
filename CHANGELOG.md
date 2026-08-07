@@ -12,6 +12,116 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.20 The three inbound paths the port dropped
+
+[Opus 5]
+Date: 7 August 2026
+Summary: R19 — lead capture, product sync, and Shopify topic routing.
+integrations 47 → **63**.
+
+#### Lead capture — a real revenue path, and the only one that catches it
+
+The legacy built this after confirming, against six real-webhook tests, that
+**no LightFunnels event exposes a phone number** before an order is either
+completed or genuinely abandoned-and-forgotten. A visitor who types their number
+into a checkout form and closes the tab is a callable lead worth real money, and
+every event-based route misses them. So a small script on the checkout page posts
+here directly, bypassing the platform's event system.
+
+**D-LP.20.1 — this endpoint has no signature, deliberately.** The caller is
+JavaScript on a public page; a webhook secret embedded in that page is not a
+secret. What that costs is stated rather than glossed: anybody who knows the URL
+can create abandoned leads. Four things bound it, and they are the design:
+
+- it can only ever create an `abandoned` row. `price` is forced to zero and
+  `status` to `abandoned`, so nothing it makes can reach a revenue figure.
+- it reads **four text fields by name**. There is no allow-list to get wrong
+  because there is no spread.
+- a channel with `webhookEnabled: false` accepts nothing, so a tenant being
+  abused turns it off from the screen LP.15 built.
+- every call is written to the integration log, so abuse is visible rather than
+  inferred from a queue full of junk.
+
+**D-LP.20.2 — the 24-hour merge window.** The script fires on every
+keystroke-debounce: name, then phone, then wilaya. Without a merge that is four
+leads for one person. It fills only fields that are still blank — the same
+never-overwrite rule the import follows — so a later call cannot blank what an
+earlier one set.
+
+**D-LP.20.3 — cross-origin, and only here.** The script runs on the storefront's
+own domain, so `OPTIONS` answers the preflight and the response carries `*`. That
+is acceptable HERE and nowhere else: the endpoint is unauthenticated by design,
+so there is no ambient credential for a cross-origin request to abuse — which is
+precisely the property that makes CORS matter everywhere else.
+
+The lead notifies with `abandoned_cart` rather than `new_order`, so LP.11's
+signature for it is the abandoned-cart alert rather than the ka-ching. A lead
+that walked away is a different urgency from a sale that landed.
+
+#### Product sync — and the link that revenue attribution reads first
+
+It saves the double catalogue entry, but the more important thing it creates is
+the **`CatalogProductLink`** — the row tying a catalogue product to the
+platform's own product id. LP.16a made `sales-summary` match on that link FIRST
+and EXCLUSIVELY; without it, attribution falls back to matching a product NAME,
+which is the defect that cost a product with a `™` in its name all of its
+revenue.
+
+**It never UPDATES an existing product.** A product already linked to this
+external id is left exactly as it is. The catalogue here carries `costPrice`,
+`packagingCost` and a stock ledger the storefront knows nothing about, and a
+`products/update` webhook echoing a retail price back over a cost basis would
+silently corrupt every margin, every FIFO lot and every saved P&L. A test edits a
+cost basis and then re-delivers the webhook to prove it.
+
+**It creates no stock.** A new product arrives at zero and its variants at zero;
+opening stock is a movement (D-LP.18.1).
+
+**A platform with no product adapter refuses to guess** — D-LP.2's rule, because
+a catalogue row invented from a misread payload is worse than no row: somebody
+prices from it. **The signature IS checked here**, unlike the lead-capture route
+beside it, because this caller is the platform and a secret is a real secret.
+
+#### Shopify sends every topic down one URL
+
+The platform has `/checkout` and `/contact` as separate URLs, which is the better
+shape when a tenant can configure per topic. A tenant configures ONE. So the main
+endpoint now reads `x-shopify-topic`: `checkouts/*` is marked `abandoned` and
+`draft_orders/*` is marked `draft`, exactly as the legacy routes them inside
+`/webhook/shopify` — and for its stated reason, that an abandoned checkout
+carries a different payload shape and force-fitting it into the order pipeline
+produces a sale nobody made.
+
+#### The defect a test caught: two places interpreting the topic
+
+The first build had LP.15's Shopify adapter gate `parseOrder` to `orders/*` and
+`draft_orders/*`, and LP.20's route mark a checkout abandoned. Those disagree:
+the adapter refused `checkouts/create` outright, the route's abandoned-marking
+never ran, and the topic produced **no row at all**.
+
+The rule is now stated in both files. **The parser decides SHAPE; the route
+decides MEANING.** `orders/*`, `draft_orders/*` and `checkouts/*` all carry the
+same order-ish shape and the adapter reads all three; what a parsed payload MEANS
+is read from the topic once, in the route.
+
+#### Files
+
+- `apps/website-builder/src/app/api/erp/webhooks/[tenant]/channel/[id]/lead-capture/route.ts` — new
+- `apps/website-builder/src/app/api/erp/webhooks/[tenant]/channel/[id]/product/route.ts` — new
+- `apps/website-builder/src/lib/erp/webhook-route.ts` — topic routing
+- `apps/website-builder/src/lib/erp/channel-adapters.ts` — the shape/meaning split
+- `apps/website-builder/src/lib/erp/notify.ts` — `notifyNewOrder` can say `abandoned_cart`
+- `apps/website-builder/test/erp/integrations.test.ts` — 16 new tests
+
+**Migration:** none.
+
+**Risk:** medium, and it is the unauthenticated lead-capture endpoint. Its whole
+threat model is written above the code; the four bounds are each asserted by a
+test, including that a disabled channel accepts nothing and that an unknown
+tenant answers identically to a known one.
+
+---
+
 ### LP.19 A spreadsheet can come in, not only go out
 
 [Opus 5]

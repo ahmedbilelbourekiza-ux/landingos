@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *LP.19: a spreadsheet can come in*
+**Branch:** `master` · **Last commit:** *LP.20: the three inbound paths*
 **Working tree:** clean, all work committed.
 
 ---
@@ -16,13 +16,13 @@ anything else.
 **Second pass, 6 August 2026 (from `9d1f887`): 115 features compared —
 52 identical · 6 improved · 18 partial · 39 missing.**
 
-**As of 7 August 2026, TIERS 1 AND 2 ARE COMPLETE and EIGHTEEN of the twenty-seven
-roadmap slices have landed** — LP.1–LP.19 (all but 20, 21 and 22).
+**As of 7 August 2026, TIERS 1 AND 2 ARE COMPLETE and NINETEEN of the twenty-seven
+roadmap slices have landed** — LP.1–LP.20 (all but 21 and 22).
 Every production blocker §0b named is closed, as is every "computed, stored and
 shown nowhere" defect the three passes found.
 
 **TIER 2 IS COMPLETE** — 7, 8, 9, 10, 11 and 12 are all in.
-**Tier 3: 13–19 are in; 20, 21 and 22 are not.** Parity is reached at the end of Tier 3, so **three roadmap slices
+**Tier 3: 13–20 are in; only 21 and 22 are not.** Parity is reached at the end of Tier 3, so **two roadmap slices
 remain** — the full list is in `LEGACY_PARITY.md` §4 and every one still carries
 its own detail card in §3.
 
@@ -79,6 +79,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **LP.15** sales-channel screen, adapter registry, test, logs, per-platform parsing | R8 | **DONE** — integrations 29→47, access 87→90 |
 | **LP.18** product fields, the variant editor, `niche`/`category`/`supplier` | R12 | **DONE** — catalog 55→66, registry 21→23, access 90→92 |
 | **LP.19** customer + order CSV import (preview, per-row reasons, dedup) | R5 (rest), R17 (import) | **DONE** — import 25 (new), access 92→94 |
+| **LP.20** lead capture, product sync, Shopify topic routing | R19 | **DONE** — integrations 47→63 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -470,7 +471,7 @@ domain at a time.
 | the customer registry — one record, its history, its correction and its file (LP.10), and the niche filter LP.18 unblocked | registry 23/23 |
 | products (incl. **editing**, LP.1, the **normalised sales-summary match**, LP.16a, and the **variant editor + three classification columns**, LP.18), inventory, stock lots (incl. stock on confirm/cancel), agents, payroll (incl. `periodType`, LP.16b) | catalog 66/66 |
 | carriers (incl. **adapter refusal** LP.2, the **real ZR Express adapter** LP.5, and **test / sync / the integration log** LP.14), shipments, delivery settlement, the follow-up producer, the tracking poll | delivery 77/77 |
-| sales channels (incl. the **screen, the adapter registry, test / logs and per-platform parsing**, LP.15), inbound webhooks, AI, follow-up | integrations 47/47 |
+| sales channels (incl. the **screen, the adapter registry, test / logs and per-platform parsing**, LP.15), inbound webhooks (incl. **lead capture, product sync and topic routing**, LP.20), AI, follow-up | integrations 63/63 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
 | every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4, the **ZR configuration surface** LP.5, the **export panel** LP.6, the accountability surface LP.12, the **inline row actions + density** LP.8 and the **completed bulk bar** LP.9) | screens 152/152 |
 | the order book as a file — ZR / Ecom / Ecotrac / report (LP.6) | export 31/31 |
@@ -483,7 +484,7 @@ domain at a time.
 | the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
 | every surface, gated | access 94/94 |
 
-**806/806** across EIGHTEEN ERP contract files, each verified on its own, plus
+**822/822** across EIGHTEEN ERP contract files, each verified on its own, plus
 **91/91** platform contract (team 62 · billing 19 · signup 10) and **20/20** in
 `test/calc.test.ts` — the one PURE suite, which needs no server at all. Running
 several contract files back to back still trips the documented Neon connection
@@ -913,6 +914,38 @@ phone + total and the response SAYS so.
 **The defect a test caught:** the first build checked the phone before the id, so
 a Shopify export — which repeats the order row per LINE ITEM with the customer
 columns blank — arrived as one order plus a `no_phone` skip.
+
+### LP.20 — the three inbound paths the port dropped
+
+**R19.** Lead capture is a real revenue path and the only one that catches it:
+the legacy confirmed against six real-webhook tests that no platform event
+exposes a phone number before an order is completed or forgotten, so a script on
+the checkout page posts here directly.
+
+**D-LP.20.1 — no signature, deliberately, and narrow by construction.** The
+caller is public page JS, so a secret embedded there is not a secret. It can only
+ever create an `abandoned` row (price forced to zero), reads four fields by name,
+is refused by a disabled channel, and writes every call to the integration log.
+
+**D-LP.20.2 — a 24-hour merge window**, filling only blank fields, because the
+script fires on every keystroke-debounce. **D-LP.20.3 — CORS on this route and
+nowhere else**: it is unauthenticated by design, so there is no ambient credential
+for a cross-origin request to abuse.
+
+**Product sync creates the LINK**, which is what LP.16a made `sales-summary`
+match on first and exclusively. It never UPDATES an existing product: the
+catalogue carries a cost basis and a stock ledger the storefront knows nothing
+about, and a `products/update` echoing a retail price over it would corrupt every
+margin. It creates no stock, and a platform with no product adapter refuses to
+guess.
+
+**Topic routing on the one URL.** A tenant configures one endpoint;
+`checkouts/*` lands `abandoned` and `draft_orders/*` lands `draft`.
+
+**The defect a test caught: two places interpreting the topic.** LP.15's adapter
+gated `parseOrder` to `orders/*`, so LP.20's abandoned-marking never ran and a
+`checkouts/create` produced no row at all. **The parser decides SHAPE; the route
+decides MEANING**, and both files now say so.
 
 ### LP.14 — carriers: three columns nobody wrote, and a log nobody read
 
@@ -1777,7 +1810,7 @@ fail without it, so check the counts, not just the exit code.
 |---|---|---|
 | `apps/erp` | 298 | 297 pass, 1 skipped (the legacy stack, still standalone) |
 | `apps/website-builder` | 102 | all pass (console-shell split one test in two) |
-| `apps/website-builder` — ERP contract | 806 | all pass against a running server |
+| `apps/website-builder` — ERP contract | 822 | all pass against a running server |
 | `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
 | `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
@@ -1785,7 +1818,7 @@ fail without it, so check the counts, not just the exit code.
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 18 | all pass |
-| **Total** | **1462** | green per suite |
+| **Total** | **1478** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and

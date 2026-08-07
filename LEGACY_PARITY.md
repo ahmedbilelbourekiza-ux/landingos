@@ -704,13 +704,18 @@ correct for the console, but nothing outside it can read them.
 
 ---
 
-### R19 · Channel-side webhooks: lead-capture, product, Shopify HMAC — 🔴 MISSING (3 features)
+### R19 · Channel-side webhooks: lead-capture, product, Shopify HMAC — ✅ DONE (LP.20)
 **Legacy:** `/lead-capture` captures a partial checkout form and merges it into an
 existing abandoned row within 24 hours; `/product` auto-creates a catalogue
 product from a platform product event and links it by external id;
 `/webhook/shopify` is the HMAC-verified Shopify endpoint, routing
 `checkouts/*` and `draft_orders/create` to their own handlers.
-**Now:** `channel/[id]`, `/checkout` and `/contact` only.
+**Now (LP.20):** `/lead-capture` (unauthenticated by design — the caller is
+public page JS — with a stated threat model and four bounds), `/product`
+(creating the `CatalogProductLink`, never updating an existing product), and
+topic routing on `channel/[id]` so `checkouts/*` lands abandoned and
+`draft_orders/*` lands draft. **Was:** `channel/[id]`, `/checkout` and
+`/contact` only.
 **Business impact:** **Medium.** Lead capture is a real revenue path — a phone
 number typed and abandoned is a callable lead. Product sync saves manual
 catalogue entry.
@@ -926,7 +931,7 @@ from complete** — order export (R4) is all that remains in it.
 | ~~17~~ | ~~AI screen + provider/agent CRUD~~ | R10 | M | **DONE — LP.17.** The 404 is closed and the manifest is now asserted whole: every declared nav item must answer 200. Chat stays a stated 501; provider `/test` is deferred to slice 27 with its reason on the screen. |
 | ~~18~~ | ~~Product fields, variant editor, `niche`/`category`/`supplier`~~ | R12 | M | **DONE — LP.18.** `PUT /products/[id]/variants` writes the matrix and the option definitions and moves every stock difference through `applyMovement` (D-LP.18.1); removing a variant that still holds stock is refused by name (D-LP.18.2). The three columns land, and `niche` unblocks the client filter LP.10 had to ship without. |
 | ~~19~~ | ~~Client + order CSV import~~ | R5 (rest), R17 (import) | M | **DONE — LP.19.** Parsed on the SERVER (D-LP.19.1), preview and commit as one request with a required mode (D-LP.19.2), never overwriting a real value (D-LP.19.3), through `createOrder` and silently (D-LP.19.4/5), deduped by external id. Found a defect: a Shopify export repeats the order row per line item, and checking the phone before the id read those as skips. |
-| **20** | Channel webhooks: lead-capture, product, Shopify HMAC | R19 | M | |
+| ~~20~~ | ~~Channel webhooks: lead-capture, product, Shopify HMAC~~ | R19 | M | **DONE — LP.20.** Lead capture with its threat model stated and four bounds each tested (D-LP.20.1–3), product sync creating the `CatalogProductLink` revenue attribution reads first and never updating an existing product, and Shopify topic routing on the one URL a tenant actually configures. Found a defect: the adapter and the route were both interpreting the topic and disagreed, so `checkouts/create` produced no row. |
 | **21** | Manual follow-up assignment · live countdown | R13, N14 | S | |
 | **22** | Ecom carrier adapter | R2 (rest) | M | |
 

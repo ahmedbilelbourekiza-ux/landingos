@@ -115,6 +115,29 @@ export function channelWebhook(kind: "order" | "checkout" | "contact") {
       const adapter = getChannelAdapter(channel.platform);
       const topic = req.headers.get("x-shopify-topic");
 
+      /* LP.20 / R19 — TOPIC ROUTING ON THE ONE ENDPOINT.
+       *
+       * Shopify sends every topic a tenant subscribes to down whichever URL
+       * they configured, and a tenant configures ONE. The legacy routes
+       * `checkouts/*` and `draft_orders/create` to their own handlers inside
+       * `/webhook/shopify`, and the reason is in its own comment: an abandoned
+       * checkout carries a DIFFERENT payload shape (no order id, no
+       * `financial_status`), so force-fitting it into the order pipeline
+       * produces a "sale" nobody made.
+       *
+       * The platform already has `/checkout` and `/contact` as separate URLs,
+       * which is the better shape when a tenant can configure per topic. This
+       * makes the main endpoint behave correctly when they cannot — the topic
+       * decides the KIND, so one URL serves all of them. A tenant who does
+       * configure the separate URLs is unaffected: `kind` is already what it
+       * should be and the topic agrees. */
+      const effectiveKind: "order" | "checkout" | "contact" =
+        topic && /^checkouts\//.test(topic) ? "checkout" : kind;
+      // A draft order IS an order — it is one a shop assistant typed — but it
+      // is not one a customer completed, so it is marked as such rather than
+      // dropped or treated as a sale.
+      const isDraft = Boolean(topic && /^draft_orders\//.test(topic));
+
       /* A REGISTERED ADAPTER'S `null` IS AN ANSWER, NOT A MISS.
        *
        * The first build wrote `adapter?.parseOrder?.(…) ?? parseOrder(body)`,
@@ -152,10 +175,16 @@ export function channelWebhook(kind: "order" | "checkout" | "contact") {
       // A checkout or contact webhook is an ABANDONED order, not a placed one —
       // the customer filled the form and did not finish. Marking it keeps it
       // out of the confirmation queue while leaving it callable.
-      if (result.created && kind !== "order") {
+      //
+      // LP.20: `effectiveKind` rather than `kind`, so a `checkouts/create`
+      // topic arriving on the main endpoint is marked the same way one arriving
+      // on `/checkout` is. A draft order gets its own type — the order row
+      // already carries `orderType`, the list already renders a draft badge
+      // (LP.8), and `orderRowFacts` already reads it.
+      if (result.created && (effectiveKind !== "order" || isDraft)) {
         await db.fulfillmentOrder.update({
           where: { id: result.id! },
-          data: { orderType: "abandoned" },
+          data: { orderType: isDraft ? "draft" : "abandoned" },
         });
       }
 
@@ -168,7 +197,13 @@ export function channelWebhook(kind: "order" | "checkout" | "contact") {
         event: "webhook_received",
         result: "success",
         message: result.created ? "Order created." : "Already seen; nothing written.",
-        request: { kind, platform: channel.platform, externalId: parsed.externalId },
+        request: {
+          kind: effectiveKind,
+          topic,
+          draft: isDraft,
+          platform: channel.platform,
+          externalId: parsed.externalId,
+        },
       });
 
       return NextResponse.json({ received: true, created: result.created });

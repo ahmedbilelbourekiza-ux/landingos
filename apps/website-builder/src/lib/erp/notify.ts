@@ -62,11 +62,16 @@ export function notifyNewOrder(
   db: TenantDb,
   tenantId: string,
   order: { id: string; reference: string | null; client: string | null; phone: string | null; agentUserId: string | null },
+  /* LP.20. An abandoned cart or a captured lead is a DIFFERENT urgency from a
+   * sale that landed, and LP.11 gave the two different sound signatures. The
+   * type is what picks one, so a lead must be able to say which it is — the
+   * legacy passes `'abandoned_cart'` here for exactly this reason. */
+  type: "new_order" | "abandoned_cart" = "new_order",
 ) {
   return notifyQuietly(db, tenantId, {
     product: ERP,
-    type: "new_order",
-    title: `New order ${label(order)}`,
+    type,
+    title: `${type === "abandoned_cart" ? "Abandoned cart" : "New order"} ${label(order)}`,
     body: [order.client, order.phone].filter(Boolean).join(" — "),
     audience: order.agentUserId
       ? { userId: order.agentUserId, permission: SUPERVISOR }

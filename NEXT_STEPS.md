@@ -223,10 +223,26 @@ was reachable any other way:
    advances `TenantSequence`. `nextReference` now heals itself from the highest
    reference already in use, counting only references it could have minted.
 
-**TIER 2 IS COMPLETE** (#7–#12) **and #15, #18 and #19 are done.** The remaining
-work is Tier 3: #20, #21 and #22. #11
+**TIER 2 IS COMPLETE** (#7–#12) **and #15, #18, #19 and #20 are done.** The
+remaining work is Tier 3: #21 and #22. #11
 (sound + desktop notification preferences on `ProductSetting`) hangs directly off
 this provider.
+
+### LP.20 — DONE. The three inbound paths (R19)
+
+**Implemented and verified.** integrations 47 → **63**. Lead capture, product
+sync, and Shopify topic routing.
+
+**Two things to carry forward:**
+
+- **The parser decides SHAPE; the route decides MEANING.** Both files say so
+  now, because the first build had the adapter and the route each interpreting
+  `x-shopify-topic` and they disagreed — `checkouts/create` produced no row.
+  Any new channel adapter inherits the rule.
+- **`/lead-capture` is the only unauthenticated write on the platform, and its
+  threat model is written above the code.** If anything is ever added to it,
+  the four bounds (abandoned-only, four fields by name, refused by a disabled
+  channel, always logged) are what keep it safe — not the URL being obscure.
 
 ### LP.19 — DONE. A spreadsheet can come in (R5 rest, R17 import)
 
@@ -447,7 +463,7 @@ payroll report, audit view **[DONE LP.12]**.
 (15) sales-channel screen **[DONE LP.15]** · (16) profit calculator **[DONE LP.16]** ·
 (17) AI screen **[DONE LP.17]** ·
 (18) product fields + variant editor **[DONE LP.18]** ·
-(19) CSV import **[DONE LP.19]** · (20) channel webhooks ·
+(19) CSV import **[DONE LP.19]** · (20) channel webhooks **[DONE LP.20]** ·
 (21) manual follow-up assignment · (22) Ecom adapter.
 **Tier 4 — hardening:** (23) rate limiting + `CSRF_ORIGIN` · (24) the offline
 shell decision · (25) board view + print · (26) status vocabularies ·
