@@ -121,10 +121,15 @@ export async function POST(req: NextRequest) {
 
     for (const job of JOBS) {
       try {
-        // One transaction per job rather than one per tenant: the tracking poll
-        // makes carrier calls, and three jobs sharing a 15s transaction is how a
-        // slow carrier takes the escalations down with it.
-        await withTenant(tenant.id, (db) => runJob(db, tenant.id, job));
+        /* LP.22 / N17 — NO BINDING HERE AT ALL.
+         *
+         * It used to be one `withTenant` per job, which was already better than
+         * one per tenant. It is now none: `runJob` opens its own binding for
+         * each of the three transactional jobs and NO transaction at all around
+         * the carrier calls in `tracking-poll`. Wrapping it here would put those
+         * calls back inside a 15-second transaction, which is what this change
+         * exists to remove. */
+        await runJob(tenant.id, job);
         results.push({ tenantId: tenant.id, job, ok: true });
       } catch (error) {
         // Logged with the tenant, and the pass continues.

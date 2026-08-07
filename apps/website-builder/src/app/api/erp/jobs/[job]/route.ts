@@ -26,7 +26,7 @@ type Params = { job: string };
  */
 export const POST = tenantRoute<Params>(
   "erp:settings:write",
-  async ({ db, session, params }) => {
+  async ({ session, params, afterCommit }) => {
     if (!(JOBS as readonly string[]).includes(params.job)) {
       // The valid set travels with the refusal, so a caller never has to guess
       // — the same shape `POST /orders/[id]/call` uses for a bad result.
@@ -35,7 +35,22 @@ export const POST = tenantRoute<Params>(
       });
     }
 
-    const result = await runJob(db, session.auth!.tenantId, params.job as JobName);
-    return apiOk(result);
+    /* LP.22 / N17 — RUN AFTER THIS REQUEST'S TRANSACTION COMMITS.
+     *
+     * `tenantRoute` runs a handler inside a 15-second interactive transaction,
+     * and `tracking-poll` now reaches a real carrier (the Ecom adapter is the
+     * first registered one that can be polled). `runJob` opens its own
+     * bindings, and handing it this one would be exactly the thing D-LP.5.1
+     * removed from booking.
+     *
+     * The response still waits for the answer — `afterCommit` is not a
+     * background queue, and whoever pressed "run it now" is owed the result. */
+    const tenantId = session.auth!.tenantId;
+    afterCommit(async () => apiOk(await runJob(tenantId, params.job as JobName)));
+
+    // Replaced by the step above in every ordinary case. Reached only if it
+    // threw — which `tenantRoute` logs — and a job whose outcome is unknown
+    // must not read as one that succeeded.
+    return apiError(500, "JOB_FAILED", "The job did not complete.");
   },
 );

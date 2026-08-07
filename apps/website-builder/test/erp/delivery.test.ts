@@ -1742,3 +1742,193 @@ describe('the carriers screen offers what the routes accept', () => {
     assert.match(body, /data-testid="carrier-mappings-panel"/);
   });
 });
+
+/* =============================================================================
+ * LP.22 / R2 (rest), N17 — the Ecom Delivery adapter, and the poll leaves the
+ * transaction
+ *
+ * Ecom is the first REGISTERED adapter that can be polled (`GET /colis/{t}`),
+ * which is what turns N17 from a recorded observation into a live one: until
+ * now `pollCarriers` could not reach a network from inside the transaction it
+ * ran in, because ZR declares `canPoll: false` and `mock` is synchronous.
+ * ========================================================================== */
+
+describe('the Ecom Delivery adapter is registered and configurable (R2)', () => {
+  test('it is offered as an adapter, and says it can be polled', async () => {
+    const r = await acme.manager.api('GET', '/api/erp/carriers?adapters=true');
+    assert.equal(r.status, 200);
+    const list = r.body.data.items ?? r.body.data;
+    const found = list.find((a: { key: string }) => a.key === 'ecom');
+    assert.ok(found, `ecom is not registered: ${JSON.stringify(list)}`);
+    assert.equal(found.canCreateOutbound, true);
+    assert.equal(found.canPoll, true, 'the first registered adapter that can be ASKED');
+  });
+
+  test('a carrier can be configured with it, where an unknown key is still refused', async () => {
+    const created = await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Ecom Delivery', code: `ec${uid()}`, adapter: 'ecom', apiEnabled: true,
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+
+    // D-LP.2 is untouched: a key nothing is registered under is still refused
+    // by name rather than falling back to the simulator.
+    const bogus = await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Nonsense', code: `nx${uid()}`, adapter: 'yalidine',
+    });
+    assert.equal(bogus.status, 422);
+  });
+
+  test('its connection test is a READ and reports honestly when it fails', async () => {
+    // A test that books a parcel to find out whether booking works sends a real
+    // courier to a real address (LP.14). This one asks `GET /test`, and with a
+    // dead base URL it must report a failure rather than a structural pass.
+    const created = await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Ecom Unreachable', code: `eu${uid()}`, adapter: 'ecom',
+      apiUrl: 'http://127.0.0.1:9', apiKey: 'k', secretKey: 's',
+    });
+    const r = await acme.manager.api(
+      'POST', `/api/erp/carriers/${created.body.data.id}/test`, {},
+    );
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.data.ok, false);
+    assert.equal(
+      r.body.data.structural, false,
+      'a registered adapter with a real testConnection must not answer structurally',
+    );
+  });
+
+  test('missing credentials are named before anything is contacted', async () => {
+    const created = await acme.manager.api('POST', '/api/erp/carriers', {
+      name: 'Ecom Bare', code: `eb${uid()}`, adapter: 'ecom',
+    });
+    const r = await acme.manager.api(
+      'POST', `/api/erp/carriers/${created.body.data.id}/test`, {},
+    );
+    assert.equal(r.body.data.ok, false);
+    assert.match(r.body.data.message, /key|token/i);
+  });
+
+  test('a booking with an unrecognised wilaya is REFUSED, never defaulted to Alger', async () => {
+    // D-LP.22.2. The legacy's `getWilayaId` returns 16 (Alger) for anything it
+    // cannot resolve, which books a real parcel to the wrong PROVINCE: a courier
+    // drives to Alger for a customer in Oran and the order looks perfectly
+    // booked. Same class of defect as D-LP.5.2's commune fallback.
+    const staged = await makeErpTenant(`ecw-${uid()}`);
+    const code = `ec${uid()}`;
+    const carrier = await staged.manager.api('POST', '/api/erp/carriers', {
+      name: 'Ecom', code, adapter: 'ecom',
+      apiUrl: 'http://127.0.0.1:9', apiKey: 'k', secretKey: 's',
+    });
+    await staged.manager.api('POST', `/api/erp/carriers/${carrier.body.data.id}/default`, {});
+    await staged.manager.api('PUT', '/api/erp/settings', { autoCreateShipment: false });
+
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Nowhere', phone: phone(), price: 1000, carrierCode: code,
+      wilaya: 'Atlantis', commune: 'Somewhere', status: 'confirmed',
+    })).body.data.id;
+
+    const r = await staged.manager.api('POST', `/api/erp/orders/${order}/shipment`, {});
+    assert.equal(r.status, 422, JSON.stringify(r.body));
+    assert.equal(r.body.error.code, 'ADDRESS_UNRESOLVED');
+    // The refusal must NAME the value to correct — nobody can fix a spelling
+    // from "booking failed".
+    assert.match(r.body.error.message, /Atlantis/);
+  });
+
+  test('an order with no wilaya at all is refused too', async () => {
+    const staged = await makeErpTenant(`ecnw-${uid()}`);
+    const code = `ec${uid()}`;
+    const carrier = await staged.manager.api('POST', '/api/erp/carriers', {
+      name: 'Ecom', code, adapter: 'ecom',
+      apiUrl: 'http://127.0.0.1:9', apiKey: 'k', secretKey: 's',
+    });
+    await staged.manager.api('POST', `/api/erp/carriers/${carrier.body.data.id}/default`, {});
+    await staged.manager.api('PUT', '/api/erp/settings', { autoCreateShipment: false });
+
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'No Address', phone: phone(), price: 1000, carrierCode: code, status: 'confirmed',
+    })).body.data.id;
+
+    const r = await staged.manager.api('POST', `/api/erp/orders/${order}/shipment`, {});
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'ADDRESS_UNRESOLVED');
+  });
+
+  test('a recognised wilaya reaches the carrier — and the carrier being down is its own code', async () => {
+    // The distinction that matters for an operator: "correct the address" and
+    // "try again later" are different actions, and collapsing them into
+    // "booking failed" is what makes somebody open a support ticket.
+    const staged = await makeErpTenant(`ecok-${uid()}`);
+    const code = `ec${uid()}`;
+    const carrier = await staged.manager.api('POST', '/api/erp/carriers', {
+      name: 'Ecom', code, adapter: 'ecom',
+      apiUrl: 'http://127.0.0.1:9', apiKey: 'k', secretKey: 's',
+    });
+    await staged.manager.api('POST', `/api/erp/carriers/${carrier.body.data.id}/default`, {});
+    await staged.manager.api('PUT', '/api/erp/settings', { autoCreateShipment: false });
+
+    const order = (await staged.manager.api('POST', '/api/erp/orders', {
+      client: 'Real Place', phone: phone(), price: 1000, carrierCode: code,
+      wilaya: 'Oran', commune: 'Bir El Djir', status: 'confirmed',
+    })).body.data.id;
+
+    const r = await staged.manager.api('POST', `/api/erp/orders/${order}/shipment`, {});
+    assert.notEqual(
+      r.body.error?.code, 'ADDRESS_UNRESOLVED',
+      'Oran must resolve — the refusal here should be about the carrier, not the address',
+    );
+    assert.ok([502, 422].includes(r.status), `unexpected ${r.status}`);
+  });
+
+});
+
+describe('the tracking poll no longer holds a transaction (N17)', () => {
+  test('the job still runs, and reports the same shape', async () => {
+    const staged = await makeErpTenant(`n17-${uid()}`);
+    const r = await staged.manager.api('POST', '/api/erp/jobs/tracking-poll', {});
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.data.job, 'tracking-poll');
+    assert.equal(typeof r.body.data.polled, 'number');
+    assert.equal(typeof r.body.data.due, 'number');
+  });
+
+  test('a slow carrier does not roll the pass back — the claim is already committed', async () => {
+    // The property N17 is about. `lastPolledAt` is written in its own short
+    // transaction BEFORE the network call, so a carrier that never answers
+    // cannot undo the claim and cause the same parcel to be asked about again
+    // on every tick forever.
+    const staged = await makeErpTenant(`n17slow-${uid()}`);
+    const code = `ec${uid()}`;
+    const carrier = await staged.manager.api('POST', '/api/erp/carriers', {
+      name: 'Ecom Slow', code, adapter: 'ecom',
+      // A port nothing listens on: the adapter's own timeout fires.
+      apiUrl: 'http://127.0.0.1:9', apiKey: 'k', secretKey: 's',
+    });
+    await staged.manager.api('POST', `/api/erp/carriers/${carrier.body.data.id}/default`, {});
+    await staged.manager.api('PUT', '/api/erp/settings', {
+      autoCreateShipment: false, trackingPollMinutes: 1,
+    });
+
+    const first = await staged.manager.api('POST', '/api/erp/jobs/tracking-poll', {});
+    assert.equal(first.status, 200, 'the pass must complete even with a dead carrier');
+
+    // And immediately again: nothing is due within the window, so the second
+    // pass has nothing to do rather than re-asking the same parcels.
+    const second = await staged.manager.api('POST', '/api/erp/jobs/tracking-poll', {});
+    assert.equal(second.status, 200);
+  });
+
+  test('every job still runs through the one entry point', async () => {
+    const staged = await makeErpTenant(`n17all-${uid()}`);
+    for (const job of ['followup-escalation', 'overdue-sweep', 'tracking-poll', 'stale-orders']) {
+      const r = await staged.manager.api('POST', `/api/erp/jobs/${job}`, {});
+      assert.equal(r.status, 200, `${job}: ${JSON.stringify(r.body)}`);
+    }
+  });
+
+  test('an unknown job is still refused with the valid set', async () => {
+    const r = await acme.manager.api('POST', '/api/erp/jobs/not-a-job', {});
+    assert.equal(r.status, 404);
+    assert.ok(Array.isArray(r.body.error.valid));
+  });
+});

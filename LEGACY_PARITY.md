@@ -380,7 +380,7 @@ ledger and the sales history.
 
 ---
 
-### R2 · Real carrier adapters — 🟡 PARTIAL *(ZR done — LP.2 + LP.5)*
+### R2 · Real carrier adapters — ✅ DONE (LP.2 + LP.5 + LP.22)
 **Legacy:** four working adapters. `zr.js` (479 lines) books real parcels against
 ZR Express: dynamic wilaya/commune territory resolution via
 `POST /territories/search`, Svix webhook envelope handling, `X-Tenant`/`X-Api-Key`
@@ -923,7 +923,7 @@ from complete** — order export (R4) is all that remains in it.
 | ~~11~~ | ~~Sound + desktop notification preferences~~ | N4, N5 | S | **DONE — LP.11. TIER 2 IS COMPLETE.** Six signatures ported note for note, per-family toggles with a test button each, a clamped volume, and desktop notifications only when the tab is not visible. Stored on `ProductSetting`, not `localStorage` — the one thing the legacy got wrong here. |
 | ~~12~~ | ~~Agent alerts · missed-counter reset · manager password reset · payroll report · audit view~~ | R11, R14, R15, N11, N12 | S ×5 | **DONE — LP.12.** The alerts screen became a FILTER (`suspicious=true`) plus a roster count, deliberately: one filter vocabulary (D-LP.3) beats a screen that can only ever show everything flagged. N12 also closed a defect underneath it — **no order mutation wrote an audit row at all**, so there was nothing to render. |
 
-### Tier 3 — business value
+### Tier 3 — business value — **COMPLETE**
 
 | # | Slice | Restores | Size | |
 |---|---|---|---|---|
@@ -936,7 +936,7 @@ from complete** — order export (R4) is all that remains in it.
 | ~~19~~ | ~~Client + order CSV import~~ | R5 (rest), R17 (import) | M | **DONE — LP.19.** Parsed on the SERVER (D-LP.19.1), preview and commit as one request with a required mode (D-LP.19.2), never overwriting a real value (D-LP.19.3), through `createOrder` and silently (D-LP.19.4/5), deduped by external id. Found a defect: a Shopify export repeats the order row per line item, and checking the phone before the id read those as skips. |
 | ~~20~~ | ~~Channel webhooks: lead-capture, product, Shopify HMAC~~ | R19 | M | **DONE — LP.20.** Lead capture with its threat model stated and four bounds each tested (D-LP.20.1–3), product sync creating the `CatalogProductLink` revenue attribution reads first and never updating an existing product, and Shopify topic routing on the one URL a tenant actually configures. Found a defect: the adapter and the route were both interpreting the topic and disagreed, so `checkouts/create` produced no row. |
 | ~~21~~ | ~~Manual follow-up assignment · live countdown~~ | R13, N14 | S | **DONE — LP.21.** `POST /followup/assign` with `auto: true` distinguished from an omitted agent, two refusal codes that send you to different screens, the `followup_assigned` notification the port dropped with the route, and a countdown that ticks every 15s. |
-| **22** | Ecom carrier adapter | R2 (rest) | M | |
+| ~~22~~ | ~~Ecom carrier adapter~~ | R2 (rest), N17 | M | **DONE — LP.22. TIER 3 IS COMPLETE, SO PARITY IS REACHED.** The adapter, plus the poll leaving the transaction: Ecom is the first REGISTERED adapter that can be polled, which is what made N17 live. `pollCarriers` and `runJob` take no `db` so a caller cannot hand them one. | |
 
 ### Tier 4 — hardening and polish (overlaps Phase 8)
 

@@ -5,6 +5,7 @@ import type { Prisma } from "@landingos/db";
 import { CARRIER_SECRET_MASK, CARRIER_SECRET_FIELDS } from "./carrier-mask";
 import type { CarrierAdapter, InboundEvent, SignatureVerdict } from "./carrier-contract";
 import { zr } from "./carrier-zr";
+import { ecom } from "./carrier-ecom";
 import { verifySignature } from "./webhooks";
 
 // Re-exported so every caller keeps importing the carrier vocabulary from one
@@ -167,7 +168,7 @@ const mock: CarrierAdapter = {
   },
 };
 
-const ADAPTERS: Record<string, CarrierAdapter> = { mock, zr };
+const ADAPTERS: Record<string, CarrierAdapter> = { mock, zr, ecom };
 
 /**
  * The adapter for a carrier, or **null** when nothing is registered under that

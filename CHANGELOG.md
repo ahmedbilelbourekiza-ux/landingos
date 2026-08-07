@@ -12,6 +12,104 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### LP.22 The Ecom adapter, and the poll finally leaves the transaction — **TIER 3 IS COMPLETE**
+
+[Opus 5]
+Date: 7 August 2026
+Summary: R2's remaining half and N17. delivery 77 → **88**; jobs 16/16
+unchanged. **Parity is reached at the end of Tier 3.**
+
+#### R2 — the second real carrier
+
+Ported from `apps/erp/lib/providers/ecom.js`. `X-API-Key` + `X-API-Token`,
+`POST /colis` (an array of one to a hundred parcels), `GET /colis/{tracking}`,
+and an `x-webhook-signature: sha256=<hex>` HMAC.
+
+**D-LP.22.1 — the wilaya map is ported, and that is the OPPOSITE choice from
+ZR's.** LP.5 resolves ZR's territories by NAME against a live endpoint because
+ZR uses its own UUIDs and a local map would go stale. Ecom uses the STANDARD
+Algerian wilaya numbers 1–58, which are set by the state and have changed once in
+fifty years — the ten added in 2019, which are in the map. A live lookup would be
+three round trips to learn something constant.
+
+**D-LP.22.2 — the default-to-Alger fallback is NOT ported.** The legacy's
+`getWilayaId` returns 16 (Alger) for anything it cannot resolve, **including an
+empty wilaya**. That books a real parcel to the wrong PROVINCE: a courier drives
+to Alger for a customer in Oran, the customer is never called, and the order looks
+perfectly booked. It is exactly D-LP.5.2's commune fallback in a second place, and
+it is refused here for the same reason — **by name**, so the fix is a spelling
+correction somebody can make in a minute rather than a support ticket.
+
+**Its `mapStatus` matches the longest key first**, which is the LP.5 lesson made
+structural: `guessStatus` tested `/livr/` before anything else, so "Sorti en
+livraison" — a parcel that had just LEFT the depot — resolved to delivered and
+settled revenue that was never collected. Sorting the substring match by key
+length means "en livraison" cannot win inside "sortir en livraison".
+
+**A polled event with an unreadable date is DROPPED; a pushed one is stamped
+now.** The asymmetry is deliberate. Intake dedupes on (shipment, eventTime,
+originalStatus), so a synthesised time on a poll makes every pass look like new
+events and the timeline doubles. A poll re-reads the whole history, so dropping a
+row costs nothing; a webhook is the carrier telling us something happened at this
+moment, and dropping it would lose a real delivery outcome.
+
+**Its webhook check fails closed.** The legacy verified only when the header was
+PRESENT, so omitting it skipped verification entirely — SEC-04, the same bypass
+LP.5 removed from ZR's Svix check.
+
+#### N17 — and why it had to be this slice
+
+`pollCarriers` has run inside `withTenant`'s 15-second interactive transaction
+since 6.6b. That was harmless because **no registered adapter could be polled**:
+ZR declares `canPoll: false` and `planRefresh` refuses first, and `mock` is a
+synchronous simulator. LEGACY_PARITY grouped the fix with this slice for exactly
+that reason, and Ecom is the adapter that makes it live — `GET /colis/{tracking}`
+means twenty-five parcels is twenty-five HTTP round trips inside fifteen seconds.
+
+**`pollCarriers(tenantId, settings)` and `runJob(tenantId, job)` take no `db`, so
+a caller cannot hand them one.** That is the property `bookShipment` has had since
+D-LP.5.1, and the signature change IS the fix rather than a refactor. The three
+other jobs still do all their work in one transaction — they touch nothing but
+this database — and each gets its own binding inside `runJob`.
+
+**The claim is committed BEFORE the network call.** `lastPolledAt` is matched in
+the same `updateMany` that writes it, in its own short transaction, so two
+workers ticking at once still cannot both call the carrier about one parcel —
+and a carrier that never answers can no longer roll the claim back and cause the
+same parcels to be re-asked on every tick forever.
+
+**Both callers changed, as N17 predicted.** `POST /api/erp/jobs/[job]` runs it
+through `afterCommit` (the response still waits — whoever pressed "run it now" is
+owed the answer), and the worker's tick no longer wraps it at all.
+
+**There is still exactly one ingest path.** The poll now composes
+`refreshShipmentForOrder`, which is the same function the manual "ask the carrier"
+button uses, so events still land through `ingestEvents` — where they are stored
+idempotently, the delivery outcome is settled and follow-up tasks are raised.
+
+#### Files
+
+- `apps/website-builder/src/lib/erp/carrier-ecom.ts` — new
+- `apps/website-builder/src/lib/erp/carriers.ts` — registered
+- `apps/website-builder/src/lib/erp/jobs.ts` — `pollCarriers` and `runJob` unbound
+- `apps/website-builder/src/app/api/erp/jobs/[job]/route.ts`
+- `apps/website-builder/src/app/api/jobs/tick/route.ts`
+- `apps/website-builder/test/erp/delivery.test.ts` — 11 new tests
+
+**Migration:** none.
+
+**Risk:** medium, and it is the job runner. `runJob`'s signature changed and both
+callers with it; jobs 16/16 and delivery 88/88 pass. The poll now opens two short
+bindings per parcel instead of one long one for the batch — more connections,
+each held for milliseconds instead of for a carrier's latency.
+
+**Not verifiable here:** no request has crossed a real Ecom Delivery endpoint.
+The adapter is a port of a working one and every refusal path is tested against a
+dead port; the success path needs credentials this repository does not have. It
+is the same limitation ZR carries (PROJECT_STATE, *Known bugs*).
+
+---
+
 ### LP.21 A difficult customer can be moved, and the deadline ticks
 
 [Opus 5]

@@ -223,10 +223,29 @@ was reachable any other way:
    advances `TenantSequence`. `nextReference` now heals itself from the highest
    reference already in use, counting only references it could have minted.
 
-**TIER 2 IS COMPLETE** (#7–#12) **and #15, #18–#21 are done.** The remaining work
-is ONE slice: #22, the Ecom adapter. #11
+**TIERS 1, 2 AND 3 ARE ALL COMPLETE, AND PARITY IS REACHED.** Every slice
+§4 lists through #22 has landed. What remains is Tier 4 (#23–#27), which that
+section itself describes as Phase 8 work the legacy happened to also have (23), a
+decision to revisit (24), preference (25, 26), or a deployment choice (27) — not
+parity. #11
 (sound + desktop notification preferences on `ProductSetting`) hangs directly off
 this provider.
+
+### LP.22 — DONE. The Ecom adapter and N17 (R2 rest) — **TIER 3 COMPLETE**
+
+**Implemented and verified.** delivery 77 → **88**, jobs 16/16 unchanged.
+
+**Three things to carry forward:**
+
+- **`runJob` takes a tenant id, not a bound client**, and must stay that way.
+  Both callers were changed with it. Anything added to `jobs.ts` that reaches a
+  network inherits the rule.
+- **D-LP.22.2 is the second time a carrier's "default to Alger" fallback has
+  been refused.** If a third adapter is written, the rule is: a territory that
+  cannot be resolved is a REFUSAL naming the value, never a guess.
+- **Not verifiable here:** no request has crossed a real Ecom endpoint. Every
+  refusal path is tested against a dead port; the success path needs credentials
+  this repository does not have, exactly as ZR does.
 
 ### LP.21 — DONE. Manual follow-up assignment and the countdown (R13, N14)
 
@@ -478,7 +497,8 @@ payroll report, audit view **[DONE LP.12]**.
 (17) AI screen **[DONE LP.17]** ·
 (18) product fields + variant editor **[DONE LP.18]** ·
 (19) CSV import **[DONE LP.19]** · (20) channel webhooks **[DONE LP.20]** ·
-(21) manual follow-up assignment **[DONE LP.21]** · (22) Ecom adapter.
+(21) manual follow-up assignment **[DONE LP.21]** · (22) Ecom adapter
+**[DONE LP.22]**. **TIER 3 IS COMPLETE.**
 **Tier 4 — hardening:** (23) rate limiting + `CSRF_ORIGIN` · (24) the offline
 shell decision · (25) board view + print · (26) status vocabularies ·
 (27) real AI calls.

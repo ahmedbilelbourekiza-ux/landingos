@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Prisma, TenantDb } from "@landingos/db";
+import { withTenant, type Prisma, type TenantDb } from "@landingos/db";
 
 import { readSettings, type ErpSettings } from "./settings";
 import { ACTIVE_STATUSES } from "./orders";
@@ -8,7 +8,7 @@ import { readAgentConfig, writeAgentConfig } from "./agents";
 import { FOLLOWUP_TASK_TYPE } from "./followup";
 import { pickAgent } from "./assign";
 import { TERMINAL } from "./carriers";
-import { refreshShipment } from "./shipments";
+import { refreshShipmentForOrder } from "./shipments";
 import {
   notifyAgentOverdue, notifyAgentSuspended, notifyFollowupOverdue, notifyStaleOrders,
 } from "./notify";
@@ -405,14 +405,30 @@ const POLL_BATCH = 25;
  * never reached anything.
  */
 export async function pollCarriers(
-  db: TenantDb,
   tenantId: string,
   settings: ErpSettings,
 ): Promise<JobResult> {
   const minutes = Math.max(1, Number(settings.trackingPollMinutes) || 15);
   const earliest = new Date(Date.now() - minutes * 60_000);
 
-  const due = await db.shipment.findMany({
+  /* LP.22 / N17 — IT TAKES NO `db`, SO A CALLER CANNOT HAND IT ONE.
+   *
+   * The same shape `bookShipment` has had since D-LP.5.1, and for the same
+   * reason: `withTenant` opens an interactive transaction with a 15-second
+   * timeout, and this function now reaches a real network. Until LP.22 it did
+   * not — ZR declares `canPoll: false` and `planRefresh` refuses first, and
+   * `mock` is a synchronous simulator — so the problem was recorded (N17) and
+   * left. Ecom Delivery publishes `GET /colis/{tracking}`, which makes it the
+   * first registered adapter this path can actually call, and twenty-five
+   * parcels times one HTTP round trip does not fit in fifteen seconds.
+   *
+   * Three phases, as everywhere else a carrier is involved: CLAIM in a
+   * transaction, CALL in none, INGEST in a fresh one. The claim and the ingest
+   * are two separate bindings per parcel rather than one for the batch, which
+   * is the cost — and it is the right one, because a batch-long transaction is
+   * exactly what this change exists to remove.
+   */
+  const due = await withTenant(tenantId, (db) => db.shipment.findMany({
     where: {
       AND: [
         // A parcel that has arrived, come back, or been called off is not going
@@ -428,7 +444,7 @@ export async function pollCarriers(
     // drains fairly instead of the same 25 parcels being polled forever.
     orderBy: [{ lastPolledAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
     take: POLL_BATCH,
-  });
+  }));
 
   const now = new Date();
   let polled = 0;
@@ -441,15 +457,26 @@ export async function pollCarriers(
         ? { lastPolledAt: null }
         : { lastPolledAt: { lt: earliest } };
 
-    const { count } = await db.shipment.updateMany({
-      where: { id: shipment.id, ...guard },
-      data: { lastPolledAt: now },
-    });
+    // THE CLAIM IS ITS OWN SHORT TRANSACTION. `lastPolledAt` is matched in the
+    // same `updateMany` that writes it, so two workers ticking at once cannot
+    // both call the carrier about one parcel — and it is now committed BEFORE
+    // the network call rather than held open across it.
+    const { count } = await withTenant(tenantId, (db) =>
+      db.shipment.updateMany({
+        where: { id: shipment.id, ...guard },
+        data: { lastPolledAt: now },
+      }),
+    );
     // Somebody else claimed it between the read and here.
     if (count === 0) continue;
 
     try {
-      const result = await refreshShipment(db, tenantId, shipment.orderId);
+      // `refreshShipmentForOrder` is the unbound form: plan in a binding, call
+      // in none, ingest in a fresh one. It is the SAME function the manual
+      // "ask the carrier" button uses, so there is still exactly one ingest
+      // path (`ingestEvents`) — which is where events are stored idempotently,
+      // the delivery outcome is settled and follow-up tasks are raised.
+      const result = await refreshShipmentForOrder(tenantId, shipment.orderId);
       // Two reasons nothing was asked, and neither is a failure of this job nor
       // a poll. Counting either as polled would report a healthy sweep over
       // parcels nobody actually asked about. `UNKNOWN_ADAPTER` is a carrier
@@ -472,25 +499,36 @@ export async function pollCarriers(
  * -------------------------------------------------------------------------- */
 
 /**
- * Run one job for one already-bound tenant.
+ * Run one job for one tenant.
  *
  * Both callers go through here — the manager's "run it now" button and the
  * worker's tick — so a job cannot behave differently depending on who asked.
+ *
+ * LP.22 / N17 — IT TAKES A TENANT ID, NOT A BOUND CLIENT.
+ *
+ * It used to take a `db` and every caller wrapped it in `withTenant`, which put
+ * `pollCarriers` inside a 15-second interactive transaction. That was harmless
+ * only while no registered adapter could be polled; the Ecom adapter can, so
+ * the transaction now spans up to twenty-five HTTP round trips to somebody
+ * else's server.
+ *
+ * The signature change is the fix, not a refactor: a function that takes no
+ * `db` cannot be handed one, which is the property `bookShipment` has had since
+ * D-LP.5.1. The three OTHER jobs still do all their work in one transaction —
+ * they touch nothing but this database — and each gets its own binding here.
  */
-export async function runJob(
-  db: TenantDb,
-  tenantId: string,
-  job: JobName,
-): Promise<JobResult> {
-  const settings = await readSettings(db);
+export async function runJob(tenantId: string, job: JobName): Promise<JobResult> {
+  const settings = await withTenant(tenantId, (db) => readSettings(db));
+
   switch (job) {
     case "followup-escalation":
-      return escalateFollowups(db, tenantId);
+      return withTenant(tenantId, (db) => escalateFollowups(db, tenantId));
     case "overdue-sweep":
-      return sweepOverdueOrders(db, tenantId, settings);
+      return withTenant(tenantId, (db) => sweepOverdueOrders(db, tenantId, settings));
     case "tracking-poll":
-      return pollCarriers(db, tenantId, settings);
+      // The one that holds no transaction while a carrier is being asked.
+      return pollCarriers(tenantId, settings);
     case "stale-orders":
-      return alertStaleOrders(db, tenantId, settings);
+      return withTenant(tenantId, (db) => alertStaleOrders(db, tenantId, settings));
   }
 }
