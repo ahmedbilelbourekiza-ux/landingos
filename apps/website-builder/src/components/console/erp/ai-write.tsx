@@ -46,6 +46,11 @@ export interface AiStrings {
   readonly enabled: string;
   readonly none: string;
   readonly keyKept: string;
+  readonly test: string;
+  readonly testing: string;
+  readonly logs: string;
+  readonly hideLogs: string;
+  readonly noLogs: string;
 }
 
 export interface ProviderRow {
@@ -56,6 +61,13 @@ export interface ProviderRow {
   readonly defaultModel: string | null;
   readonly active: boolean;
   readonly isDefault: boolean;
+}
+
+interface LogRow {
+  readonly id: string;
+  readonly event: string;
+  readonly result: string | null;
+  readonly message: string | null;
 }
 
 /* -----------------------------------------------------------------------------
@@ -173,26 +185,100 @@ export function ProviderRowActions({
   readonly s: AiStrings;
 }) {
   const { run, pending, error } = useApiAction(errors);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [logs, setLogs] = useState<LogRow[] | null>(null);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
+  /* AUDIT.5. The button that finds out whether the key works, and the log that
+     says why it did not. `lastTestAt`/`lastTestOk` had three readers and no
+     writer; this is the control that produces them. */
+  const test = async () => {
+    const { ok, data } = await run("POST", `/api/erp/ai/providers/${provider.id}/test`, {});
+    if (ok) {
+      const r = (data ?? {}) as { ok?: boolean; message?: string };
+      setResult({ ok: Boolean(r.ok), message: r.message ?? "" });
+    }
+  };
+
+  const toggleLogs = async () => {
+    if (logs) {
+      setLogs(null);
+      return;
+    }
+    setLoadingLogs(true);
+    try {
+      const res = await fetch(`/api/erp/ai/providers/${provider.id}/logs?limit=25`, {
+        credentials: "same-origin",
+      });
+      const envelope = await res.json().catch(() => null);
+      setLogs(res.ok && envelope?.success ? (envelope.data.items as LogRow[]) : []);
+    } catch {
+      setLogs([]);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
   return (
-    <div className="flex flex-wrap justify-end gap-2">
-      {/* D-06.2: the route refuses a default that is not active, so the control
-          that would trip it is not offered. */}
-      {!provider.isDefault && provider.active && (
+    <div className="flex flex-col items-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
         <ActionButton
-          data-testid="ai-provider-default" data-provider-id={provider.id}
-          pending={pending} pendingLabel={s.saving}
-          onClick={() => void run("POST", `/api/erp/ai/providers/${provider.id}/default`, {})}
+          data-testid="ai-provider-test" data-provider-id={provider.id}
+          pending={pending} pendingLabel={s.testing}
+          onClick={() => void test()}
         >
-          {s.makeDefault}
+          {s.test}
         </ActionButton>
+        <ActionButton
+          data-testid="ai-provider-logs" data-provider-id={provider.id}
+          pending={loadingLogs} pendingLabel={s.saving}
+          onClick={() => void toggleLogs()}
+        >
+          {logs ? s.hideLogs : s.logs}
+        </ActionButton>
+        {/* D-06.2: the route refuses a default that is not active, so the control
+            that would trip it is not offered. */}
+        {!provider.isDefault && provider.active && (
+          <ActionButton
+            data-testid="ai-provider-default" data-provider-id={provider.id}
+            pending={pending} pendingLabel={s.saving}
+            onClick={() => void run("POST", `/api/erp/ai/providers/${provider.id}/default`, {})}
+          >
+            {s.makeDefault}
+          </ActionButton>
+        )}
+        <ActionButton
+          data-testid="ai-provider-delete" data-provider-id={provider.id}
+          pending={pending} pendingLabel={s.saving} variant="danger"
+          onClick={() => void run("DELETE", `/api/erp/ai/providers/${provider.id}`)}
+        >
+          {s.remove}
+        </ActionButton>
+      </div>
+
+      {result && (
+        <p
+          data-testid="ai-provider-test-result" data-provider-id={provider.id}
+          data-ok={result.ok}
+          className="text-end text-xs text-muted-foreground"
+        >
+          {result.message}
+        </p>
       )}
-      <ActionButton
-        data-testid="ai-provider-delete" data-provider-id={provider.id}
-        pending={pending} pendingLabel={s.saving} variant="danger"
-        onClick={() => void run("DELETE", `/api/erp/ai/providers/${provider.id}`)}
-      >
-        {s.remove}
-      </ActionButton>
+
+      {logs && (
+        <ul data-testid="ai-provider-log-list" data-provider-id={provider.id} className="space-y-1 text-end text-xs">
+          {logs.length === 0 && <li className="text-muted-foreground">{s.noLogs}</li>}
+          {logs.map((l) => (
+            <li key={l.id} data-log-event={l.event} data-log-result={l.result}>
+              <span className="font-mono">{l.event}</span>
+              {" · "}
+              {l.message}
+            </li>
+          ))}
+        </ul>
+      )}
+
       <ActionError message={error} />
     </div>
   );

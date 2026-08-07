@@ -128,7 +128,7 @@ ways; and close a month's books with a calculator that agrees with its own saved
 record.
 
 **§9 is the fourth pass — the independent audit** — which read the legacy module
-by module without using this roadmap, and found ten things it had not: eight
+by module without using this roadmap, and found eleven things it had not: nine
 writer/reader mismatches, one that only appeared when a real order was placed
 through the running console, and one read out of that same run's server log.
 
@@ -1629,7 +1629,7 @@ That is the shape of every serious defect this project has found: BUG-02
 (`deliveryOutcome` read in eight places, written in none), `IntegrationLog`
 (migrated with its indexes, no caller), `OrderCall.suspicious` (computed, shown
 nowhere), `fakeReason` (written since Phase 5, read by nothing), the confirmation
-rate (computed nowhere at all). **Ten more were there.**
+rate (computed nowhere at all). **Eleven more were there.**
 
 | # | Finding | Severity | Closed by |
 |---|---|---|---|
@@ -1643,6 +1643,7 @@ rate (computed nowhere at all). **Ten more were there.**
 | **A8** | `access.test.ts`'s hand-written inventory was **34 routes short**, including `POST /orders/[id]/call` — the payroll-fraud surface | Medium (coverage) | AUDIT.2 |
 | **A9** | A duplicated product name attributed every order's counters to whichever row was created first, silently — and double-counted revenue in `/sales-summary` | **High** | AUDIT.3 |
 | **A10** | `t("erp.overview.revenue")` named a key no catalogue had — a render-time 500 in the missing locale only, which is the DEFAULT one here. The i18n suite compared the catalogues to each other and to the manifests, never to the code | Medium | AUDIT.4 |
+| **A11** | `AiProvider.lastTestAt`/`lastTestOk` — three readers, **no writer**. LP.17 deferred `/test` saying "testing a provider means calling a model"; the legacy's adapters test with `GET /models`. A wrong model key surfaces at CHAT time, which on this deployment is never | Medium | AUDIT.5 |
 
 **A5 is the one that matters most**, and it is BUG-02's shape exactly: the port
 brought `upsertClientFromOrder` across as `syncClientFromOrder` and left
@@ -1654,6 +1655,14 @@ number, and a product that had sold two hundred units said it had sold none.
 product still read zero. Every test creates its own tenant with one product per
 name. **The method is worth more than the fix: end every slice with a real action
 through the running app.**
+
+
+**A11 is the one worth generalising.** Every other finding here is an ABSENCE
+nobody noticed. A11 was noticed, deferred, and given a reason in a code comment
+— and the reason was false, because it described a legacy nobody re-read when
+writing it. **A deferral with a rationale attached stops being re-examined**,
+which makes a wrong rationale more durable than a bare gap. The lesson for the
+next pass: read the source a deferral claims to be about, not the deferral.
 
 **A8 was a guarantee gap, not a hole** — the derived run passed 201/201 first
 time, so every unlisted route was correctly gated. The inventory now derives

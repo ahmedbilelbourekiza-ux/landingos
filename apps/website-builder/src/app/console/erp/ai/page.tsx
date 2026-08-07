@@ -186,13 +186,17 @@ export default async function ErpAiScreen() {
               {
                 id: "tested",
                 header: t("erp.ai.lastTest"),
-                // Rendered as ABSENT rather than blank, because nothing writes
-                // it yet — testing a provider means calling a model, which is
-                // Tier 4 slice 27. A blank cell reads as "never tested"; this
-                // reads as "not a thing this deployment does".
+                // AUDIT.5. This used to read "Testing needs a model adapter",
+                // because nothing wrote the column and the reason recorded for
+                // that was "testing a provider means calling a model". The
+                // legacy's adapters say otherwise — two of three test with GET
+                // /models — so there is a test now, and the honest empty state
+                // is the one the carriers and channels screens use.
                 cell: (p) => (
-                  <span className="text-muted-foreground">
-                    {p.lastTestAt ? formatDate(p.lastTestAt, locale) : t("erp.ai.testUnavailable")}
+                  <span className="text-muted-foreground" data-tested={String(p.lastTestOk)}>
+                    {p.lastTestAt
+                      ? `${formatDate(p.lastTestAt, locale)} ${p.lastTestOk ? "✓" : "✕"}`
+                      : t("erp.carriers.neverTested")}
                   </span>
                 ),
               },

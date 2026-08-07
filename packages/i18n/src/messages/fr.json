@@ -562,7 +562,6 @@
       "defaultModel": "Modèle par défaut",
       "noProviders": "Aucun fournisseur configuré : rien ici ne peut appeler un modèle.",
       "lastTest": "Dernier test",
-      "testUnavailable": "Le test exige un adaptateur de modèle",
       "agents": "Assistants",
       "agent": "Assistant",
       "addAgent": "Ajouter un assistant",

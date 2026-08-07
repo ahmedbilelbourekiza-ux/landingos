@@ -562,7 +562,6 @@
       "defaultModel": "Default model",
       "noProviders": "No provider is configured, so nothing here can call a model.",
       "lastTest": "Last tested",
-      "testUnavailable": "Testing needs a model adapter",
       "agents": "Assistants",
       "agent": "Assistant",
       "addAgent": "Add an assistant",

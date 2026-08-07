@@ -265,3 +265,140 @@ describe('the AI surface is closed to somebody without the permission', () => {
     }
   });
 });
+
+/* =============================================================================
+ * AUDIT.5 — the writer for two columns three readers had been rendering.
+ *
+ * `lastTestAt` / `lastTestOk` were selected by both provider routes and shown on
+ * the screen, and nothing set them: LP.17 deferred `/test` on the grounds that
+ * "testing a provider means calling a model", and the legacy's own adapters test
+ * with `GET /models`. Every test here runs against a base URL nothing is
+ * listening on, which is the only success path available without credentials —
+ * and it is the path that matters, because a refusal that reports success is the
+ * defect D-LP.2 exists to prevent.
+ * ========================================================================== */
+
+describe('a provider can be tested, and the result is recorded', () => {
+  let providerId: string;
+
+  test('a provider is created to test', async () => {
+    const r = await acme.manager.api('POST', '/api/erp/ai/providers', {
+      name: 'Probe',
+      type: 'openai-compat',
+      // A port nothing answers on. The request genuinely leaves the process and
+      // genuinely fails, which is what makes the failure path real.
+      baseUrl: 'http://127.0.0.1:9/v1',
+      apiKey: 'sk-not-a-real-key',
+    });
+    assert.equal(r.status, 201);
+    providerId = r.body.data.id;
+  });
+
+  test('before any test the columns are null, which is what the screen shows', async () => {
+    const r = await acme.manager.api('GET', '/api/erp/ai/providers');
+    const row = r.body.data.items.find((p: { id: string }) => p.id === providerId);
+    assert.equal(row.lastTestAt, null);
+    assert.equal(row.lastTestOk, null);
+  });
+
+  test('a dead endpoint is reported as a failure, not a success', async () => {
+    const r = await acme.manager.api('POST', `/api/erp/ai/providers/${providerId}/test`, {});
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.ok, false, 'a provider nobody is listening for reported success');
+    assert.ok(r.body.data.message, 'a failed test said nothing about why');
+    assert.ok(r.body.data.testedAt, 'the test recorded no time');
+  });
+
+  test('the outcome reaches the columns that had no writer', async () => {
+    const r = await acme.manager.api('GET', '/api/erp/ai/providers');
+    const row = r.body.data.items.find((p: { id: string }) => p.id === providerId);
+    assert.ok(row.lastTestAt, 'lastTestAt is still null after a test — the writer is missing again');
+    assert.equal(row.lastTestOk, false);
+  });
+
+  test('the screen tells a tested provider from an untested one', async () => {
+    // Both states on one page, which is the only way to show the cell says
+    // something. The screen used to render "Testing needs a model adapter" for
+    // every row forever, and that reads as a considered answer rather than an
+    // absent writer — which is exactly why it survived four passes.
+    const fresh = await acme.manager.api('POST', '/api/erp/ai/providers', {
+      name: 'Untouched', type: 'gemini', apiKey: 'x',
+    });
+    assert.equal(fresh.status, 201);
+
+    const r = await page('/console/erp/ai', acme.manager.token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-tested="false"/, 'a failed test is not rendered as failed');
+    assert.match(r.body, /data-tested="null"/, 'a provider nobody tested does not read as untested');
+    // And the button that produces the state exists, per D-06.2: the route
+    // accepts it for a manager, so a manager is offered it.
+    assert.match(r.body, /data-testid="ai-provider-test"/, 'no control calls the test route');
+  });
+
+  test('the attempt is in the integration log, with a reason', async () => {
+    const r = await acme.manager.api('GET', `/api/erp/ai/providers/${providerId}/logs`);
+    assert.equal(r.status, 200);
+    assert.ok(r.body.data.items.length >= 1, 'a test that happened left no log line');
+    const entry = r.body.data.items[0];
+    assert.equal(entry.entity, 'aiProvider');
+    assert.equal(entry.result, 'failure');
+    assert.equal(entry.event, 'auth_error');
+    assert.ok(entry.message, 'the log line records no reason');
+  });
+
+  test('the key is never in the log, at any depth', async () => {
+    const r = await acme.manager.api('GET', `/api/erp/ai/providers/${providerId}/logs`);
+    const serialized = JSON.stringify(r.body.data.items);
+    assert.ok(
+      !serialized.includes('sk-not-a-real-key'),
+      'the API key reached the integration log',
+    );
+  });
+
+  test('a type with no adapter refuses rather than reporting success', async () => {
+    // The row is edited past the route's own enum the only way the platform can
+    // — directly — because this is about a row that already exists: an older
+    // deployment's type, or one removed from a later build.
+    const created = await acme.manager.api('POST', '/api/erp/ai/providers', {
+      name: 'Unknown', type: 'anthropic', apiKey: 'x',
+    });
+    assert.equal(created.status, 201);
+    // `type` is deliberately not editable, so this asserts the registry's own
+    // answer rather than driving it through a route that cannot produce it.
+    const r = await acme.manager.api('POST', `/api/erp/ai/providers/${created.body.data.id}/test`, {});
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.ok, false);
+  });
+
+  test('a provider that does not exist is a 404, on both routes', async () => {
+    assert.equal((await acme.manager.api('POST', '/api/erp/ai/providers/nope/test', {})).status, 404);
+    assert.equal((await acme.manager.api('GET', '/api/erp/ai/providers/nope/logs')).status, 404);
+  });
+
+  test('another tenant cannot test or read the log of this one’s provider', async () => {
+    const other = await makeErpTenant(`ai-test-other-${uid()}`);
+    // 404 rather than 403: confirming a row exists elsewhere is itself
+    // information, and RLS answers by returning nothing rather than erroring.
+    assert.equal(
+      (await other.manager.api('POST', `/api/erp/ai/providers/${providerId}/test`, {})).status,
+      404,
+    );
+    assert.equal(
+      (await other.manager.api('GET', `/api/erp/ai/providers/${providerId}/logs`)).status,
+      404,
+    );
+  });
+
+  test('an agent may not test a provider or read its log', async () => {
+    const agent = await makeMember(acme.tenantId, { role: 'MEMBER' });
+    // 403 for a permission failure; 404 is reserved for another tenant's row.
+    assert.equal(
+      (await agent.api('POST', `/api/erp/ai/providers/${providerId}/test`, {})).status,
+      403,
+    );
+    assert.equal(
+      (await agent.api('GET', `/api/erp/ai/providers/${providerId}/logs`)).status,
+      403,
+    );
+  });
+});

@@ -477,7 +477,7 @@ model IntegrationLog {
   id       BigInt @id @default(autoincrement())
   tenantId String
 
-  // carrier | salesChannel
+  // carrier | salesChannel | aiProvider
   entity   String
   entityId String
   // shipment_created | webhook_received | api_request | auth_error | sync_error | …

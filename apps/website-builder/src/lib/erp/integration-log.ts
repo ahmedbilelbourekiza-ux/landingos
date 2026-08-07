@@ -27,8 +27,15 @@ import type { TenantDb } from "@landingos/db";
  * prune, and it is bounded by the same `pruneNotifications` shape.
  * ========================================================================== */
 
-/** What the log is about. `carrier` and `salesChannel`, as the schema says. */
-export type LogEntity = "carrier" | "salesChannel";
+/**
+ * What the log is about.
+ *
+ * `carrier` (LP.14) and `salesChannel` (LP.15) are what the schema named;
+ * `aiProvider` is AUDIT.5's, and the legacy logs it to the same table under
+ * `'ai_provider'` for the same reason — it is a credentialed call to somebody
+ * else's server, which is the only thing this table is for.
+ */
+export type LogEntity = "carrier" | "salesChannel" | "aiProvider";
 
 /** Keys whose VALUE never reaches the table, whatever a caller passes. */
 const SECRET_KEYS = new Set([

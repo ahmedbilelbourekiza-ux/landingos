@@ -12,6 +12,93 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### AUDIT.5 The Test Connection button, and a reason that did not survive re-reading
+
+[Opus 5]
+Date: 7 August 2026
+Summary: the audit's eleventh finding — two columns with three readers and no
+writer, left behind by a deferral whose stated premise was false. ai 20 → **31**,
+access 201 → **203**.
+
+#### The finding
+
+`AiProvider.lastTestAt` and `lastTestOk` are selected by BOTH provider routes and
+rendered by the AI screen. **Nothing has ever written them.** It is BUG-02's shape
+for the fourth time — columns migrated with their legacy meaning intact, readers
+built on top, writer left behind in the port.
+
+#### The part that makes it worth a card of its own
+
+LP.17 did not miss this. It recorded the absence and gave a reason:
+
+> `/test` is NOT [here], and the reason is stated rather than left as a gap:
+> testing a provider means calling a model, which needs an adapter layer this
+> deployment does not have.
+
+**The rule is right and the premise is false.** The legacy's own three adapters
+were read again for this audit:
+
+| adapter | what its `testConnection` actually does |
+|---|---|
+| `openai-compat` | `GET /models` — lists what the key can see. No inference. |
+| `gemini` | `GET /models?key=…` — the same. |
+| `anthropic` | `POST /messages` with `max_tokens: 1` — a ping, because Anthropic publishes no models list. |
+
+It is a CREDENTIAL CHECK, not a chat feature, and it needs none of Tier 4 slice
+27. A deferral with a reason attached reads as a decision and stops being
+re-examined — which is why this one survived four passes when A5's bare absence
+did not.
+
+#### Why it matters more here than for a carrier
+
+A carrier key that is wrong shows up the first time somebody books a parcel. **A
+model provider key that is wrong shows up at chat time — which on this deployment
+is never**, because `ai/chat` answers 501. An operator could configure a provider,
+see it listed, mark it default, and never learn the key was pasted with a
+trailing newline. AUDIT.1 added presets to make a wrong base URL less likely;
+this is the part that finds out.
+
+#### What landed
+
+- `POST /api/erp/ai/providers/[id]/test` — plan (in a transaction), call (in
+  none, through `afterCommit`), record (in a fresh one). **D-LP.5.1**, the same
+  three phases as `carriers/[id]/test`.
+- `GET /api/erp/ai/providers/[id]/logs` — the third entity on `IntegrationLog`,
+  after LP.14's carriers and LP.15's channels. Without it a failed test is a red
+  tick: "the key is wrong" and "the base URL points at a host that does not
+  answer" have different fixes.
+- `lib/erp/ai-connection.ts` — the three testers, ported call for call. It takes a
+  config object and not a `db`, so a caller cannot hand it a transaction.
+  **D-LP.2**: an unregistered type refuses rather than reporting success.
+- The screen: a Test button and a log panel per row, and the cell that said
+  *"Testing needs a model adapter"* forever now reads a date and a tick, or the
+  same "Never tested" the carriers and channels screens use.
+- `erp.ai.testUnavailable` is **deleted** from all three locales. A string that
+  describes a limitation the build no longer has is worse than no string.
+
+#### The five strings are not new
+
+`test`, `testing`, `logs`, `hideLogs`, `noLogs` are the carrier and channel ones,
+reused — a fourth near-identical copy of "Hide log" is a translation somebody has
+to keep in step with two others for no gain.
+
+#### Files
+
+- `apps/website-builder/src/lib/erp/ai-connection.ts` (new)
+- `apps/website-builder/src/app/api/erp/ai/providers/[id]/{test,logs}/route.ts` (new)
+- `apps/website-builder/src/lib/erp/integration-log.ts` — `aiProvider` on `LogEntity`
+- `apps/website-builder/src/components/console/erp/ai-write.tsx`
+- `apps/website-builder/src/app/console/erp/ai/page.tsx`
+- `apps/website-builder/src/lib/console/erp-strings.ts`
+- `packages/db/prisma/schema/erp.prisma` — the `entity` comment
+- `apps/website-builder/test/erp/ai.test.ts` — 11 regression tests
+
+**Migration:** none — no column changed, only a comment. **Risk:** low; every
+path is new, and the one edit to an existing screen replaces a permanently-false
+label with a real state.
+
+---
+
 ### AUDIT.4 A translation key that only existed in the code
 
 [Opus 5]

@@ -15,12 +15,14 @@ type Params = { id: string };
  * leaked could not be rotated from the console. The legacy has `PUT`, `DELETE`,
  * `/default` and `/test`; the first three are here.
  *
- * `/test` is NOT, and the reason is stated rather than left as a gap: testing a
- * provider means calling a model, which needs an adapter layer this deployment
- * does not have (`ai/chat` answers 501 for the same reason). Shipping a "test"
- * button that always reports success without contacting anything would be worse
- * than its absence — it is the same class of lie as the fabricated tracking
- * numbers D-LP.2 removed. Recorded as Tier 4 slice 27.
+ * `/test` was NOT, and the reason given here was WRONG — see AUDIT.5. It said
+ * "testing a provider means calling a model, which needs an adapter layer this
+ * deployment does not have", and the legacy's own adapters say otherwise: two of
+ * the three test with `GET /models`, a credential check that runs no inference.
+ * The rule the sentence was applying is still right (a button that reports
+ * success without contacting anything is the fabricated-tracking-number lie);
+ * the premise it applied it to did not survive re-reading the source. It lives at
+ * `[id]/test/route.ts` now, with `[id]/logs` for why a test failed.
  * ========================================================================== */
 
 const SELECT = {

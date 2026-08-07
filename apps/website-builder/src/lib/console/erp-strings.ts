@@ -385,6 +385,15 @@ export function aiStrings(t: (key: string) => string): AiStrings {
     enabled: t("erp.write.activate"),
     none: t("erp.write.unassigned"),
     keyKept: t("erp.write.maskKeeps"),
+    /* AUDIT.5. The same five strings the carrier and channel rows use, because
+       they say the same thing about the same kind of integration. A fourth
+       near-identical copy of "Hide log" is a translation somebody has to keep in
+       step with two others for no gain. */
+    test: t("erp.carriers.test"),
+    testing: t("erp.channels.testing"),
+    logs: t("erp.channels.logs"),
+    hideLogs: t("erp.channels.hideLogs"),
+    noLogs: t("erp.channels.noLogs"),
   };
 }
 
