@@ -1,9 +1,9 @@
-import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { withTenant } from "@landingos/db";
 
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
+import { DraftBody } from "@/lib/storefront/contract";
 import { triggerDraftOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 
 export const dynamic = "force-dynamic";
@@ -24,15 +24,9 @@ export const dynamic = "force-dynamic";
  * write was rejected would make this a probe for which pages exist.
  * ========================================================================== */
 
-const Body = z.object({
-  token: z.string().trim().min(8).max(120),
-  landingPageId: z.string().min(1),
-  customerName: z.string().trim().max(160).optional().nullable(),
-  phone: z.string().trim().max(40).optional().nullable(),
-  wilaya: z.string().trim().max(120).optional().nullable(),
-  baladia: z.string().trim().max(160).optional().nullable(),
-  quantity: z.coerce.number().int().min(1).max(99).optional(),
-});
+// The body schema lives in `lib/storefront/contract.ts`, shared with the
+// capture hook — the drift this prevents is exactly how this route spent the
+// platform port answering 204 to every real capture (B-04).
 
 export async function POST(
   req: NextRequest,
@@ -42,7 +36,7 @@ export async function POST(
   const tenant = await tenantBySlug(slug);
   if (!tenant) return new NextResponse(null, { status: 204 });
 
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  const parsed = DraftBody.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return new NextResponse(null, { status: 204 });
 
   const { token, landingPageId, ...fields } = parsed.data;

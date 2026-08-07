@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useStorefrontApi } from "@/lib/storefront/api-base";
+import type { DraftBodyInput } from "@/lib/storefront/contract";
 
 // Abandoned-checkout capture for the storefront purchase form.
 //
@@ -35,13 +36,17 @@ function getOrCreateToken(landingId: string): string {
   }
 }
 
+// Names, not ids: the server stores the draft as a readable lead (the same
+// snapshot rule SalesOrder follows), and the contract module is the one
+// vocabulary both sides use (B-04).
 export interface DraftSnapshot {
   customerName?: string | null;
   phone?: string | null;
-  wilayaId?: number | null;
-  baladiaId?: number | null;
+  wilaya?: string | null;
+  baladia?: string | null;
   quantity?: number;
   variants?: { name: string; value: string }[];
+  shippingMethod?: "HOME" | "DESK" | null;
 }
 
 // Only bother the server once there is something worth saving. Mirrors the
@@ -69,17 +74,20 @@ export function useDraftCapture(landingId: string) {
   const convertedRef = React.useRef(false);
 
   const buildBody = React.useCallback(
-    (snapshot: DraftSnapshot) =>
-      JSON.stringify({
-        token,
-        landingId,
+    (snapshot: DraftSnapshot) => {
+      const body: DraftBodyInput = {
+        token: token ?? "",
+        landingPageId: landingId,
         customerName: snapshot.customerName || null,
         phone: snapshot.phone || null,
-        wilayaId: snapshot.wilayaId ?? null,
-        baladiaId: snapshot.baladiaId ?? null,
+        wilaya: snapshot.wilaya || null,
+        baladia: snapshot.baladia || null,
         quantity: snapshot.quantity ?? 1,
         variants: snapshot.variants ?? [],
-      }),
+        shippingMethod: snapshot.shippingMethod ?? undefined,
+      };
+      return JSON.stringify(body);
+    },
     [landingId, token],
   );
 

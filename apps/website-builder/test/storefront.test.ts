@@ -335,3 +335,108 @@ describe('abandoned-checkout capture fails silently', { skip }, () => {
     assert.equal(leaked.length, 0, "another tenant's page must not create a draft here");
   });
 });
+
+/* =============================================================================
+ * LB.1 — the browser and the API share ONE contract.
+ *
+ * The defect class these exist for: the purchase form and the routes each held
+ * their own copy of the body shape, drifted, and every browser checkout
+ * answered 422 while this suite — posting the route's own shape — stayed
+ * green (BUILDER_AUDIT B-01..B-06). The schemas now live in
+ * `lib/storefront/contract.ts`, imported by BOTH sides; these tests exercise
+ * the fields the form actually sends, including the ones the old schema
+ * silently stripped.
+ * ========================================================================== */
+
+describe('the checkout body is the contract the form sends (LB.1)', { skip }, () => {
+  test('a checkout carrying draftToken/fbc/fbp is accepted, and the draft is marked converted', async () => {
+    const token = `tok-${stamp}-convert1`;
+    await post(`/api/storefront/${slugA}/draft-orders`, {
+      token, landingPageId: publishedA, customerName: 'Almost Left', phone: '0555010203',
+    });
+
+    const r = await post(`/api/storefront/${slugA}/orders`, {
+      landingPageId: publishedA,
+      customerName: 'Almost Left',
+      phone: '0555010203',
+      wilayaId,
+      baladiaName: 'Centre',
+      quantity: 1,
+      shippingMethod: 'HOME',
+      variantIds: [],
+      draftToken: token,
+      fbc: 'fb.1.1700000000.AbCdEf',
+      fbp: 'fb.1.1700000000.1234567890',
+    });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+
+    const draft = await withTenant(tenantA, (db) =>
+      (db as any).draftOrder.findFirst({ where: { token } }),
+    );
+    assert.ok(draft, 'the draft still exists');
+    assert.equal(draft.convertedOrderId, r.body.data.id, 'the lead is marked converted');
+    assert.ok(draft.convertedAt, 'with a timestamp');
+  });
+
+  test('an unresolvable draftToken does not fail the sale', async () => {
+    const r = await post(`/api/storefront/${slugA}/orders`, {
+      landingPageId: publishedA, customerName: 'No Draft', phone: '0555020304',
+      wilayaId, baladiaName: 'Centre', quantity: 1, shippingMethod: 'HOME',
+      draftToken: `tok-${stamp}-never-existed`,
+    });
+    assert.equal(r.status, 201, 'a cleared sessionStorage must not block a purchase');
+  });
+
+  test('an order that carries no draftToken leaves the lead open', async () => {
+    const token = `tok-${stamp}-untoken1`;
+    await post(`/api/storefront/${slugA}/draft-orders`, {
+      token, landingPageId: publishedA, phone: '0555030405',
+    });
+    const r = await post(`/api/storefront/${slugA}/orders`, {
+      landingPageId: publishedA, customerName: 'Cross Check', phone: '0555030405',
+      wilayaId, baladiaName: 'Centre', quantity: 1,
+    });
+    assert.equal(r.status, 201);
+
+    // Conversion is opt-in by token, never inferred from a matching phone —
+    // inference would mark somebody else's lead on a shared family number.
+    const untouched = await withTenant(tenantA, (db) =>
+      (db as any).draftOrder.findFirst({ where: { token } }),
+    );
+    assert.equal(untouched.convertedOrderId, null, 'no token, no conversion');
+  });
+
+  test('the capture accepts the fields the form sends: names, variants, method', async () => {
+    const token = `tok-${stamp}-fullcap1`;
+    const r = await post(`/api/storefront/${slugA}/draft-orders`, {
+      token,
+      landingPageId: publishedA,
+      customerName: 'Typed Everything',
+      phone: '0555040506',
+      wilaya: 'Adrar',
+      baladia: 'Adrar Centre',
+      quantity: 2,
+      variants: [{ name: 'Couleur', value: 'Noir' }],
+      shippingMethod: 'DESK',
+    });
+    assert.equal(r.status, 204);
+
+    const draft = await withTenant(tenantA, (db) =>
+      (db as any).draftOrder.findFirst({ where: { token } }),
+    );
+    assert.ok(draft, 'stored');
+    assert.equal(draft.wilaya, 'Adrar');
+    assert.equal(draft.baladia, 'Adrar Centre');
+    assert.equal(draft.shippingMethod, 'DESK');
+    assert.deepEqual(draft.variants, [{ name: 'Couleur', value: 'Noir' }]);
+  });
+
+  test('the wilayas response shape is the one the form reads: data.items with embedded prices', async () => {
+    const r = await get(`/api/storefront/${slugA}/wilayas`);
+    assert.equal(r.status, 200);
+    assert.ok(Array.isArray(r.body.data.items), 'items is the array, not data itself');
+    const w = r.body.data.items[0];
+    assert.equal(typeof w.homePrice, 'string', 'a price is a Decimal string, never a float');
+    assert.ok(Array.isArray(w.baladias));
+  });
+});

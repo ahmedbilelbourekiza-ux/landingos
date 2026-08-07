@@ -19,7 +19,8 @@ import { readMetaCookies, trackInitiateCheckout } from "@/components/landing/met
 import { useDraftCapture } from "@/lib/landing/use-draft-capture";
 import { normalizeOrder, type OrderFormConfig } from "@/lib/landing/mock-order-form";
 import type { ShippingMethod } from "@/types/landing";
-import { useStorefrontApi } from "@/lib/storefront/api-base";
+import { useStorefrontApi, useStorefrontHref } from "@/lib/storefront/api-base";
+import type { CheckoutBodyInput, CheckoutSuccess, WilayaItem } from "@/lib/storefront/contract";
 
 // The customer-facing checkout.
 //
@@ -36,14 +37,6 @@ import { useStorefrontApi } from "@/lib/storefront/api-base";
 //
 // Validation is built from the config rather than fixed, because whether a
 // field is required is now the admin's decision.
-
-interface WilayaOption {
-  id: number;
-  code: string;
-  name: string;
-  nameAr: string | null;
-  baladias: { id: number; name: string; nameAr: string | null }[];
-}
 
 interface WilayaPrices {
   home: number | null;
@@ -109,6 +102,7 @@ export function PurchaseForm({
 }) {
   // Bound to this storefront tenant by StorefrontApiProvider.
   const api = useStorefrontApi();
+  const href = useStorefrontHref();
   const router = useRouter();
   const { subtotal } = useOrderTotals(store);
   const unitPrice = useUnitPrice(store);
@@ -132,7 +126,7 @@ export function PurchaseForm({
     });
   }, [store, landingId, productTitle, subtotal, currency]);
 
-  const [wilayas, setWilayas] = React.useState<WilayaOption[]>([]);
+  const [wilayas, setWilayas] = React.useState<WilayaItem[]>([]);
   const [selectedWilaya, setSelectedWilaya] = React.useState<number | "">("");
   const [selectedBaladia, setSelectedBaladia] = React.useState<number | "">("");
   const [prices, setPrices] = React.useState<Record<number, WilayaPrices>>({});
@@ -177,35 +171,58 @@ export function PurchaseForm({
 
   React.useEffect(() => {
     const state = store.getState();
+    // Names, not ids — the wilaya list is loaded async, so resolve defensively
+    // and send null until it arrives rather than a number the server refuses.
+    const wilayaName =
+      selectedWilaya === ""
+        ? null
+        : wilayas.find((w) => w.id === Number(selectedWilaya))?.name ?? null;
+    const baladiaName =
+      selectedWilaya === "" || selectedBaladia === ""
+        ? null
+        : wilayas
+            .find((w) => w.id === Number(selectedWilaya))
+            ?.baladias.find((b) => b.id === Number(selectedBaladia))?.name ?? null;
     draftUpdate({
       customerName: watchedName,
       phone: watchedPhone,
-      wilayaId: selectedWilaya === "" ? null : Number(selectedWilaya),
-      baladiaId: selectedBaladia === "" ? null : Number(selectedBaladia),
+      wilaya: wilayaName,
+      baladia: baladiaName,
       quantity: state.quantity,
       variants: state.groups.map((g) => ({
         name: g.name,
         value: state.selected[g.name] ?? g.options[0]?.value ?? "",
       })),
     });
-  }, [draftUpdate, store, watchedName, watchedPhone, selectedWilaya, selectedBaladia, quantity]);
+  }, [draftUpdate, store, watchedName, watchedPhone, selectedWilaya, selectedBaladia, quantity, wilayas]);
 
-  // Load wilayas + global delivery prices on mount. Both prices are kept now,
-  // not just home, because stop desk quotes from deskPrice.
+  // Load the destinations on mount. ONE request: the wilayas route embeds this
+  // tenant's delivery prices per row (as Decimal STRINGS — M-06), so the price
+  // map is derived rather than fetched again. The response is the platform
+  // envelope `{ data: { items } }`; reading `data` directly is the exact
+  // mistake that took the whole page down (B-01).
   React.useEffect(() => {
-    Promise.all([
-      fetch(api("/wilayas")).then((r) => r.json()),
-      fetch(api("/wilayas")).then((r) => r.json()),
-    ]).then(([wJson, pJson]) => {
-      if (wJson.success) setWilayas(wJson.data);
-      if (pJson.success) {
+    fetch(api("/wilayas"))
+      .then((r) => r.json())
+      .then((json) => {
+        if (!json?.success || !Array.isArray(json.data?.items)) return;
+        const items: WilayaItem[] = json.data.items;
+        setWilayas(items);
         const map: Record<number, WilayaPrices> = {};
-        for (const p of pJson.data) {
-          map[p.id] = { home: p.homePrice ?? null, desk: p.deskPrice ?? null };
+        for (const w of items) {
+          map[w.id] = {
+            home: w.homePrice == null ? null : Number(w.homePrice),
+            desk: w.deskPrice == null ? null : Number(w.deskPrice),
+          };
         }
         setPrices(map);
-      }
-    });
+      })
+      .catch(() => {
+        // A failed load leaves the destination list empty; the form still
+        // renders and the customer can retry by reloading. Never crash the
+        // page a customer is trying to buy from.
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedWilayaData = wilayas.find((w) => w.id === Number(selectedWilaya));
@@ -259,29 +276,39 @@ export function PurchaseForm({
     setSubmitError(null);
     try {
       const state = store.getState();
-      const variantSnapshot = state.groups.map((g) => ({
-        name: g.name,
-        value: state.selected[g.name] ?? g.options[0]?.value ?? "",
-      }));
+      // The API prices from variant IDS (never from anything the client could
+      // price itself), so the selection is resolved to ids here. A value with
+      // no matching option contributes nothing rather than blocking the sale.
+      const variantIds = state.groups
+        .map((g) => {
+          const chosen = state.selected[g.name] ?? g.options[0]?.value;
+          return g.options.find((o) => o.value === chosen)?.id;
+        })
+        .filter((id): id is string => Boolean(id));
+
+      // The baladia travels as a NAME snapshot, like the order stores it.
+      const baladiaName =
+        selectedWilayaData?.baladias.find((b) => b.id === Number(selectedBaladia))?.name ?? "";
 
       const { fbc, fbp } = readMetaCookies();
+      const body: CheckoutBodyInput = {
+        landingPageId: landingId,
+        customerName: values.fullName ?? "",
+        phone: values.phone ?? "",
+        wilayaId: Number(selectedWilaya),
+        baladiaName,
+        notes: values.notes || undefined,
+        quantity: state.quantity,
+        variantIds,
+        shippingMethod,
+        fbc: fbc ?? undefined,
+        fbp: fbp ?? undefined,
+        draftToken: draft.token ?? undefined,
+      };
       const res = await fetch(api("/orders"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          landingId,
-          customerName: values.fullName,
-          phone: values.phone,
-          wilayaId: Number(selectedWilaya),
-          baladiaId: Number(selectedBaladia),
-          notes: values.notes || undefined,
-          quantity: state.quantity,
-          variants: variantSnapshot,
-          shippingMethod,
-          fbc: fbc ?? undefined,
-          fbp: fbp ?? undefined,
-          draftToken: draft.token ?? undefined,
-        }),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (!json.success) {
@@ -292,7 +319,10 @@ export function PurchaseForm({
       // Stop the capture hook — otherwise navigating away would fire a final
       // beacon and re-open a lead this customer just converted.
       draft.markConverted();
-      router.push(`/thank-you/${json.data.orderId}`);
+      const data = json.data as CheckoutSuccess;
+      // Tenant-aware: a bare "/thank-you/…" from a prefixed storefront lands
+      // in the platform's root namespace and 404s (B-03).
+      router.push(href(`/thank-you/${data.id}`));
     } catch {
       setSubmitError("خطأ في الشبكة — يرجى المحاولة مرة أخرى");
       setSubmitting(false);

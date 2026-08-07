@@ -1,9 +1,9 @@
-import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { Prisma, withTenant } from "@landingos/db";
 
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
+import { CheckoutBody } from "@/lib/storefront/contract";
 import { triggerOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 import { hasErp, fulfilmentFromSale } from "@/lib/erp/from-sale";
 
@@ -26,19 +26,8 @@ export const dynamic = "force-dynamic";
  * deliver to a wilaya someone else priced.
  * ========================================================================== */
 
-const Body = z.object({
-  landingPageId: z.string().min(1),
-  customerName: z.string().trim().min(2).max(160),
-  phone: z.string().trim().min(6).max(40),
-  wilayaId: z.coerce.number().int().positive(),
-  baladiaName: z.string().trim().min(1).max(160),
-  address: z.string().trim().max(500).optional().default(""),
-  notes: z.string().trim().max(1000).optional().nullable(),
-  quantity: z.coerce.number().int().min(1).max(99),
-  shippingMethod: z.enum(["HOME", "DESK"]).default("HOME"),
-  /** Chosen option ids. What they COST is looked up, never sent. */
-  variantIds: z.array(z.string()).max(20).default([]),
-});
+// The body schema lives in `lib/storefront/contract.ts`, shared with the
+// purchase form — see that module for why it may not be re-declared here.
 
 const fail = (status: number, code: string, message: string) =>
   NextResponse.json({ success: false, error: { code, message } }, { status });
@@ -51,7 +40,7 @@ export async function POST(
   const tenant = await tenantBySlug(slug);
   if (!tenant) return fail(404, "NOT_FOUND", "That store does not exist.");
 
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  const parsed = CheckoutBody.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return fail(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Check the form.");
   }
@@ -133,6 +122,20 @@ export async function POST(
       await (db as any).salesOrderStatusHistory.create({
         data: { tenantId: tenant.id, orderId: order.id, fromStatus: null, toStatus: "NEW" },
       });
+
+      // A customer who converts stops being an abandoned lead. Written in the
+      // SAME transaction as the order: `convertedOrderId` had a column and no
+      // writer since the port (B-06), so every recovered customer stayed in
+      // the abandoned list forever. `updateMany` because the token may not
+      // resolve (cleared storage, another device) and that must not fail the
+      // sale — matching zero rows is the correct outcome then. Constrained to
+      // the same page so a token cannot mark someone else's lead converted.
+      if (input.draftToken) {
+        await (db as any).draftOrder.updateMany({
+          where: { token: input.draftToken, landingPageId: page.id, convertedOrderId: null },
+          data: { convertedOrderId: order.id, convertedAt: new Date() },
+        });
+      }
 
       // M-05. The ERP's operational record, in THIS transaction — not over a
       // webhook. Both live in the same database now, and a network hop between

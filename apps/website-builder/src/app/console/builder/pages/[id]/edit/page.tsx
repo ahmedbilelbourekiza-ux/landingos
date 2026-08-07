@@ -60,7 +60,10 @@ export default async function ConsoleEditLandingPage({
     // the customer-facing template. Pointing the preview at the tenant's own
     // storefront API is what makes it a preview rather than a rehearsal.
     <BuilderApiProvider base="/api/builder">
-      <StorefrontApiProvider base={`/api/storefront/${session.tenant!.slug}`}>
+      <StorefrontApiProvider
+        base={`/api/storefront/${session.tenant!.slug}`}
+        pageBase={`/${session.tenant!.slug}`}
+      >
       <EditWorkspace
         landingId={page.id}
         landingTitle={page.title}

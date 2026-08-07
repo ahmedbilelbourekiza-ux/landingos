@@ -4,7 +4,7 @@ import type { LandingListItem } from "@/lib/landing/mock-landings";
 import type { VariantGroup } from "@/lib/landing/mock-landings";
 import type { LandingPageData } from "@/types/landing";
 import type { OrderFormConfig } from "@/lib/landing/mock-order-form";
-import { defaultOrderFormConfig, normalizeOrder } from "@/lib/landing/mock-order-form";
+import { defaultOrderFormConfig, normalizeOrder, ALL_FIELD_KEYS } from "@/lib/landing/mock-order-form";
 import type { LandingTheme } from "@/generated/prisma";
 import type { LandingThemeData } from "@/types/theme";
 import { DEFAULT_THEME } from "@/types/theme";
@@ -97,13 +97,29 @@ export function parseOrderFormConfig(
   if (!setting?.orderFormConfig) return fallback;
 
   try {
-    const stored = JSON.parse(setting.orderFormConfig) as Partial<OrderFormConfig>;
+    // A Prisma Json column comes back as the VALUE, not a string — calling
+    // JSON.parse on it throws and every stored config silently fell back to
+    // the defaults (B-07). Strings are still parsed, because rows written by
+    // the pre-platform app stored the config as a serialized string.
+    const raw = setting.orderFormConfig;
+    const stored = (
+      typeof raw === "string" ? JSON.parse(raw) : raw
+    ) as Partial<OrderFormConfig>;
+    if (!stored || typeof stored !== "object") return fallback;
+    // Per-FIELD merge, not a top-level spread: a stored field holding only a
+    // label must inherit `visible`/`required` from the default rather than
+    // replace the whole object and render the field invisible.
     const merged: OrderFormConfig = {
       ...defaultOrderFormConfig,
-      ...stored,
       order: normalizeOrder(stored.order),
       buttonText,
     };
+    for (const key of ALL_FIELD_KEYS) {
+      const storedField = stored[key];
+      if (storedField && typeof storedField === "object") {
+        merged[key] = { ...defaultOrderFormConfig[key], ...storedField };
+      }
+    }
     // Address is forced off regardless of what is stored: POST /api/orders
     // neither accepts nor persists one (Order.address is written as ""), so
     // rendering the input would collect something the customer types and the
