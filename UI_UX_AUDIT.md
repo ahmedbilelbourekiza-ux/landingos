@@ -679,3 +679,64 @@ architectural dependency of every screen below them.
 **Every slice ends with a build and the affected contract suites**, per the
 project's own rule, and the screens suite is the one that matters: it asserts on
 rendered HTML and is what will catch a `data-testid` lost to a refactor.
+
+---
+
+## 12. What the work closed, and what it left — measured 7 August 2026
+
+Written after the seven passes, from `248a39f` plus the final polish. The
+implementation notes live in `CHANGELOG.md` §UI.1–UI.4; this is the scoreboard
+against §1.
+
+### Closed
+
+| | |
+|---|---|
+| **Shell** | UX-01 (drawer), UX-02 (theme switcher), UX-03 (icon registry), UX-04 (manifest-declared groups), UX-05 (sticky header, `PageHeader`), UX-06 (`max-w-[100rem]`, responsive padding), UX-07, UX-08 (partly — one control vocabulary, still three places), UX-09, UX-17, UX-18, UX-19 |
+| **System** | UX-10 (`text-2xs` replaces two arbitrary sizes; `sectionTitle` is semibold), UX-11 (`PageBody` owns the column; ten panel margins removed), UX-12, UX-13 (`bg-surface-raised` on every panel), UX-14 (`.ui-control` — nine copies became one), UX-15, UX-16 |
+| **Tables** | UX-20 (sortable headers + 4 tests), UX-21, UX-22, UX-23 (select-all, indeterminate), UX-24 (density), UX-25 (scroll shadows), UX-26, UX-27 (partly), UX-28 (`emptyCopy`) |
+| **Forms** | UX-40 (`Field`/`fieldAria`), UX-41 (`.ui-label`), UX-42 (order entry), UX-43 (partly), UX-44, UX-45 (`aria-expanded`), UX-46, UX-47 (`ActionFeedback`), UX-49, UX-50 (partly — see below) |
+| **Feedback** | UX-60 (`:focus-visible`), UX-61 (`useLinkStatus` per item — see below for why not `loading.tsx`), UX-62, UX-63, UX-65, UX-66 |
+| **A11y** | UX-70 (11px floor), UX-71 (`.tap`), UX-72 (pager), UX-74, UX-77 |
+| **Screens** | UX-80, UX-82, UX-83, UX-87 |
+
+### Two defects the passes introduced and the live check caught
+
+Both are recorded because the method is worth more than the fixes, and both are
+the argument AUDIT.3 already made — the contract suite was green and the running
+page was wrong.
+
+1. **`md:max-h-[calc(100dvh-var(--console-header-h)-13rem)]` emitted nothing.**
+   Tailwind reads a space in an arbitrary value as the end of the class, so the
+   operators have to be written `_-_`; without them the declaration is
+   `calc(100dvh-var(…)-13rem)`, which CSS rejects. The container therefore had
+   no height, `position: sticky` had nothing to stick to, and the sticky header
+   — the whole point of UX-21 — silently did not work, with the class sitting
+   right there in the markup. Three more arbitrary `calc()` values in the
+   console had the same shape and were corrected with it.
+2. **The header cluster overflowed at 375px.** Bell + theme + locale + name came
+   to 319px beside a menu button and a company name, and the page scrolled
+   sideways by 16 px — on the width the whole drawer work exists for. The locale
+   switcher is withheld below `sm`; it has a permanent home on the profile
+   screen and the theme control has none.
+
+### Left open, deliberately
+
+| | Why |
+|---|---|
+| **UX-50, the residue** | Body copy on `settings/integrations` (webhook and pixel table headers, two descriptive sentences) and `settings/delivery-prices` (one explanatory sentence) is still English. Titles, labels, buttons and the sign-in error are keys. Finishing it means naming ~15 more strings in three catalogues, which is a translation task rather than a design one. |
+| **UX-61, `loading.tsx`** | Not added, and the reason is structural: `ConsoleShell` is rendered by each PAGE rather than by `console/layout.tsx`, so a route-level Suspense fallback replaces the whole frame and the sidebar blinks out on every navigation. Moving the shell into the layout is a real refactor — every screen resolves its own session and passes its own `productId` — and it is the right next slice for this. `useLinkStatus` covers the click-to-paint gap in the meantime. |
+| **UX-08** | The product, tenant and locale switchers share one control vocabulary now and are still three widgets in three places. Merging them is an information-architecture decision, not a styling one. |
+| **UX-29** | `settings/delivery-prices` and the calculator still hand-roll their tables. Both were brought onto the shared header padding and `scope="col"`; neither goes through `DataTable`, because both are edit grids rather than lists. |
+| **UX-30** | Row actions are still individually tabbable. A roving-tabindex actions menu is a behaviour change to a control surface D-06.2 governs, and belongs in its own slice. |
+| **UX-85** | Analytics is still seven tables. `recharts` is installed and LEGACY_PARITY §8 confirms neither system has ever had a chart, so adding one is a feature, not parity — recorded, not taken. |
+| **UX-86** | The calculator has the design system but not a step structure. Its 26 KB component is the largest single client module in the console and restructuring it is a slice of its own. |
+| **UX-51, UX-52, UX-73, UX-75, UX-76, UX-78, UX-79** | Polish. None blocks an operator. |
+
+### The rule this work adds
+
+**A Tailwind arbitrary value containing an operator must be verified in the
+running page, not in review.** It compiles, it appears in the class list, it
+survives every contract test that asserts on HTML — and it produces no CSS. The
+two defects above were both found by measuring the live document, which is the
+method NEXT_STEPS already records as the fourth pass's contribution.

@@ -73,7 +73,7 @@ export function ThemeSwitcher({
             data-theme-option={value}
             onClick={() => setTheme(value)}
             className={cn(
-              "flex size-7 items-center justify-center rounded-[calc(var(--radius)-6px)]",
+              "flex size-7 items-center justify-center rounded-[calc(var(--radius)_-_6px)]",
               "transition-colors duration-(--duration-fast) ease-standard",
               selected
                 ? "bg-surface-selected text-foreground"

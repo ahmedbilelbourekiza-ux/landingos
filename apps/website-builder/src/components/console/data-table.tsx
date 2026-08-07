@@ -152,7 +152,16 @@ export function DataTable<T>({
         // scrolls with the page: a nested vertical scroll region on a phone is
         // a trap, and the sticky header it would buy is worth less than the
         // trap costs.
-        "md:max-h-[calc(100dvh-var(--console-header-h)-13rem)]",
+        //
+        // The underscores are load-bearing. Tailwind reads a space in an
+        // arbitrary value as the end of the class, so it has to be written as
+        // `_`; without them this emits `calc(100dvh-var(…)-13rem)`, which CSS
+        // rejects because `calc` needs whitespace around `-`. The declaration is
+        // then dropped, the container has no height, `position: sticky` has
+        // nothing to stick to, and the header scrolls away exactly as before —
+        // silently, and with the class sitting right there in the markup.
+        // Found by looking at the running page, not by reading it.
+        "md:max-h-[calc(100dvh_-_var(--console-header-h)_-_13rem)]",
       )}
     >
       <table className="console-table w-full min-w-[640px] text-sm" data-testid={testId}>

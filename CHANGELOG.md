@@ -10,6 +10,255 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## Phase UI — UI/UX modernisation
+
+**Presentation only.** No business logic, no calculation, no API behaviour, no
+permission and no tenant-scoping change. Every control that rendered before
+renders now, decided by the same predicate the route checks (D-06.2); no
+optimistic UI was introduced (D-06.3); every collapsible panel still renders its
+contents and toggles `hidden` (D-06.4); every `data-testid` the contract suites
+read survives.
+
+`UI_UX_AUDIT.md` is the measurement this phase was planned from — 87 findings,
+taken before anything moved, with the file each lives in. §10 states what the
+work may not touch; §12 is the scoreboard afterwards, including what was left
+open and why.
+
+### UI.4 Forms that say what they need, and one column that owns the rhythm
+
+[Opus 5]
+Date: 7 August 2026
+Summary: pass 5, plus the four tests the sortable headers owed.
+screens 169 → **173**.
+
+#### What changed
+
+**`<Field>` binds a refusal to the control that caused it.** `ActionError`
+rendered one `role="alert"` at panel level and nothing else, so the new-order
+panel's eleven fields shared one message: the operator was told *that* something
+was refused and never *which*, and a screen-reader user got the sentence with no
+context at all. `fieldAria` sets `aria-describedby` and `aria-invalid` — which
+is also what tints the input's border — and `required` renders a mark AND
+`aria-required`, because an asterisk is invisible to a screen reader and an
+attribute is invisible to everyone else. The required rule mirrors the ROUTE's
+own and adds none of its own.
+
+**Success has a voice.** D-06.3 says no optimistic UI, and the console had read
+that as "say nothing" — the only feedback an operator ever got was a refusal.
+`ActionFeedback` fires AFTER the API answered success, so it reports what the
+server said rather than what a form assumed. Dispatched as a DOM event rather
+than threaded as a prop: more than twenty panels already call `useApiAction`,
+and a flag through each is twenty edits a twenty-first panel would forget.
+
+**`PageBody` owns the column.** Ten panel components each set their own outer
+margin, so the gap between two of them was decided by whichever rendered second.
+`flex flex-col gap-4`, not `space-y-4`: `space-y` sets `margin-top` through a
+compound selector that OUTRANKS a child's own `mt-8`, and adopting it would have
+silently flattened every deliberate section break on the finance, inventory and
+AI screens.
+
+**`ORDER_SORT_FIELDS` moved to `lib/erp/sort-fields.ts`, directive-free.** The
+first attempt at asserting the sort vocabulary died with `ERR_MODULE_NOT_FOUND`,
+because `lib/erp/orders.ts` is `server-only` and no contract test can import it —
+the same rule that produced `edit-field.ts`, `filter-field.ts` and
+`notify-vocab.ts`. The whitelist is now `Record<OrderSortField, …>`, so a key
+added to the list without a column fails to compile and a column no key names is
+impossible.
+
+#### Files
+
+`components/console/ui/primitives.tsx` (Field, fieldAria, PageBody),
+`components/console/action-feedback.tsx` (new), `components/console/api-action.tsx`,
+`components/console/erp/order-create.tsx`, `lib/erp/sort-fields.ts` (new),
+`lib/erp/orders.ts`, 35 screens, `test/erp/screens.test.ts`.
+
+#### Risk
+
+The sort tests assert **both directions** (D-LP.3's rule for filters, applied to
+ordering) precisely because `orderSort` falls back to `createdAt` for an unknown
+column deliberately, so a stale bookmark renders. A header bound to a key outside
+the list would therefore render perfectly, sort by date, and claim to have done
+something else.
+
+---
+
+### UI.3 The screens get a frame, and the console stops answering in English
+
+[Opus 5]
+Date: 7 August 2026
+Summary: pass 3 and the last of pass 6.
+
+#### What changed
+
+**One header everywhere.** 35 screens each rendered their own
+`<h1 className="text-xl font-semibold">`, with nowhere to put a description, an
+action or a breadcrumb — so descriptions were loose `<p>` tags and every
+second-level screen invented a different back link (the order detail's
+`← Back to list`, the client detail's own, the product detail's absence).
+
+**The dashboard leads with the thing that has a deadline.** The overdue banner
+sat between the title and a grid of six equal tiles. `auto-fit` replaces
+`lg:grid-cols-3`: five tiles became three and two-stretched-to-fill, and an
+agent — deliberately not shown the customer count (D-05.1) — got a hole where it
+would have been.
+
+**Three feedback states that did not exist.** There was **no error boundary
+anywhere in the application**: a thrown screen showed the framework's default
+page, with no shell and no way back, and PROJECT_STATE's own known-limitations
+section records that the free-tier connection limit "surfaces as a 500 from a
+screen". There was no not-found page either, though `notFound()` is called
+deliberately and often — assumption 10 is 404-not-403 for another tenant's row,
+so one sentence has to cover a mistyped URL, another tenant's id and a screen
+this person may not open. And nothing happened between a click and a page.
+
+**Not `loading.tsx`, and the reason is structural.** `ConsoleShell` is rendered
+by each PAGE rather than by the console layout, so a route-level Suspense
+fallback replaces the whole frame and the sidebar blinks out on every
+navigation. `useLinkStatus` answers the narrower question — is THIS the link you
+are waiting for — and the spinner lands on the item that was clicked.
+
+**The English.** Six screens rendered user-facing literals in a product whose
+default locale is Arabic, including the login page. AUDIT.4's i18n scan reads
+`t("…")` calls, so it could never see a string that never went through `t()` —
+which is how these survived four passes. The residue is named in
+`UI_UX_AUDIT.md` §12 rather than left unstated.
+
+#### Files
+
+`components/console/ui/primitives.tsx`, `app/console/error.tsx` (new),
+`app/console/not-found.tsx` (new), `components/console/nav-pending.tsx` (new),
+`components/console/notification-provider.tsx`, 35 screens,
+`packages/i18n/src/messages/{ar,fr,en}.json`.
+
+---
+
+### UI.2 The table an ERP is actually used through
+
+[Opus 5]
+Date: 7 August 2026
+Summary: pass 4. `DataTable` renders every list in the product and was a clean
+2010-era table.
+
+#### The one that is a capability, not a style
+
+`orderSort` has read `?sort=`/`?dir=` since Phase 5, against a whitelist, and
+**no control anywhere set either of them** — so an operator could not sort the
+order book by value, by date or by customer, though the query always could. That
+is the shape of defect this project has now caught six times: BUG-02,
+`IntegrationLog`, `OrderCall.suspicious`, `fakeReason`, A12 and A13. Computed,
+stored, whitelisted, reachable by nothing.
+
+The header is a LINK, like the pager: sorting lives in the URL, survives a
+refresh, can be sent to a colleague, works before JavaScript, and can be
+asserted by a contract test.
+
+#### The rest
+
+Sticky header on a scroll region capped only from `md` up — a nested vertical
+scroll on a phone is worse than the problem it solves. Hover, and a selected row
+driven by `has-[:checked]`, so there is no second copy of what is ticked.
+Select-all with a real indeterminate state, in the bulk bar rather than the
+header cell, because the table is a server component and the form is the bar's.
+The bulk bar is sticky and takes the selected tint: it sat above the table, so
+selecting row 40 meant scrolling back up to act on it. `scope="col"`,
+`aria-sort`, a caption, and an empty state that tells "nothing yet" from
+"nothing matched" — "No orders yet" on `?status=cancelled` in a tenant with
+4,000 orders is simply false. Scroll shadows via `background-attachment: local`:
+no listener, and both edges drawn, which is what it has to be with Arabic as the
+default locale.
+
+**Density follows the DEVICE, not the person.** D-LP.11.1 put the notification
+preferences on `ProductSetting` for two stated reasons — a mute must follow the
+person between machines, and a supervisor must be able to see whether an agent
+silenced the alarm that watches them. Neither is true of row height, and putting
+it in the database would add a bound read to every console render.
+
+#### Files
+
+`components/console/data-table.tsx`, `components/console/density-toggle.tsx`
+(new), `components/console/density-script.tsx` (new),
+`components/console/ui/list-frame.tsx` (new),
+`components/console/erp/order-bulk.tsx`, `lib/erp/orders.ts`, the four list
+screens, `app/globals.css`.
+
+#### Risk
+
+`data-order-id` stays exactly one per row — the defect LP.8 introduced and the
+LP.3 paging tests caught, where every row count doubled. Verified: listing 30/30.
+
+---
+
+### UI.1 The audit, the design system, and a console you can reach on a phone
+
+[Opus 5]
+Date: 7 August 2026
+Summary: passes 1 and 2. `UI_UX_AUDIT.md` is new — 87 findings across the shell,
+the tokens, the tables, the forms, feedback, accessibility and 39 screens, each
+with the file it lives in.
+
+#### The three that matter most, all found by measuring rather than by looking
+
+**There was no navigation at all below 768px.** The sidebar was
+`hidden … md:flex` and nothing replaced it — no drawer, no menu button, no
+bottom bar. The screen this hurts is `/console/erp/queue`, the port of the
+legacy agent PWA, which LEGACY_PARITY §6.4(c) records is used by field agents on
+Algerian mobile networks. It was reachable on a phone only by typing the URL.
+
+**The dark theme could not be turned on.** `tokens.css` documents at length that
+the dark palette IS the ERP's own, promoted — "the dense operational screens
+people use every day keep the exact colour language they already read fluently"
+— and that it was the resolution of R-14. `theme-toggle.tsx` was written to
+switch it and imported by nothing.
+
+**The icons were computed, passed down, and thrown away.** `ProductNavItem` has
+carried a lucide name since the contract was written, its comment says "resolved
+by the shell's icon registry (lucide today)", and no registry existed:
+`console-shell.tsx` computed the name, `ConsoleNav` destructured it and rendered
+only the title. Fifteen ERP items were fifteen identical lines of text.
+
+#### The system
+
+`packages/ui/src/tokens.css` gains surfaces, elevation, focus and motion, in both
+themes. The colour system was real and was 23 colour decisions; eight of the
+nine axes of a design system did not exist, so every screen re-decided them —
+the audit counted seven vertical rhythms, three radii for one role, five type
+sizes of which two were arbitrary, and no focus treatment at all.
+
+`globals.css` gains a `:focus-visible` ring, which the codebase had nowhere.
+Every keyboard guarantee this project built deliberately — GET filter forms, a
+pager of links, panels that render before hydration — is unusable if you cannot
+see where you are. Plus one reduced-motion guard for everything, `.tap` (a 44 px
+floor on coarse pointers only), and a fix: `::selection` named `--crimson`,
+which has never existed, so both declarations were invalid and dropped.
+
+`components/console/ui/styles.ts` is the class vocabulary, directive-free so a
+server screen and a client panel share it — the `edit-field.ts` rule, third
+worked example. It replaces the text input written out by hand in nine files.
+
+#### The registry change
+
+`ProductNavItem.group` — optional, an i18n key, declared by the PRODUCT. The
+shell knowing that "orders, queue and follow-up are one job" would be the shell
+knowing what an ERP is, which is the one thing the registry exists to prevent,
+and a `switch` on `product.id` is exactly the shape the registry replaced. A
+manifest that declares no groups renders the flat list it rendered before.
+
+#### Files
+
+`packages/ui/src/tokens.css`, `packages/product-registry/src/{types,manifests}.ts`,
+`packages/i18n/src/messages/{ar,fr,en}.json`, `app/globals.css`,
+`components/console/{console-shell,console-nav,console-sidebar,theme-switcher,
+product-switcher,tenant-switcher,locale-switcher,sign-out-button}.tsx`,
+`components/console/ui/{styles.ts,primitives.tsx,icon.tsx}` (new).
+
+#### Risk
+
+The tokens suite parses `:root { … \n}` as a flat block and requires both themes
+to define every tone, so no nested rule may be introduced inside `:root` and any
+token added to one theme is added to the other. Verified: ui 26/26.
+
+---
+
 ## Phase LP — Legacy parity restoration
 
 ### AUDIT.9 A request with no deadline, which stopped every scheduled job

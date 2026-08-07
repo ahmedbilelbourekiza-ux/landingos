@@ -211,7 +211,7 @@ export function OrderBulkBar({
          * stays rendered in both states (D-06.4) and stays disabled at zero,
          * which is the rule it already followed. */
         className={cn(
-          "sticky top-[calc(var(--console-header-h)+0.5rem)] z-20 flex flex-wrap items-end gap-3",
+          "sticky top-[calc(var(--console-header-h)_+_0.5rem)] z-20 flex flex-wrap items-end gap-3",
           "rounded-lg border p-3 backdrop-blur-sm transition-colors duration-(--duration-base)",
           count > 0
             ? "border-surface-selected-border bg-surface-selected shadow-e2"

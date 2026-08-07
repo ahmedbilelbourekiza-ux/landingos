@@ -235,7 +235,7 @@ export async function ConsoleShell({
             activeId={session.tenant?.id ?? null}
             label={t("common.switchTenant")}
           />
-          <div className="ms-auto flex items-center gap-1.5 sm:gap-2">
+          <div className="ms-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
             {/* ONE subscription per session, not per screen: this shell is on
                 every console page, and a provider per screen would open N
                 streams per tab — each of which is a polling query. */}
@@ -265,7 +265,15 @@ export async function ConsoleShell({
                 system: t("common.themeSystem"),
               }}
             />
-            <LocaleSwitcher label={t("common.language")} apply={t("common.apply")} />
+            {/* Withheld below `sm`, and the measurement is why: at 375px the
+                header cluster came to 319px beside a menu button and a company
+                name, and the page scrolled sideways by 16px. Language is set
+                once and has a permanent home on the profile screen; the theme
+                has no other control anywhere, so it is the one that stays.
+                Found by measuring the running page at 375px, not by reading. */}
+            <div className="hidden sm:block">
+              <LocaleSwitcher label={t("common.language")} apply={t("common.apply")} />
+            </div>
             {/* The name is the least urgent thing in the header and the first
                 to go when the row runs out of width. It is not a control. */}
             <span

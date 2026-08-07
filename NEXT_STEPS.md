@@ -2,7 +2,25 @@
 
 **Phase 5, 6 and 7 are complete. LEGACY PARITY IS REACHED — Tiers 1, 2 and 3 of
 `LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that
-did not use the roadmap at all.**
+did not use the roadmap at all. PHASE UI (the UI/UX modernisation) IS COMPLETE
+— see `UI_UX_AUDIT.md`, and PROJECT_STATE's *Phase UI* section for the
+decisions.**
+
+## WHAT PHASE UI LEFT, AND WHAT IT IS WORTH
+
+Full list with reasoning in `UI_UX_AUDIT.md` §12. Three are worth naming here
+because they are slices rather than polish:
+
+| # | Slice | Size | Why it is worth doing |
+|---|---|---|---|
+| **UI.6** | Move `ConsoleShell` into `console/layout.tsx`, then add `loading.tsx` per segment | M | This is the ONLY thing blocking a real route-level loading state. Every console page is `force-dynamic` and runs 2–11 queries before it can paint; today a Suspense fallback would blink the sidebar out, because the shell is rendered by each PAGE and every screen resolves its own session. Doing it also removes one bound read per navigation. |
+| **UI.7** | Finish the i18n residue on `settings/integrations` and `settings/delivery-prices` | S | ~15 strings in three catalogues. Titles, labels, buttons and the sign-in error are keys already. This is translation work, not design work — and the i18n suite cannot catch it, because it scans `t("…")` calls and these strings never went through `t()`. |
+| **UI.8** | A step structure for the profit calculator | M | The largest client module in the console (26 KB) and the only screen the design system reached without restructuring. It has the tokens, not the shape. |
+
+**One rule Phase UI added to the method, and it generalises:** *a Tailwind
+arbitrary value containing an operator must be verified in the running page.* It
+compiles, it is in the class list, it survives every HTML assertion — and it
+emits no CSS. See PROJECT_STATE, *The rule Phase UI adds to the method*.
 
 ## WHAT IS NEXT, IN ORDER
 

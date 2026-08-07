@@ -1,8 +1,98 @@
 # LandingOS — Project State
 
-**Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *AUDIT.9: a request with no deadline, which stopped every scheduled job*
+**Last updated:** 7 August 2026
+**Branch:** `master` · **Last commit:** *UI.5: the final product audit*
 **Working tree:** clean, all work committed.
+
+---
+
+## PHASE UI — UI/UX MODERNISATION: COMPLETE
+
+Legacy parity is reached and four engineering audits are closed. **Phase UI is a
+presentation phase and nothing else**: no business logic, no calculation, no API
+behaviour, no permission and no tenant-scoping change. Every control that
+rendered before renders now, decided by the same predicate; D-06.1 through
+D-06.4 are all intact.
+
+**`UI_UX_AUDIT.md` is the measurement it was planned from** — 87 findings across
+the shell, the tokens, the tables, the forms, feedback, accessibility and 39
+screens, taken *before* anything moved, with the file each lives in. §10 states
+what the work may not touch. §12 is the scoreboard afterwards, including the two
+defects the work itself introduced and what was deliberately left open.
+
+| Slice | What it closed |
+|---|---|
+| **UI.1** the audit and the design system | No navigation below 768px · the dark theme could not be turned on · nav icons computed and discarded · eight of the nine design-system axes absent · **no `:focus-visible` rule anywhere** |
+| **UI.2** the enterprise table | **`?sort=` had no control anywhere** · no sticky header, hover, selected state, select-all, density or scroll affordance · one empty message for two different empties |
+| **UI.3** the screens and the feedback states | 35 bespoke page headers · **no error boundary and no not-found page in the whole application** · nothing between a click and a page · user-facing English on six screens including login |
+| **UI.4** the forms | Eleven fields sharing one refusal · no required marks · **success was silent** · ten panels each owning their own outer margin |
+| **UI.5** the final audit | Two defects the passes introduced, both found in the running page |
+
+### The three findings that were capabilities, not styling
+
+Each is the shape this project has now caught seven times — computed, stored,
+validated, and reachable by nothing.
+
+1. **`orderSort` has read `?sort=`/`?dir=` since Phase 5 and no control anywhere
+   set either.** An operator could not sort the order book by value, by date or
+   by customer. `ORDER_SORT_FIELDS` now lives in `lib/erp/sort-fields.ts` —
+   directive-free, because `lib/erp/orders.ts` is `server-only` and no contract
+   test can import it — and the whitelist is `Record<OrderSortField, …>`, so a
+   key with no column fails to compile. Four tests assert it **both ways**,
+   D-LP.3's rule for filters applied to ordering.
+2. **`ProductNavItem.icon` has carried a lucide name since the contract was
+   written**, its comment says "resolved by the shell's icon registry", the shell
+   computed it and `ConsoleNav` dropped it. Fifteen ERP items were fifteen
+   identical lines of text.
+3. **`components/shared/theme-toggle.tsx` was complete and imported by nothing**,
+   so the dark palette — which `tokens.css` documents as the ERP's own, promoted,
+   and as the resolution of R-14 — appeared only if the operating system asked
+   for it.
+
+### D-UI.1 — the shell must never learn what a product contains
+
+`ProductNavItem.group` is optional, an i18n key, and declared by the PRODUCT. A
+flat list of fifteen is not navigable and the grouping had to come from
+somewhere; putting it in the shell would be the shell knowing that "orders,
+queue and follow-up are one job", which is the single thing the registry exists
+to prevent, and a `switch` on `product.id` is exactly the shape the registry
+replaced. A manifest declaring no groups renders the flat list it rendered
+before.
+
+### D-UI.2 — density follows the device, the notification sound follows the person
+
+D-LP.11.1 put the notify preferences on `ProductSetting` rather than
+`localStorage`, for two stated reasons: a mute must follow the person between
+machines, and a supervisor must be able to see whether an agent silenced the
+alarm that watches them. **Neither is true of row height.** The right density on
+a 4K desk monitor is the wrong one on a 13″ laptop, nobody audits it, and
+storing it would add a bound read to every console render. It is a `data-`
+attribute on `<html>`, set before first paint by a four-line script — reading it
+in an effect means every navigation paints comfortable and then jumps, for
+exactly the people who chose compact because they scan fast.
+
+### D-UI.3 — no `loading.tsx`, and the reason is structural
+
+`ConsoleShell` is rendered by each PAGE rather than by `console/layout.tsx`
+(every screen resolves its own session and passes its own `productId`), so a
+route-level Suspense fallback replaces the whole frame and the sidebar blinks
+out on every navigation. A pending state that removes the navigation you are
+navigating with is worse than none. `useLinkStatus` answers the narrower and
+more useful question — is THIS the link you are waiting for — and the spinner
+lands on the item that was clicked. **Moving the shell into the layout is the
+right next slice for this** and is recorded in `UI_UX_AUDIT.md` §12.
+
+### The rule Phase UI adds to the method
+
+**A Tailwind arbitrary value containing an operator must be verified in the
+running page.** `md:max-h-[calc(100dvh-var(--console-header-h)-13rem)]` compiles,
+appears in the class list, survives every contract test that asserts on HTML —
+and emits no CSS, because Tailwind reads a space as the end of a class and CSS
+requires whitespace around `-` in `calc()`. The sticky header therefore silently
+did not work with the class sitting right there in the markup. It was found by
+measuring the live document, along with a 16px horizontal overflow at 375px on
+the width the whole drawer work exists for. That is AUDIT.3's argument again:
+the contract suite was green and the running page was wrong.
 
 ---
 
@@ -487,7 +577,7 @@ domain at a time.
 | carriers (incl. **adapter refusal** LP.2, the **real ZR Express adapter** LP.5, **test / sync / the integration log** LP.14, and the **Ecom Delivery adapter** LP.22), shipments, delivery settlement, the follow-up producer, the tracking poll (**outside the transaction since LP.22**) | delivery 88/88 |
 | sales channels (incl. the **screen, the adapter registry, test / logs and per-platform parsing**, LP.15), inbound webhooks (incl. **lead capture, product sync and topic routing**, LP.20), AI, follow-up (incl. **manual assignment**, LP.21) | integrations 75/75 |
 | the SalesOrder ↔ FulfillmentOrder relationship (M-05) | order-split 8/8 |
-| every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4, the **ZR configuration surface** LP.5, the **export panel** LP.6, the accountability surface LP.12, the **inline row actions + density** LP.8, the **completed bulk bar** LP.9 and the **product record** AUDIT.1/3) | screens 169/169 |
+| every ERP screen, read and write (incl. paging/filters LP.3, **order entry** LP.4, the **ZR configuration surface** LP.5, the **export panel** LP.6, the accountability surface LP.12, the **inline row actions + density** LP.8, the **completed bulk bar** LP.9, the **product record** AUDIT.1/3 and the **sortable column headers** UI.2) | screens 173/173 |
 | the order book as a file — ZR / Ecom / Ecotrac / report (LP.6) | export 31/31 |
 | a spreadsheet coming IN — customers and orders, with a preview (LP.19) | import 25/25 |
 | the scheduled work (M-15), and the worker's tick both ways | jobs 16/16 |
@@ -496,7 +586,7 @@ domain at a time.
 | the P&L department — proration, fixed costs, versions, roll-up, the calculator screen (LP.16) | finance 38/38 + calc 20/20 |
 | the confirmation rate and six other breakdowns, plus the dashboard's reaction-time figures (LP.13) | analytics 19/19 |
 | the AI screen, the assistants and their providers (LP.17) | ai 20/20 |
-| every surface, gated — **derived from the route files**, not listed by hand | access 201/201 |
+| every surface, gated — **derived from the route files**, not listed by hand | access 203/203 |
 
 **969/969** across EIGHTEEN ERP contract files, each verified on its own, plus
 **91/91** platform contract (team 62 · billing 19 · signup 10) and **20/20** in
@@ -2132,7 +2222,7 @@ fail without it, so check the counts, not just the exit code.
 | `packages/db` | 33 | all pass (11 schema + 18 isolation + 4 orphan-column) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
-| `packages/i18n` | 20 | all pass — including a scan of every `t("literal")` in the console source |
+| `packages/i18n` | 20 | all pass — including a scan of every `t("literal")` in the console source. **What it cannot see is a string that never went through `t()` at all**, which is how six screens kept their English through four passes (Phase UI). |
 | `services/worker` | 4 | all pass — AUDIT.9, the first tests this process has had. Runs it as a real child process against a server that never answers. |
 | **Total** | **1655** | green per suite |
 
