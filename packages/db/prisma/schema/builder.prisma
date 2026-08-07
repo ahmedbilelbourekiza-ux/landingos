@@ -450,9 +450,58 @@ model LandingTheme {
   @@index([tenantId, sortOrder])
 }
 
+// One tracking destination — a Meta pixel, a TikTok pixel, a GA4 property, a
+// GTM container, or a Google Ads conversion account (LB.5).
+//
+// GENERIC BY DESIGN: the mission's rule is that adding a provider must not
+// mean redesigning the platform. A row declares WHICH provider interprets it;
+// the provider adapters in `lib/tracking/providers/` decide what `publicId`
+// and `serverToken` mean for that provider. Nothing else in the platform
+// enumerates providers.
+//
+//   provider     'meta' | 'tiktok' | 'ga4' | 'gtm' | 'google-ads'
+//   publicId     the browser-visible id: pixel id, measurement id (G-…),
+//                container id (GTM-…), conversion id (AW-…)
+//   serverToken  encrypted at rest; the server-side API credential — Meta CAPI
+//                access token, TikTok Events API token, GA4 api_secret. Null
+//                for providers with no server side (gtm, google-ads).
+//   testCode     Meta test_event_code / TikTok test_event_code, so events can
+//                be verified in the platform's Event Manager before going live.
+//   settings     provider extras that are not secrets — e.g. the Google Ads
+//                conversion label.
+//   managedBy    'customer' (their own pixel) or 'platform' (a pixel this
+//                deployment's operator manages for them). Both fire the same
+//                way; the flag is what lets a platform operator find and
+//                rotate THEIR pixels without touching customer-owned ones —
+//                the mission's platform-managed/customer-owned split, carried
+//                as data instead of as two code paths.
+model TrackingIntegration {
+  id       String @id @default(cuid())
+  tenantId String
+
+  provider    String
+  label       String
+  publicId    String
+  serverToken String? // encrypted at rest
+  testCode    String?
+  settings    Json    @default("{}")
+  managedBy   String  @default("customer")
+  isActive    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, provider, isActive])
+}
+
 // Meta Pixel + Conversions API connection. Several can be active at once and
 // each active row receives a copy of every server-side event. `accessToken` is
 // stored encrypted and never returned in full once saved.
+//
+// LEGACY since LB.5: superseded by TrackingIntegration(provider: 'meta'),
+// which the tracking pipeline reads exclusively. Kept only so existing rows
+// remain visible in the console with a note to recreate them; remove the
+// model once no deployment holds rows.
 model MetaPixelConfig {
   id       String @id @default(cuid())
   tenantId String

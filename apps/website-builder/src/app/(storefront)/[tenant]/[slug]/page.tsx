@@ -7,6 +7,7 @@ import { resolveStorefrontTenant, storefrontHref } from "@/lib/storefront/resolv
 import { toLandingPageData, toThemeData } from "@/lib/landing/mappers";
 import { LandingTemplate } from "@/components/landing/landing-template";
 import { StorefrontApiProvider } from "@/lib/storefront/api-base";
+import { ViewContentTracker } from "@/components/landing/tracking-scripts";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +84,15 @@ export default async function StorefrontLandingPage({
         base={`/api/storefront/${found.tenant.slug}`}
         pageBase={found.tenant.viaCustomDomain ? "" : storefrontHref(found.tenant)}
       >
+        {/* ViewContent from the PUBLIC route only — the editor preview reuses
+            the same template, and previewing your own page must not look like
+            a customer visit in an ad platform's reporting. */}
+        <ViewContentTracker
+          contentId={found.page.id}
+          contentName={found.page.title}
+          value={Number(found.page.price)}
+          currency={found.page.currency}
+        />
         {/* toLandingPageData, not toPreviewState: the latter is the EDITOR's
             shape and the template takes the public one. Passing the wrong
             mapper compiles fine and throws at render. */}

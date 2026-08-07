@@ -5,6 +5,7 @@ import { withTenant } from "@landingos/db";
 import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { resolveStorefrontTenant, storefrontHref } from "@/lib/storefront/resolve-tenant";
+import { PurchaseTracker } from "@/components/landing/tracking-scripts";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function ThankYouPage({
         quantity: true,
         totalPrice: true,
         createdAt: true,
-        landingPage: { select: { title: true, slug: true } },
+        landingPage: { select: { id: true, title: true, slug: true, currency: true } },
       },
     }),
   );
@@ -58,6 +59,17 @@ export default async function ThankYouPage({
 
   return (
     <main className="mx-auto max-w-lg px-4 py-16 text-center" data-testid="thank-you">
+      {/* The browser-side Purchase, keyed on the ORDER ID — the same dedup id
+          the server-side conversion event carries, so ad platforms count this
+          sale once however many of the two got through (LB.5). */}
+      <PurchaseTracker
+        orderId={order.id}
+        value={Number(order.totalPrice)}
+        currency={order.landingPage?.currency ?? tenant.currency}
+        contentId={order.landingPage?.id}
+        contentName={order.landingPage?.title}
+        quantity={order.quantity}
+      />
       <h1 className="text-2xl font-semibold">Thank you, {order.customerName}.</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Your order has been received. We will call to confirm it shortly.

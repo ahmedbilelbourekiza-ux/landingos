@@ -1,23 +1,8 @@
 import { createHmac } from "crypto";
 
 import { withTenant } from "@landingos/db";
-import { decryptToken } from "@/lib/meta/crypto";
+import { revealStoredSecret } from "@/lib/meta/crypto";
 import type { WebhookEvent } from "./events";
-
-/**
- * The stored signing secret, whichever way it was stored. Secrets are
- * encrypted at rest on every write path NOW — but the first platform port
- * wrote them as plaintext (encryptToken had zero callers, BUILDER_AUDIT), so
- * rows from that era do not carry the `iv:tag:ciphertext` shape and
- * decryptToken throws on them. A value that does not look encrypted IS the
- * secret. It came from the same column either way, so this widens nothing.
- */
-function revealSecret(stored: string): string {
-  if (/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/i.test(stored)) {
-    return decryptToken(stored);
-  }
-  return stored;
-}
 
 // Outgoing webhook delivery: signing, retries, and logging.
 //
@@ -94,7 +79,7 @@ async function deliverToEndpoint(
 ): Promise<void> {
   let secret: string;
   try {
-    secret = revealSecret(endpoint.secret);
+    secret = revealStoredSecret(endpoint.secret);
   } catch (error) {
     console.error(`[webhooks] endpoint "${endpoint.label}": cannot decrypt secret`, error);
     await logDelivery(tenantId, endpoint.id, event, resourceId, false, null, 1, "Secret could not be decrypted");
@@ -198,7 +183,7 @@ export async function sendTestDelivery(
 ): Promise<{ ok: boolean; statusCode: number | null; error: string | null }> {
   let secret: string;
   try {
-    secret = revealSecret(endpoint.secret);
+    secret = revealStoredSecret(endpoint.secret);
   } catch {
     return { ok: false, statusCode: null, error: "The stored secret could not be decrypted." };
   }

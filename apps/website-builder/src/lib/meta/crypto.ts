@@ -56,3 +56,18 @@ export function maskToken(plaintext: string): string {
   if (plaintext.length <= 4) return "••••";
   return `••••••••${plaintext.slice(-4)}`;
 }
+
+/**
+ * A stored secret, whichever way it was stored. Every write path encrypts
+ * NOW, but rows written by the first platform port are plaintext (encryptToken
+ * had zero callers then — BUILDER_AUDIT/LB.3), and they do not carry the
+ * `iv:tag:ciphertext` shape decryptToken requires. A value that does not look
+ * encrypted IS the secret; it came from the same column either way, so this
+ * widens nothing. Shared by webhook signing and the tracking dispatchers.
+ */
+export function revealStoredSecret(stored: string): string {
+  if (/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/i.test(stored)) {
+    return decryptToken(stored);
+  }
+  return stored;
+}

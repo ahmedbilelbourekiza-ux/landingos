@@ -5,6 +5,7 @@ import { Prisma, withTenant } from "@landingos/db";
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
 import { CheckoutBody } from "@/lib/storefront/contract";
 import { triggerOrderWebhook } from "@/lib/webhooks/tenant-triggers";
+import { dispatchTrackingEvent } from "@/lib/tracking/dispatch";
 import { hasErp, fulfilmentFromSale } from "@/lib/erp/from-sale";
 
 export const dynamic = "force-dynamic";
@@ -165,7 +166,7 @@ export async function POST(
         });
       }
 
-      return { order, total };
+      return { order, total, currency: page.currency as string, pageTitle: page.title as string };
     });
 
     if ("error" in result) return result.error;
@@ -179,6 +180,29 @@ export async function POST(
     // else's server being down is not a reason to fail a customer's checkout,
     // and the delivery log records the attempt either way.
     triggerOrderWebhook("order.created", tenant.id, result.order.id);
+
+    // The server-side Purchase conversion — Meta CAPI, TikTok Events API,
+    // GA4 MP — with the ORDER ID as the dedup key the thank-you page's
+    // browser event shares. Fired AFTER the transaction returned (its read
+    // opens its own binding) and never awaited: an ad platform being down is
+    // not a reason to slow a customer's checkout (LB.5).
+    dispatchTrackingEvent(tenant.id, {
+      name: "Purchase",
+      eventId: result.order.id,
+      value: result.total,
+      currency: result.currency,
+      contentId: input.landingPageId,
+      contentName: result.pageTitle,
+      quantity: input.quantity,
+      customer: { name: input.customerName, phone: input.phone },
+      context: {
+        ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+        userAgent: req.headers.get("user-agent"),
+        fbc: input.fbc ?? null,
+        fbp: input.fbp ?? null,
+        ttclid: input.ttclid ?? null,
+      },
+    });
 
     return NextResponse.json(
       { success: true, data: { id: result.order.id, total: String(result.total) } },

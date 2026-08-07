@@ -5,6 +5,7 @@ import { withTenant } from "@landingos/db";
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
 import { DraftBody } from "@/lib/storefront/contract";
 import { triggerDraftOrderWebhook } from "@/lib/webhooks/tenant-triggers";
+import { dispatchTrackingEvent } from "@/lib/tracking/dispatch";
 
 export const dynamic = "force-dynamic";
 
@@ -74,7 +75,24 @@ export async function POST(
       return { event: "draft_order.updated" as const, id: draft.id };
     });
 
-    if (fire) triggerDraftOrderWebhook(fire.event, tenant.id, fire.id);
+    if (fire) {
+      triggerDraftOrderWebhook(fire.event, tenant.id, fire.id);
+      // A captured phone number is a LEAD — the standard event ad platforms
+      // optimise lead campaigns on. Once per visitor, like the webhook: later
+      // keystrokes update the lead, they are not new ones (LB.5).
+      if (fire.event === "draft_order.created" && fields.phone) {
+        dispatchTrackingEvent(tenant.id, {
+          name: "Lead",
+          eventId: fire.id,
+          contentId: landingPageId,
+          customer: { name: fields.customerName ?? null, phone: fields.phone },
+          context: {
+            ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+            userAgent: req.headers.get("user-agent"),
+          },
+        });
+      }
+    }
   } catch (error) {
     console.error("[storefront] draft capture failed", error);
   }

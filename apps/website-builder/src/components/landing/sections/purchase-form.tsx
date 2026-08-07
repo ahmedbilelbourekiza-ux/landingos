@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/landing/format";
 import type { LandingOrderStore } from "@/lib/landing/store";
 import { useOrderTotals, useUnitPrice } from "@/lib/landing/store";
-import { readMetaCookies, trackInitiateCheckout } from "@/components/landing/meta-pixel-loader";
+import { readTrackingCookies, track } from "@/components/landing/tracking-scripts";
 import { useDraftCapture } from "@/lib/landing/use-draft-capture";
 import { normalizeOrder, type OrderFormConfig } from "@/lib/landing/mock-order-form";
 import type { ShippingMethod } from "@/types/landing";
@@ -117,12 +117,12 @@ export function PurchaseForm({
     if (checkoutTracked.current) return;
     checkoutTracked.current = true;
     const state = store.getState();
-    trackInitiateCheckout({
-      content_ids: [landingId],
-      content_name: productTitle,
+    track("InitiateCheckout", {
+      contentId: landingId,
+      contentName: productTitle,
       value: subtotal,
       currency,
-      num_items: state.quantity,
+      quantity: state.quantity,
     });
   }, [store, landingId, productTitle, subtotal, currency]);
 
@@ -290,7 +290,7 @@ export function PurchaseForm({
       const baladiaName =
         selectedWilayaData?.baladias.find((b) => b.id === Number(selectedBaladia))?.name ?? "";
 
-      const { fbc, fbp } = readMetaCookies();
+      const { fbc, fbp, ttclid } = readTrackingCookies();
       const body: CheckoutBodyInput = {
         landingPageId: landingId,
         customerName: values.fullName ?? "",
@@ -303,6 +303,7 @@ export function PurchaseForm({
         shippingMethod,
         fbc: fbc ?? undefined,
         fbp: fbp ?? undefined,
+        ttclid: ttclid ?? undefined,
         draftToken: draft.token ?? undefined,
       };
       const res = await fetch(api("/orders"), {

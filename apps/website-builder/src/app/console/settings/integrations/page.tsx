@@ -11,7 +11,9 @@ import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { WebhookCreatePanel, WebhookRowActions } from "@/components/console/platform/webhook-write";
+import { TrackingCreatePanel, TrackingRowActions } from "@/components/console/platform/tracking-write";
 import { WEBHOOK_EVENTS, WEBHOOK_EVENT_LABELS } from "@/lib/webhooks/events";
+import { trackingProvider } from "@/lib/tracking/config";
 import { actionErrors } from "@/lib/console/action-errors";
 
 export const dynamic = "force-dynamic";
@@ -44,12 +46,20 @@ export default async function IntegrationsPage() {
     label: WEBHOOK_EVENT_LABELS[value],
   }));
 
-  const [webhooks, pixels] = await withTenant(session.auth.tenantId, async (db) => [
+  const [webhooks, pixels, tracking] = await withTenant(session.auth.tenantId, async (db) => [
     await (db as any).webhookEndpoint.findMany({
       orderBy: { createdAt: "desc" },
       include: { _count: { select: { deliveries: true } } },
     }),
     await (db as any).metaPixelConfig.findMany({ orderBy: { createdAt: "desc" } }),
+    await (db as any).trackingIntegration.findMany({
+      orderBy: [{ provider: "asc" }, { createdAt: "desc" }],
+      // The list never carries the credential, only whether one is set.
+      select: {
+        id: true, provider: true, label: true, publicId: true, managedBy: true,
+        isActive: true, serverToken: true, createdAt: true,
+      },
+    }),
   ]);
 
   return (
@@ -63,6 +73,72 @@ export default async function IntegrationsPage() {
       </p>
 
       <h2 className="mt-8 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+        Tracking &amp; analytics
+      </h2>
+      <DataTable
+        testId="tracking-table"
+        empty="No tracking connected yet — Meta, TikTok, GA4, Tag Manager and Google Ads are supported."
+        rows={tracking}
+        rowKey={(x: any) => x.id}
+        rowAttrs={(x: any) => ({ "data-tracking-id": x.id, "data-provider": x.provider })}
+        columns={[
+          {
+            id: "label",
+            header: "Integration",
+            cell: (x: any) => (
+              <>
+                <span className="font-medium">{x.label}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {trackingProvider(x.provider)?.name ?? x.provider}
+                  {" · "}
+                  <span className="font-mono" dir="ltr">{x.publicId}</span>
+                </span>
+              </>
+            ),
+          },
+          {
+            id: "server",
+            header: "Server events",
+            cell: (x: any) => (
+              <span className="text-xs text-muted-foreground">
+                {x.serverToken ? "Credential set" : "Browser only"}
+              </span>
+            ),
+          },
+          {
+            id: "managed",
+            header: "Managed by",
+            cell: (x: any) => (
+              <span className="text-xs text-muted-foreground">
+                {x.managedBy === "platform" ? "Platform" : "This company"}
+              </span>
+            ),
+          },
+          {
+            id: "state",
+            header: "Status",
+            cell: (x: any) => (
+              <span data-active={String(x.isActive)} className="text-xs text-muted-foreground">
+                {x.isActive ? "Active" : "Paused"}
+              </span>
+            ),
+          },
+          ...(mayManage
+            ? [
+                {
+                  id: "actions",
+                  header: "",
+                  cell: (x: any) => (
+                    <TrackingRowActions id={x.id} isActive={x.isActive} errors={errors} />
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
+      {mayManage && <TrackingCreatePanel errors={errors} />}
+
+      <h2 className="mt-10 text-sm font-medium uppercase tracking-wide text-muted-foreground">
         Webhooks
       </h2>
       <DataTable
@@ -142,8 +218,12 @@ export default async function IntegrationsPage() {
       {mayManage && <WebhookCreatePanel events={eventOptions} errors={errors} />}
 
       <h2 className="mt-10 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-        Meta pixels
+        Meta pixels (legacy)
       </h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Superseded by Tracking &amp; analytics above — the pipeline reads only that list.
+        Recreate any entry here as a Meta integration, then remove it.
+      </p>
       <DataTable
         testId="pixels-table"
         empty="No pixels connected yet."
