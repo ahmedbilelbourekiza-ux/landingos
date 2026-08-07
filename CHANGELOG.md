@@ -12,6 +12,85 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LP — Legacy parity restoration
 
+### AUDIT.8 The question that found most of this, asked on every run
+
+[Opus 5]
+Date: 7 August 2026
+Summary: the audit's most productive question becomes a test, and finds nine more
+columns on the way in. db 29 → **33**.
+
+#### Why this exists
+
+The fourth pass asked one question more productively than any other:
+
+> Which columns does something write that nothing reads, and which does
+> something read that nothing writes?
+
+It is the shape of **eight serious defects** across the project's life: BUG-02
+(`deliveryOutcome` — eight readers, no writer), `IntegrationLog` (migrated with
+its indexes, no caller), `OrderCall.suspicious` (computed, shown nowhere),
+`fakeReason` (written since Phase 5, read by nothing), **A5** (`CatalogProduct`'s
+lifetime counters maintained by NOTHING for the platform's whole life), A7,
+**A11** (`AiProvider.lastTestAt`), **A14** (the channel parser dropping
+`externalProductId`, leaving `resolveProduct`'s exact-link branch dead since it
+was written).
+
+One question, eight defects, asked by hand each time somebody thought to. It is
+asked on every run now — `packages/db/test/orphans.test.ts`, beside the M-03/M-04
+constraint suite whose header states the principle this follows: **mechanical,
+not vigilant.**
+
+#### What it found immediately
+
+Nine columns, all in the PLATFORM schema — which the audit's own by-hand sweep
+had never covered, because it read `erp.prisma` and stopped. Two are dead in the
+legacy too. **Seven are unbuilt halves of platform features**, and each is now
+recorded with the work that would reference it rather than left to be
+rediscovered:
+
+| Column | What is missing |
+|---|---|
+| `TenantDomain.verificationToken`, `isPrimary` | No screen adds a custom domain. **The read path is complete and safe** — `tenantByDomain` refuses a row with no `verifiedAt` — so nothing can be claimed; there is simply no way to add one. |
+| `Session.lastSeenAt` | Session management. Writing it per request is a write per request, which is the design question that work must answer first. |
+| `Subscription.seats` | **No seat limit is enforced anywhere** — the invitation route admits as many people as a tenant invites. |
+| `Subscription.externalCustomerId`, `externalSubscriptionId` | The billing provider integration, which does not exist. |
+| `Subscription.trialEndsAt`, `currentPeriodEnd`, `cancelAtPeriodEnd` | Nothing moves a subscription to PAST_DUE when a period or trial ends. A status changes today only because somebody changes it. |
+
+**None is an ERP parity gap** — the legacy is single-tenant, sells nothing and
+has no domains. They are platform work, and they are in NEXT_STEPS now.
+
+#### What the exemption list is allowed to say
+
+A reason must state **what would make the column referenced**, and there are
+exactly two acceptable answers:
+
+- **DEAD BOTH SIDES** — the legacy does not use it either, so nothing ever will.
+- **AHEAD OF A FEATURE** — naming the work. An entry that cannot name it is a
+  finding, not an exemption.
+
+Two further tests keep the list from becoming somewhere findings hide: an
+exemption for a column that no longer exists fails, and so does an exemption for
+a column that has since acquired a reference.
+
+#### What it cannot see, stated in the file rather than implied
+
+It is a NAME check, not a dataflow analysis. It catches a column no source file
+mentions at all — which is what A5 was — and **not** one that is read but never
+written when both are the same identifier, which is what A11 was
+(`lastTestAt` was named by the carrier routes). The cheap half of the question is
+mechanical now; the expensive half stays a thing a person asks.
+
+**Verified to fail.** A column was added to `Carrier` that nothing names, the
+suite went red naming it, and it was removed.
+
+#### Files
+
+- `packages/db/test/orphans.test.ts` (new)
+
+**Migration:** none. **Risk:** none — a test.
+
+---
+
 ### AUDIT.7 Three fields the parser threw away, and a branch that had never run
 
 [Opus 5]

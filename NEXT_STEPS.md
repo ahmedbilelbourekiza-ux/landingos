@@ -30,6 +30,23 @@ readiness are complete". The fourth pass (§9) read it end to end for the fifth
 time and found nine things — which is the argument for keeping it until Phase 8
 has read it once more for its rate limiter and its `CSRF_ORIGIN` check.
 
+## PLATFORM COLUMNS DECLARED AHEAD OF THEIR FEATURE (AUDIT.8)
+
+`packages/db/test/orphans.test.ts` fails on a schema column nothing names, and
+its exemption list is the live record of these. **None is an ERP parity gap** —
+the legacy is single-tenant, sells nothing and has no custom domains — so none
+blocks replacing it. Each is platform work with the column already in place.
+
+| Work | Columns waiting | Note |
+|---|---|---|
+| Custom-domain management | `TenantDomain.verificationToken`, `isPrimary` | **The read path is complete and safe** — `tenantByDomain` refuses a row with no `verifiedAt`. There is simply no screen that adds one. |
+| Session management | `Session.lastSeenAt` | Writing it per request is a write per request; that is the design question the work has to answer first. |
+| Seat billing | `Subscription.seats` | **No seat limit is enforced anywhere today.** The invitation route admits as many people as a tenant invites. |
+| Billing provider | `Subscription.externalCustomerId`, `externalSubscriptionId` | The integration does not exist. Nullable precisely so a tenant can exist before it pays. |
+| Trial / period expiry | `Subscription.trialEndsAt`, `currentPeriodEnd`, `cancelAtPeriodEnd` | The STATUS is honoured everywhere; nothing moves a subscription to PAST_DUE when a date passes, so a status changes only because somebody changes it. |
+
+---
+
 ## THE THREE THINGS THAT STILL NEED A REAL DEVICE OR REAL CREDENTIALS
 
 None is a gap in the code; each is untestable in this repository by

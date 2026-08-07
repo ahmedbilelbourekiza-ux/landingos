@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
 **Last updated:** 6 August 2026
-**Branch:** `master` · **Last commit:** *AUDIT.7: three fields the parser threw away*
+**Branch:** `master` · **Last commit:** *AUDIT.8: the question that found most of this, asked on every run*
 **Working tree:** clean, all work committed.
 
 ---
@@ -92,6 +92,7 @@ anything until the roadmap in `LEGACY_PARITY.md` §4 reaches the end of Tier 3.
 | **AUDIT.5** AI provider Test Connection + integration log — two columns whose writer the port left behind | — | **DONE** — ai 20→31, access 201→203 |
 | **AUDIT.6** "run it now" had no button; the roster did not say where people come from | — | **DONE** — jobs 27→31 |
 | **AUDIT.7** the webhook dropped `externalProductId`/`VariantId`/`OrderAt` — the link branch had never run | — | **DONE** — integrations 75→80 |
+| **AUDIT.8** a column nothing names fails the build; nine found on the way in | — | **DONE** — db 29→33 |
 
 **The roadmap was re-ordered by the second pass** (LEGACY_PARITY §4). Pagination
 moved to the front: row 51 is unreachable today, and the shared `<Pager>` /
@@ -1011,6 +1012,38 @@ claim (`lastPolledAt`) is committed in its own short transaction BEFORE the
 network call, and both callers changed as N17 predicted: the route runs it
 through `afterCommit`, the worker's tick no longer wraps it. There is still
 exactly one ingest path — the poll composes `refreshShipmentForOrder`.
+
+### AUDIT.8 — the question that found most of this, asked on every run
+
+The fourth pass's most productive question — **which columns does something write
+that nothing reads, and which does something read that nothing writes** — is the
+shape of eight serious defects: BUG-02, `IntegrationLog`, `OrderCall.suspicious`,
+`fakeReason`, A5, A7, A11 and A14. It was asked by hand each time somebody
+thought to. `packages/db/test/orphans.test.ts` asks it on every run, beside the
+M-03/M-04 constraint suite whose header states the principle: **mechanical, not
+vigilant.**
+
+**It found nine columns immediately, all in the PLATFORM schema** — which the
+by-hand sweep had never covered, because it read `erp.prisma` and stopped. Two
+are dead in the legacy too. Seven are unbuilt halves of platform features and are
+now recorded with the work that would reference them: custom-domain management
+(the READ path is complete and safe), session management, seat billing (**no seat
+limit is enforced anywhere today**), the billing provider integration, and trial
+/ period expiry (nothing moves a subscription to PAST_DUE on a date). **None is
+an ERP parity gap** — the legacy is single-tenant, sells nothing and has no
+domains.
+
+An exemption must say **what would make the column referenced**: DEAD BOTH SIDES,
+or AHEAD OF A FEATURE naming the work. Two further tests stop the list becoming
+somewhere findings hide — an exemption for a removed column fails, and so does
+one for a column that has since acquired a reference.
+
+**What it cannot see is in the file:** it is a name check, so it catches a column
+nothing mentions (A5) and not one read but never written (A11). The cheap half is
+mechanical now; the expensive half stays a thing a person asks.
+
+**Verified to fail**: a column nothing names was added to `Carrier`, the suite
+went red naming it, and it was removed.
 
 ### AUDIT.7 — three fields the parser threw away
 
@@ -2063,11 +2096,11 @@ fail without it, so check the counts, not just the exit code.
 | `apps/website-builder` — platform contract | 91 | team (7.1 + R15) + billing (7.2) + signup (7.3), against a running server |
 | `apps/website-builder` — `test/calc.test.ts` | 20 | PURE — no server, no database. The profit calculator's arithmetic. |
 | `packages/auth` | 36 | all pass |
-| `packages/db` | 29 | all pass (11 schema + 18 isolation) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
+| `packages/db` | 33 | all pass (11 schema + 18 isolation + 4 orphan-column) — two of the schema assertions had been red since Phase 5.2/5.4 and were repaired in 6.6a |
 | `packages/product-registry` | 36 | all pass |
 | `packages/ui` | 26 | all pass |
 | `packages/i18n` | 20 | all pass — including a scan of every `t("literal")` in the console source |
-| **Total** | **1649** | green per suite |
+| **Total** | **1653** | green per suite |
 
 The ERP contract suite needs the server on `:3000`. It skips with a stated
 reason when the server is down or `/api/erp/*` is unmounted, and
