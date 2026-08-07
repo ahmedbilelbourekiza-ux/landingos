@@ -28,14 +28,18 @@ export const websiteBuilder: ProductManifest = {
     'website-builder:orders:read',
     'website-builder:settings:write',
   ],
+  /* `group` is UI.8. A flat list of seven is readable; a flat list of fifteen
+     (see the ERP below) is not, and the grouping has to be declared HERE
+     because the shell must never learn what a product contains. Order within a
+     group is declaration order, and the ungrouped items lead. */
   nav: [
     { id: 'overview', titleKey: 'builder.nav.overview', path: '', icon: 'layout-dashboard' },
-    { id: 'pages', titleKey: 'builder.nav.pages', path: 'pages', icon: 'file-text' },
-    { id: 'categories', titleKey: 'builder.nav.categories', path: 'categories', icon: 'folder-open' },
-    { id: 'templates', titleKey: 'builder.nav.templates', path: 'templates', icon: 'palette' },
-    { id: 'orders', titleKey: 'builder.nav.orders', path: 'orders', icon: 'package', permission: 'website-builder:orders:read' },
-    { id: 'abandoned', titleKey: 'builder.nav.abandoned', path: 'abandoned', icon: 'phone-missed', permission: 'website-builder:orders:read' },
-    { id: 'delivery-prices', titleKey: 'builder.nav.deliveryPrices', path: 'delivery-prices', icon: 'truck', permission: 'website-builder:settings:write' },
+    { id: 'pages', titleKey: 'builder.nav.pages', path: 'pages', icon: 'file-text', group: 'builder.navGroup.content' },
+    { id: 'categories', titleKey: 'builder.nav.categories', path: 'categories', icon: 'folder-open', group: 'builder.navGroup.content' },
+    { id: 'templates', titleKey: 'builder.nav.templates', path: 'templates', icon: 'palette', group: 'builder.navGroup.content' },
+    { id: 'orders', titleKey: 'builder.nav.orders', path: 'orders', icon: 'package', permission: 'website-builder:orders:read', group: 'builder.navGroup.selling' },
+    { id: 'abandoned', titleKey: 'builder.nav.abandoned', path: 'abandoned', icon: 'phone-missed', permission: 'website-builder:orders:read', group: 'builder.navGroup.selling' },
+    { id: 'delivery-prices', titleKey: 'builder.nav.deliveryPrices', path: 'delivery-prices', icon: 'truck', permission: 'website-builder:settings:write', group: 'builder.navGroup.selling' },
   ],
   status: 'stable',
 };
@@ -82,35 +86,35 @@ export const erp: ProductManifest = {
     // Phase 6.4. The confirmation agent's working screen — the port of
     // apps/erp/agent.html. Second, because for the people who hold
     // `erp:orders:write` and nothing else it is the only screen they use.
-    { id: 'queue', titleKey: 'erp.nav.queue', path: 'queue', icon: 'phone-call', permission: 'erp:orders:write' },
-    { id: 'orders', titleKey: 'erp.nav.orders', path: 'orders', icon: 'clipboard-list', permission: 'erp:orders:read' },
-    { id: 'clients', titleKey: 'erp.nav.clients', path: 'clients', icon: 'users', permission: 'erp:clients:read' },
-    { id: 'products', titleKey: 'erp.nav.products', path: 'products', icon: 'box' },
-    { id: 'inventory', titleKey: 'erp.nav.inventory', path: 'inventory', icon: 'layers', permission: 'erp:inventory:write' },
-    { id: 'shipments', titleKey: 'erp.nav.shipments', path: 'shipments', icon: 'truck', permission: 'erp:shipments:write' },
-    { id: 'carriers', titleKey: 'erp.nav.carriers', path: 'carriers', icon: 'route', permission: 'erp:shipments:write' },
+    { id: 'queue', titleKey: 'erp.nav.queue', path: 'queue', icon: 'phone-call', permission: 'erp:orders:write', group: 'erp.navGroup.work' },
+    { id: 'orders', titleKey: 'erp.nav.orders', path: 'orders', icon: 'clipboard-list', permission: 'erp:orders:read', group: 'erp.navGroup.work' },
+    { id: 'clients', titleKey: 'erp.nav.clients', path: 'clients', icon: 'users', permission: 'erp:clients:read', group: 'erp.navGroup.work' },
+    { id: 'products', titleKey: 'erp.nav.products', path: 'products', icon: 'box', group: 'erp.navGroup.catalogue' },
+    { id: 'inventory', titleKey: 'erp.nav.inventory', path: 'inventory', icon: 'layers', permission: 'erp:inventory:write', group: 'erp.navGroup.catalogue' },
+    { id: 'shipments', titleKey: 'erp.nav.shipments', path: 'shipments', icon: 'truck', permission: 'erp:shipments:write', group: 'erp.navGroup.fulfilment' },
+    { id: 'carriers', titleKey: 'erp.nav.carriers', path: 'carriers', icon: 'route', permission: 'erp:shipments:write', group: 'erp.navGroup.fulfilment' },
     // LP.15. The channel API has had full CRUD since Phase 5.3c and no
     // nav item, so a tenant could not connect a storefront through the
     // console at all — and the webhook URL, generated on create, was
     // never shown again by anything.
-    { id: 'sales-channels', titleKey: 'erp.nav.channels', path: 'sales-channels', icon: 'store', permission: 'erp:settings:write' },
-    { id: 'follow-up', titleKey: 'erp.nav.followUp', path: 'follow-up', icon: 'bell-ring', permission: 'erp:orders:write' },
+    { id: 'sales-channels', titleKey: 'erp.nav.channels', path: 'sales-channels', icon: 'store', permission: 'erp:settings:write', group: 'erp.navGroup.fulfilment' },
+    { id: 'follow-up', titleKey: 'erp.nav.followUp', path: 'follow-up', icon: 'bell-ring', permission: 'erp:orders:write', group: 'erp.navGroup.work' },
     // LP.13. Gated on `erp:orders:read`, which every member holds — deliberately:
     // the rows are RECORD-SCOPED, so an agent gets the analytics of their own
     // queue (their own confirmation rate, which is what they are measured on)
     // and a manager gets the book. The by-agent table needs `erp:agents:manage`
     // and is withheld inside the screen, because a league table of colleagues is
     // supervision data — the same rule LP.6 applies to its `agents` export.
-    { id: 'analytics', titleKey: 'erp.nav.analytics', path: 'analytics', icon: 'bar-chart-3', permission: 'erp:orders:read' },
-    { id: 'finance', titleKey: 'erp.nav.finance', path: 'finance', icon: 'line-chart', permission: 'erp:finance:read' },
+    { id: 'analytics', titleKey: 'erp.nav.analytics', path: 'analytics', icon: 'bar-chart-3', permission: 'erp:orders:read', group: 'erp.navGroup.insight' },
+    { id: 'finance', titleKey: 'erp.nav.finance', path: 'finance', icon: 'line-chart', permission: 'erp:finance:read', group: 'erp.navGroup.insight' },
     // LP.16d. The legacy served this as a standalone HTML file with no
     // authorization on the page at all; here it is its own screen behind the
     // same SENSITIVE permission the books are behind. It is beside Finance
     // rather than inside it because it is a working tool, not a report — the
     // thing a manager opens to decide whether a product line survives.
-    { id: 'calculator', titleKey: 'erp.nav.calculator', path: 'calculator', icon: 'calculator', permission: 'erp:finance:read' },
-    { id: 'agents', titleKey: 'erp.nav.agents', path: 'agents', icon: 'user-cog', permission: 'erp:agents:manage' },
-    { id: 'ai', titleKey: 'erp.nav.ai', path: 'ai', icon: 'sparkles', permission: 'erp:ai:use' },
+    { id: 'calculator', titleKey: 'erp.nav.calculator', path: 'calculator', icon: 'calculator', permission: 'erp:finance:read', group: 'erp.navGroup.insight' },
+    { id: 'agents', titleKey: 'erp.nav.agents', path: 'agents', icon: 'user-cog', permission: 'erp:agents:manage', group: 'erp.navGroup.admin' },
+    { id: 'ai', titleKey: 'erp.nav.ai', path: 'ai', icon: 'sparkles', permission: 'erp:ai:use', group: 'erp.navGroup.admin' },
     // Phase 6.3d. NOT called "settings", and the registry's own test is why:
     // a tenant with N products must still see ONE Settings, owned by the shell,
     // and a product shipping its own is the first step to N of them. The name
@@ -118,7 +122,7 @@ export const erp: ProductManifest = {
     // ERP applies on its own (assign, confirm, reassign, suspend, reserve, poll),
     // so "automation" is what it actually is. The stored keys are still
     // ProductSetting rows and the route is still PUT /api/erp/settings.
-    { id: 'automation', titleKey: 'erp.nav.automation', path: 'automation', icon: 'settings', permission: 'erp:settings:write' },
+    { id: 'automation', titleKey: 'erp.nav.automation', path: 'automation', icon: 'settings', permission: 'erp:settings:write', group: 'erp.navGroup.admin' },
   ],
   status: 'stable',
 };

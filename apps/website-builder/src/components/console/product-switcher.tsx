@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { NavIcon } from "./ui/icon";
 
 /**
  * Switch between products without signing in again.
@@ -35,13 +36,17 @@ export function ProductSwitcher({
             data-product={p.id}
             aria-current={p.id === activeId ? "true" : undefined}
             className={cn(
-              "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+              "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium tap",
+              "transition-colors duration-(--duration-fast) ease-standard",
               p.id === activeId
-                ? "bg-primary text-primary-foreground"
+                ? "bg-primary text-primary-foreground shadow-e1"
                 : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
             )}
           >
-            {p.name}
+            {/* The manifest's own icon. It has been declared per product since
+                the contract was written and rendered nowhere. */}
+            <NavIcon name={p.icon} className="size-4 shrink-0" />
+            <span className="truncate">{p.name}</span>
           </Link>
         </li>
       ))}

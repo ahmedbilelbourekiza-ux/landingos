@@ -1,6 +1,10 @@
 "use client";
 
+import { Building2 } from "lucide-react";
+
 import { switchTenantAction } from "@/app/console/actions";
+import { button, select as selectClass } from "./ui/styles";
+import { cn } from "@/lib/utils";
 
 /**
  * Switch company without signing in again.
@@ -22,14 +26,18 @@ export function TenantSwitcher({
 
   if (tenants.length <= 1) {
     return (
-      <span className="text-sm font-medium" data-testid="tenant-name">
-        {active?.name ?? ""}
+      <span
+        className="flex min-w-0 items-center gap-2 text-sm font-medium"
+        data-testid="tenant-name"
+      >
+        <Building2 aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <span className="truncate">{active?.name ?? ""}</span>
       </span>
     );
   }
 
   return (
-    <form action={switchTenantAction} className="flex items-center gap-2">
+    <form action={switchTenantAction} className="flex min-w-0 items-center gap-2">
       <label htmlFor="tenantId" className="sr-only">
         {label}
       </label>
@@ -38,7 +46,7 @@ export function TenantSwitcher({
         name="tenantId"
         defaultValue={activeId ?? ""}
         data-testid="tenant-switcher"
-        className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+        className={cn(selectClass, "h-9 w-auto max-w-52 py-1.5 font-medium")}
       >
         {tenants.map((t) => (
           <option key={t.id} value={t.id}>
@@ -46,7 +54,7 @@ export function TenantSwitcher({
           </option>
         ))}
       </select>
-      <button type="submit" className="rounded-md border border-input px-2 py-1 text-sm">
+      <button type="submit" className={button("default", "sm")}>
         {label}
       </button>
     </form>

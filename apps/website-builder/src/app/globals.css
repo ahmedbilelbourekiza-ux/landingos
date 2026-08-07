@@ -41,6 +41,42 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* ═══════════════════════════════════════════════════════════
+     The console design system, registered as utilities (UI.1–UI.4).
+     ───────────────────────────────────────────────────────────
+     The VALUES live in @landingos/ui/tokens.css, in both themes, under the
+     contrast test. This block only teaches Tailwind their names, so a
+     component can write `bg-surface-raised` instead of an inline style — which
+     is what stops the next panel being hand-rolled from `border-border` again.
+
+     Everything here is ADDITIVE. No Tailwind default is redefined: the
+     storefront shares this stylesheet and themes itself per landing page
+     (decision D3), so redefining `text-sm` here would reach a system that must
+     stay out of the console's reach.
+     ═══════════════════════════════════════════════════════════ */
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-selected: var(--surface-selected);
+  --color-surface-selected-border: var(--surface-selected-border);
+
+  --shadow-e1: var(--shadow-e1);
+  --shadow-e2: var(--shadow-e2);
+  --shadow-e3: var(--shadow-e3);
+
+  --ease-standard: var(--ease-standard);
+  --ease-emphasis: var(--ease-emphasis);
+
+  /* The ONE size added to Tailwind's scale, and it exists to delete two
+     arbitrary ones. Row badges and table sub-lines were `text-[10px]` and
+     `text-[11px]` — outside any scale, and ten-pixel type is where an
+     eight-hour reader loses accuracy first. 11px with a real line-height is
+     the floor, and it is a named step so the twelfth person to need a small
+     label reaches for it instead of inventing a thirteenth size. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -82,13 +118,46 @@
     @apply tracking-tight;
   }
 
-  ::selection {
-    background-color: var(--crimson);
-    color: white;
+  /* ---------------------------------------------------------------------
+   * UI.3 — the focus ring.
+   *
+   * There was no `:focus-visible` rule anywhere in this codebase. The global
+   * `outline-ring/50` above sets a COLOUR for an outline that is never given a
+   * width, so keyboard focus was whatever the browser drew by default — which
+   * on the dark theme, against oklch(0.14 0.005 250), is close to invisible.
+   *
+   * That is not a cosmetic gap. Every keyboard guarantee this project built
+   * deliberately — the filter bar as a plain GET form, the pager as links
+   * rather than buttons, panels that render their contents before hydration
+   * (D-06.4) — exists so the console can be driven without a mouse, and none
+   * of it is usable if you cannot see where you are.
+   *
+   * `:focus-visible`, not `:focus`: a mouse click on a button must not leave a
+   * ring behind it. The double ring (brand outline + a page-ground shadow
+   * underneath) is what keeps focus legible on a filled primary button, on a
+   * tinted status chip and on a selected table row, where a single ring would
+   * land on a colour too close to itself.
+   * ------------------------------------------------------------------- */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+    border-radius: calc(var(--radius) - 4px);
+    box-shadow: 0 0 0 calc(var(--focus-ring-offset)) var(--background);
   }
-  .dark ::selection {
-    background-color: var(--crimson-light);
-    color: white;
+
+  /* A checkbox is small, square and often sits on a tinted row; the offset
+     that reads well on a button swallows it. */
+  :where(input[type="checkbox"], input[type="radio"]):focus-visible {
+    outline-offset: 1px;
+    box-shadow: none;
+  }
+
+  /* The token names here were `--crimson` and `--crimson-light`, and neither
+     has ever existed in tokens.css — so both declarations were invalid, both
+     were dropped, and selection fell back to the user agent's. */
+  ::selection {
+    background-color: color-mix(in oklab, var(--primary) 28%, transparent);
+    color: var(--foreground);
   }
 
   /* Premium scrollbar */
@@ -145,4 +214,84 @@
     animation: none;
     background-color: color-mix(in oklab, var(--accent) 60%, transparent);
   }
+}
+
+/* -----------------------------------------------------------------------------
+ * UI.4 — one reduced-motion guard for the whole console.
+ *
+ * `.row-flash` above already did this correctly and was the only thing in the
+ * product that did. Rather than repeat the media query in every component that
+ * gains a transition, it is honoured once, here, for everything.
+ *
+ * Motion is reduced to ~nothing rather than removed outright: `0.01ms` still
+ * fires transitionend/animationend, so anything that sequences on those events
+ * keeps working. Zeroing them is how a "reduced motion" setting turns into a
+ * stuck interface.
+ * -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+ * UI.5 — the console frame.
+ *
+ * Two rules that belong to the shell and cannot be expressed as utilities on a
+ * component, because both are about what happens BETWEEN components.
+ * -------------------------------------------------------------------------- */
+
+/* A sticky table header has to know where the top is. The shell's header is
+   3.5rem and is itself sticky, so every `position: sticky` inside the scroll
+   container measures from the same declared offset rather than from a number
+   somebody guessed in a component. */
+:root {
+  --console-header-h: 3.5rem;
+}
+
+/* -----------------------------------------------------------------------------
+ * UI.6 — `.tap`, the touch-target floor.
+ *
+ * A no-op on a mouse and a 44px minimum on a finger. It is a media query rather
+ * than a breakpoint because the two questions are different: a 1280px Windows
+ * tablet on the warehouse floor is a coarse pointer at a desktop width, and a
+ * narrow browser window on a laptop is the opposite. Sizing controls by
+ * VIEWPORT gets both of those backwards.
+ *
+ * Applied by every interactive class in `components/console/ui/styles.ts`, so
+ * the rule holds by construction rather than by whoever remembers it. The queue
+ * screen — ported from a phone app, and the one people actually use on a phone
+ * — is the reason this exists at all.
+ * -------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  .tap {
+    min-block-size: 2.75rem;
+    min-inline-size: 2.75rem;
+  }
+}
+
+/* Where the skip link lands. It is off-screen until focused and then sits
+   above everything — including the sticky header — because a skip link that
+   renders behind the chrome is a skip link nobody can see they have. */
+.skip-link {
+  position: fixed;
+  inset-inline-start: 0.75rem;
+  inset-block-start: -4rem;
+  z-index: 100;
+  border-radius: calc(var(--radius) - 2px);
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  padding: 0.5rem 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: var(--shadow-e3);
+  transition: inset-block-start var(--duration-base) var(--ease-emphasis);
+}
+.skip-link:focus {
+  inset-block-start: 0.75rem;
 }

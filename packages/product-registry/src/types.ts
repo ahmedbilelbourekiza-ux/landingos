@@ -46,6 +46,22 @@ export interface ProductNavItem {
    * has never stopped anybody from typing a URL.
    */
   readonly permission?: string;
+  /**
+   * i18n key for the group this item belongs to in the sidebar. Optional: a
+   * manifest that declares none renders one flat list, exactly as before.
+   *
+   * WHY IT LIVES HERE AND NOT IN THE SHELL. The ERP declares fifteen items and
+   * the shell rendered them as fifteen undifferentiated lines, because the only
+   * thing that knows "orders, queue and follow-up are the same job" is the
+   * product. Putting the grouping in the shell would be the shell knowing what
+   * an ERP is — the one thing this contract exists to prevent — and a `switch`
+   * on `product.id` is exactly the shape the registry replaced.
+   *
+   * Items are grouped in DECLARATION ORDER, and an item with no group opens the
+   * list ungrouped above the first heading. That keeps "Overview" where it has
+   * always been without needing a group called "the top".
+   */
+  readonly group?: string;
 }
 
 /** Everything the platform needs to know about a product. */

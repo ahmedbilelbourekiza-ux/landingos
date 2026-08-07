@@ -152,6 +152,85 @@
   --sidebar-accent-foreground: oklch(0.18 0.01 250);
   --sidebar-border: oklch(0.91 0.003 75);
   --sidebar-ring: #991b1b;
+
+  /* ===========================================================================
+     SURFACES (UI.1)
+
+     The colour system above answered "what does this state mean". It never
+     answered "what is a panel", so every panel in the console became
+     `border` on the page ground — an outline rather than a surface — while
+     `--card` sat defined and used twice in 39 screens.
+
+     Four surfaces, and the rule is depth, not decoration:
+
+       page      the ground; nothing renders ON it directly
+       raised    a card, a panel, a table — the default place content lives
+       subtle    a header row, a toolbar, a footer INSIDE a raised surface
+       sunken    a well: read-only output, a code block, an inset list
+
+     `hover` and `selected` are the two interaction states a row can be in.
+     They are separate tokens because a hovered row and a ticked row must be
+     distinguishable while one is both — which is what a single `--accent`
+     could not express.
+     ========================================================================= */
+  --surface-raised: oklch(1 0 0);
+  --surface-subtle: oklch(0.975 0.003 75);
+  --surface-sunken: oklch(0.955 0.004 75);
+  --surface-hover: oklch(0.965 0.004 75);
+  /* A crimson breath, not a crimson. A selected row is still readable text on
+     a light ground; the tint only has to survive being seen next to an
+     unselected one. */
+  --surface-selected: oklch(0.955 0.017 20);
+  --surface-selected-border: oklch(0.87 0.045 20);
+
+  /* ===========================================================================
+     ELEVATION (UI.2)
+
+     Three steps, and a thing may only be raised if it OVERLAYS something.
+     A card that sits in the flow gets a border; a menu, a popover or a toast
+     that covers content gets a shadow, because the shadow is what says "this
+     is temporarily on top of what you were reading".
+
+     Light theme shadows are neutral-cool rather than pure black: a warm ground
+     with a black shadow reads as dirt.
+     ========================================================================= */
+  --shadow-e1: 0 1px 2px 0 oklch(0.2 0.02 250 / 0.05);
+  --shadow-e2: 0 1px 3px 0 oklch(0.2 0.02 250 / 0.08), 0 1px 2px -1px oklch(0.2 0.02 250 / 0.06);
+  --shadow-e3: 0 10px 24px -6px oklch(0.2 0.02 250 / 0.14), 0 4px 8px -4px oklch(0.2 0.02 250 / 0.08);
+
+  /* ===========================================================================
+     FOCUS (UI.3)
+
+     There was no `:focus-visible` rule anywhere in this codebase, which made
+     every keyboard guarantee the project built — plain GET filter forms, a
+     pager of links, panels that render before hydration — unusable by the
+     people those guarantees were for. The ring is defined here so both themes
+     get one and neither can drift.
+
+     Two layers: an OFFSET ring in the brand colour, and a contrast ring
+     underneath it in the page ground, so focus stays visible on a tinted row,
+     a status chip, or a filled primary button where a single ring would sit on
+     a colour too close to itself.
+     ========================================================================= */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring-color: #991b1b;
+
+  /* ===========================================================================
+     MOTION (UI.4)
+
+     Fast enough that nothing waits for the interface. `--duration-fast` is a
+     hover or a colour change; `--duration-base` is something appearing or
+     moving. Anything above 240ms in an operational console is the interface
+     asking for attention it has not earned.
+
+     Every consumer of these is wrapped in a `prefers-reduced-motion` guard in
+     globals.css, in one place rather than per component.
+     ========================================================================= */
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasis: cubic-bezier(0.3, 0.9, 0.2, 1);
 }
 
 /* =============================================================================
@@ -227,4 +306,28 @@
   --sidebar-accent-foreground: oklch(0.95 0.003 75);
   --sidebar-border: oklch(0.28 0.006 250);
   --sidebar-ring: #e5837d;
+
+  /* --- Surfaces -----------------------------------------------------------
+     Inverted, not mirrored: on a dark ground a raised surface is LIGHTER than
+     the page and a sunken one is darker, which is the same physical claim the
+     light theme makes and the opposite arithmetic. */
+  --surface-raised: oklch(0.185 0.005 250);
+  --surface-subtle: oklch(0.215 0.005 250);
+  --surface-sunken: oklch(0.115 0.005 250);
+  --surface-hover: oklch(0.235 0.006 250);
+  --surface-selected: oklch(0.25 0.028 20);
+  --surface-selected-border: oklch(0.4 0.06 20);
+
+  /* --- Elevation ----------------------------------------------------------
+     Darker and deeper. A light-theme shadow is invisible on a near-black
+     ground, so the dark theme leans on a real black at higher opacity and the
+     raised surface's own lighter fill does the rest of the work. */
+  --shadow-e1: 0 1px 2px 0 oklch(0 0 0 / 0.4);
+  --shadow-e2: 0 2px 6px -1px oklch(0 0 0 / 0.5), 0 1px 2px -1px oklch(0 0 0 / 0.4);
+  --shadow-e3: 0 12px 28px -8px oklch(0 0 0 / 0.65), 0 4px 10px -4px oklch(0 0 0 / 0.5);
+
+  /* --- Focus --------------------------------------------------------------
+     The lifted crimson, for the reason the primary is lifted: deep crimson on
+     a near-black ground reads as a hole rather than a ring. */
+  --focus-ring-color: #e5837d;
 }

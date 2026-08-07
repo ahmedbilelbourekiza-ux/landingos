@@ -18,6 +18,10 @@
       "orders": "Commandes",
       "abandoned": "Paniers abandonnés",
       "deliveryPrices": "Tarifs de livraison"
+    },
+    "navGroup": {
+      "content": "Contenu",
+      "selling": "Ventes"
     }
   },
   "erp": {
@@ -623,6 +627,13 @@
         "tracking-poll": "Interroger les transporteurs",
         "stale-orders": "Signaler les commandes dormantes"
       }
+    },
+    "navGroup": {
+      "work": "Travail quotidien",
+      "catalogue": "Catalogue",
+      "fulfilment": "Livraison",
+      "insight": "Analyse et finances",
+      "admin": "Administration"
     }
   },
   "status": {
@@ -702,7 +713,39 @@
     "previous": "Précédent",
     "next": "Suivant",
     "pagePosition": "Page {page} sur {pages}",
-    "resultCount": "{total} résultats"
+    "resultCount": "{total} résultats",
+    "skipToContent": "Aller au contenu",
+    "openMenu": "Ouvrir le menu",
+    "closeMenu": "Fermer le menu",
+    "navigation": "Navigation",
+    "account": "Compte",
+    "theme": "Thème",
+    "themeLight": "Clair",
+    "themeDark": "Sombre",
+    "themeSystem": "Système",
+    "required": "Requis",
+    "optional": "Facultatif",
+    "close": "Fermer",
+    "back": "Retour",
+    "actions": "Actions",
+    "selectAll": "Tout sélectionner",
+    "selectRow": "Sélectionner la ligne",
+    "sortBy": "Trier par {column}",
+    "sortedAsc": "tri croissant",
+    "sortedDesc": "tri décroissant",
+    "density": "Densité",
+    "densityComfortable": "Confortable",
+    "densityCompact": "Compact",
+    "noResults": "Aucun résultat",
+    "noResultsHint": "Élargissez ou effacez les filtres.",
+    "clearFilters": "Effacer les filtres",
+    "retry": "Réessayer",
+    "somethingWentWrong": "Cet écran n’a pas pu être chargé",
+    "errorHint": "La page a été demandée une fois sans réponse. Réessayez — si cela persiste, prévenez l’équipe qui gère la plateforme.",
+    "pageNotFound": "Page introuvable",
+    "pageNotFoundHint": "Cette adresse ne mène nulle part dans cette console.",
+    "backToConsole": "Retour à la console",
+    "apply": "Appliquer"
   },
   "join": {
     "title": "Rejoindre un espace de travail",
@@ -827,5 +870,12 @@
     "familyManipulation": "Appel signalé ou alerte agent",
     "familyDelivery": "Mise à jour du colis",
     "familyFollowup": "Rappel de suivi"
+  },
+  "auth": {
+    "subtitle": "Connectez-vous à votre espace de travail",
+    "email": "E-mail",
+    "password": "Mot de passe",
+    "signIn": "Se connecter",
+    "invalid": "Cet e-mail et ce mot de passe ne correspondent pas."
   }
 }

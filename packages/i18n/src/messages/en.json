@@ -18,6 +18,10 @@
       "orders": "Orders",
       "abandoned": "Abandoned carts",
       "deliveryPrices": "Delivery prices"
+    },
+    "navGroup": {
+      "content": "Content",
+      "selling": "Selling"
     }
   },
   "erp": {
@@ -623,6 +627,13 @@
         "tracking-poll": "Poll carriers",
         "stale-orders": "Flag stale orders"
       }
+    },
+    "navGroup": {
+      "work": "Daily work",
+      "catalogue": "Catalogue",
+      "fulfilment": "Fulfilment",
+      "insight": "Insight & money",
+      "admin": "Administration"
     }
   },
   "status": {
@@ -702,7 +713,39 @@
     "previous": "Previous",
     "next": "Next",
     "pagePosition": "Page {page} of {pages}",
-    "resultCount": "{total} results"
+    "resultCount": "{total} results",
+    "skipToContent": "Skip to content",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "navigation": "Navigation",
+    "account": "Account",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "System",
+    "required": "Required",
+    "optional": "Optional",
+    "close": "Close",
+    "back": "Back",
+    "actions": "Actions",
+    "selectAll": "Select all rows",
+    "selectRow": "Select row",
+    "sortBy": "Sort by {column}",
+    "sortedAsc": "sorted ascending",
+    "sortedDesc": "sorted descending",
+    "density": "Density",
+    "densityComfortable": "Comfortable",
+    "densityCompact": "Compact",
+    "noResults": "No matching results",
+    "noResultsHint": "Try widening or clearing the filters.",
+    "clearFilters": "Clear filters",
+    "retry": "Try again",
+    "somethingWentWrong": "This screen could not load",
+    "errorHint": "The page was attempted once and did not come back. Try again — if it keeps happening, tell whoever runs the platform.",
+    "pageNotFound": "Page not found",
+    "pageNotFoundHint": "That address does not lead anywhere in this console.",
+    "backToConsole": "Back to the console",
+    "apply": "Apply"
   },
   "join": {
     "title": "Join a workspace",
@@ -827,5 +870,12 @@
     "familyManipulation": "Flagged call or agent alert",
     "familyDelivery": "Parcel update",
     "familyFollowup": "Follow-up reminder"
+  },
+  "auth": {
+    "subtitle": "Sign in to your workspace",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "invalid": "That email and password combination is not correct."
   }
 }

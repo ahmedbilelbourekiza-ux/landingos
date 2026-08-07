@@ -18,6 +18,10 @@
       "orders": "الطلبات",
       "abandoned": "السلات المهجورة",
       "deliveryPrices": "أسعار التوصيل"
+    },
+    "navGroup": {
+      "content": "المحتوى",
+      "selling": "البيع"
     }
   },
   "erp": {
@@ -623,6 +627,13 @@
         "tracking-poll": "استعلام شركات التوصيل",
         "stale-orders": "تمييز الطلبات الراكدة"
       }
+    },
+    "navGroup": {
+      "work": "العمل اليومي",
+      "catalogue": "الكتالوج",
+      "fulfilment": "التسليم",
+      "insight": "التحليل والمال",
+      "admin": "الإدارة"
     }
   },
   "status": {
@@ -702,7 +713,39 @@
     "previous": "السابق",
     "next": "التالي",
     "pagePosition": "الصفحة {page} من {pages}",
-    "resultCount": "{total} نتيجة"
+    "resultCount": "{total} نتيجة",
+    "skipToContent": "تخطٍّ إلى المحتوى",
+    "openMenu": "فتح القائمة",
+    "closeMenu": "إغلاق القائمة",
+    "navigation": "التنقّل",
+    "account": "الحساب",
+    "theme": "المظهر",
+    "themeLight": "فاتح",
+    "themeDark": "داكن",
+    "themeSystem": "حسب النظام",
+    "required": "مطلوب",
+    "optional": "اختياري",
+    "close": "إغلاق",
+    "back": "رجوع",
+    "actions": "إجراءات",
+    "selectAll": "تحديد كل الصفوف",
+    "selectRow": "تحديد الصف",
+    "sortBy": "ترتيب حسب {column}",
+    "sortedAsc": "مرتّب تصاعديًا",
+    "sortedDesc": "مرتّب تنازليًا",
+    "density": "الكثافة",
+    "densityComfortable": "مريح",
+    "densityCompact": "مضغوط",
+    "noResults": "لا توجد نتائج مطابقة",
+    "noResultsHint": "وسّع المرشّحات أو امسحها.",
+    "clearFilters": "مسح المرشّحات",
+    "retry": "أعد المحاولة",
+    "somethingWentWrong": "تعذّر تحميل هذه الشاشة",
+    "errorHint": "طُلبت الصفحة مرّة ولم تُستجب. أعد المحاولة، وإن تكرّر الأمر فأبلغ من يدير المنصّة.",
+    "pageNotFound": "الصفحة غير موجودة",
+    "pageNotFoundHint": "هذا العنوان لا يؤدّي إلى أيّ شيء في هذه اللوحة.",
+    "backToConsole": "العودة إلى اللوحة",
+    "apply": "تطبيق"
   },
   "join": {
     "title": "الانضمام إلى مساحة عمل",
@@ -827,5 +870,12 @@
     "familyManipulation": "مكالمة مشبوهة أو تنبيه مؤكد",
     "familyDelivery": "تحديث الطرد",
     "familyFollowup": "تذكير متابعة"
+  },
+  "auth": {
+    "subtitle": "سجّل الدخول إلى مساحة عملك",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "signIn": "تسجيل الدخول",
+    "invalid": "البريد الإلكتروني أو كلمة المرور غير صحيحة."
   }
 }
