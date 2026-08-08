@@ -50,7 +50,7 @@ export default async function BuilderAbandonedScreen() {
         columns={[
           {
             id: "customer",
-            header: t("erp.nav.clients"),
+            header: t("builder.orders.colCustomer"),
             cell: (d) => (
               <>
                 <span className="font-medium">{d.customerName ?? "—"}</span>
@@ -62,22 +62,23 @@ export default async function BuilderAbandonedScreen() {
           },
           {
             id: "product",
-            header: t("builder.nav.pages"),
+            header: t("builder.orders.colPage"),
             cell: (d) => (
               <span className="text-muted-foreground">{d.landingPage?.title ?? "—"}</span>
             ),
           },
           {
             id: "total",
-            header: t("builder.nav.orders"),
+            header: t("builder.orders.colTotal"),
             align: "end",
             numeric: true,
             cell: (d) =>
               d.totalPrice == null ? "—" : formatMoney(String(d.totalPrice), locale),
           },
           {
+            // The cell is a timestamp, and its header used to say "Status".
             id: "seen",
-            header: "Status",
+            header: t("builder.abandoned.colSeen"),
             cell: (d) => (
               <span className="text-xs text-muted-foreground">
                 {formatDate(d.updatedAt, locale)}

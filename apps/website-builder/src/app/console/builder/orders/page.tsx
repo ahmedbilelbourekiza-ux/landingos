@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { forTenant } from "@landingos/db";
 import { resolveStatus, toneVars } from "@landingos/ui";
 import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
@@ -41,12 +43,25 @@ export default async function BuilderOrdersScreen() {
         rowKey={(o) => o.id}
         rowAttrs={(o) => ({ "data-order-id": o.id })}
         columns={[
+          /* Each header names what the CELL holds. The first build reused
+             whatever nav key was lying around, which headed the quantity
+             column "Create" and the total column "Orders" — nonsense in every
+             locale, and the kind of thing that makes a product read as
+             unfinished. */
           {
             id: "customer",
-            header: t("erp.nav.clients"),
+            header: t("builder.orders.colCustomer"),
             cell: (o) => (
               <>
-                <span className="font-medium">{o.customerName}</span>
+                {/* The row's door. The detail screen has existed since the
+                    port and the list never linked to it — it was reachable
+                    only from a notification or by typing the URL. */}
+                <Link
+                  href={`/console/builder/orders/${o.id}`}
+                  className="font-medium underline-offset-2 hover:underline"
+                >
+                  {o.customerName}
+                </Link>
                 {/* A phone number is always read left-to-right, even on an
                     RTL page, or the digits appear reordered. */}
                 <span className="mt-0.5 block font-mono text-xs text-muted-foreground" dir="ltr">
@@ -57,7 +72,7 @@ export default async function BuilderOrdersScreen() {
           },
           {
             id: "destination",
-            header: t("builder.nav.deliveryPrices"),
+            header: t("builder.orders.colDestination"),
             cell: (o) => (
               <span className="text-muted-foreground">
                 {o.wilaya} · {o.baladia}
@@ -66,20 +81,20 @@ export default async function BuilderOrdersScreen() {
           },
           {
             id: "product",
-            header: t("builder.nav.pages"),
+            header: t("builder.orders.colPage"),
             cell: (o) => (
               <span className="text-muted-foreground">{o.landingPage?.title ?? "—"}</span>
             ),
           },
           {
             id: "qty",
-            header: t("common.create"),
+            header: t("builder.orders.colQty"),
             numeric: true,
             cell: (o) => o.quantity,
           },
           {
             id: "total",
-            header: t("builder.nav.orders"),
+            header: t("builder.orders.colTotal"),
             align: "end",
             numeric: true,
             // Formatted from the Decimal's string form so it never passes
@@ -88,7 +103,7 @@ export default async function BuilderOrdersScreen() {
           },
           {
             id: "status",
-            header: "Status",
+            header: t("common.status"),
             cell: (o) => {
               const s = resolveStatus("salesOrder", o.status);
               return (

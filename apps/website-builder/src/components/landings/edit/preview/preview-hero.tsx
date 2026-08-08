@@ -29,8 +29,18 @@ export function PreviewHero({ preview }: { preview: PreviewState }) {
           />
         </motion.div>
       ) : (
-        <div className="flex h-full items-center justify-center">
-          <ImageOff className="size-8 text-muted-foreground/40" strokeWidth={1.5} aria-hidden />
+        // The empty state says WHAT is missing and WHERE it is added — a bare
+        // icon in a grey box read as a broken preview rather than a pending
+        // choice, and "the preview looks empty" was the complaint it produced.
+        <div className="flex h-full flex-col items-center justify-center gap-1.5 px-4 text-center">
+          <ImageOff className="size-6 text-muted-foreground/50" strokeWidth={1.5} aria-hidden />
+          <span className="text-[10px] font-medium text-muted-foreground">
+            No hero image yet
+          </span>
+          <span className="text-[9px] leading-snug text-muted-foreground/70">
+            Add one in Images &amp; Media — it becomes the top of the page and the social share
+            image.
+          </span>
         </div>
       )}
     </div>

@@ -62,17 +62,26 @@ export function toListItem(page: LandingPage & { media: { url: string }[] }): La
 
 // Group flat variants by name, preserving order. Same logic as the mock
 // groupVariants function but operating on Prisma rows.
+//
+// The editor's vocabulary (VariantOption) calls the option text `label`; the
+// DB column is `value`. The rename happens HERE and nowhere else — emitting
+// `value` from this function is how every saved variant loaded into the
+// editor with a blank label and rendered as "—" in the preview, while the
+// save path was blocked by its own "every option needs a label" validation.
 function groupVariants(variants: LandingVariant[]): VariantGroup[] {
   const groups: VariantGroup[] = [];
   for (const v of variants) {
     let group = groups.find((g) => g.name === v.name);
     if (!group) {
-      group = { name: v.name, options: [] };
+      // Anchored to the first row's id: stable across renders, unique per
+      // group — `key={group.id}` in the preview was `undefined` for every
+      // group before this.
+      group = { id: `grp-${v.id}`, name: v.name, options: [] };
       groups.push(group);
     }
     group.options.push({
       id: v.id,
-      value: v.value,
+      label: v.value,
       extraPrice: v.extraPrice.toNumber(),
     });
   }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 
 import { withTenant } from "@landingos/db";
 import { productRegistry } from "@landingos/product-registry";
@@ -67,6 +67,7 @@ export async function ConsoleShell({
   children: React.ReactNode;
 }) {
   const t = await getTranslations();
+  const locale = await getLocale();
   const product = productId ? productRegistry.get(productId) : undefined;
   const nav = product ? productRegistry.navFor(product.id, session.permissions) : [];
 
@@ -159,6 +160,7 @@ export async function ConsoleShell({
             icon: p.icon,
           }))}
           activeId={productId}
+          emptyLabel={t("common.noProducts")}
         />
       </div>
 
@@ -273,6 +275,7 @@ export async function ConsoleShell({
                 unread={unread}
                 prefs={notifyPrefs}
                 productNames={productNames}
+                locale={locale}
                 strings={{
                   title: t("common.notifications"),
                   open: t("notifications.open"),

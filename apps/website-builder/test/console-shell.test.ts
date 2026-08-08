@@ -274,3 +274,56 @@ describe('the same request path serves every product', () => {
     }
   });
 });
+
+describe('the display language follows the locale cookie', () => {
+  /* The whole switching loop is: the header form posts a server action, the
+   * action writes the `locale` cookie, the next render reads it
+   * (src/i18n/request.ts). The client half — the select submitting itself on
+   * change — is a React prop invisible to server HTML, so it is verified in a
+   * real browser; THIS is the regression net for the server half, which is
+   * what a wrong resolution order or a renamed cookie would break. The bug
+   * this section was written after: choosing a language in the dropdown
+   * changed nothing, because the form only submitted on a second click. */
+  const skip = () => (!serverUp ? 'no server' : !HAS_DB ? 'no database' : false);
+
+  const CASES = [
+    { locale: 'ar', dir: 'rtl' },
+    { locale: 'fr', dir: 'ltr' },
+    { locale: 'en', dir: 'ltr' },
+  ] as const;
+
+  test('each locale cookie renders that language, with its direction', { skip: skip() }, async () => {
+    for (const { locale, dir } of CASES) {
+      const res = await fetch(BASE + '/console/builder', {
+        redirect: 'manual',
+        headers: { cookie: `${SESSION_COOKIE}=${tokens[emails.bundle]}; locale=${locale}` },
+      });
+      assert.equal(res.status, 200, `console must render with locale=${locale}`);
+      const body = await res.text();
+      assert.match(
+        body,
+        new RegExp(`<html[^>]*lang="${locale}"`),
+        `locale=${locale} must reach <html lang>`,
+      );
+      assert.match(
+        body,
+        new RegExp(`<html[^>]*dir="${dir}"`),
+        `locale=${locale} must render ${dir}`,
+      );
+      // The switcher itself must be on the page, offering the cookie's own
+      // value — a selector that vanished or forgot its current state is how
+      // somebody gets stranded in a language they cannot read.
+      assert.match(body, /data-testid="locale-switcher"/);
+      assert.match(body, new RegExp(`<option[^>]*selected[^>]*value="${locale}"|<option[^>]*value="${locale}"[^>]*selected`), `the select must show ${locale} as current`);
+    }
+  });
+
+  test('an unknown locale cookie falls back rather than failing', { skip: skip() }, async () => {
+    const res = await fetch(BASE + '/console/builder', {
+      redirect: 'manual',
+      headers: { cookie: `${SESSION_COOKIE}=${tokens[emails.bundle]}; locale=zz` },
+    });
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /<html[^>]*lang="(ar|fr|en)"/);
+  });
+});

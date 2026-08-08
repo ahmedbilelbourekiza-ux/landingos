@@ -21,6 +21,14 @@ import { cn } from "@/lib/utils";
  * Still a plain form. It works before hydration, which is the property that
  * lets somebody whose JavaScript failed switch away from a language they
  * cannot read.
+ *
+ * AND IT SUBMITS ITSELF ON CHANGE. Choosing a language from the dropdown did
+ * nothing until the ✓ icon beside it was ALSO clicked — a second step no
+ * language menu anywhere has taught people to expect, so "switching to
+ * Arabic" silently switched nothing (observed as a real user report, not a
+ * hypothetical). `requestSubmit()` drives the same form action the button
+ * does; the button stays for the pre-hydration path, where the onChange does
+ * not exist yet and the two-step flow still works.
  */
 export function LocaleSwitcher({ label, apply }: { label: string; apply: string }) {
   const current = useLocale();
@@ -37,6 +45,7 @@ export function LocaleSwitcher({ label, apply }: { label: string; apply: string 
         name="locale"
         defaultValue={current}
         data-testid="locale-switcher"
+        onChange={(e) => e.currentTarget.form?.requestSubmit()}
         className={cn(selectClass, "h-9 w-auto py-1.5")}
       >
         {LOCALES.map((l) => (

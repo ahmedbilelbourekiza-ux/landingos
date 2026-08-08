@@ -1,8 +1,10 @@
+import { Palette } from "lucide-react";
+
 import { forTenant } from "@landingos/db";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageHeader, PageBody } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody, EmptyState } from "@/components/console/ui/primitives";
 
 export const dynamic = "force-dynamic";
 
@@ -41,13 +43,22 @@ export default async function BuilderTemplatesScreen() {
   return (
     <ConsoleShell session={session} productId="website-builder">
       <PageBody>
-        <PageHeader title={t("builder.nav.templates")} />
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t("builder.templates.hint")}
-        </p>
+        <PageHeader
+          title={t("builder.nav.templates")}
+          description={t("builder.templates.hint")}
+        />
 
         {themes.length === 0 ? (
-          <p className="mt-8 text-sm text-muted-foreground">{t("common.empty")}</p>
+          /* One muted line saying "No data" told a new merchant nothing about
+             what a theme IS or where one is chosen. The empty state explains
+             both — and does not offer a create control, because authoring
+             themes is genuinely not a capability yet (M-19). */
+          <EmptyState
+            testId="themes-empty"
+            icon={<Palette className="size-5" />}
+            title={t("builder.templates.empty")}
+            description={t("builder.templates.emptyHint")}
+          />
         ) : (
           <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="themes-gallery">
             {themes.map((theme) => (

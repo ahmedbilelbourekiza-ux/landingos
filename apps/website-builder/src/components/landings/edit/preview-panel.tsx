@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { RefreshCw, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { PreviewDeviceToggle, type PreviewDevice } from "./preview-device-toggle";
@@ -10,7 +10,22 @@ import type { PreviewState } from "@/types/preview";
 
 // Sticky right-column preview panel. Owns only the device toggle state.
 // Reads everything else from the single preview object owned by the parent.
-export function PreviewPanel({ preview }: { preview: PreviewState }) {
+//
+// The footer used to hold two permanently `disabled` buttons — "Refresh" and
+// "Open" — which is exactly the shape PM.6 exists to prevent: a control that
+// LOOKS like a capability and never does anything reads as a broken product.
+// The preview is live state, so "Refresh" had nothing to refresh; "Open" is
+// real, but only once the page is published, so it renders only then.
+export function PreviewPanel({
+  preview,
+  publicPath,
+  isPublished,
+}: {
+  preview: PreviewState;
+  /** The page's public path on this platform, e.g. `/acme/winter-jacket`. */
+  publicPath: string;
+  isPublished: boolean;
+}) {
   const [device, setDevice] = React.useState<PreviewDevice>("desktop");
 
   return (
@@ -23,16 +38,14 @@ export function PreviewPanel({ preview }: { preview: PreviewState }) {
 
         <PreviewContent device={device} preview={preview} />
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="flex-1" disabled>
-            <RefreshCw className="size-3.5" />
-            Refresh
+        {isPublished && (
+          <Button variant="outline" size="sm" asChild>
+            <a href={publicPath} target="_blank" rel="noreferrer">
+              <ExternalLink className="size-3.5" />
+              Open live page
+            </a>
           </Button>
-          <Button variant="outline" size="sm" className="flex-1" disabled>
-            <ExternalLink className="size-3.5" />
-            Open
-          </Button>
-        </div>
+        )}
       </div>
     </aside>
   );

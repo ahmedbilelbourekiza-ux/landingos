@@ -28,11 +28,67 @@
       "buttonSample": "Bouton d'achat",
       "builtIn": "Intégré",
       "custom": "Personnalisé",
-      "pagesUsing": "{count, plural, =0 {utilisé par aucune page} one {utilisé par # page} other {utilisé par # pages}}"
+      "pagesUsing": "{count, plural, =0 {utilisé par aucune page} one {utilisé par # page} other {utilisé par # pages}}",
+      "empty": "Aucun thème disponible pour l'instant",
+      "emptyHint": "Le thème se choisit par page, dans la section Général de l'éditeur. Quand cet espace aura des thèmes, ils apparaîtront ici avec un aperçu de leurs couleurs."
     },
     "pages": {
       "duplicate": "Dupliquer",
-      "view": "Voir"
+      "view": "Voir",
+      "colPage": "Page",
+      "colPrice": "Prix",
+      "colCategory": "Catégorie",
+      "colUpdated": "Mise à jour"
+    },
+    "overview": {
+      "attention": "Demande une intervention",
+      "attentionHint": "Chaque élément ouvre l'écran où le traiter.",
+      "allClear": "Rien ne demande d'intervention.",
+      "allClearHint": "Les nouvelles commandes et les brouillons non publiés apparaîtront ici.",
+      "newOrders": "Nouvelles commandes à confirmer",
+      "newOrdersHint": "Passées par des clients, ni confirmées ni annulées pour l'instant.",
+      "draftPages": "Pages non publiées",
+      "draftPagesHint": "Une page terminée ne rapporte rien tant qu'elle n'est pas publiée.",
+      "abandonedLeads": "Paniers abandonnés avec téléphone",
+      "abandonedLeadsHint": "Le visiteur a laissé un numéro sans commander — chacun vaut un appel.",
+      "revenue": "Chiffre livré",
+      "recentOrders": "Dernières commandes",
+      "viewAll": "Tout voir",
+      "noOrdersYet": "Aucune commande pour l'instant",
+      "noOrdersYetHint": "Les commandes passées sur vos pages publiées apparaissent ici.",
+      "firstPageTitle": "Créez votre première page de vente",
+      "firstPageHint": "Un titre, une adresse et un prix suffisent pour commencer — tout le reste se modifie ensuite dans l'éditeur.",
+      "createPage": "Créer une page"
+    },
+    "orders": {
+      "colCustomer": "Client",
+      "colDestination": "Destination",
+      "colPage": "Page",
+      "colQty": "Qté",
+      "colTotal": "Total",
+      "detailPhone": "Téléphone",
+      "detailAddress": "Adresse",
+      "detailOptions": "Options",
+      "detailQuantity": "Quantité",
+      "detailTotal": "Total",
+      "detailNotes": "Remarques",
+      "detailPage": "Page de vente",
+      "history": "Historique",
+      "finalState": "Cette commande a atteint un état final."
+    },
+    "abandoned": {
+      "colSeen": "Dernière activité"
+    },
+    "newPage": {
+      "title": "Nouvelle page de vente",
+      "titleLabel": "Titre",
+      "slugLabel": "Adresse",
+      "slugHint": "Laissez vide pour la générer depuis le titre. Une autre société utilisant la même adresse ne vous affecte pas.",
+      "priceLabel": "Prix",
+      "titleRequired": "Un titre est obligatoire.",
+      "priceInvalid": "Saisissez un prix supérieur ou égal à zéro.",
+      "slugInvalid": "Cette adresse ne peut pas être utilisée. Essayez des lettres, des chiffres et des tirets.",
+      "slugTaken": "Vous avez déjà une page à cette adresse."
     }
   },
   "erp": {
@@ -824,7 +880,10 @@
     "pageNotFoundHint": "Cette adresse ne mène nulle part dans cette console.",
     "backToConsole": "Retour à la console",
     "apply": "Appliquer",
-    "saved": "Enregistré"
+    "saved": "Enregistré",
+    "status": "Statut",
+    "chooseApp": "Choisissez une application à ouvrir.",
+    "noProducts": "Aucun produit n'est activé pour cette société."
   },
   "join": {
     "title": "Rejoindre un espace de travail",

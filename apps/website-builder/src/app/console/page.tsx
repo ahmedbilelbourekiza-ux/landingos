@@ -30,9 +30,7 @@ export default async function ConsoleHome() {
       <PageBody>
       <h1 className="text-xl font-semibold">{session.tenant?.name ?? "LandingOS"}</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        {session.products.length === 0
-          ? "No products are enabled for this company."
-          : "Choose an application to open."}
+        {session.products.length === 0 ? t("common.noProducts") : t("common.chooseApp")}
       </p>
       <ul className="mt-6 grid gap-3 sm:grid-cols-2">
         {session.products.map((p) => (

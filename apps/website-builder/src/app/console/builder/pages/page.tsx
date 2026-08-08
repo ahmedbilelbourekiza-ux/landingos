@@ -7,7 +7,7 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 
 import { requireProduct } from "@/lib/console/product-page";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageBody } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody, EmptyState } from "@/components/console/ui/primitives";
 import { DataTable, StatusPill } from "@/components/console/data-table";
 import { PageRowActions } from "@/components/console/builder/page-row-actions";
 import { actionErrors } from "@/lib/console/action-errors";
@@ -46,7 +46,7 @@ export default async function BuilderPagesScreen() {
       published: true,
       price: true,
       currency: true,
-      createdAt: true,
+      updatedAt: true,
       category: { select: { name: true } },
       _count: { select: { salesOrders: true } },
     },
@@ -55,18 +55,34 @@ export default async function BuilderPagesScreen() {
   return (
     <ConsoleShell session={session} productId="website-builder">
       <PageBody>
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold">{t("builder.nav.pages")}</h1>
-        {mayEdit ? (
-          <Link
-            href="/console/builder/pages/new"
-            className="ui-btn ui-btn-primary tap"
-          >
-            {t("common.create")}
-          </Link>
-        ) : null}
-      </div>
+      <PageHeader
+        title={t("builder.nav.pages")}
+        actions={
+          mayEdit ? (
+            <Link
+              href="/console/builder/pages/new"
+              className="ui-btn ui-btn-primary tap"
+            >
+              {t("common.create")}
+            </Link>
+          ) : undefined
+        }
+      />
 
+      {pages.length === 0 ? (
+        <EmptyState
+          testId="landings-table"
+          title={t("builder.overview.firstPageTitle")}
+          description={t("builder.overview.firstPageHint")}
+          action={
+            mayEdit ? (
+              <Link href="/console/builder/pages/new" className="ui-btn ui-btn-primary tap">
+                {t("builder.overview.createPage")}
+              </Link>
+            ) : undefined
+          }
+        />
+      ) : (
       <DataTable
         testId="landings-table"
         empty={t("common.empty")}
@@ -76,11 +92,14 @@ export default async function BuilderPagesScreen() {
         columns={[
           {
             id: "title",
-            header: t("builder.nav.pages"),
+            // The column says what the CELL holds. It used to reuse the nav
+            // item's key, so the title column of the pages screen was headed
+            // "Landing pages" — a label for the screen, not the column.
+            header: t("builder.pages.colPage"),
             cell: (p) => (
               <>
                 <span className="font-medium">{p.title}</span>
-                <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
+                <span className="mt-0.5 block font-mono text-xs text-muted-foreground" dir="ltr">
                   /{p.slug}
                 </span>
               </>
@@ -88,7 +107,7 @@ export default async function BuilderPagesScreen() {
           },
           {
             id: "category",
-            header: t("builder.nav.categories"),
+            header: t("builder.pages.colCategory"),
             cell: (p) => <span className="text-muted-foreground">{p.category?.name ?? "—"}</span>,
           },
           {
@@ -99,7 +118,9 @@ export default async function BuilderPagesScreen() {
           },
           {
             id: "price",
-            header: t("builder.nav.deliveryPrices"),
+            // Was `builder.nav.deliveryPrices` — this is the PRODUCT's price,
+            // and calling it "Delivery prices" told merchants the wrong fact.
+            header: t("builder.pages.colPrice"),
             align: "end",
             numeric: true,
             // Formatted from the Decimal's string form so it never passes
@@ -108,14 +129,14 @@ export default async function BuilderPagesScreen() {
           },
           {
             id: "status",
-            header: "Status",
+            header: t("common.status"),
             cell: (p) => {
               const s = resolveStatus("landingPage", p.status);
               return (
                 <>
                   <StatusPill status={p.status} label={t(s.labelKey)} vars={toneVars(s.tone)} />
                   <span className="mt-0.5 block text-xs text-muted-foreground">
-                    {formatDate(p.createdAt, locale)}
+                    {formatDate(p.updatedAt, locale)}
                   </span>
                 </>
               );
@@ -146,6 +167,7 @@ export default async function BuilderPagesScreen() {
             : []),
         ]}
       />
+      )}
       </PageBody>
     </ConsoleShell>
   );

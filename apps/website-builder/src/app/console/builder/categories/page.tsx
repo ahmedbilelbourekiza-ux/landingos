@@ -35,7 +35,7 @@ export default async function BuilderCategoriesScreen() {
         columns={[
           {
             id: "name",
-            header: t("builder.nav.categories"),
+            header: t("builder.pages.colCategory"),
             cell: (c) => (
               <>
                 <span className="font-medium">{c.name}</span>
@@ -53,7 +53,7 @@ export default async function BuilderCategoriesScreen() {
           },
           {
             id: "visible",
-            header: "Status",
+            header: t("common.status"),
             cell: (c) => (
               <span data-visible={String(c.isVisible)} className="text-xs text-muted-foreground">
                 {c.isVisible

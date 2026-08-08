@@ -348,6 +348,41 @@ export default async function ErpOrderDetail({
         }
       />
 
+      {/* PM.9 — the summary that scrolls WITH the reader. Eleven sections and
+          ~2,600px of page put the status and the primary action a screen apart;
+          this strip keeps the four facts an operator re-checks mid-call —
+          who, number, value, state — in view the whole way down, and carries
+          the one jump that matters. Sticky offset written with the `_`
+          separators (the Tailwind-calc rule: a bare space ends the class and
+          the declaration silently emits nothing). */}
+      <div
+        data-testid="order-summary-strip"
+        className="sticky top-[calc(var(--console-header-h)_+_0.5rem)] z-20 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-border bg-surface-raised px-4 py-2.5 shadow-e2"
+      >
+        <span className="font-mono text-xs font-medium text-foreground" dir="ltr">
+          {order.reference ?? ""}
+        </span>
+        <StatusPill
+          status={order.status ?? "unknown"}
+          label={t(tone.labelKey)}
+          vars={toneVars(tone.tone)}
+        />
+        <span className="min-w-0 max-w-48 truncate text-sm text-foreground">
+          {order.client || "—"}
+        </span>
+        <span className="hidden font-mono text-xs text-muted-foreground sm:inline" dir="ltr">
+          {order.phone}
+        </span>
+        <span className="ms-auto text-sm font-semibold tabular-nums text-foreground" dir="ltr">
+          {formatMoney(order.price?.toString() ?? "0", locale, currency)}
+        </span>
+        {mayWrite && (
+          <a href="#erp-order-write" className="ui-btn ui-btn-primary ui-btn-sm tap">
+            {t("common.actions")}
+          </a>
+        )}
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-3">
         <section
           className="rounded-lg border border-border bg-surface-raised p-4 lg:col-span-1"
@@ -488,7 +523,13 @@ export default async function ErpOrderDetail({
       </div>
 
       {mayWrite ? (
-        <div className="mt-4 grid gap-4 lg:grid-cols-3" data-testid="erp-order-write">
+        // `id` + `scroll-mt`: the summary strip's Actions link lands here, and
+        // without the scroll margin the target hides under the two sticky bars.
+        <div
+          id="erp-order-write"
+          className="mt-4 grid scroll-mt-28 gap-4 lg:grid-cols-3"
+          data-testid="erp-order-write"
+        >
           <div className="lg:col-span-2">
             <CallPanel
               orderId={order.id}

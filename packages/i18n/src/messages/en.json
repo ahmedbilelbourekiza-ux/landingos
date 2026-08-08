@@ -28,11 +28,67 @@
       "buttonSample": "Buy button",
       "builtIn": "Built-in",
       "custom": "Custom",
-      "pagesUsing": "{count, plural, =0 {used by no pages} one {used by # page} other {used by # pages}}"
+      "pagesUsing": "{count, plural, =0 {used by no pages} one {used by # page} other {used by # pages}}",
+      "empty": "No themes available yet",
+      "emptyHint": "A theme is chosen per page, in the editor's General section. When this workspace has themes they appear here with a live colour sample."
     },
     "pages": {
       "duplicate": "Duplicate",
-      "view": "View"
+      "view": "View",
+      "colPage": "Page",
+      "colPrice": "Price",
+      "colCategory": "Category",
+      "colUpdated": "Updated"
+    },
+    "overview": {
+      "attention": "Needs attention",
+      "attentionHint": "Each item opens the screen where it gets handled.",
+      "allClear": "Nothing needs attention.",
+      "allClearHint": "New orders and unpublished drafts will appear here.",
+      "newOrders": "New orders to confirm",
+      "newOrdersHint": "Placed by customers and not yet confirmed or cancelled.",
+      "draftPages": "Unpublished pages",
+      "draftPagesHint": "A finished page earns nothing until it is published.",
+      "abandonedLeads": "Abandoned carts with a phone",
+      "abandonedLeadsHint": "The visitor left a number and no order — each one is a call worth making.",
+      "revenue": "Delivered revenue",
+      "recentOrders": "Recent orders",
+      "viewAll": "View all",
+      "noOrdersYet": "No orders yet",
+      "noOrdersYetHint": "Orders placed on your published pages appear here.",
+      "firstPageTitle": "Create your first landing page",
+      "firstPageHint": "A title, an address and a price are enough to start — everything else is edited afterwards in the editor.",
+      "createPage": "Create a page"
+    },
+    "orders": {
+      "colCustomer": "Customer",
+      "colDestination": "Destination",
+      "colPage": "Page",
+      "colQty": "Qty",
+      "colTotal": "Total",
+      "detailPhone": "Phone",
+      "detailAddress": "Address",
+      "detailOptions": "Options",
+      "detailQuantity": "Quantity",
+      "detailTotal": "Total",
+      "detailNotes": "Notes",
+      "detailPage": "Landing page",
+      "history": "History",
+      "finalState": "This order has reached a final state."
+    },
+    "abandoned": {
+      "colSeen": "Last activity"
+    },
+    "newPage": {
+      "title": "New landing page",
+      "titleLabel": "Title",
+      "slugLabel": "Address",
+      "slugHint": "Leave blank to generate one from the title. Another company using the same address does not affect you.",
+      "priceLabel": "Price",
+      "titleRequired": "A title is required.",
+      "priceInvalid": "Enter a price of zero or more.",
+      "slugInvalid": "That address cannot be used. Try letters, numbers and hyphens.",
+      "slugTaken": "You already have a page at that address."
     }
   },
   "erp": {
@@ -824,7 +880,10 @@
     "pageNotFoundHint": "That address does not lead anywhere in this console.",
     "backToConsole": "Back to the console",
     "apply": "Apply",
-    "saved": "Saved"
+    "saved": "Saved",
+    "status": "Status",
+    "chooseApp": "Choose an application to open.",
+    "noProducts": "No products are enabled for this company."
   },
   "join": {
     "title": "Join a workspace",

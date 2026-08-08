@@ -5,7 +5,7 @@ import { can } from "@landingos/auth";
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { PageBody } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { NewLandingForm } from "@/components/console/builder/new-landing-form";
 
 export const dynamic = "force-dynamic";
@@ -30,27 +30,32 @@ export default async function NewLandingPage() {
   const errors = actionErrors(t);
   // SLUG_TAKEN is this route's own refusal; said specifically rather than as
   // the generic invalid-input message, because it names the fix.
-  errors.SLUG_TAKEN = "You already have a page at that address.";
+  errors.SLUG_TAKEN = t("builder.newPage.slugTaken");
 
   return (
     <ConsoleShell session={session} productId="website-builder">
       <PageBody>
-      <h1 className="text-xl font-semibold">{t("common.create")}</h1>
+      <PageHeader
+        title={t("builder.newPage.title")}
+        breadcrumb={[
+          { label: t("builder.nav.pages"), href: "/console/builder/pages" },
+          { label: t("builder.newPage.title") },
+        ]}
+      />
 
       <NewLandingForm
         labels={{
-          title: "Title",
-          slug: "Address",
-          slugHint:
-            "Leave blank to generate one. Another company using the same address does not affect you.",
-          price: "Price",
+          title: t("builder.newPage.titleLabel"),
+          slug: t("builder.newPage.slugLabel"),
+          slugHint: t("builder.newPage.slugHint"),
+          price: t("builder.newPage.priceLabel"),
           submit: t("common.create"),
         }}
         messages={{
-          title: "A title is required.",
-          price: "Enter a price of zero or more.",
-          slug: "That address cannot be used. Try letters, numbers and hyphens.",
-          taken: "You already have a page at that address.",
+          title: t("builder.newPage.titleRequired"),
+          price: t("builder.newPage.priceInvalid"),
+          slug: t("builder.newPage.slugInvalid"),
+          taken: t("builder.newPage.slugTaken"),
         }}
         errors={errors}
       />

@@ -49,10 +49,22 @@ export function EditWorkspace({
 
   const publishedRef = React.useRef(initialStatus === "PUBLISHED");
 
+  // Every section lifts its initial values to this workspace in a mount
+  // effect, so the first render produces one handlePreviewChange call PER
+  // SECTION before anybody has touched anything — which marked every
+  // published page "Unsaved Changes" the moment it opened. Child effects run
+  // before this parent effect on mount, so arming here means the mount-time
+  // lifts pass through unarmed and the first REAL edit is the first one
+  // counted.
+  const armedRef = React.useRef(false);
+  React.useEffect(() => {
+    armedRef.current = true;
+  }, []);
+
   const handlePreviewChange = React.useCallback(
     <K extends keyof PreviewState>(slice: K, values: PreviewState[K]) => {
       setPreview((prev) => ({ ...prev, [slice]: values }));
-      if (publishedRef.current) {
+      if (armedRef.current && publishedRef.current) {
         setHasUnsavedChanges(true);
       }
     },
@@ -127,7 +139,11 @@ export function EditWorkspace({
             initialSeo={initialSeo}
           />
           <div className="hidden lg:block">
-            <PreviewPanel preview={preview} />
+            <PreviewPanel
+              preview={preview}
+              publicPath={publicPath}
+              isPublished={publishStatus === "PUBLISHED"}
+            />
           </div>
         </div>
       </div>

@@ -64,6 +64,23 @@ const TOAST_MS = 6000;
 /** How many toasts may stack. Beyond this the oldest goes. */
 const MAX_TOASTS = 3;
 
+/** A row's timestamp: time alone if it happened today, date and time
+ *  otherwise. Runs only in the browser (the list is fetched on open), so
+ *  there is no server render to disagree with. */
+function formatWhen(iso: string, locale: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const today = new Date();
+  const sameDay =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  return new Intl.DateTimeFormat(
+    locale,
+    sameDay ? { timeStyle: "short" } : { dateStyle: "medium", timeStyle: "short" },
+  ).format(d);
+}
+
 export interface NotificationStrings {
   readonly title: string;
   readonly open: string;
@@ -95,6 +112,7 @@ export function NotificationProvider({
   strings: s,
   productNames,
   prefs,
+  locale,
 }: {
   /** The server's count, re-read on every render of the shell. */
   readonly unread: number;
@@ -102,6 +120,9 @@ export function NotificationProvider({
   /** Product id → translated name, so a toast can say where it came from
    *  without the client holding a registry or a catalogue of strings. */
   readonly productNames: Readonly<Record<string, string>>;
+  /** The console locale, for formatting each row's timestamp. A string prop
+   *  like everything else here — the client holds no i18n runtime. */
+  readonly locale: string;
   /* LP.11 — HOW THIS PERSON WANTS TO BE TOLD, read on the SERVER.
    *
    * A prop rather than a fetch, for the reason the unread count is one: the
@@ -409,8 +430,15 @@ export function NotificationProvider({
                         )}
                       </p>
                       {n.body && <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p>}
-                      <p className="mt-1 text-2xs text-muted-foreground">
-                        {productNames[n.product] ?? n.product}
+                      <p className="mt-1 flex flex-wrap items-center gap-x-2 text-2xs text-muted-foreground">
+                        <span>{productNames[n.product] ?? n.product}</span>
+                        {/* WHEN it happened. The row carried `createdAt` since
+                            M-16 and rendered it nowhere, so "suspicious call"
+                            from ten minutes ago and from last Tuesday read
+                            identically. */}
+                        <time dateTime={n.createdAt} dir="ltr" className="tabular-nums">
+                          {formatWhen(n.createdAt, locale)}
+                        </time>
                       </p>
                     </>
                   );

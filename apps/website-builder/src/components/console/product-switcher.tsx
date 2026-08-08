@@ -15,16 +15,15 @@ import { NavIcon } from "./ui/icon";
 export function ProductSwitcher({
   products,
   activeId,
+  emptyLabel,
 }: {
   products: { id: string; basePath: string; name: string; icon: string }[];
   activeId: string | null;
+  /** Translated by the shell — this component holds no catalogue. */
+  emptyLabel: string;
 }) {
   if (products.length === 0) {
-    return (
-      <p className="px-3 py-2 text-xs text-muted-foreground">
-        No products are enabled for this company.
-      </p>
-    );
+    return <p className="px-3 py-2 text-xs text-muted-foreground">{emptyLabel}</p>;
   }
 
   return (

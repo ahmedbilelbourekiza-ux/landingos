@@ -755,7 +755,10 @@ describe('the last screens: delivery prices, order detail, creation', { skip }, 
     // transition control may be offered at all.
     assert.match(html, /data-status="CANCELLED"/);
     assert.ok(!/data-transition=/.test(html), 'a terminal order offers no transitions');
-    assert.match(html, /final state/i);
+    // The sentence is an i18n key now (UXP), so the assertion reads the
+    // structural hook rather than the English wording: the limitation must be
+    // STATED on the page, in whatever language the page is in.
+    assert.match(html, /data-final-state=/);
   });
 
   test('a live order offers exactly the transitions the API would accept', async () => {
