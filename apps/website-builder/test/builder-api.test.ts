@@ -79,6 +79,8 @@ before(async () => {
 
   await makeUser(tenantA, 'OWNER', 'ownerA');
   await makeUser(tenantA, 'VIEWER', 'viewerA');
+  await makeUser(tenantA, 'MEMBER', 'memberA');
+  await makeUser(tenantA, 'MANAGER', 'managerA');
   await makeUser(tenantB, 'OWNER', 'ownerB');
   await makeUser(tenantErpOnly, 'OWNER', 'erpOwner');
 
@@ -201,6 +203,44 @@ describe('permissions gate writes, not just reads', { skip }, () => {
 
     const theirs = await api('/api/builder/landings', tokens.ownerB);
     assert.equal(theirs.body.data.total, 1, "the other tenant must not see it");
+  });
+});
+
+describe('the order lifecycle write is gated on orders:write (LB.10)', { skip }, () => {
+  test('reading orders does not buy the right to advance one', async () => {
+    // Audit B-08: the status route was gated on orders:read, so anybody who
+    // could SEE the order list could confirm an order. The write now requires
+    // website-builder:orders:write — MANAGER's *:*:write glob grants it;
+    // MEMBER and VIEWER read only.
+    const orderId = (await withTenant(tenantA, (tx) =>
+      (tx as any).salesOrder.create({
+        data: {
+          tenantId: tenantA, landingPageId: pageA, customerName: 'Gate Buyer',
+          phone: '0555010101', wilaya: 'Alger', baladia: 'Centre', address: '',
+          quantity: 1, productPrice: 4900, shippingPrice: 400, totalPrice: 5300,
+        },
+        select: { id: true },
+      }),
+    )).id;
+
+    const read = await api('/api/builder/orders', tokens.memberA);
+    assert.equal(read.status, 200, 'a member still reads the order list');
+
+    const asMember = await api(`/api/builder/orders/${orderId}/status`, tokens.memberA, {
+      method: 'PATCH', body: JSON.stringify({ toStatus: 'CONFIRMED' }),
+    });
+    assert.equal(asMember.status, 403, 'a member cannot advance an order');
+
+    const asViewer = await api(`/api/builder/orders/${orderId}/status`, tokens.viewerA, {
+      method: 'PATCH', body: JSON.stringify({ toStatus: 'CONFIRMED' }),
+    });
+    assert.equal(asViewer.status, 403, 'a viewer cannot advance an order');
+
+    const asManager = await api(`/api/builder/orders/${orderId}/status`, tokens.managerA, {
+      method: 'PATCH', body: JSON.stringify({ toStatus: 'CONFIRMED' }),
+    });
+    assert.equal(asManager.status, 200, JSON.stringify(asManager.body));
+    assert.equal(asManager.body.data.status, 'CONFIRMED');
   });
 });
 

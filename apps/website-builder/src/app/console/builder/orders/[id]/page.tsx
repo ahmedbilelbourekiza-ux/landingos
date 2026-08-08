@@ -1,16 +1,24 @@
-import { notFound, redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 
-import { forTenant, withTenant } from "@landingos/db";
+import { forTenant } from "@landingos/db";
+import { can } from "@landingos/auth";
 import { resolveStatus, toneVars } from "@landingos/ui";
 import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { actionErrors } from "@/lib/console/action-errors";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { PageBody } from "@/components/console/ui/primitives";
+import { OrderStatusActions } from "@/components/console/builder/order-status-actions";
 
 export const dynamic = "force-dynamic";
+
+/* The lifecycle controls call PATCH /api/builder/orders/[id]/status through
+ * OrderStatusActions — ONE write path (D-06.1). The server action that used to
+ * live here re-declared the state machine, checked no permission, and fired no
+ * webhook, so a status changed through this screen never reached a subscribed
+ * CRM (LB.10). */
 
 /** Mirrors the API route exactly. Both terminal states are terminal. */
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -21,33 +29,6 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   DELIVERED: [],
   CANCELLED: [],
 };
-
-async function advance(formData: FormData) {
-  "use server";
-  const id = String(formData.get("id") ?? "");
-  const toStatus = String(formData.get("toStatus") ?? "");
-  const { session } = await requireProduct("website-builder", `/console/builder/orders/${id}`);
-  const tenantId = session.auth!.tenantId;
-
-  await withTenant(tenantId, async (db) => {
-    const order = await (db as any).salesOrder.findUnique({
-      where: { id },
-      select: { id: true, status: true },
-    });
-    if (!order) return;
-    if (!(VALID_TRANSITIONS[order.status] ?? []).includes(toStatus)) return;
-
-    // Sequential, not nested: withTenant already opened the transaction, so
-    // the status change and its history entry commit together or not at all.
-    await (db as any).salesOrder.updateMany({ where: { id }, data: { status: toStatus } });
-    await (db as any).salesOrderStatusHistory.create({
-      data: { orderId: id, tenantId, fromStatus: order.status, toStatus },
-    });
-  });
-
-  revalidatePath(`/console/builder/orders/${id}`);
-  redirect(`/console/builder/orders/${id}`);
-}
 
 export default async function OrderDetailPage({
   params,
@@ -73,7 +54,10 @@ export default async function OrderDetailPage({
   if (!order) notFound();
 
   const status = resolveStatus("salesOrder", order.status);
-  const next = VALID_TRANSITIONS[order.status] ?? [];
+  // Offered only to somebody the API would accept the write from (D-06.2),
+  // decided by the same predicate the route checks.
+  const mayAdvance = can(session.auth!, "website-builder:orders:write");
+  const next = mayAdvance ? VALID_TRANSITIONS[order.status] ?? [] : [];
   const variants = Array.isArray(order.variants) ? (order.variants as any[]) : [];
 
   const field = (label: string, value: React.ReactNode) => (
@@ -153,31 +137,21 @@ export default async function OrderDetailPage({
           </ol>
 
           {next.length > 0 ? (
-            <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
-              {next.map((s) => {
-                const d = resolveStatus("salesOrder", s);
-                return (
-                  <form key={s} action={advance}>
-                    <input type="hidden" name="id" value={order.id} />
-                    <input type="hidden" name="toStatus" value={s} />
-                    <button
-                      type="submit"
-                      data-transition={s}
-                      className="ui-btn ui-btn-default tap"
-                    >
-                      {t(d.labelKey)}
-                    </button>
-                  </form>
-                );
-              })}
-            </div>
-          ) : (
+            <OrderStatusActions
+              orderId={order.id}
+              transitions={next.map((s) => ({
+                toStatus: s,
+                label: t(resolveStatus("salesOrder", s).labelKey),
+              }))}
+              errors={actionErrors(t)}
+            />
+          ) : mayAdvance ? (
             // A delivered or cancelled order is finished. Offering a control
             // that the API would refuse is worse than offering none.
             <p className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">
               This order has reached a final state.
             </p>
-          )}
+          ) : null}
         </section>
       </div>
       </PageBody>

@@ -25,7 +25,9 @@ const Body = z.object({
   toStatus: z.enum(["NEW", "CONFIRMED", "PREPARING", "SHIPPED", "DELIVERED", "CANCELLED"]),
 });
 
-export const PATCH = tenantRoute<Params>("website-builder:orders:read", async ({ db, req, params, session, afterCommit }) => {
+// `orders:write`, not `orders:read` — LB.10 closed audit B-08, where the one
+// WRITE in the order lifecycle was gated by the permission that only reads it.
+export const PATCH = tenantRoute<Params>("website-builder:orders:write", async ({ db, req, params, session, afterCommit }) => {
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return apiError(422, "INVALID_INPUT", "Not a valid order status.");
 

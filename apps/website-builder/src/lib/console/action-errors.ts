@@ -40,6 +40,10 @@ const ERROR_KEYS: Record<string, string> = {
   INVALID_RESULT: "common.error.invalidInput",
   INVALID_NOTE_TYPE: "common.error.invalidInput",
   INVALID_CLASSIFICATION: "common.error.invalidInput",
+  // A transition the state machine refuses means the screen went stale —
+  // someone else moved the order first. The refresh that follows the error
+  // shows the truth; the message only has to say "that was not accepted".
+  INVALID_TRANSITION: "common.error.invalidInput",
   // Its own message rather than the generic one, because this refusal names
   // something the reader can go and fix: the order has no carrier to book with.
   NO_CARRIER: "common.error.noCarrier",

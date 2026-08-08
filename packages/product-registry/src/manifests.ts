@@ -26,6 +26,10 @@ export const websiteBuilder: ProductManifest = {
     'website-builder:pages:write',
     'website-builder:pages:publish',
     'website-builder:orders:read',
+    // LB.10 (audit B-08). Moving an order through its lifecycle is a WRITE,
+    // and it was gated on orders:read — a VIEWER could confirm an order.
+    // MANAGER's `*:*:write` glob grants this; MEMBER/VIEWER need it by name.
+    'website-builder:orders:write',
     'website-builder:settings:write',
   ],
   /* `group` is UI.8. A flat list of seven is readable; a flat list of fifteen
