@@ -1,6 +1,6 @@
 import {
   sha256Lower,
-  sha256Phone,
+  phoneCandidates,
   splitName,
   type ServerTrackingEvent,
   type TrackingDestination,
@@ -32,7 +32,12 @@ export function buildMetaPayload(event: ServerTrackingEvent, testCode: string | 
   const userData: Record<string, unknown> = {
     country: [sha256Lower("dz")],
   };
-  if (event.customer?.phone) userData.ph = [sha256Phone(event.customer.phone)];
+  // `ph` accepts several hashes; the E.164 candidate (see phoneCandidates) is
+  // the one Meta's matching actually recognises for a local number.
+  if (event.customer?.phone) {
+    const candidates = phoneCandidates(event.customer.phone);
+    if (candidates.length) userData.ph = candidates.map(sha256Lower);
+  }
   if (event.customer?.name) {
     const { first, last } = splitName(event.customer.name);
     if (first) userData.fn = [sha256Lower(first)];

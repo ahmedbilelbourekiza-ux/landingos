@@ -178,6 +178,48 @@ describe('checkout never trusts a price from the client', { skip }, () => {
     assert.equal(r.body.data.total, '3500', 'the server recomputed the price');
   });
 
+  test('decimal prices survive quantity arithmetic without float dust (M-06)', async () => {
+    // 1999.9 and 0.2 are both inexact as binary floats: computed as Numbers,
+    // (1999.9 + 0.2) × 3 + 500 stores 6500.299999999… into the permanent
+    // commercial snapshot. The route must do this arithmetic in Decimal.
+    const { pageId, variantId } = await withTenant(tenantA, async (db) => {
+      const p = await (db as any).landingPage.create({
+        data: {
+          tenantId: tenantA, title: 'Decimal Product', slug: `decimal-${stamp}`,
+          price: 1999.9, published: true, status: 'PUBLISHED',
+        },
+        select: { id: true },
+      });
+      const v = await (db as any).landingVariant.create({
+        data: { tenantId: tenantA, landingPageId: p.id, name: 'Size', value: 'XL', extraPrice: 0.2 },
+        select: { id: true },
+      });
+      return { pageId: p.id, variantId: v.id };
+    });
+
+    const r = await post(`/api/storefront/${slugA}/orders`, {
+      landingPageId: pageId,
+      customerName: 'Decimal Buyer',
+      phone: '0555000777',
+      wilayaId,
+      baladiaName: 'Somewhere',
+      quantity: 3,
+      variantIds: [variantId],
+      shippingMethod: 'HOME',
+    });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal(r.body.data.total, '6500.3', '(1999.9 + 0.2) × 3 + 500, exactly');
+
+    const stored = await withTenant(tenantA, (db) =>
+      (db as any).salesOrder.findFirst({
+        where: { landingPageId: pageId },
+        select: { totalPrice: true, productPrice: true },
+      }),
+    );
+    assert.equal(String(stored.totalPrice), '6500.3', 'the snapshot carries no dust');
+    assert.equal(String(stored.productPrice), '2000.1');
+  });
+
   test('another tenant\'s product cannot be ordered through this store', async () => {
     const r = await post(`/api/storefront/${slugA}/orders`, {
       landingPageId: publishedB,

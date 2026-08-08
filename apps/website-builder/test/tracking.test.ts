@@ -10,7 +10,7 @@ import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } f
 import { buildMetaPayload } from '../src/lib/tracking/providers/meta.ts';
 import { buildTiktokPayload, tiktokEventName } from '../src/lib/tracking/providers/tiktok.ts';
 import { buildGa4Payload, ga4EventName } from '../src/lib/tracking/providers/ga4.ts';
-import type { ServerTrackingEvent, TrackingDestination } from '../src/lib/tracking/events.ts';
+import { phoneCandidates, type ServerTrackingEvent, type TrackingDestination } from '../src/lib/tracking/events.ts';
 
 /* =============================================================================
  * The tracking pipeline (LB.5).
@@ -79,6 +79,28 @@ describe('meta payload builder (pure)', () => {
     assert.equal(payload.test_event_code, 'TEST123');
     assert.equal(data.custom_data.value, '5400');
     assert.deepEqual(data.custom_data.content_ids, ['page_1']);
+  });
+});
+
+describe('phone match candidates (pure)', () => {
+  test('an Algerian local number gains its E.164 candidate; anything else stays raw', () => {
+    // Meta and TikTok match on country-coded digits; a hash of `0555…` matches
+    // nothing on either platform (readiness audit). The checkout is
+    // wilaya-addressed Algeria, so the 213 candidate is a fact of the market.
+    assert.deepEqual(phoneCandidates('0555 12-34-56'), ['0555123456', '213555123456']);
+    assert.deepEqual(phoneCandidates('+213 555-12-34-56'), ['213555123456']);
+    assert.deepEqual(phoneCandidates('12345'), ['12345'], 'a non-local shape is left alone');
+    assert.deepEqual(phoneCandidates(''), []);
+  });
+
+  test('meta sends every candidate hash; tiktok sends the most specific one', () => {
+    const local: ServerTrackingEvent = { ...EVENT, customer: { name: 'Karim Ben Ali', phone: '0555123456' } };
+    const meta = buildMetaPayload(local, null) as any;
+    assert.deepEqual(meta.data[0].user_data.ph, [sha('0555123456'), sha('213555123456')],
+      'ph is an array — Meta accepts several candidates and matches on any');
+    const tiktok = buildTiktokPayload(local, { ...DEST, provider: 'tiktok' }) as any;
+    assert.equal(tiktok.data[0].user.phone, sha('213555123456'),
+      'TikTok takes one value: the E.164 candidate');
   });
 });
 
@@ -308,7 +330,7 @@ describe('server-side conversion events reach every configured platform', { skip
       body: JSON.stringify({
         landingPageId: pageId, customerName: 'Tracked Buyer', phone: '0555987654',
         wilayaId, baladiaName: 'Centre', quantity: 1, shippingMethod: 'HOME',
-        fbc: 'fb.1.1700.clickid', ttclid: 'ttclid_e2e',
+        fbc: 'fb.1.1700.clickid', ttclid: 'ttclid_e2e', ttp: 'ttp_e2e', gaClientId: '555.666',
       }),
     }).then((r) => r.json());
     assert.ok(checkout.success, JSON.stringify(checkout));
@@ -336,8 +358,12 @@ describe('server-side conversion events reach every configured platform', { skip
     assert.equal(tiktok.body.data[0].event, 'PlaceAnOrder');
     assert.equal(tiktok.headers['access-token'], 'tiktok-tok');
     assert.equal(tiktok.body.data[0].user.ttclid, 'ttclid_e2e');
+    assert.equal(tiktok.body.data[0].user.ttp, 'ttp_e2e',
+      'the _ttp browser id survives the server hop');
 
     assert.equal(ga4.body.events[0].params.transaction_id, orderId);
+    assert.equal(ga4.body.client_id, '555.666',
+      'the GA4 event joins the browsing session that produced it');
     assert.ok(ga4.path.includes('measurement_id=G-TESTID99'));
     assert.ok(ga4.path.includes('api_secret=ga4-secret'));
   });
@@ -356,5 +382,41 @@ describe('server-side conversion events reach every configured platform', { skip
     const tiktok = await waitFor(() =>
       hits.find((h) => h.path.includes('/event/track') && h.body?.data?.[0]?.event === 'SubmitForm'));
     assert.ok(tiktok, 'the Lead reached TikTok as SubmitForm');
+  });
+
+  test('the Lead fires on the capture that FIRST carries a phone — usually not the first capture', async () => {
+    // The real sequence: the 2s debounce fires after the name field, and the
+    // phone arrives in a LATER capture. The old rule (Lead only on
+    // draft_order.created) lost every such lead (readiness audit).
+    const token = `tok-${stamp}-latephone`;
+    const capture = (body: Record<string, unknown>) =>
+      fetch(`${BASE}/api/storefront/${slug}/draft-orders`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token, landingPageId: pageId, ...body }),
+      });
+
+    const isThisLead = (h: Hit) =>
+      h.path.includes('/999888777666/events') &&
+      h.body?.data?.[0]?.event_name === 'Lead' &&
+      h.body?.data?.[0]?.user_data?.fbc === 'fb.1.1700.leadclick';
+
+    // Capture 1: name only — a draft, not yet a lead.
+    await capture({ customerName: 'Late Phone' });
+    // Capture 2: the phone arrives, with the click id that produced the visit.
+    await capture({ customerName: 'Late Phone', phone: '0555222333', fbc: 'fb.1.1700.leadclick' });
+
+    const lead = await waitFor(() => hits.find(isThisLead));
+    assert.ok(lead, 'the phone-carrying capture became a Lead');
+    assert.deepEqual(
+      lead.body.data[0].user_data.ph,
+      [sha('0555222333'), sha('213555222333')],
+      'the Lead carries both phone match candidates',
+    );
+
+    // Capture 3: the same phone again — an update, never a second Lead.
+    await capture({ customerName: 'Late Phone', phone: '0555222333', wilaya: 'Adrar', fbc: 'fb.1.1700.leadclick' });
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.equal(hits.filter(isThisLead).length, 1, 'exactly one Lead per visitor');
   });
 });

@@ -95,13 +95,19 @@ export async function POST(
           : price.homePrice;
 
       // Variant extras come from the tenant's own rows, never the request.
+      // ALL money stays Decimal end to end (M-06): these columns are Decimal,
+      // and float arithmetic here would store dust (19.99 × 3 = 59.9700…006)
+      // into the permanent commercial snapshot.
       const chosen = page.variants.filter((v: any) => input.variantIds.includes(v.id));
-      const extras = chosen.reduce((sum: number, v: any) => sum + Number(v.extraPrice ?? 0), 0);
+      const extras = chosen.reduce(
+        (sum: Prisma.Decimal, v: any) => sum.plus(v.extraPrice ?? 0),
+        new Prisma.Decimal(0),
+      );
 
-      const unitPrice = Number(page.price) + extras;
+      const unitPrice = new Prisma.Decimal(page.price).plus(extras);
       const freeShipping = setting?.freeShipping ?? false;
-      const shipping = freeShipping ? 0 : Number(shippingPrice);
-      const total = unitPrice * input.quantity + shipping;
+      const shipping = freeShipping ? new Prisma.Decimal(0) : new Prisma.Decimal(shippingPrice);
+      const total = unitPrice.times(input.quantity).plus(shipping);
 
       const order = await (db as any).salesOrder.create({
         data: {
@@ -165,9 +171,9 @@ export async function POST(
           address: input.address,
           notes: input.notes ?? null,
           quantity: input.quantity,
-          productPrice: new Prisma.Decimal(unitPrice),
-          shippingPrice: new Prisma.Decimal(shipping),
-          totalPrice: new Prisma.Decimal(total),
+          productPrice: unitPrice,
+          shippingPrice: shipping,
+          totalPrice: total,
           shippingMethod: input.shippingMethod,
           productTitle: page.title,
           variants: chosen.map((v: any) => ({ name: v.name, value: v.value })),
@@ -197,7 +203,7 @@ export async function POST(
     dispatchTrackingEvent(tenant.id, {
       name: "Purchase",
       eventId: result.order.id,
-      value: result.total,
+      value: result.total.toNumber(),
       currency: result.currency,
       contentId: input.landingPageId,
       contentName: result.pageTitle,
@@ -209,6 +215,8 @@ export async function POST(
         fbc: input.fbc ?? null,
         fbp: input.fbp ?? null,
         ttclid: input.ttclid ?? null,
+        ttp: input.ttp ?? null,
+        gaClientId: input.gaClientId ?? null,
       },
     });
 

@@ -49,7 +49,10 @@ export async function POST(
   const parsed = DraftBody.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return new NextResponse(null, { status: 204 });
 
-  const { token, landingPageId, ...fields } = parsed.data;
+  // The attribution identifiers are destructured OUT of the stored fields:
+  // DraftOrder has no columns for them, and they matter only at the moment a
+  // Lead event fires below.
+  const { token, landingPageId, fbc, fbp, ttclid, ttp, gaClientId, ...fields } = parsed.data;
 
   try {
     // The event is decided INSIDE the transaction and fired AFTER it returns:
@@ -63,12 +66,26 @@ export async function POST(
       });
       if (!page) return null;
 
+      // What did we know BEFORE this capture? The Lead decision below needs
+      // the transition, not the state: a capture is a Lead exactly when it
+      // brings the first phone number for this visitor.
+      const previous = await (db as any).draftOrder.findUnique({
+        where: { token },
+        select: { phone: true },
+      });
+
       const draft = await (db as any).draftOrder.upsert({
         where: { token },
         update: fields,
         create: { ...fields, token, landingPageId: page.id, tenantId: tenant.id },
         select: { id: true, notifiedAt: true },
       });
+
+      // A Lead is the capture that FIRST carries a phone — which is usually
+      // NOT the first capture: the debounce fires after the name field, two
+      // seconds before the customer types their number. Firing Lead only on
+      // draft_order.created lost every such lead (readiness audit).
+      const leadArrived = Boolean(fields.phone) && !previous?.phone;
 
       // `draft_order.created` exactly once per visitor — notifiedAt is the
       // guard. Later captures are `draft_order.updated`: an opt-in event for
@@ -79,17 +96,18 @@ export async function POST(
           where: { id: draft.id },
           data: { notifiedAt: new Date() },
         });
-        return { event: "draft_order.created" as const, id: draft.id };
+        return { event: "draft_order.created" as const, id: draft.id, leadArrived };
       }
-      return { event: "draft_order.updated" as const, id: draft.id };
+      return { event: "draft_order.updated" as const, id: draft.id, leadArrived };
     });
 
     if (fire) {
       triggerDraftOrderWebhook(fire.event, tenant.id, fire.id);
       // A captured phone number is a LEAD — the standard event ad platforms
-      // optimise lead campaigns on. Once per visitor, like the webhook: later
-      // keystrokes update the lead, they are not new ones (LB.5).
-      if (fire.event === "draft_order.created" && fields.phone) {
+      // optimise lead campaigns on. Once per visitor: the draft id is the
+      // dedup key, and the phone-transition guard above means later
+      // keystrokes update the lead rather than creating new ones (LB.5).
+      if (fire.leadArrived && fields.phone) {
         dispatchTrackingEvent(tenant.id, {
           name: "Lead",
           eventId: fire.id,
@@ -98,6 +116,11 @@ export async function POST(
           context: {
             ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
             userAgent: req.headers.get("user-agent"),
+            fbc: fbc ?? null,
+            fbp: fbp ?? null,
+            ttclid: ttclid ?? null,
+            ttp: ttp ?? null,
+            gaClientId: gaClientId ?? null,
           },
         });
       }

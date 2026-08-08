@@ -290,7 +290,7 @@ export function PurchaseForm({
       const baladiaName =
         selectedWilayaData?.baladias.find((b) => b.id === Number(selectedBaladia))?.name ?? "";
 
-      const { fbc, fbp, ttclid } = readTrackingCookies();
+      const { fbc, fbp, ttclid, ttp, gaClientId } = readTrackingCookies();
       const body: CheckoutBodyInput = {
         landingPageId: landingId,
         customerName: values.fullName ?? "",
@@ -304,6 +304,8 @@ export function PurchaseForm({
         fbc: fbc ?? undefined,
         fbp: fbp ?? undefined,
         ttclid: ttclid ?? undefined,
+        ttp: ttp ?? undefined,
+        gaClientId: gaClientId ?? undefined,
         draftToken: draft.token ?? undefined,
       };
       const res = await fetch(api("/orders"), {

@@ -1,5 +1,6 @@
 import {
-  sha256Phone,
+  sha256Lower,
+  phoneCandidates,
   type ServerTrackingEvent,
   type TrackingDestination,
 } from "../events.ts";
@@ -37,7 +38,12 @@ export function tiktokEventName(name: string): string {
 export function buildTiktokPayload(event: ServerTrackingEvent, destination: TrackingDestination) {
   const ctx = event.context ?? {};
   const user: Record<string, unknown> = {};
-  if (event.customer?.phone) user.phone = sha256Phone(event.customer.phone);
+  // TikTok matches on the E.164 hash, and takes ONE value — the most specific
+  // candidate (country-coded for a local number) is the one worth sending.
+  if (event.customer?.phone) {
+    const candidates = phoneCandidates(event.customer.phone);
+    if (candidates.length) user.phone = sha256Lower(candidates[candidates.length - 1]);
+  }
   if (ctx.ttclid) user.ttclid = ctx.ttclid;
   if (ctx.ttp) user.ttp = ctx.ttp;
   if (ctx.ip) user.ip = ctx.ip;

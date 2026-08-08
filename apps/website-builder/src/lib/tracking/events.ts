@@ -95,6 +95,25 @@ export function sha256Phone(phone: string): string {
   return sha256Lower(phone.replace(/[^\d]/g, ""));
 }
 
+/**
+ * Candidate match keys for a phone number, most specific last.
+ *
+ * Meta and TikTok match on digits WITH the country code (E.164, no `+`), and a
+ * hash of `0555123456` matches nothing on either platform — so for a number
+ * that reads as an Algerian local (leading 0, ten digits) the `213` candidate
+ * is added alongside the raw digits. This storefront's checkout is
+ * wilaya-addressed Algeria, so the prefix is a fact of the market rather than
+ * a guess; anything that does not match the local shape stays raw-only, which
+ * is exactly the old behaviour.
+ */
+export function phoneCandidates(phone: string): string[] {
+  const digits = phone.replace(/[^\d]/g, "");
+  if (!digits) return [];
+  const candidates = [digits];
+  if (/^0\d{9}$/.test(digits)) candidates.push(`213${digits.slice(1)}`);
+  return candidates;
+}
+
 export function splitName(fullName: string): { first: string; last: string } {
   const parts = fullName.trim().split(/\s+/);
   return {

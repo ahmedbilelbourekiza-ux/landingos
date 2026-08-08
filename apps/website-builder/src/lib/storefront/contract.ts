@@ -42,11 +42,16 @@ export const CheckoutBody = z.object({
   /**
    * Ad-attribution identifiers, captured browser-side and used ONLY for
    * server-side conversion events (LB.5). Bounded because they arrive from an
-   * anonymous client and are forwarded to third parties.
+   * anonymous client and are forwarded to third parties. `ttp` and
+   * `gaClientId` joined the set in the readiness audit: without them the
+   * server-side TikTok event loses its browser identity and the GA4 event
+   * cannot join the session that produced it.
    */
   fbc: z.string().trim().max(500).optional(),
   fbp: z.string().trim().max(500).optional(),
   ttclid: z.string().trim().max(500).optional(),
+  ttp: z.string().trim().max(500).optional(),
+  gaClientId: z.string().trim().max(200).optional(),
 });
 
 export type CheckoutBodyInput = z.input<typeof CheckoutBody>;
@@ -78,6 +83,17 @@ export const DraftBody = z.object({
     .max(20)
     .optional(),
   shippingMethod: z.enum(["HOME", "DESK"]).optional(),
+  /**
+   * Ad-attribution identifiers, exactly as the checkout body carries them.
+   * They are NEVER stored on the draft — the route reads them only at the
+   * moment the captured phone turns the draft into a Lead event, so the Lead
+   * a platform optimises a campaign on carries the click that produced it.
+   */
+  fbc: z.string().trim().max(500).optional(),
+  fbp: z.string().trim().max(500).optional(),
+  ttclid: z.string().trim().max(500).optional(),
+  ttp: z.string().trim().max(500).optional(),
+  gaClientId: z.string().trim().max(200).optional(),
 });
 
 export type DraftBodyInput = z.input<typeof DraftBody>;

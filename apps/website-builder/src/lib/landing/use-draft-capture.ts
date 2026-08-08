@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useStorefrontApi } from "@/lib/storefront/api-base";
+import { readTrackingCookies } from "@/components/landing/tracking-scripts";
 import type { DraftBodyInput } from "@/lib/storefront/contract";
 
 // Abandoned-checkout capture for the storefront purchase form.
@@ -75,6 +76,10 @@ export function useDraftCapture(landingId: string) {
 
   const buildBody = React.useCallback(
     (snapshot: DraftSnapshot) => {
+      // Click/browser identifiers ride along so the capture that first carries
+      // a phone — the one the server turns into a Lead event — arrives with
+      // the ad click that produced it. They are never stored on the draft.
+      const { fbc, fbp, ttclid, ttp, gaClientId } = readTrackingCookies();
       const body: DraftBodyInput = {
         token: token ?? "",
         landingPageId: landingId,
@@ -85,6 +90,11 @@ export function useDraftCapture(landingId: string) {
         quantity: snapshot.quantity ?? 1,
         variants: snapshot.variants ?? [],
         shippingMethod: snapshot.shippingMethod ?? undefined,
+        fbc: fbc ?? undefined,
+        fbp: fbp ?? undefined,
+        ttclid: ttclid ?? undefined,
+        ttp: ttp ?? undefined,
+        gaClientId: gaClientId ?? undefined,
       };
       return JSON.stringify(body);
     },
