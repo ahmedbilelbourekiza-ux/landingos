@@ -104,7 +104,8 @@ Recommended / optional:
 | `R2_PUBLIC_BASE_URL` | Images redirect to Cloudflare's CDN instead of proxying through the app |
 | `WORKER_SECRET` | Only when the ERP's scheduled jobs run — shared with the `services/worker` process, which calls `POST /api/jobs/tick`. Without it the tick answers 404 and no scheduled work happens (fails closed) |
 | `CHECKOUT_RATE_LIMIT` / `DRAFT_RATE_LIMIT` | Per-IP limits on the public writes; defaults 10 and 60 per 5 minutes. Raise only for load tests |
-| `META_GRAPH_BASE` / `TIKTOK_API_BASE` / `GA4_API_BASE` | **Test overrides only.** Point the server-side conversion events at a stub receiver. Never set in production — unset means the real endpoints |
+| `META_GRAPH_BASE` / `TIKTOK_API_BASE` / `GA4_API_BASE` | **Test overrides only.** Point the server-side conversion events at a stub receiver. Never set in production — unset means the real endpoints. The entrypoint prints an unmissable warning at boot when any is set (LB.10), because the failure is otherwise silent: ads keep spending and no conversion is ever reported |
+| `REQUIRE_WEBHOOK_SIGNATURES` | ERP tenants only: set to `1` so INBOUND carrier/channel webhooks with a configured secret refuse unsigned payloads instead of accepting them (migration-compat default is accept-and-flag) |
 
 Do NOT set: `PORT` (the host provides it), `UPLOADS_DIR` (the entrypoint sets
 it), any `MIGRATE_DATABASE_URL` (the owner credential has no business in the

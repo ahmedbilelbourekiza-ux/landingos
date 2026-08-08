@@ -58,7 +58,10 @@ export default async function ThankYouPage({
   );
 
   return (
-    <main className="mx-auto max-w-lg px-4 py-16 text-center" data-testid="thank-you">
+    // Arabic like the rest of the storefront (the purchase form's strings are
+    // Arabic literals): this page was the one English screen a customer saw,
+    // on every single sale (M-04, storefront half).
+    <main className="mx-auto max-w-lg px-4 py-16 text-center" data-testid="thank-you" dir="rtl">
       {/* The browser-side Purchase, keyed on the ORDER ID — the same dedup id
           the server-side conversion event carries, so ad platforms count this
           sale once however many of the two got through (LB.5). */}
@@ -70,21 +73,21 @@ export default async function ThankYouPage({
         contentName={order.landingPage?.title}
         quantity={order.quantity}
       />
-      <h1 className="text-2xl font-semibold">Thank you, {order.customerName}.</h1>
+      <h1 className="text-2xl font-semibold">شكراً لك، {order.customerName}</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Your order has been received. We will call to confirm it shortly.
+        تم استلام طلبك بنجاح. سنتصل بك قريباً لتأكيده.
       </p>
 
       <dl className="mt-8 space-y-2 rounded-lg border border-border p-4 text-start text-sm">
-        {row("Order", <span className="font-mono text-xs" dir="ltr">{order.id}</span>)}
-        {row("Product", order.landingPage?.title ?? "—")}
-        {row("Quantity", <span className="tabular-nums">{order.quantity}</span>)}
-        {row("Delivering to", `${order.wilaya} · ${order.baladia}`)}
-        {row("Total", <span className="tabular-nums">{formatMoney(String(order.totalPrice), locale)}</span>, true)}
+        {row("رقم الطلب", <span className="font-mono text-xs" dir="ltr">{order.id}</span>)}
+        {row("المنتج", order.landingPage?.title ?? "—")}
+        {row("الكمية", <span className="tabular-nums">{order.quantity}</span>)}
+        {row("التوصيل إلى", `${order.wilaya} · ${order.baladia}`)}
+        {row("الإجمالي", <span className="tabular-nums">{formatMoney(String(order.totalPrice), locale)}</span>, true)}
       </dl>
 
       <Link href={storefrontHref(tenant)} className="mt-8 inline-block text-sm underline">
-        Continue shopping
+        مواصلة التسوق
       </Link>
     </main>
   );

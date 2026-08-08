@@ -19,12 +19,27 @@ import { getConsoleSession } from "@/lib/console/session";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * `next` is caller-controlled, and `redirect()` follows absolute URLs — so an
+ * unvalidated value is an open redirect: a link to
+ * `/console/login?next=https://attacker.example` would land a successfully
+ * signed-in person on the attacker's page, on the platform's say-so. Only a
+ * same-origin path survives: it must start with exactly one `/` (`//host` and
+ * `/\host` are protocol-relative in browsers).
+ */
+function safeNext(raw: unknown): string {
+  const value = String(raw ?? "");
+  return value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\")
+    ? value
+    : "/console";
+}
+
 async function signIn(formData: FormData) {
   "use server";
 
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
-  const next = String(formData.get("next") ?? "/console");
+  const next = safeNext(formData.get("next") ?? "/console");
 
   const db = asPlatform();
   const user = await db.user.findUnique({ where: { email } });
@@ -81,7 +96,7 @@ export default async function ConsoleLoginPage({
   searchParams: Promise<{ error?: string; next?: string }>;
 }) {
   const { error, next } = await searchParams;
-  if (await getConsoleSession()) redirect(next || "/console");
+  if (await getConsoleSession()) redirect(safeNext(next || "/console"));
 
   const t = await getTranslations();
 

@@ -98,6 +98,26 @@ else
   echo "    without a persistent disk, uploaded images WILL be lost on restart."
 fi
 
+# 1e. Tracking endpoint overrides — TEST-ONLY variables (DEPLOY.md). If any is
+# set in a real deployment, every server-side conversion event (Meta CAPI,
+# TikTok Events API, GA4 MP) is silently posted at a stub instead of the ad
+# platform: ads keep running, money keeps being spent, and no conversion is
+# ever reported. Loud, unmissable, but not fatal — a staging environment may
+# point at a stub deliberately.
+for OVERRIDE in META_GRAPH_BASE TIKTOK_API_BASE GA4_API_BASE; do
+  eval "VALUE=\${$OVERRIDE:-}"
+  if [ -n "$VALUE" ]; then
+    echo ""
+    echo "  !!! WARNING ==========================================================="
+    echo "  !!! $OVERRIDE is set: $VALUE"
+    echo "  !!! This is a TEST-ONLY override. Server-side conversion events will"
+    echo "  !!! go to that address INSTEAD OF the real ad platform. If this is a"
+    echo "  !!! production deployment, REMOVE this variable and redeploy."
+    echo "  !!! ==================================================================="
+    echo ""
+  fi
+done
+
 # 2. Reachability + schema presence, in one probe. Tenant is the platform's
 # root table; selecting from it fails on an unreachable database AND on a
 # reachable-but-unmigrated one, with different errors, both fatal here. RLS

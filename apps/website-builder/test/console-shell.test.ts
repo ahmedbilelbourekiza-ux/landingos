@@ -126,6 +126,27 @@ describe('the console requires a session', () => {
     assert.equal(r.status, 307);
     assert.match(r.location ?? '', /\/console\/login/);
   });
+
+  test('the login "next" parameter never leaves this origin (open redirect)', { skip: skip() }, async () => {
+    // A signed-in person following /console/login?next=<absolute URL> was
+    // bounced to that URL — a link the platform vouched for landing on an
+    // attacker's page (readiness audit). Only a same-origin path survives.
+    for (const evil of [
+      'https://attacker.example/phish',
+      '//attacker.example/phish',
+      '/\\attacker.example/phish',
+    ]) {
+      const r = await get(`/console/login?next=${encodeURIComponent(evil)}`, tokens[emails.bundle]);
+      assert.equal(r.status, 307, `still redirects for ${evil}`);
+      assert.match(r.location ?? '', /^\/console(?:[/?].*)?$/,
+        `${evil} must fall back to /console, got ${r.location}`);
+    }
+
+    // The legitimate case keeps working: an internal path passes through.
+    const ok = await get('/console/login?next=%2Fconsole%2Fbuilder', tokens[emails.bundle]);
+    assert.equal(ok.status, 307);
+    assert.equal(ok.location, '/console/builder');
+  });
 });
 
 describe('the shell shows exactly what the tenant bought', () => {
