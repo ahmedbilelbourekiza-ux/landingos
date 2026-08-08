@@ -1,8 +1,9 @@
 # BUILDER_HANDOFF — the Landing Page Builder, as its own product
 
-**Date:** 7 August 2026 · **State as of:** the LB.1–LB.6 series (see `git log`,
-commits `6d44262..410d7c5`) · **Audience:** an engineer continuing THIS product
-who has not read the ERP handoff and does not need to.
+**Date:** 8 August 2026 · **State as of:** LB.1–LB.10 (LB.9 is the Docker
+packaging fix, LB.10 the pre-production readiness audit — see CHANGELOG §LB.10
+for its six findings and fixes) · **Audience:** an engineer continuing THIS
+product who has not read the ERP handoff and does not need to.
 
 The companion documents: `BUILDER_AUDIT.md` is the *before* measurement — every
 defect as it was found, with how it was observed. This file is the *after*: what
@@ -205,13 +206,13 @@ Suites (all green per file; run with the server up, `ERP_CONTRACT=strict`):
 
 | Suite | Count | What it proves |
 |---|---|---|
-| `storefront.test.ts` | 27 | Publication/tenancy walls, priced-from-rows checkout, the LB.1 contract (draft conversion, fbc/fbp accepted, wilayas shape) |
+| `storefront.test.ts` | 28 | Publication/tenancy walls, priced-from-rows checkout, **Decimal money with no float dust** (LB.10), the LB.1 contract (draft conversion, fbc/fbp accepted, wilayas shape) |
 | `builder-sections.test.ts` | 50 | Section rules, placement-scoped media, the editor's order-form shape, **manifest-driven screen coverage**, the front-door redirect |
-| `builder-api.test.ts` | 22 | CRUD, entitlement, permissions, isolation |
-| `webhooks.test.ts` | 9 | **Real deliveries to an in-process receiver**: HMAC verified over the raw body, subscription filtering, all event families, retry semantics, honest logs, encryption at rest |
-| `tracking.test.ts` | 12 | Pure payload builders (hashing/mapping/dedup) + a real checkout fanning Purchase to Meta/TikTok/GA4 stubs with one dedup id; Lead on capture |
-| `hardening.test.ts` | 10 | Limiter window (pure), URL guard (pure), SEO in the live page head, duplication relation-by-relation |
-| `console-shell.test.ts` | 13 | Shell/nav |
+| `builder-api.test.ts` | 23 | CRUD, entitlement, permissions, isolation, **orders:write gating the lifecycle write** (LB.10) |
+| `webhooks.test.ts` | 10 | **Real deliveries to an in-process receiver**: HMAC verified over the raw body, subscription filtering, all event families, retry semantics, honest logs, encryption at rest, **3xx refused not followed** (LB.10) |
+| `tracking.test.ts` | 15 | Pure payload builders (hashing/mapping/dedup/**phone candidates**) + a real checkout fanning Purchase to Meta/TikTok/GA4 stubs with one dedup id; **Lead on the capture that first carries a phone** (LB.10) |
+| `hardening.test.ts` | 11 | Limiter window (pure), URL guard (pure, **incl. IP-spelling and IPv6-mapped refusals**), SEO in the live page head, duplication relation-by-relation |
+| `console-shell.test.ts` | 14 | Shell/nav, **the login `next` open-redirect refusal** (LB.10) |
 
 To run the delivery-sensitive suites, start the server with the stub bases:
 `META_GRAPH_BASE/TIKTOK_API_BASE/GA4_API_BASE=http://127.0.0.1:48790` and
@@ -239,6 +240,15 @@ standalone tenant walkthrough (§8) all passed, including zero ERP rows. Mobile
 - [x] Standalone tenant fully functional; integrated tenant creates the ERP record transactionally
 - [x] SEO/OG/JSON-LD on public pages; sitemap-ready canonicals
 - [x] Public writes rate-limited; secrets encrypted at rest; SSRF guard on webhook URLs
+- [x] **Pre-production readiness audit (LB.10).** Six defects found and fixed
+  with regression tests: the Lead that only fired when the FIRST capture had a
+  phone; attribution ids dropped at both public doors; phone hashes that never
+  matched for local numbers; console status/create writes bypassing permission
+  + webhooks (B-08 closed — `website-builder:orders:write` gates the lifecycle
+  write); webhook deliveries following redirects past the SSRF guard; the
+  login `next` open redirect. Plus: Decimal money end to end in checkout, the
+  Arabic thank-you page, and an entrypoint warning when a tracking stub
+  override is set. Full detail in CHANGELOG §LB.10.
 - [x] **Deployment packaging (LB.9).** The Docker pipeline builds and boots the
   platform: deps stage validates against every workspace manifest (npm pinned
   11.16.0), both Prisma clients are generated in-image, the generated client
@@ -270,17 +280,22 @@ standalone tenant walkthrough (§8) all passed, including zero ERP rows. Mobile
    `toLandingPageData` hardcodes `features: []` / `faqs: []`, there are no
    routes and no editor sections. Building them is mechanical (copy the
    reviews section + route end to end, then unhardcode the mapper).
-2. **The editor speaks English** (54 legacy components) in an ar/fr console;
-   the storefront thank-you page is English (M-04). The chrome (create page,
-   lists, templates) is translated; the editor body is not.
+2. **The editor speaks English** (54 legacy components) in an ar/fr console
+   (M-04). The chrome (create page, lists, templates) is translated; the
+   editor body is not. *(The storefront half — the English thank-you page —
+   closed in LB.10: it is Arabic now, like the rest of the storefront.)*
 3. **No version history / undo**; sections save destructively. Autosave exists
    only as the draft-capture analogue on the customer side.
 4. **Rate limiter is per-process**; webhook SSRF guard checks the hostname as
    written (no resolve-time pinning).
-5. **`orders:read` gates the order-status WRITE** (audit B-08) — an
-   authorization decision (N16's class): fix by adding
-   `website-builder:orders:write` to the manifest and gating the status route
-   + UI on it.
+5. ~~**`orders:read` gates the order-status WRITE** (audit B-08)~~ — **CLOSED
+   in LB.10.** `website-builder:orders:write` is in the manifest and gates the
+   status route; the order detail and create screens now call their API routes
+   (no server actions), so console writes carry the same permission gate and
+   fire the same webhooks the API always did. One editor residue remains: the
+   pricing section's inputs are still `type="number"` (single values
+   round-trip exactly, so this is a style violation of D-06, not a live money
+   bug — arithmetic is Decimal server-side).
 6. **Legacy `MetaPixelConfig`** rows are display-only; the pipeline reads
    `TrackingIntegration` exclusively. Migrate any real rows by recreation,
    then drop the model.
@@ -295,11 +310,13 @@ standalone tenant walkthrough (§8) all passed, including zero ERP rows. Mobile
 
 ## 13. Roadmap recommendations, in order
 
-1. Benefits/FAQ end to end (§12.1) — small, closes the last "Coming Soon".
-2. `website-builder:orders:write` (§12.5) — small, closes the auth gap.
+1. **Real-credential verification pass for Meta/TikTok/GA4** (one afternoon
+   with test pixels; the `testCode` field exists for exactly this). Promoted
+   to first: it is the only remaining item that gates real ad spend, and no
+   local work can substitute for it.
+2. Benefits/FAQ end to end (§12.1) — closes the last "Coming Soon".
 3. Editor i18n (§12.2) — commercial for ar/fr merchants.
-4. Real-credential verification pass for Meta/TikTok/GA4 (one afternoon with
-   test pixels; the `testCode` field exists for exactly this).
+4. ~~`website-builder:orders:write`~~ — done in LB.10.
 5. Storefront caching (§12.7) + image `sizes` audit.
 6. Version history: an append-only `LandingPageRevision` snapshot on publish
    is the cheap 80%.

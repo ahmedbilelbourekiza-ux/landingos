@@ -19,6 +19,54 @@ handoff that stands alone from the ERP's), and each slice's full reasoning in
 its commit message — LB.1 through LB.6 plus the validation run, commits
 `6d44262..410d7c5`. The summaries:
 
+- **LB.10** the pre-production readiness audit (8 August 2026, the night before
+  the first Render deploy). Six defects found by reading the shipped pipeline
+  end to end and driving it in a real browser, all fixed with regression tests:
+  1. **The Lead event fired only when the FIRST draft capture carried a phone.**
+     The 2s debounce fires after the name field, so the common
+     name-pause-phone sequence set `notifiedAt` on a phone-less draft and the
+     phone arriving later was only ever `draft_order.updated` — for a product
+     whose ad campaigns optimise on Lead, most real leads were invisible. The
+     rule is now the TRANSITION: a capture is a Lead exactly when it brings the
+     first phone (`draft-orders/route.ts`), proven end-to-end by a
+     name-first-then-phone test and re-proven live in the browser.
+  2. **Attribution identifiers were dropped at both server doors.** Checkout
+     accepted fbc/fbp/ttclid and dropped `_ttp`/GA client id; draft capture
+     accepted none at all, so the Lead reached Meta with no click id. Both
+     bodies now carry all five (never stored — read at event-fire time).
+  3. **Phone hashes never matched for local numbers.** Meta and TikTok match on
+     E.164 digits; `sha256("0555…")` matches nothing. `phoneCandidates` adds
+     the `213` candidate for the Algerian local shape — Meta gets every
+     candidate (ph is an array by spec), TikTok the most specific one.
+  4. **Console writes bypassed the API (D-06.1 violations, audit B-08/N16).**
+     The order detail's status buttons and the create-page form were server
+     actions: the status action checked NO permission (a VIEWER could confirm
+     an order) and fired NO webhook (a CRM subscribing to order.updated never
+     heard about console-made changes); the create action never fired
+     product.created. Both now call their API routes through `useApiAction`;
+     `website-builder:orders:write` is in the manifest and gates the status
+     route (MANAGER's glob grants it; MEMBER/VIEWER read only).
+  5. **Webhook delivery followed redirects.** url-guard checks the URL as
+     written, and a public host answering 302 walked the signed tenant payload
+     to an address that never passed the guard. Deliveries and test sends now
+     refuse every 3xx (`redirect: "manual"`, terminal, logged); the guard also
+     refuses IPv4-mapped IPv6 (`[::ffff:127.0.0.1]`) and pins the URL-parser
+     normalisation of decimal/hex/octal IPv4 spellings with tests.
+  6. **The login `next` parameter was an open redirect** — a signed-in person
+     following `/console/login?next=https://attacker.example` was bounced
+     there. Only same-origin paths survive now.
+  Also: checkout money arithmetic moved from JS floats to `Prisma.Decimal` end
+  to end (the route's own M-06 rule — `(1999.9 + 0.2) × 3` no longer stores
+  dust in the permanent snapshot); the thank-you page speaks Arabic like the
+  rest of the storefront (M-04's storefront half); the Docker entrypoint warns
+  unmissably when a tracking stub override (`META_GRAPH_BASE` et al.) is set,
+  because that misconfiguration silently discards every production conversion.
+  Suites after: storefront 28 · builder-api 23 · builder-sections 50 ·
+  webhooks 10 · tracking 15 · hardening 11 · console-shell 14 — all green
+  against the rebuilt server, plus the full journey re-driven in a real
+  browser (create → publish → capture → checkout → Arabic thank-you →
+  confirm-with-webhook, ERP record `ORD-0021` in the same transaction).
+
 - **LB.1** the storefront client speaks the API's vocabulary again (the public
   page crashed for every customer; checkout could not post an acceptable body;
   the abandoned-lead capture had never landed a row). One shared contract

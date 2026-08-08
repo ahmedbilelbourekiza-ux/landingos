@@ -5,17 +5,23 @@ see `BUILDER_AUDIT.md` (the before), `BUILDER_HANDOFF.md` (the after, with the
 readiness checklist and roadmap), and PROJECT_STATE's *Phase LB* section. The
 ERP is deliberately paused with its PM work committed.**
 
+**LB.9 (Docker/production packaging) and LB.10 (the pre-production readiness
+audit — six defects fixed with regression tests, CHANGELOG §LB.10) have both
+landed since the queue below was first written; the old queue numbers LB.9 and
+LB.10 are renumbered to avoid colliding with those commits.**
+
 ## WHAT PHASE LB LEFT — the builder's own queue
 
 Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 
 | # | Slice | Size | Why |
 |---|---|---|---|
-| **LB.9** | Benefits + FAQ end to end (routes + editor sections + unhardcode `toLandingPageData`) | S | The last two "Coming Soon" stubs; tables and storefront renderers already exist |
-| **LB.10** | `website-builder:orders:write` in the manifest, gating the status route and UI | S | Today `orders:read` gates a WRITE (audit B-08) — an authorization fix of N16's class |
-| **LB.11** | Editor i18n (the 54 legacy components speak English in an ar/fr console) | M | Commercial for the Arabic-first market |
-| **LB.12** | Real-credential smoke test: Meta/TikTok/GA4 with test pixels + `testCode` | S | No request has crossed the REAL endpoints — the ZR/Ecom precedent; do before first ad spend |
-| **LB.13** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13.5–13.7 |
+| **LB.11** | Real-credential smoke test: Meta/TikTok/GA4 with test pixels + `testCode` | S | No request has crossed the REAL endpoints — the ZR/Ecom precedent; **the one remaining gate before real ad spend**, and untestable locally by construction |
+| **LB.12** | Benefits + FAQ end to end (routes + editor sections + unhardcode `toLandingPageData`) | M | The last two "Coming Soon" stubs; tables and storefront renderers already exist. Deliberately NOT rushed in on deploy-eve: pages sell without them and the stubs say so honestly |
+| **LB.13** | Editor i18n (the 54 legacy components speak English in an ar/fr console) | M | Commercial for the Arabic-first market. The storefront half (the thank-you page) closed in LB.10 |
+| **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
+| **LB.15** | Editor money inputs off `type="number"` (pricing section) | S | D-06 style residue; single values round-trip exactly, arithmetic is Decimal server-side since LB.10 |
+| ~~LB.10~~ | ~~`website-builder:orders:write`~~ | — | **DONE in the LB.10 commit** (B-08 closed, console writes rerouted through the API, webhooks fire from console changes) |
 
 **Phase 5, 6 and 7 are complete. LEGACY PARITY IS REACHED — Tiers 1, 2 and 3 of
 `LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that

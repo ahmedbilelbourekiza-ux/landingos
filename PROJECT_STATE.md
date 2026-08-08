@@ -1,7 +1,7 @@
 # LandingOS — Project State
 
-**Last updated:** 7 August 2026 (second session)
-**Branch:** `master` · **Last commit:** *LB.7/LB.8 — validation and the handoff*
+**Last updated:** 8 August 2026 (overnight readiness audit)
+**Branch:** `master` · **Last commit:** *LB.10 — the pre-production readiness audit*
 
 ---
 
@@ -36,6 +36,8 @@ platform, then validation as a real customer.
 | **LB.5** | The tracking pipeline — one canonical event model, adapters for Meta (pixel+CAPI), TikTok (pixel+Events API), GA4/GTM/Google Ads, a storefront layout mounting one loader, server events after commit, `TrackingIntegration` (RLS 48/48), console surface, 12 tests incl. a real checkout fanning Purchase to three stubbed platforms with one dedup id |
 | **LB.6** | SEO writer + OG/JSON-LD, page duplication + the pages list's first row actions, per-IP rate limits on the two public writes, webhook SSRF guard, the Decimal-safe money input |
 | **LB.7** | Validation as a real customer, in a real browser: duplicate → configure → publish → variant-priced checkout (8 200 DA computed correctly) → Lead + Purchase observed at Meta/GA4 receivers → order confirmed through the UI → ERP record in the same transaction; the standalone tenant walkthrough end to end with zero ERP rows |
+| **LB.9** | Docker/production packaging: every workspace manifest in the deps stage, both Prisma clients generated in-image at the path the standalone bundle searches, a DDL-free entrypoint that verifies instead of mutating, schema/roles/RLS/reference-seed as deliberate repo-side steps (DEPLOY.md rewritten) |
+| **LB.10** | The pre-production readiness audit, the night before first deploy — six defects found by reading the shipped pipeline and driving it in a browser, each fixed with a regression test: the Lead that fired only when the FIRST capture had a phone; attribution ids dropped at both public doors; phone hashes that never matched local numbers; console status/create writes bypassing permission + webhooks (B-08); webhook delivery following redirects past the SSRF guard; the login `next` open redirect. Plus Decimal money end to end, the Arabic thank-you page, and the entrypoint's stub-override warning. Suites: 151 green across seven files against the rebuilt server; the full journey re-driven live (CHANGELOG §LB.10) |
 
 **The rule Phase LB adds to the method:** *a green contract suite proves the
 API, never the page* — every LB.1/LB.2 defect was a vocabulary duplicated
@@ -47,10 +49,10 @@ test). And its corollary, three times over: **a Prisma Json column returns the
 value — `JSON.parse` on it throws**, which alone had silently killed webhook
 subscriptions, order-form configs and payload variants.
 
-**Suite totals for this product:** storefront 27 · builder-sections 50 ·
-builder-api 22 · webhooks 9 (new) · tracking 12 (new) · hardening 10 (new) ·
-console-shell 13 — per file, against the running server, with the delivery
-suites driving real HTTP receivers. ERP suites untouched.
+**Suite totals for this product (after LB.10):** storefront 28 ·
+builder-sections 50 · builder-api 23 · webhooks 10 · tracking 15 ·
+hardening 11 · console-shell 14 — per file, against the running server, with
+the delivery suites driving real HTTP receivers. ERP suites untouched.
 
 ---
 
