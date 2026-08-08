@@ -68,6 +68,28 @@ describe('the webhook destination guard (pure)', () => {
       assert.notEqual(refuseWebhookUrl(url), null, `${url} must be refused`);
     }
   });
+
+  test('alternative spellings of private addresses are refused too', () => {
+    for (const url of [
+      // Decimal / hex / octal / shortened IPv4 — the WHATWG URL parser
+      // normalises all of these to dotted-quad BEFORE the guard reads the
+      // hostname; this pins that behaviour so a parser change cannot silently
+      // reopen the hole.
+      'https://2130706433/x', // 127.0.0.1 in decimal
+      'https://0x7f000001/x', // …in hex
+      'https://0177.0.0.1/x', // …in octal
+      'https://127.1/x', //      …shortened
+      'https://167772161/x', //  10.0.0.1 in decimal
+      // IPv4-mapped IPv6 reaches the IPv4 loopback while matching none of the
+      // IPv4 patterns.
+      'https://[::ffff:127.0.0.1]/x',
+      'https://[::ffff:10.0.0.1]/x',
+      // The unspecified address.
+      'https://[::]/x',
+    ]) {
+      assert.notEqual(refuseWebhookUrl(url), null, `${url} must be refused`);
+    }
+  });
 });
 
 /* ========================================================================== */

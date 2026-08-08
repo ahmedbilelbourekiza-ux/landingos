@@ -105,6 +105,12 @@ async function deliverToEndpoint(
           "User-Agent": "LandingOS-Webhooks/1.0",
         },
         body,
+        // NEVER follow a redirect. url-guard validates the URL as WRITTEN; a
+        // public host answering 302 to a private address would walk the signed
+        // tenant payload straight past that check (SSRF). A receiver is owed
+        // exactly one POST at exactly the configured address — Shopify's rule,
+        // for the same reason. A 3xx therefore records as a failed attempt.
+        redirect: "manual",
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
@@ -211,6 +217,8 @@ export async function sendTestDelivery(
         "User-Agent": "LandingOS-Webhooks/1.0",
       },
       body,
+      // Same rule as real deliveries: a redirect is a refusal, never followed.
+      redirect: "manual",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     statusCode = res.status;

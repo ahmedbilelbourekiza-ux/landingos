@@ -27,11 +27,21 @@ const BLOCKED_HOST_PATTERNS: RegExp[] = [
   /^169\.254\./,
   // Carrier-grade NAT.
   /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,
-  // IPv6 loopback, link-local, unique-local (bracketed or bare).
+  // IPv6 loopback, unspecified, link-local, unique-local (bracketed or bare).
   /^\[?::1\]?$/,
+  /^\[?::\]?$/,
   /^\[?fe80:/i,
   /^\[?f[cd][0-9a-f]{2}:/i,
+  // IPv4-mapped IPv6 — `[::ffff:127.0.0.1]` normalises to `[::ffff:7f00:1]`
+  // and reaches the IPv4 loopback while matching none of the IPv4 patterns.
+  // Refused wholesale: a legitimate public receiver has no reason to be
+  // addressed through the mapped form.
+  /^\[?::ffff:/i,
 ];
+
+// NOTE: decimal/hex/octal IPv4 spellings (`https://2130706433/`) need no
+// pattern here — the WHATWG URL parser normalises them to dotted-quad before
+// `hostname` is read, which the pure suite asserts.
 
 /** Null when acceptable; a human-readable refusal otherwise. */
 export function refuseWebhookUrl(raw: string): string | null {

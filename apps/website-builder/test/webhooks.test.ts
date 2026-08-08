@@ -118,6 +118,11 @@ before(async () => {
         rawBody: raw,
       });
       res.statusCode = statusByPath[req.url ?? ''] ?? 200;
+      // A 3xx answer carries a Location on the same stub, so a delivery layer
+      // that FOLLOWED it would show up as a hit on /redirect-target.
+      if (res.statusCode >= 300 && res.statusCode < 400) {
+        res.setHeader('location', stubUrl('/redirect-target'));
+      }
       res.end('{}');
     });
   });
@@ -366,6 +371,36 @@ describe('failure handling and the operator surface', { skip }, () => {
     await api(`/api/builder/landings/${pageId}/publish`, ownerToken, {
       method: 'POST', body: JSON.stringify({ published: true }),
     });
+  });
+
+  test('a redirecting receiver is refused, never followed (SSRF hardening)', async () => {
+    // url-guard checks the URL as WRITTEN; following a 302 afterwards would
+    // walk the signed payload to an address that never passed the guard. The
+    // delivery layer therefore treats every 3xx as a terminal failure.
+    statusByPath['/redirects'] = 302;
+    const endpointId = await seedEndpoint('/redirects', ['product.updated']);
+
+    await api(`/api/builder/landings/${pageId}/pricing`, ownerToken, {
+      method: 'PATCH', body: JSON.stringify({ price: 2700 }),
+    });
+
+    await waitFor(() => received.find((x) => x.path === '/redirects'));
+    // Give a would-be follow or retry time to happen, then assert neither did.
+    await new Promise((r) => setTimeout(r, 1200));
+    assert.equal(received.filter((x) => x.path === '/redirect-target').length, 0,
+      'the Location target was never contacted');
+    assert.equal(received.filter((x) => x.path === '/redirects').length, 1,
+      'a 3xx is terminal — not retried with the same body');
+
+    const log = await api(`/api/platform/integrations/webhooks/${endpointId}/deliveries`, ownerToken);
+    const entry = log.body.data.items.find((d: any) => d.event === 'product.updated');
+    assert.ok(entry, 'the refusal is in the delivery log');
+    assert.equal(entry.success, false);
+    assert.equal(entry.statusCode, 302);
+    assert.equal(entry.attempts, 1);
+
+    await withTenant(tenantId, (tx) =>
+      (tx as any).webhookEndpoint.deleteMany({ where: { id: endpointId } }));
   });
 
   test("the console's send-test reports the receiver's answer and logs it", async () => {
