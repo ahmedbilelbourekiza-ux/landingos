@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUpRight, Bell, X } from "lucide-react";
@@ -135,6 +136,11 @@ export function NotificationProvider({
   const [items, setItems] = useState<Feed[] | null>(null);
   const [toasts, setToasts] = useState<Feed[]>([]);
   const [connected, setConnected] = useState(false);
+  /** Gates the toast portal: a portal cannot render during SSR, and the live
+   *  region must exist from hydration — before any toast — not from the first
+   *  event. */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** UI.19 — the bell, so Escape can put focus back where it started, and the
@@ -493,7 +499,18 @@ export function NotificationProvider({
       </div>
 
       {/* Announced, not just shown. An operator whose attention is on the phone
-          is exactly who this feature is for. */}
+          is exactly who this feature is for.
+
+          PORTALED TO <body>, mounted from hydration: this provider renders in
+          the console header, whose `backdrop-blur` makes the header the
+          CONTAINING BLOCK for fixed descendants — the same spec trap that
+          pinned the navigation drawer to a 55px box. Without the portal,
+          `fixed bottom-4 end-4` resolved against the HEADER, and every toast
+          appeared at the top of the screen under the header's edge. The
+          mount guard keeps server HTML honest (a portal cannot render there);
+          the live region still exists from hydration onward, BEFORE any toast
+          arrives, which is what a screen reader needs. */}
+      {mounted && createPortal(
       <div
         aria-live="polite"
         aria-atomic="false"
@@ -555,7 +572,9 @@ export function NotificationProvider({
           </div>
           );
         })}
-      </div>
+      </div>,
+      document.body,
+      )}
     </>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 
@@ -74,7 +75,16 @@ export function ConsoleDrawer({
         <Menu aria-hidden="true" className="size-5" />
       </button>
 
-      {open && (
+      {/* PORTALED TO <body>, and the reason is a spec trap that shipped: this
+          component renders inside the console header, whose `backdrop-blur`
+          makes the header the CONTAINING BLOCK for fixed descendants — so
+          `fixed inset-0` pinned the overlay to the header's 55px box, and the
+          drawer's contents painted over the page as unclipped overflow (seen
+          on a real phone in production; reproduced at 390px). The portal
+          escapes the header's containing block; open-state logic, Escape,
+          scroll lock and the single-tree navigation are untouched. Safe from
+          hydration mismatch because `open` is false until a click. */}
+      {open && createPortal(
         <div className="fixed inset-0 z-50 md:hidden" role="presentation">
           <button
             type="button"
@@ -107,7 +117,8 @@ export function ConsoleDrawer({
             </button>
             {children}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
