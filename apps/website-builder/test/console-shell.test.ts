@@ -275,6 +275,21 @@ describe('the same request path serves every product', () => {
   });
 });
 
+describe('the bare domain root is a door, not a dead end', () => {
+  /* Nothing owned `/` — storefronts live at /{slug}, the console under
+   * /console — so the naked domain answered the 404 page, which is what a
+   * person typing the link into a phone saw first (found in production). The
+   * root now forwards to the console front door, which itself routes by
+   * session; a verified custom domain's root goes to that tenant's
+   * storefront instead (asserted implicitly: no verified domains exist in
+   * this environment, so the platform branch is the one a test can pin). */
+  test('GET / redirects to the console front door', { skip: !serverUp && 'no server' }, async () => {
+    const r = await fetch(BASE + '/', { redirect: 'manual' });
+    assert.ok([307, 308, 303].includes(r.status), `expected a redirect, got ${r.status}`);
+    assert.equal(new URL(r.headers.get('location') ?? '', BASE).pathname, '/console');
+  });
+});
+
 describe('the display language follows the locale cookie', () => {
   /* The whole switching loop is: the header form posts a server action, the
    * action writes the `locale` cookie, the next render reads it
