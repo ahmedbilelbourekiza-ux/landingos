@@ -180,6 +180,7 @@ export function filterStrings(t: (key: string) => string): FilterStrings {
     apply: t("erp.filters.apply"),
     clear: t("erp.filters.clear"),
     any: t("erp.filters.any"),
+    toggle: t("erp.filters.toggle"),
   };
 }
 

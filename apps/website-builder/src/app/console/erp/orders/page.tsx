@@ -436,6 +436,14 @@ export default async function ErpOrdersScreen({
           {
             id: "destination",
             header: t("erp.orders.destination"),
+            /* MOBILE REPRESENTATION, measured: this table is 1,075px wide and
+               a 360px phone saw a third of it — with STATUS and ACTIONS, the
+               two facts a triage pass runs on, off-screen. Destination,
+               product and call count yield below `md`; they stay in the DOM
+               (assertions and copy-paste see them) and the detail page keeps
+               carrying them. Nothing is removed — only what a thumb-width
+               screen leads with changes. */
+            className: "hidden md:table-cell",
             cell: (o) => (
               <span className="text-muted-foreground">
                 {[o.wilaya, o.commune].filter(Boolean).join(" · ") || "—"}
@@ -445,6 +453,7 @@ export default async function ErpOrdersScreen({
           {
             id: "product",
             header: t("erp.orders.product"),
+            className: "hidden md:table-cell",
             cell: (o) => {
               /* PM.2 / PM.5 — the thing being sold, and whether there is any of
                  it left. The legacy shows a photograph on every order row; the
@@ -566,6 +575,7 @@ export default async function ErpOrdersScreen({
           {
             id: "calls",
             header: t("erp.orders.calls"),
+            className: "hidden md:table-cell",
             numeric: true,
             align: "end",
             cell: (o) => o._count.calls,

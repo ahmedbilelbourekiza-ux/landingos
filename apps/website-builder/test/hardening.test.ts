@@ -246,3 +246,18 @@ describe('the checkout rate limit exists and is tunable (LB.6)', { skip }, () =>
     assert.ok([422, 429].includes(r.status), `expected 422 or 429, got ${r.status}`);
   });
 });
+
+describe('the health check names who the database connection IS', { skip }, () => {
+  test('a correctly-provisioned runtime reports isolation: rls', async () => {
+    // The bound client writes no `where: { tenantId }` — RLS is the layer
+    // that scopes every query — so a BYPASSRLS credential serves every
+    // tenant's rows to every tenant while "database: ok" smiles. Production
+    // ran exactly that misconfiguration once: one tenant's order list carried
+    // sixty tenants' ORD-0001. The health check now reports the role's
+    // standing, and this pins the field so it cannot quietly vanish.
+    const r = await fetch(`${BASE}/api/health`);
+    const body = await r.json();
+    assert.equal(body.data.checks.isolation, 'rls', 'the local runtime role must be RLS-scoped');
+    assert.equal(r.status, 200);
+  });
+});

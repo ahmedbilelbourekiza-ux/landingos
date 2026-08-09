@@ -592,7 +592,8 @@
       },
       "suspicious": "جودة المكالمة",
       "suspiciousOnly": "المكالمات المُعلَّمة فقط",
-      "searchPlaceholder": "طلب أو زبون أو هاتف"
+      "searchPlaceholder": "طلب أو زبون أو هاتف",
+      "toggle": "تصفية"
     },
     "export": {
       "title": "تصدير",

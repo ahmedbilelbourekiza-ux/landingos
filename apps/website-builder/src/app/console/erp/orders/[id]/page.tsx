@@ -357,7 +357,11 @@ export default async function ErpOrderDetail({
           the declaration silently emits nothing). */}
       <div
         data-testid="order-summary-strip"
-        className="sticky top-[calc(var(--console-header-h)_+_0.5rem)] z-20 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-border bg-surface-raised px-4 py-2.5 shadow-e2"
+        /* Sticky from `sm` up only. On a phone the strip wraps to three rows
+           (~94px) and, stacked on the console header, ate 20% of a 740px
+           viewport for the whole 4,000px scroll — measured in the mobile
+           audit. A phone reader scrolls past it once and keeps their screen. */
+        className="sm:sticky sm:top-[calc(var(--console-header-h)_+_0.5rem)] z-20 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-border bg-surface-raised px-4 py-2.5 shadow-e2"
       >
         <span className="font-mono text-xs font-medium text-foreground" dir="ltr">
           {order.reference ?? ""}

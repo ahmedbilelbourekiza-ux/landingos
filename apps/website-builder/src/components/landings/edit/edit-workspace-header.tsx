@@ -69,9 +69,12 @@ export function EditWorkspaceHeader({
         )}
       </div>
 
-      {/* Right: actions */}
+      {/* Right: actions. Below `sm` the labels yield to icons — the mobile
+          audit found the two icons carried NO accessible name, so the money
+          action (publish) was an anonymous globe. The aria-labels are
+          unconditional; sighted users at `sm+` read the visible text. */}
       <div className="flex shrink-0 items-center gap-2">
-        <Button variant="outline" size="sm" onClick={onPreview}>
+        <Button variant="outline" size="sm" aria-label="Preview" onClick={onPreview}>
           <Eye className="size-4" />
           <span className="hidden sm:inline">Preview</span>
         </Button>
@@ -99,7 +102,12 @@ export function EditWorkspaceHeader({
           </>
         )}
 
-        <Button size="sm" onClick={onPublish} disabled={isPublishing}>
+        <Button
+          size="sm"
+          aria-label={isPublishing ? "Publishing" : isPublished ? "Update" : "Publish"}
+          onClick={onPublish}
+          disabled={isPublishing}
+        >
           {isPublishing ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (

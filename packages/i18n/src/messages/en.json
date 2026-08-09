@@ -592,7 +592,8 @@
       },
       "suspicious": "Call quality",
       "suspiciousOnly": "Flagged calls only",
-      "searchPlaceholder": "Order, customer or phone"
+      "searchPlaceholder": "Order, customer or phone",
+      "toggle": "Filters"
     },
     "export": {
       "title": "Export",

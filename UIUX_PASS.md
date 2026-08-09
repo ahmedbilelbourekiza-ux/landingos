@@ -311,3 +311,44 @@ reading it — the variant drift and the unsaved-badge lie were invisible to 151
 green tests because both live between the browser and the API. The pass ends
 the way the project's own rule demands: rebuilt, re-driven in a real browser
 at two widths, two themes and two locales, suites re-run per file.
+
+---
+
+## 14. Addendum — the Mobile UX + Performance audit (second user report)
+
+A dedicated audit after real-use reports of slowness and poor phone UX. Full
+findings in the session record; the headline entries:
+
+- **CRITICAL (infrastructure, found by measuring production): the production
+  runtime credential bypassed RLS.** One tenant's order list carried sixty
+  tenants' ORD-0001; "Acme" counted 1,057 pages against 3 real ones; the
+  orders screen shipped 6.4MB of HTML in 8.7s because every per-row select
+  listed every membership in the database. Fix = set `PLATFORM_DATABASE_URL`
+  to the `landingos_app` credential (Render dashboard). The platform now
+  DEFENDS itself: the entrypoint refuses to boot on a BYPASSRLS role, and
+  `/api/health` reports `isolation: rls | BYPASSED` and goes unhealthy on
+  bypass, with a pinned test.
+- **Why the earlier "mobile clean" claim was insufficient:** it measured
+  horizontal overflow and element presence at 375px. It never measured the
+  EXPERIENCE: scroll-distance-to-content (2.8 screens of filters before the
+  first order row), sticky viewport budget (20% eaten by the summary strip),
+  touch-target sizes on row controls (28px), or the table's mobile
+  representation (a third of 1,075px visible). All fixed and re-measured:
+  1.7 screens (filters collapsed by default on mobile, CSS-only disclosure),
+  88px sticky budget (strip static below `sm`), 44px row selects (`tap`),
+  711px table with the decisive columns on screen (three secondary columns
+  yield below `md`, `min-w` md-scoped). Storefront selects are 16px/44px on
+  mobile (iOS focus-zoom). Editor Preview/Publish icons carry aria-labels.
+- **Perf figures (local, RLS-correct):** console screens 1.2–2.8s TTFB —
+  dev-machine→Frankfurt RTT × per-page queries; production (Render beside
+  Neon) is faster per query and shows no cold starts (0.19s after 20 min
+  idle). The remaining perceived slowness is the absence of route-level
+  loading states (UI.6, structural) and the storefront's 1.29MB JS (a diet
+  slice — framer-motion and the template bundle).
+
+Suites after the fixes, per file, clean runs: hardening **12/12** ·
+console-shell **16/16** · builder-sections **50/50** · erp screens
+**173/173** · i18n **20/20**. One screens run during the audit red-ran 53/43
+because the server was restarted MID-SUITE for log capture — self-inflicted,
+recorded as another instance of "a restart is a write to the thing under
+test."

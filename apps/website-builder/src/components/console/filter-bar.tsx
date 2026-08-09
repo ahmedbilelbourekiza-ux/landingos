@@ -32,6 +32,8 @@ export interface FilterStrings {
   readonly apply: string;
   readonly clear: string;
   readonly any: string;
+  /** The mobile disclosure's label — "Filters". */
+  readonly toggle: string;
 }
 
 export function FilterBar({
@@ -49,17 +51,47 @@ export function FilterBar({
 }) {
   if (!fields.length) return null;
   const active = hasActiveFilter(params, fields);
+  const toggleId = `${testId}-toggle`;
 
   return (
-    <form
-      method="get"
-      action={basePath}
-      data-testid={testId}
-      // A surface rather than an outline on the page ground, and the fields
-      // wrap into a grid at every width instead of a single row that overflows
-      // — nine order filters on a laptop used to push Apply off the end.
-      className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-raised p-3"
-    >
+    /* COLLAPSED ON A PHONE, OPEN ON A DESK — measured, not guessed: at 360px
+     * the nine order filters put the first ROW of data 2.8 screens down, so
+     * the busiest list opened onto a wall of controls. The disclosure is a
+     * peer CHECKBOX, not a client component: no JavaScript, works before
+     * hydration, and the form stays in the DOM either way (D-06.4 — the
+     * contract tests keep asserting the offered vocabulary). It defaults OPEN
+     * when a filter is ACTIVE, so a bookmarked "my overdue queue" still shows
+     * which narrowing produced it. At `md+` the label disappears and the form
+     * is simply always visible, exactly as before. */
+    <div className="rounded-lg border border-border bg-surface-raised">
+      <input
+        type="checkbox"
+        id={toggleId}
+        defaultChecked={active}
+        className="peer sr-only"
+        aria-controls={testId}
+      />
+      <label
+        htmlFor={toggleId}
+        className="tap flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 text-sm font-medium text-foreground md:hidden"
+      >
+        <span className="flex items-center gap-2">
+          {s.toggle}
+          {active && (
+            <span aria-hidden="true" className="size-1.5 rounded-full bg-primary" />
+          )}
+        </span>
+      </label>
+      <form
+        id={testId}
+        method="get"
+        action={basePath}
+        data-testid={testId}
+        // A surface rather than an outline on the page ground, and the fields
+        // wrap into a grid at every width instead of a single row that overflows
+        // — nine order filters on a laptop used to push Apply off the end.
+        className="hidden flex-wrap items-end gap-3 p-3 peer-checked:flex md:flex"
+      >
       {fields.map((field) => {
         const id = `filter-${field.name}`;
         const value = params.get(field.name) ?? "";
@@ -121,6 +153,7 @@ export function FilterBar({
           {s.clear}
         </Link>
       )}
-    </form>
+      </form>
+    </div>
   );
 }

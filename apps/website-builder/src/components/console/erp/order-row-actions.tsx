@@ -60,8 +60,10 @@ export interface RowActionStrings {
   readonly quickActions: string;
 }
 
+// `tap` lifts these to the 44px touch minimum on a coarse pointer — measured
+// at 28px on a phone before it, on the row controls an agent taps most.
 const SELECT =
-  "w-full max-w-[10rem] rounded-md border border-input bg-background px-2 py-1 text-xs disabled:opacity-50";
+  "tap w-full max-w-[10rem] rounded-md border border-input bg-background px-2 py-1 text-xs disabled:opacity-50";
 
 export function OrderRowActions({
   orderId,

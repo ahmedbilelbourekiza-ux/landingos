@@ -51,6 +51,30 @@ export async function GET() {
       healthy = false;
       checks.referenceData = "unreadable";
     }
+
+    /* WHO the connection is matters as much as WHETHER it works. The bound
+     * client deliberately writes no `where: { tenantId }` — row-level
+     * security is the layer that scopes every query — so a runtime role with
+     * BYPASSRLS serves EVERY tenant's rows to every signed-in tenant, while
+     * "database: ok" smiles. That exact misconfiguration ran in production:
+     * one tenant's order list rendered sixty tenants' ORD-0001. The health
+     * check now names the role's standing, and a bypassing role is UNHEALTHY,
+     * so a deploy with the owner credential is refused instead of accepted. */
+    try {
+      const [role] = await asPlatform().$queryRaw<{ bypasses: boolean }[]>`
+        SELECT (rolbypassrls OR rolsuper) AS bypasses
+        FROM pg_roles WHERE rolname = current_user`;
+      if (role?.bypasses) {
+        healthy = false;
+        checks.isolation = "BYPASSED — the runtime role ignores RLS; use the landingos_app credential";
+      } else {
+        checks.isolation = "rls";
+      }
+    } catch {
+      // Not fatal on its own: pg_roles is readable by every role, so this
+      // failing means something stranger than a wrong credential.
+      checks.isolation = "unknown";
+    }
   }
 
   // Uploads on local disk survive nothing on an ephemeral host, so this is

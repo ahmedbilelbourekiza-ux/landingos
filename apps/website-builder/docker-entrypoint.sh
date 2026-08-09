@@ -138,6 +138,26 @@ if ! echo 'SELECT 1 FROM "Tenant" LIMIT 1;' | npx prisma db execute \
 fi
 echo "  + schema present (Tenant table reachable)"
 
+# 2b. The runtime role must NOT bypass row-level security. The application
+# never writes `where: { tenantId }` — RLS is the layer that scopes every
+# query — so a BYPASSRLS/SUPERUSER credential (Neon's owner role, for one)
+# serves every tenant's rows to every signed-in tenant while everything else
+# looks healthy. This ran in production once: one tenant's order list carried
+# sixty tenants' ORD-0001. Dollar-quoted so no shell-quote escaping can
+# silently corrupt the probe.
+echo "=== Verifying tenant isolation applies to the runtime role ==="
+RLS_PROBE='DO $do$ BEGIN IF (SELECT rolbypassrls OR rolsuper FROM pg_roles WHERE rolname = current_user) THEN RAISE EXCEPTION $msg$runtime role bypasses RLS$msg$; END IF; END $do$;'
+if ! echo "$RLS_PROBE" | npx prisma db execute \
+    --url "$EFFECTIVE_DB_URL" --stdin >/dev/null 2>&1; then
+  echo "  x FATAL: the runtime database credential BYPASSES row-level security"
+  echo "    (owner/superuser role). Every tenant would see every other"
+  echo "    tenant's data. Set PLATFORM_DATABASE_URL to the landingos_app"
+  echo "    credential (created by: npm run setup:roles --workspace"
+  echo "    @landingos/db) and redeploy. See DEPLOY.md."
+  exit 1
+fi
+echo "  + runtime role is subject to RLS"
+
 # 3. The server. No seeds at boot: demo/dev content is opt-in from the repo
 # (npm run seed:demo --workspace @landingos/db), never something a redeploy
 # quietly re-creates on a live store.

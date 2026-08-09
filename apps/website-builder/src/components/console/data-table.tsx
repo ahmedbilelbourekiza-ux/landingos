@@ -65,6 +65,12 @@ export interface Column<T> {
   readonly nowrap?: boolean;
   /** A minimum for this column, so a dense cell does not collapse. */
   readonly width?: string;
+  /** Applied to BOTH the header and the body cells — the one legitimate use
+   *  today is `hidden md:table-cell`, a mobile representation that keeps the
+   *  decisive columns on screen instead of a third of a 1,000px table. The
+   *  cells stay in the DOM, so contract assertions and copy-paste still see
+   *  them. */
+  readonly className?: string;
   readonly cell: (row: T) => ReactNode;
 }
 
@@ -189,7 +195,12 @@ export function DataTable<T>({
         "md:max-h-[calc(100dvh_-_var(--console-header-h)_-_13rem)]",
       )}
     >
-      <table className="console-table w-full min-w-[640px] text-sm" data-testid={testId}>
+      {/* The minimum is `md+` only: it exists so a narrow DESKTOP window keeps
+          readable columns, but on a phone it FORCED 640px and pushed the
+          decisive columns off-screen. Below `md` a table takes its content's
+          own width — table layout never squashes below content minimum, so
+          dense tables still scroll in their container exactly as before. */}
+      <table className="console-table w-full md:min-w-[640px] text-sm" data-testid={testId}>
         {caption && <caption className="sr-only">{caption}</caption>}
         <thead className="sticky top-0 z-10 bg-surface-subtle text-xs text-muted-foreground">
           <tr className="border-b border-border">
@@ -215,6 +226,7 @@ export function DataTable<T>({
                     "px-3 py-2.5 font-medium whitespace-nowrap",
                     c.align === "end" ? "text-end" : "text-start",
                     c.numeric && "tabular-nums",
+                    c.className,
                   )}
                 >
                   {sortable ? (
@@ -305,6 +317,7 @@ export function DataTable<T>({
                         c.align === "end" && "text-end",
                         c.numeric && "tabular-nums",
                         c.nowrap && "whitespace-nowrap",
+                        c.className,
                       )}
                     >
                       {c.cell(row)}

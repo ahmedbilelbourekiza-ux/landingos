@@ -592,7 +592,8 @@
       },
       "suspicious": "Qualité d’appel",
       "suspiciousOnly": "Appels signalés uniquement",
-      "searchPlaceholder": "Commande, client ou téléphone"
+      "searchPlaceholder": "Commande, client ou téléphone",
+      "toggle": "Filtres"
     },
     "export": {
       "title": "Exporter",

@@ -383,7 +383,7 @@ export function PurchaseForm({
                 // submit a commune from the previous wilaya.
                 setSelectedBaladia("");
               }}
-              className="h-9 w-full border border-input bg-transparent px-3 text-sm"
+              className="h-11 w-full border border-input bg-transparent px-3 text-base sm:h-9 sm:text-sm"
               style={{ borderRadius: "var(--theme-input-radius)" }}
             >
               <option value="">{config.wilaya.placeholder}</option>
@@ -407,7 +407,7 @@ export function PurchaseForm({
             <select
               value={selectedBaladia}
               onChange={(e) => setSelectedBaladia(e.target.value ? Number(e.target.value) : "")}
-              className="h-9 w-full border border-input bg-transparent px-3 text-sm"
+              className="h-11 w-full border border-input bg-transparent px-3 text-base sm:h-9 sm:text-sm"
               style={{ borderRadius: "var(--theme-input-radius)" }}
             >
               <option value="">{config.baladia.placeholder}</option>
