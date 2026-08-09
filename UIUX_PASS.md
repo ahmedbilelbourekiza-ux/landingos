@@ -9,7 +9,9 @@ deployed and nothing was pushed.
 This document is the handoff for THIS pass and is deliberately separate from
 `BUILDER_HANDOFF.md` (the product handoff) and `UI_UX_AUDIT.md` (the Phase UI
 measurement). Read those for the platform's history; read this for what the
-UI/UX pass changed and what it left.
+UI/UX pass changed and what it left. **For the DEPLOYMENT and production
+state — what is live, the RLS incident, the pending database decision — read
+`HANDOFF_PRODUCTION.md`, which supersedes this file on those topics.**
 
 ---
 
