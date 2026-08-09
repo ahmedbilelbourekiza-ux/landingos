@@ -102,6 +102,18 @@ export const DELETE = tenantRoute<Params>("platform:team:write", async ({ db, pa
 
   await db.membership.delete({ where: { id: member.id } });
 
+  /* The doc-comment above promises "the very next call lands them on the
+   * tenant picker" — the stored state now says so immediately: any of their
+   * sessions still bound HERE lose the binding at the moment of removal
+   * (resolveSession also self-heals a stale binding on read, but a row that
+   * lies until somebody reads it is a row that lies). Their sessions
+   * survive, so their OTHER companies stay signed in — the exact property
+   * the comment was written to protect. */
+  await db.session.updateMany({
+    where: { userId: member.userId, activeTenantId: actor.tenantId },
+    data: { activeTenantId: null },
+  });
+
   await db.auditEvent.create({
     data: {
       tenantId: actor.tenantId,

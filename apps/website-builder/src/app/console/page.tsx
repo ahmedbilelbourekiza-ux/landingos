@@ -29,8 +29,19 @@ export default async function ConsoleHome() {
     <ConsoleShell session={session} productId={null}>
       <PageBody>
       <h1 className="text-xl font-semibold">{session.tenant?.name ?? "LandingOS"}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {session.products.length === 0 ? t("common.noProducts") : t("common.chooseApp")}
+      {/* Three states, three sentences — they used to share one, and the one
+          they shared was wrong for two of them: a person with NO COMPANY at
+          all (or a session healed down to none) read "No products are enabled
+          for this company", which sent them hunting for a billing problem
+          that did not exist. */}
+      <p className="mt-1 text-sm text-muted-foreground" data-testid={
+        !session.tenant ? "console-no-membership" : session.products.length === 0 ? "console-no-products" : "console-choose-app"
+      }>
+        {!session.tenant
+          ? t("common.noMemberships")
+          : session.products.length === 0
+            ? t("common.noProducts")
+            : t("common.chooseApp")}
       </p>
       <ul className="mt-6 grid gap-3 sm:grid-cols-2">
         {session.products.map((p) => (

@@ -884,7 +884,8 @@
     "saved": "Saved",
     "status": "Status",
     "chooseApp": "Choose an application to open.",
-    "noProducts": "No products are enabled for this company."
+    "noProducts": "No products are enabled for this company.",
+    "noMemberships": "Your account is not a member of any company yet. Ask an administrator to invite you, or create a new company."
   },
   "join": {
     "title": "Join a workspace",

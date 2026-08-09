@@ -30,18 +30,29 @@ import { cn } from "@/lib/utils";
  * does; the button stays for the pre-hydration path, where the onChange does
  * not exist yet and the two-step flow still works.
  */
-export function LocaleSwitcher({ label, apply }: { label: string; apply: string }) {
+export function LocaleSwitcher({
+  label,
+  apply,
+  id = "locale",
+}: {
+  label: string;
+  apply: string;
+  /** The control's DOM id. The shell mounts TWO instances — the header's
+   *  (`sm+`) and the drawer's (below `md`) — and two elements sharing
+   *  `id="locale"` would break the label binding for both. */
+  id?: string;
+}) {
   const current = useLocale();
   const pathname = usePathname();
 
   return (
     <form action={switchLocaleAction} className="flex items-center gap-1">
-      <label htmlFor="locale" className="sr-only">
+      <label htmlFor={id} className="sr-only">
         {label}
       </label>
       <input type="hidden" name="returnTo" value={pathname} />
       <select
-        id="locale"
+        id={id}
         name="locale"
         defaultValue={current}
         data-testid="locale-switcher"

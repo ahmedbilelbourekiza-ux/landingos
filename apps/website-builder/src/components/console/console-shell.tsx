@@ -184,6 +184,21 @@ export async function ConsoleShell({
       </nav>
 
       <div className="shrink-0 space-y-0.5 border-t border-sidebar-border p-3">
+        {/* The language control's PHONE home. The header's switcher is
+            `hidden sm:block` (UI.5 measured the header cluster at 319px
+            against a 375px viewport), which left a phone with NO way to
+            change language at all — reported from a real device. This
+            instance lives in the navigation tree, so it reaches the DRAWER;
+            `md:hidden` keeps the rail (md+) from showing a second control
+            beside the header's. Its own id, or two selects would share one
+            label. */}
+        <div className="px-3 pb-2 md:hidden">
+          <LocaleSwitcher
+            id="locale-mobile"
+            label={t("common.language")}
+            apply={t("common.apply")}
+          />
+        </div>
         <Link
           href="/console/settings"
           className={cn(

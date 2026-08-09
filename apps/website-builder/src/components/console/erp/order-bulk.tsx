@@ -211,7 +211,15 @@ export function OrderBulkBar({
          * stays rendered in both states (D-06.4) and stays disabled at zero,
          * which is the rule it already followed. */
         className={cn(
-          "sticky top-[calc(var(--console-header-h)_+_0.5rem)] z-20 flex flex-wrap items-end gap-3",
+          /* Sticky from `md` up ONLY. The stated reason for the sticky — the
+             bar stays in view while the table scrolls — was written for a
+             desktop, where this is ONE compact row. At 360px the wrapped
+             controls measured 498px (67% of the viewport) and stayed pinned
+             over the orders for the whole scroll, which a real phone reported
+             as the screen being unusable. Below `md` the bar scrolls away
+             like any other panel; every control keeps rendering in both
+             states (D-06.4 untouched). */
+          "md:sticky md:top-[calc(var(--console-header-h)_+_0.5rem)] z-20 flex flex-wrap items-end gap-3",
           "rounded-lg border p-3 backdrop-blur-sm transition-colors duration-(--duration-base)",
           count > 0
             ? "border-surface-selected-border bg-surface-selected shadow-e2"

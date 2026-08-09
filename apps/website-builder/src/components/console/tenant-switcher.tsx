@@ -24,17 +24,24 @@ export function TenantSwitcher({
 }) {
   const active = tenants.find((t) => t.id === activeId);
 
-  if (tenants.length <= 1) {
+  /* The static label is only correct when the active company IS one of the
+   * listed ones. A session whose binding resolves to none of them used to
+   * fall into this branch with ONE membership and render an empty name and no
+   * control — the trap half of the stale-binding incident: the person had a
+   * company to switch to and nothing to switch with. With an unresolved
+   * active tenant the switch control renders even for a single membership. */
+  if (tenants.length <= 1 && active) {
     return (
       <span
         className="flex min-w-0 items-center gap-2 text-sm font-medium"
         data-testid="tenant-name"
       >
         <Building2 aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-        <span className="truncate">{active?.name ?? ""}</span>
+        <span className="truncate">{active.name}</span>
       </span>
     );
   }
+  if (tenants.length === 0) return null;
 
   return (
     <form action={switchTenantAction} className="flex min-w-0 items-center gap-2">

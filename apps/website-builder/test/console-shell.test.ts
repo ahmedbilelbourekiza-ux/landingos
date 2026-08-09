@@ -275,6 +275,55 @@ describe('the same request path serves every product', () => {
   });
 });
 
+describe('a session outlives its membership without becoming a trap', () => {
+  /* THE INCIDENT THIS PINS. Removing a membership deliberately keeps the
+   * person's sessions (their other companies must stay signed in) — but a
+   * surviving session still bound to the removed tenant resolved to
+   * `tenant: null, products: []` and rendered a dead console captioned "No
+   * products are enabled for this company", with the switcher hidden because
+   * one membership is "nothing to switch". Observed in production on the demo
+   * owner. Resolution now self-heals to a live membership and PERSISTS the
+   * correction; a user with genuinely no memberships gets told that, in those
+   * words. */
+
+  test('a stale binding self-heals to a live membership', { skip: skip() }, async () => {
+    // The bundle owner is NOT a member of the erp-only tenant; bind a fresh
+    // session there anyway — exactly the state membership removal leaves.
+    const { token } = await createSession(ids[emails.bundle], tenantErp);
+    const r = await get('/console', token);
+    // Healed: 200 on their real tenant (two products => the chooser page),
+    // not the dead-console state.
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="console-choose-app"/);
+    assert.match(r.body, /Bundle Co/, "the healed session shows the user's own company");
+    // And the correction is PERSISTED, not re-derived per request. The id is
+    // the token's sha256 — the same derivation createSession writes.
+    const { createHash } = await import('node:crypto');
+    const row = await asPlatform().session.findUnique({
+      where: { id: createHash('sha256').update(token).digest('hex') },
+      select: { activeTenantId: true },
+    });
+    assert.equal(row?.activeTenantId, tenantBundle, 'the healed binding is written back');
+  });
+
+  test('no memberships at all says so, not "no products"', { skip: skip() }, async () => {
+    const email = `shell-orphan-${stamp}@landingos.test`;
+    const u = await asPlatform().user.create({
+      data: { email, name: email, passwordHash: await hashPassword('x') },
+    });
+    ids[email] = u.id;
+    const { token } = await createSession(u.id, null);
+    const r = await get('/console', token);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /data-testid="console-no-membership"/);
+    assert.doesNotMatch(
+      r.body,
+      /data-testid="console-no-products"/,
+      'the no-company state must not blame product enablement',
+    );
+  });
+});
+
 describe('the bare domain root is a door, not a dead end', () => {
   /* Nothing owned `/` — storefronts live at /{slug}, the console under
    * /console — so the naked domain answered the 404 page, which is what a
@@ -329,6 +378,10 @@ describe('the display language follows the locale cookie', () => {
       // value — a selector that vanished or forgot its current state is how
       // somebody gets stranded in a language they cannot read.
       assert.match(body, /data-testid="locale-switcher"/);
+      // BOTH homes: the header's (hidden below sm) and the drawer's (hidden
+      // from md up). A phone had NO language control at all until the second
+      // one existed — reported from a real device.
+      assert.match(body, /id="locale-mobile"/, 'the drawer carries the phone’s language control');
       assert.match(body, new RegExp(`<option[^>]*selected[^>]*value="${locale}"|<option[^>]*value="${locale}"[^>]*selected`), `the select must show ${locale} as current`);
     }
   });

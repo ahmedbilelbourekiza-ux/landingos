@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { after, describe } from 'node:test';
 
 import { asPlatform, withTenant } from '@landingos/db';
@@ -200,6 +201,29 @@ describe('the owner cannot be demoted, suspended or removed by anybody', () => {
     const row = res.body.data.items.find((m: any) => m.userId === owner.userId);
     assert.equal(row?.role, 'OWNER');
     assert.equal(row?.suspended, false);
+  });
+
+  contractTest("removal releases the leaver's session binding to THIS tenant", async () => {
+    /* The route's own comment promises the removed person "lands on the
+     * tenant picker" next request. Their session row used to keep pointing at
+     * the tenant that just removed them — a binding resolveSession had to
+     * discover was dead on every read (and, before it self-healed, rendered a
+     * dead console captioned "no products", seen in production). The write
+     * now clears the binding at removal time; the SESSION survives, so their
+     * other companies stay signed in. */
+    const { tenantId, admin, member } = await makeTeam('remove-binding');
+    const { token } = await createSession(member.userId, tenantId);
+    const id = createHash('sha256').update(token).digest('hex');
+
+    const res = await admin.api('DELETE', `/api/platform/team/members/${member.userId}`);
+    assert.equal(res.status, 200);
+
+    const row = await asPlatform().session.findUnique({
+      where: { id },
+      select: { activeTenantId: true },
+    });
+    assert.ok(row, 'the session row itself survives removal');
+    assert.equal(row!.activeTenantId, null, 'the binding to the removing tenant is released');
   });
 
   contractTest('OWNER is not a role this API hands out — not by invitation', async () => {

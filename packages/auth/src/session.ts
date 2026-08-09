@@ -123,9 +123,28 @@ export async function resolveSession(rawToken: string | null | undefined): Promi
     role: m.role as TenantRole,
   }));
 
-  const active = row.activeTenantId
+  let active = row.activeTenantId
     ? live.find((m: any) => m.tenantId === row.activeTenantId)
     : undefined;
+
+  /* SELF-HEALING: a session bound to a tenant this user can no longer reach.
+   *
+   * Removing a membership deliberately does not destroy sessions — but a
+   * surviving session then carried an activeTenantId that matched nothing,
+   * resolved to `tenant: null, products: []`, and rendered a dead console
+   * captioned "No products are enabled for this company" with no switcher to
+   * escape by (observed in production: the demo owner's sessions still bound
+   * to a tenant she had been removed from). A binding the user can no longer
+   * hold falls back to their first live membership, and the correction is
+   * PERSISTED so the healed state is what every later request reads. A user
+   * with no memberships at all keeps tenant: null — that state is real and
+   * the front door now says it honestly. */
+  if (!active && live.length > 0) {
+    active = live[0];
+    await db.session
+      .update({ where: { id }, data: { activeTenantId: active.tenantId } })
+      .catch(() => {});
+  }
 
   let tenant: ResolvedSession['tenant'] = null;
   let auth: AuthContext | null = null;

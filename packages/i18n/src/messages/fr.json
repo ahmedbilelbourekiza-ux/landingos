@@ -884,7 +884,8 @@
     "saved": "Enregistré",
     "status": "Statut",
     "chooseApp": "Choisissez une application à ouvrir.",
-    "noProducts": "Aucun produit n'est activé pour cette société."
+    "noProducts": "Aucun produit n'est activé pour cette société.",
+    "noMemberships": "Votre compte n'est membre d'aucune société pour l'instant. Demandez une invitation à un administrateur, ou créez une nouvelle société."
   },
   "join": {
     "title": "Rejoindre un espace de travail",
