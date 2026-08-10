@@ -9,7 +9,6 @@ import { resolveStatus, toneVars } from "@landingos/ui";
 import { formatMoney, formatNumber, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
-import { ConsoleShell } from "@/components/console/console-shell";
 import {
   PageHeader, PageBody, Section, Notice, EmptyState, Stat, StatGrid,
 } from "@/components/console/ui/primitives";
@@ -138,7 +137,7 @@ export default async function BuilderOverview() {
   }
 
   return (
-    <ConsoleShell session={session} productId="website-builder">
+    <>
       <PageBody>
         <PageHeader
           title={session.tenant?.name}
@@ -297,6 +296,6 @@ export default async function BuilderOverview() {
           </Section>
         )}
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

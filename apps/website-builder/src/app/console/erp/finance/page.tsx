@@ -7,7 +7,6 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { financeStrings } from "@/lib/console/erp-strings";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import {
@@ -102,7 +101,7 @@ export default async function ErpFinanceScreen() {
   }));
 
   return (
-    <ConsoleShell session={session} productId="erp">
+    <>
       <PageBody>
       <PageHeader title={t("erp.finance.title")} description={t("erp.finance.appendOnly")} />
 
@@ -248,6 +247,6 @@ export default async function ErpFinanceScreen() {
         ]}
       />
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

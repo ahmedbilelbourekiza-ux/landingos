@@ -6,7 +6,6 @@ import { can } from "@landingos/auth";
 import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { inventoryView } from "@/lib/erp/inventory";
@@ -109,7 +108,7 @@ export default async function ErpProductDetailScreen({
   );
 
   return (
-    <ConsoleShell session={session} productId="erp">
+    <>
       <PageBody>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold">{product.name || product.reference || product.id}</h1>
@@ -213,6 +212,6 @@ export default async function ErpProductDetailScreen({
         ]}
       />
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

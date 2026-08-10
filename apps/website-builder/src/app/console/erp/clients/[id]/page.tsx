@@ -8,7 +8,6 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageBody } from "@/components/console/ui/primitives";
 import { DataTable, StatusPill } from "@/components/console/data-table";
 import { ClientEditPanel } from "@/components/console/erp/client-write";
@@ -86,7 +85,7 @@ export default async function ErpClientDetailScreen({
   );
 
   return (
-    <ConsoleShell session={session} productId="erp">
+    <>
       <PageBody>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold" data-flash-id={client.id}>
@@ -257,6 +256,6 @@ export default async function ErpClientDetailScreen({
         ]}
       />
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

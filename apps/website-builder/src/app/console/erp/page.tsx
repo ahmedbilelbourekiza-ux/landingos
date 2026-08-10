@@ -10,7 +10,6 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 import { resolveStatus, toneVars } from "@landingos/ui";
 
 import { requireProduct } from "@/lib/console/product-page";
-import { ConsoleShell } from "@/components/console/console-shell";
 import {
   PageHeader, PageBody, Section, Notice, EmptyState,
 } from "@/components/console/ui/primitives";
@@ -253,7 +252,7 @@ export default async function ErpOverview({
   }));
 
   return (
-    <ConsoleShell session={session} productId="erp">
+    <>
       <PageBody>
         <PageHeader
           title={t("erp.overview.title")}
@@ -542,6 +541,6 @@ export default async function ErpOverview({
           </Section>
         </div>
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

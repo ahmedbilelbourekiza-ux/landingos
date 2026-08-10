@@ -6,7 +6,6 @@ import { can } from "@landingos/auth";
 
 import { requireConsoleSession } from "@/lib/console/session";
 import { getTranslations } from "next-intl/server";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 
 export const dynamic = "force-dynamic";
@@ -89,7 +88,7 @@ export default async function DeliveryPricesPage({
   const priced = prices.length;
 
   return (
-    <ConsoleShell session={session} productId={null}>
+    <>
       <PageBody>
       <PageHeader title={t("settings.deliveryPrices")} />
       <p className="mt-1 text-sm text-muted-foreground">
@@ -166,6 +165,6 @@ export default async function DeliveryPricesPage({
         </button>
       </form>
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

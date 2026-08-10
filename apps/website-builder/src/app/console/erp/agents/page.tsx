@@ -8,7 +8,6 @@ import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { agentStrings } from "@/lib/console/erp-strings";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { AgentRowActions } from "@/components/console/erp/agent-write";
@@ -99,7 +98,7 @@ export default async function ErpAgentsScreen() {
   const jobRoles = JOB_ROLES.map((value) => ({ value, label: t(`erp.jobRole.${value}`) }));
 
   return (
-    <ConsoleShell session={session} productId="erp">
+    <>
       <PageBody>
       <PageHeader title={t("erp.agents.title")} />
 
@@ -282,6 +281,6 @@ export default async function ErpAgentsScreen() {
         ]}
       />
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

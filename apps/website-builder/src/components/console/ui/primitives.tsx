@@ -592,10 +592,12 @@ export function Notice({
  *
  * Every console page is `force-dynamic` and opens a tenant-bound transaction,
  * so every navigation had a dead interval with nothing on screen. These are
- * what the new `loading.tsx` files render — deliberately the SHAPE of the
- * screen rather than a spinner, because a spinner says "wait" and a shape says
- * "this is where the table will be", which is the difference between a console
- * that feels slow and one that feels answered.
+ * what the shell's pending overlay renders during navigation (UI.6 —
+ * `content-pending.tsx`, deliberately NOT `loading.tsx`, whose streaming
+ * would cost every screen-level notFound() its 404). The SHAPE of the screen
+ * rather than a spinner, because a spinner says "wait" and a shape says
+ * "this is where the table will be", which is the difference between a
+ * console that feels slow and one that feels answered.
  */
 export function Skeleton({ className }: { readonly className?: string }) {
   return (
@@ -623,5 +625,30 @@ export function TableSkeleton({ rows = 8, cols = 5 }: { rows?: number; cols?: nu
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * A whole screen's worth: title, toolbar, table. The one shape the shell's
+ * pending overlay shows for every destination — it cannot know which screen
+ * is coming, and a list is what most console screens are. Wrong-but-close for
+ * a dashboard or a settings form beats a spinner for either.
+ */
+export function PageSkeleton() {
+  return (
+    <PageBody>
+      <div className="mb-1 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <Skeleton className="h-7 w-48" />
+          <Skeleton className="mt-2 h-4 w-72 max-w-full" />
+        </div>
+        <Skeleton className="h-9 w-28" />
+      </div>
+      <div className="flex gap-2">
+        <Skeleton className="h-9 w-36" />
+        <Skeleton className="h-9 w-28" />
+      </div>
+      <TableSkeleton />
+    </PageBody>
   );
 }

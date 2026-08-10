@@ -18,7 +18,6 @@ import { getTranslations } from "next-intl/server";
 
 import { requireConsoleSession } from "@/lib/console/session";
 import { actionErrors } from "@/lib/console/action-errors";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { NotifyPreferences } from "@/components/console/notify-preferences";
 import { notifyPrefStrings } from "@/lib/console/erp-strings";
@@ -128,7 +127,7 @@ export default async function ProfilePage({
   };
 
   return (
-    <ConsoleShell session={session} productId={null}>
+    <>
       <PageBody>
       <PageHeader title={t("settings.profile")} description={t("settings.profileHint")} />
 
@@ -256,6 +255,6 @@ export default async function ProfilePage({
         />
       )}
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

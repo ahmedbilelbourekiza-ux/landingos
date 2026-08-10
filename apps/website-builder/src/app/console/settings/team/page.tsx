@@ -7,7 +7,6 @@ import { withTenant } from "@landingos/db";
 import { requireConsoleSession } from "@/lib/console/session";
 import { actionErrors } from "@/lib/console/action-errors";
 import { teamStrings } from "@/lib/console/platform-strings";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { TeamScreen } from "@/components/console/platform/team-screen";
 import type { WriteOption } from "@/components/console/edit-field";
@@ -117,7 +116,7 @@ export default async function TeamSettingsPage() {
   }));
 
   return (
-    <ConsoleShell session={session} productId={null}>
+    <>
       <PageBody>
       <PageHeader title={t("team.title")} description={t("team.description")} />
 
@@ -132,7 +131,7 @@ export default async function TeamSettingsPage() {
         />
       </div>
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }
 

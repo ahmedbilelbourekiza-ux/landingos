@@ -296,7 +296,7 @@ In rough order of value:
 | 1 | Editor i18n (LB.13) | M | The largest remaining "one product" gap: an ar/fr console opens an English editor |
 | 2 | Notification write-time i18n (§11.1) | M | The bell is translated; what it says is not |
 | 3 | Analytics comparisons + `performance()` consolidation (PM.10) | S | Wiring that exists; also a 3.7s → ~2s screen |
-| 4 | `ConsoleShell` into `console/layout.tsx`, then `loading.tsx` per segment (UI.6) | M | Still the only thing blocking real route-level loading states |
+| 4 | ~~`ConsoleShell` into `console/layout.tsx`, then `loading.tsx` per segment (UI.6)~~ | M | **DONE 10 Aug (see §15)** — with a design correction: segment layouts yes, `loading.tsx` NO (it would stream every screen-level `notFound()` into a 200); the skeleton is client-driven instead |
 | 5 | Builder orders list: pagination + filters | M | The ERP lists page and filter; the builder's are capped first-50 reads — same `<Pager>`/`<FilterBar>` primitives, one afternoon each |
 | 6 | Quick search on a phone (PM.11) | S | Still `hidden md:block`; a drawer search item is the likely shape |
 | 7 | Editor money inputs off `type="number"` (LB.15) | S | D-06 style residue in the pricing section |
@@ -354,3 +354,52 @@ console-shell **16/16** · builder-sections **50/50** · erp screens
 because the server was restarted MID-SUITE for log capture — self-inflicted,
 recorded as another instance of "a restart is a write to the thing under
 test."
+
+---
+
+## 15. Addendum — UI.6, route-level loading states (10 Aug 2026)
+
+Implemented and verified locally against build `ZmiVpfBdBU5nYddMMtJ7B`;
+committed/deployed per the repo history (check `git log` rather than trusting
+this line).
+
+**What moved.** `ConsoleShell` left the 34 pages that each rendered it and
+became the SEGMENT's: `console/erp/layout.tsx`, `console/settings/layout.tsx`
+and `console/builder/(shell)/layout.tsx` — a route group, because the editor
+(`pages/[id]/edit`, full-bleed by design) and the `delivery-prices` redirect
+must stay outside the shell. `console/page.tsx` and `console/[product]/page.tsx`
+keep their own shell (they sit above the segments). `getConsoleSession` is
+wrapped in React `cache()` so the layout and the page share one session read
+per request. Auth stays with the PAGES (each still calls
+`requireConsoleSession` with its own `next`); a session-less layout passes
+children through bare and lets the page's redirect fire.
+
+**The design correction the suites forced.** The plan said `loading.tsx` per
+segment, and the first build did exactly that — and `console-shell` failed it:
+a Suspense boundary means the response STREAMS, status 200 first, so every
+screen-level `notFound()` (unbought product, permission-gated screen, another
+tenant's record id) arrived too late to set its status. The suites pin dozens
+of those as real 404s because "confirming it exists is itself information".
+The `loading.tsx` files were deleted and the skeleton went CLIENT-side:
+`content-pending.tsx` lifts the `useLinkStatus` bit that already spins the nav
+item (UI.17) into a shared store, and the shell's main area swaps the outgoing
+screen for `PageSkeleton` while any nav link's navigation is in flight. No
+click interception, no heuristics, no status-code cost. The product layouts
+also gate entitlement themselves — probed, not assumed:
+`console/not-found.tsx` renders ABOVE the segment layouts, so a page-level
+`notFound()` already ships a shell-free 404 today; the layout gate exists so
+probe requests never pay the shell's own reads, so the refusal is stated
+where the frame is drawn, and so a future segment-level `not-found.tsx`
+(which WOULD move the boundary inside the shell) cannot leak unbought
+chrome. A new console-shell test pins the chrome-free 404 body either way
+(the suite is 20 tests now).
+
+**Verified in the running product** (method per §"Method note"): shell DOM
+persists across in-segment navigation (tagged node survived), skeleton
+appears during navigation and clears on commit, editor still full-bleed,
+redirect intact, drawer + `locale-mobile` unchanged at 360px. Suites, per
+file, judged with reruns on the documented shared-Neon transients (all
+P1001-evidenced in the server log): console-shell **19/19** · erp screens
+**173/173** · team **63/63** · billing **19/19** · builder-sections **50/50**
+· builder-api **23/23** · notifications **48/48** · hardening **12/12** ·
+i18n **20/20**.

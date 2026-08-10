@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -32,8 +33,13 @@ export interface ConsoleSession extends ResolvedSession {
   readonly permissions: string[];
 }
 
-/** Resolve the console session, or null. Never redirects. */
-export async function getConsoleSession(): Promise<ConsoleSession | null> {
+/** Resolve the console session, or null. Never redirects.
+ *
+ * `cache()` because since UI.6 the session is resolved twice per request —
+ * once by the segment layout that draws the shell, once by the page that
+ * authorizes itself — and both must see the same answer from one database
+ * read. The memo is per-request; nothing outlives it. */
+export const getConsoleSession = cache(async (): Promise<ConsoleSession | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const session = await resolveSession(token);
   if (!session) return null;
@@ -44,7 +50,7 @@ export async function getConsoleSession(): Promise<ConsoleSession | null> {
   const permissions = session.auth ? grantedPermissions(session.auth) : [];
 
   return { ...session, products, permissions };
-}
+});
 
 /**
  * Resolve the session or send the visitor to sign in.

@@ -6,7 +6,6 @@ import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { FollowupAssign, Countdown } from "@/components/console/erp/followup-assign";
@@ -93,7 +92,7 @@ export default async function ErpFollowUpScreen() {
   const tickStrings = countdownStrings(t);
 
   return (
-    <ConsoleShell session={session} productId="erp">
+    <>
       <PageBody>
       <PageHeader title={t("erp.followUp.title")} />
 
@@ -186,6 +185,6 @@ export default async function ErpFollowUpScreen() {
         ]}
       />
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

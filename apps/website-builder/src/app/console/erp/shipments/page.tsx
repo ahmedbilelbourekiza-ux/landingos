@@ -7,7 +7,6 @@ import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 import { requireProduct } from "@/lib/console/product-page";
 import { Pager } from "@/components/console/pager";
 import { pagerStrings, densityStrings } from "@/lib/console/erp-strings";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable, StatusPill } from "@/components/console/data-table";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { ListFrame } from "@/components/console/ui/list-frame";
@@ -57,7 +56,7 @@ export default async function ErpShipmentsScreen({
   });
 
   return (
-    <ConsoleShell session={session} productId="erp">
+    <>
       <PageBody>
       <PageHeader title={t("erp.shipments.title")} />
 
@@ -124,6 +123,6 @@ export default async function ErpShipmentsScreen({
       />
       </ListFrame>
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

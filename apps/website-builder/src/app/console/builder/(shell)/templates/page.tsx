@@ -3,7 +3,6 @@ import { Palette } from "lucide-react";
 import { forTenant } from "@landingos/db";
 
 import { requireProduct } from "@/lib/console/product-page";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody, EmptyState } from "@/components/console/ui/primitives";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +40,7 @@ export default async function BuilderTemplatesScreen() {
   });
 
   return (
-    <ConsoleShell session={session} productId="website-builder">
+    <>
       <PageBody>
         <PageHeader
           title={t("builder.nav.templates")}
@@ -101,6 +100,6 @@ export default async function BuilderTemplatesScreen() {
           </ul>
         )}
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

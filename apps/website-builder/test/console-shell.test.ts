@@ -174,6 +174,23 @@ describe('the shell shows exactly what the tenant bought', () => {
     assert.equal(r.status, 404);
   });
 
+  test('the unbought product 404 wears none of its chrome', { skip: skip() }, async () => {
+    // UI.6 moved the shell AND the entitlement gate into the segment layouts.
+    // The status code above proves the refusal; this pins the part a status
+    // cannot: the 404 BODY must carry no trace of the product's frame — not
+    // the sidebar, not the switcher, not its navigation. A real HTTP 404 that
+    // arrived dressed in the chrome of a product the tenant never bought
+    // would leak what the status code was chosen to withhold.
+    const r = await get('/console/builder', tokens[emails.erpOnly]);
+    assert.equal(r.status, 404);
+    assert.ok(
+      !/data-testid="console-sidebar"/.test(r.body),
+      'no shell around an unbought product 404',
+    );
+    assert.ok(!/data-product=/.test(r.body), 'no product switcher on the 404');
+    assert.ok(!/data-nav=/.test(r.body), 'no product navigation on the 404');
+  });
+
   test('a tenant with no subscription reaches no product at all', { skip: skip() }, async () => {
     const console_ = await get('/console', tokens[emails.none]);
     assert.equal(console_.status, 200);

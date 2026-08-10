@@ -2,7 +2,6 @@ import { forTenant } from "@landingos/db";
 import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 
@@ -38,7 +37,7 @@ export default async function BuilderAbandonedScreen() {
   });
 
   return (
-    <ConsoleShell session={session} productId="website-builder">
+    <>
       <PageBody>
       <PageHeader title={t("builder.nav.abandoned")} />
       <DataTable
@@ -88,6 +87,6 @@ export default async function BuilderAbandonedScreen() {
         ]}
       />
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

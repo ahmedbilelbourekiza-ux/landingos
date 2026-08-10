@@ -8,7 +8,6 @@ import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { carrierStrings } from "@/lib/console/erp-strings";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { CarrierCreatePanel, CarrierRowActions } from "@/components/console/erp/carrier-write";
@@ -115,7 +114,7 @@ export default async function ErpCarriersScreen() {
   const webhookUrl = `/api/erp/webhooks/${session.tenant?.slug ?? ""}/delivery`;
 
   return (
-    <ConsoleShell session={session} productId="erp">
+    <>
       <PageBody>
       <PageHeader title={t("erp.carriers.title")} />
 
@@ -248,6 +247,6 @@ export default async function ErpCarriersScreen() {
         ]}
       />
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

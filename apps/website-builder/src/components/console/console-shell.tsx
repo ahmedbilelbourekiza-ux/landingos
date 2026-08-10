@@ -19,7 +19,9 @@ import { NotificationProvider } from "./notification-provider";
 import { ThemeSwitcher } from "./theme-switcher";
 import { QuickSearch } from "./quick-search";
 import { ActionFeedback } from "./action-feedback";
+import { ContentPending } from "./content-pending";
 import { NavIcon } from "./ui/icon";
+import { PageSkeleton } from "./ui/primitives";
 import { pageContainer } from "./ui/styles";
 
 /* =============================================================================
@@ -72,11 +74,14 @@ export async function ConsoleShell({
   const nav = product ? productRegistry.navFor(product.id, session.permissions) : [];
 
   /* LP.7. THE BADGE COUNT IS THE SERVER'S, re-read on every render of the shell
-     — which is every console page, and which the provider's debounced
-     `router.refresh()` re-triggers when anything arrives. An in-memory counter
-     in the browser is wrong the moment a second tab marks something read, wrong
-     after a reconnect that replays, and wrong for anything raised while the tab
-     was closed. That is the defect the M-16 audit found in the ERP.
+     — which since UI.6 is the SEGMENT LAYOUT's render (entering a product,
+     any hard load, and every `router.refresh()`), not every page navigation.
+     The provider's debounced `router.refresh()` re-triggers it when anything
+     arrives, which is what keeps it correct between renders. An in-memory
+     counter in the browser is wrong the moment a second tab marks something
+     read, wrong after a reconnect that replays, and wrong for anything raised
+     while the tab was closed. That is the defect the M-16 audit found in the
+     ERP.
 
      Skipped entirely without an active tenant: `Notification` is RLS-scoped and
      there is nothing to bind. A person still choosing a company has no feed. */
@@ -334,7 +339,13 @@ export async function ConsoleShell({
         </header>
 
         <main id="console-main" tabIndex={-1} className="min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6">
-          <div className={pageContainer}>{children}</div>
+          {/* UI.6 — while a nav link's navigation is in flight, the content
+              area shows the next screen's shape instead of the stale one. The
+              signal is the same `useLinkStatus` bit that spins the nav item;
+              see content-pending.tsx for why this is not a `loading.tsx`. */}
+          <div className={pageContainer}>
+            <ContentPending skeleton={<PageSkeleton />}>{children}</ContentPending>
+          </div>
         </main>
       </div>
 

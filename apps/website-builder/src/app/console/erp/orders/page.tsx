@@ -7,7 +7,6 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable, StatusPill } from "@/components/console/data-table";
 import { FilterBar } from "@/components/console/filter-bar";
 import { Pager } from "@/components/console/pager";
@@ -662,7 +661,7 @@ export default async function ErpOrdersScreen({
   );
 
   return (
-    <ConsoleShell session={session} productId="erp">
+    <>
       <PageBody>
       <PageHeader
         title={t("erp.orders.title")}
@@ -718,6 +717,6 @@ export default async function ErpOrdersScreen({
         </ListFrame>
       </div>
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

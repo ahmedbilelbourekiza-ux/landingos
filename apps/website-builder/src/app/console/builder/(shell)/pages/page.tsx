@@ -6,7 +6,6 @@ import { resolveStatus, toneVars } from "@landingos/ui";
 import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody, EmptyState } from "@/components/console/ui/primitives";
 import { DataTable, StatusPill } from "@/components/console/data-table";
 import { PageRowActions } from "@/components/console/builder/page-row-actions";
@@ -53,7 +52,7 @@ export default async function BuilderPagesScreen() {
   });
 
   return (
-    <ConsoleShell session={session} productId="website-builder">
+    <>
       <PageBody>
       <PageHeader
         title={t("builder.nav.pages")}
@@ -169,6 +168,6 @@ export default async function BuilderPagesScreen() {
       />
       )}
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

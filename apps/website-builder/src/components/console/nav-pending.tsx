@@ -1,10 +1,13 @@
 "use client";
 
+import { useEffect } from "react";
 import { useLinkStatus } from "next/link";
 import { Loader2 } from "lucide-react";
 
+import { publishNavPending } from "./content-pending";
+
 /* =============================================================================
- * Which navigation you are waiting for — UI.17.
+ * Which navigation you are waiting for — UI.17, extended by UI.6.
  *
  * THE PROBLEM. Every console page is `export const dynamic = "force-dynamic"`
  * and opens a tenant-bound transaction; the order screen runs a count, a
@@ -14,12 +17,13 @@ import { Loader2 } from "lucide-react";
  * change of any kind — so the honest reading of a slow navigation was "the
  * click did not register", and people clicked again.
  *
- * WHY NOT `loading.tsx`. That is the obvious answer and it is wrong HERE.
- * `ConsoleShell` is rendered by each PAGE rather than by the console layout
- * (every screen resolves its own session and passes its own `productId`), so a
- * route-level Suspense fallback would replace the whole frame — the sidebar and
- * the header would blink out on every navigation. A pending state that removes
- * the navigation you are navigating with is worse than none.
+ * WHY NOT `loading.tsx`. The original reason (the shell was rendered per page,
+ * so a route fallback would blink the whole frame away) died with UI.6, which
+ * moved the shell into the segment layouts. The reason that SURVIVES is the
+ * status-code contract: a `loading.tsx` streams the response, and a streamed
+ * response cannot 404 — see content-pending.tsx, which is where this link's
+ * pending bit now also goes so the content area can show the next screen's
+ * shape while the nav item spins.
  *
  * `useLinkStatus` answers the narrower and more useful question: not "is
  * something loading" but "is THIS link the one you are waiting for". The
@@ -32,6 +36,16 @@ import { Loader2 } from "lucide-react";
 
 export function NavPending() {
   const { pending } = useLinkStatus();
+
+  // UI.6 — mirror this link's pending state into the shared store that drives
+  // the content-area skeleton. The effect's cleanup is the decrement, so a
+  // navigation that commits, fails or is superseded all release it the same
+  // way.
+  useEffect(() => {
+    if (!pending) return;
+    return publishNavPending();
+  }, [pending]);
+
   if (!pending) return null;
   return (
     <Loader2

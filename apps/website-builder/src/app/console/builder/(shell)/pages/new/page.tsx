@@ -4,7 +4,6 @@ import { can } from "@landingos/auth";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { NewLandingForm } from "@/components/console/builder/new-landing-form";
 
@@ -33,7 +32,7 @@ export default async function NewLandingPage() {
   errors.SLUG_TAKEN = t("builder.newPage.slugTaken");
 
   return (
-    <ConsoleShell session={session} productId="website-builder">
+    <>
       <PageBody>
       <PageHeader
         title={t("builder.newPage.title")}
@@ -60,6 +59,6 @@ export default async function NewLandingPage() {
         errors={errors}
       />
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

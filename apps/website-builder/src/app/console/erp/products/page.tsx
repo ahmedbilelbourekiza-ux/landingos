@@ -9,7 +9,6 @@ import { requireProduct } from "@/lib/console/product-page";
 import { FilterBar } from "@/components/console/filter-bar";
 import { Pager } from "@/components/console/pager";
 import { actionErrors } from "@/lib/console/action-errors";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
 import {
   ProductEditPanel,
@@ -202,7 +201,7 @@ export default async function ErpProductsScreen({
   });
 
   return (
-    <ConsoleShell session={session} productId="erp">
+    <>
       <PageBody>
       <PageHeader
         title={t("erp.products.title")}
@@ -438,6 +437,6 @@ export default async function ErpProductsScreen({
       />
       </ListFrame>
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

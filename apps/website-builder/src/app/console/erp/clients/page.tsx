@@ -12,7 +12,6 @@ import {
 } from "@/lib/console/erp-strings";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { ListFrame } from "@/components/console/ui/list-frame";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { DataTable } from "@/components/console/data-table";
 import { ClientExportPanel } from "@/components/console/erp/client-export";
 import { CsvImportPanel } from "@/components/console/erp/csv-import";
@@ -111,7 +110,7 @@ export default async function ErpClientsScreen({
   const currency = session.tenant!.currency;
 
   return (
-    <ConsoleShell session={session} productId="erp">
+    <>
       <PageBody>
       <PageHeader title={t("erp.clients.title")} />
 
@@ -274,6 +273,6 @@ export default async function ErpClientsScreen({
       />
       </ListFrame>
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

@@ -7,7 +7,6 @@ import { getLocale } from "next-intl/server";
 
 import { requireConsoleSession } from "@/lib/console/session";
 import { getTranslations } from "next-intl/server";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { WebhookCreatePanel, WebhookRowActions } from "@/components/console/platform/webhook-write";
@@ -63,7 +62,7 @@ export default async function IntegrationsPage() {
   ]);
 
   return (
-    <ConsoleShell session={session} productId={null}>
+    <>
       <PageBody>
       <PageHeader title={t("settings.integrations")} />
       <p className="mt-1 text-sm text-muted-foreground">
@@ -270,6 +269,6 @@ export default async function IntegrationsPage() {
         ]}
       />
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

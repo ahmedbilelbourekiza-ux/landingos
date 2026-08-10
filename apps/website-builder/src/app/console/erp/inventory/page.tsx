@@ -8,7 +8,6 @@ import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { catalogStrings, stockLabels } from "@/lib/console/erp-strings";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody, Section } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { ProductThumb } from "@/components/console/erp/product-thumb";
@@ -163,7 +162,7 @@ export default async function ErpInventoryScreen() {
   );
 
   return (
-    <ConsoleShell session={session} productId="erp">
+    <>
       <PageBody>
       <PageHeader title={t("erp.inventory.title")} />
 
@@ -300,6 +299,6 @@ export default async function ErpInventoryScreen() {
       />
       </Section>
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

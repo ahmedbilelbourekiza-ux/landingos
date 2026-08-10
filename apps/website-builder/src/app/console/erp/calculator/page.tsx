@@ -12,7 +12,6 @@ import {
   structuredStrings,
   readFixedCostRows,
 } from "@/lib/console/erp-strings";
-import { ConsoleShell } from "@/components/console/console-shell";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { ProfitCalculator } from "@/components/console/erp/profit-calculator";
@@ -144,7 +143,7 @@ export default async function ErpCalculatorScreen({
   };
 
   return (
-    <ConsoleShell session={session} productId="erp">
+    <>
       <PageBody>
       <PageHeader title={t("erp.calculator.title")} description={t("erp.calculator.subtitle")} />
 
@@ -282,6 +281,6 @@ export default async function ErpCalculatorScreen({
         ]}
       />
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }

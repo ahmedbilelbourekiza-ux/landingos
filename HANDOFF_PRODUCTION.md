@@ -152,10 +152,14 @@ plan above was executed exactly as written.
 1. ~~Separate production database~~ — **DONE 10 Aug 2026** (§4, clean start).
 2. **Decommission `erp-serveur`** — user's dashboard; suspend → verify
    nothing breaks → delete.
-3. **Route-level loading states (UI.6)** — move `ConsoleShell` into
-   `console/layout.tsx`, then `loading.tsx` per segment. The biggest
-   remaining *perceived*-performance lever: console screens render 1.2–2.8s
-   server-side with only the nav-item spinner as feedback.
+3. **Route-level loading states (UI.6)** — DONE locally 10 Aug
+   (`UIUX_PASS.md` §15): shell into segment layouts + a client-driven pending
+   skeleton (deliberately NOT `loading.tsx`, which would stream every
+   screen-level `notFound()` into a 200 — a pinned information-disclosure
+   contract). Product layouts gate entitlement; a new console-shell test pins
+   the chrome-free 404 body (suite 20/20); skeleton verified live in LTR and
+   RTL (geometry measured). Committed locally; deployed only when the repo
+   history says so.
 4. **Storefront JS diet** — the public landing page ships ~1.29MB of JS
    (more than the console); framer-motion and the template bundle are the
    suspects. This is the customer-facing surface on Algerian mobile networks.

@@ -8,7 +8,6 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
-import { ConsoleShell } from "@/components/console/console-shell";
 import {
   PageHeader, PageBody, Section, DescriptionList,
 } from "@/components/console/ui/primitives";
@@ -63,7 +62,7 @@ export default async function OrderDetailPage({
   const variants = Array.isArray(order.variants) ? (order.variants as any[]) : [];
 
   return (
-    <ConsoleShell session={session} productId="website-builder">
+    <>
       <PageBody>
         <PageHeader
           title={order.customerName}
@@ -191,6 +190,6 @@ export default async function OrderDetailPage({
           </Section>
         </div>
       </PageBody>
-    </ConsoleShell>
+    </>
   );
 }
