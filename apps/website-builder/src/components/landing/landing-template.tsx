@@ -10,6 +10,7 @@ import { ReviewsSection } from "./sections/reviews-section";
 import { FAQSection } from "./sections/faq-section";
 import { SiteFooter } from "./sections/site-footer";
 import { StickyBuyButton } from "./sections/sticky-buy-button";
+import { FloatingWhatsapp } from "./sections/floating-whatsapp";
 import { ThemeProvider } from "./theme-provider";
 import type { LandingPageData } from "@/types/landing";
 import type { LandingThemeData } from "@/types/theme";
@@ -22,9 +23,14 @@ import { createLandingOrderStore, type LandingOrderStore } from "@/lib/landing/s
 export function LandingTemplate({
   page,
   theme = DEFAULT_THEME,
+  whatsappNumber = null,
 }: {
   page: LandingPageData;
   theme?: LandingThemeData;
+  /** StoreSettings.whatsapp, supplied by the storefront page's query — the
+   *  template reads no settings itself. Null hides the floating button
+   *  regardless of the toggle (B2). */
+  whatsappNumber?: string | null;
 }) {
   const [store] = React.useState<LandingOrderStore>(() =>
     createLandingOrderStore(page),
@@ -53,6 +59,9 @@ export function LandingTemplate({
           buttonText={page.buttonText}
           currency={page.currency}
         />
+      )}
+      {setting?.floatingWhatsapp && whatsappNumber && (
+        <FloatingWhatsapp number={whatsappNumber} />
       )}
     </ThemeProvider>
   );

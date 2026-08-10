@@ -12,6 +12,20 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **B2 (CAPABILITY_AUDIT)** The LandingSetting toggles get their controls
+  (10 August 2026). All five display toggles plus `freeShipping` were stored
+  and (partially) honoured with no way for a merchant to set them —
+  `freeShipping` the sharpest case: checkout has zeroed the delivery charge
+  on it since the port. Shipped: a Display editor section (five toggles,
+  saving through the order-form route that already accepted them),
+  `freeShipping` in the Shipping section, the missing `FloatingWhatsapp`
+  storefront component (number from `StoreSettings.whatsapp`, wa.me
+  normalisation local-0 → 213, absent without toggle or number), and the
+  editor preview honouring the toggles live. Tests: builder-sections 54→56,
+  storefront 28→30 (incl. the money contract: an order on a free-shipping
+  page bills product price only). `countdownEnabled` stays recorded — it
+  needs a target-date column to mean anything (audit §4).
+
 - **LB.12** Benefits + FAQ end to end (10 August 2026, from `CAPABILITY_AUDIT.md` B1).
   The audit's measurement made it bigger than the queue entry: beyond the known
   gaps (no `features`/`faqs` routes, "Coming Soon" editor stubs,

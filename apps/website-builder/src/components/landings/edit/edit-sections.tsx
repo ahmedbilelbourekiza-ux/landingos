@@ -14,6 +14,7 @@ import {
   Plug,
   Rows3,
   Truck,
+  Eye,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,6 +31,7 @@ import { FaqSection } from "./sections/faq-section";
 import { OrderFormSection } from "./sections/order-form-section";
 import { DescriptionImagesSection } from "./sections/description-images-section";
 import { ShippingSection } from "./sections/shipping-section";
+import { DisplaySection } from "./sections/display-section";
 import { SeoSection, type SeoValues } from "./sections/seo-section";
 const SECTIONS: {
   id: string;
@@ -44,6 +46,7 @@ const SECTIONS: {
   { id: "variants", title: "Variants", description: "Colors, sizes, and product options.", icon: Layers },
   { id: "shipping", title: "Shipping", description: "Home delivery, stop desk, or both.", icon: Truck },
   { id: "order-form", title: "Order Form", description: "Configure the purchase form fields.", icon: ShoppingCart },
+  { id: "display", title: "Display", description: "Which sections your page shows.", icon: Eye },
   { id: "benefits", title: "Benefits", description: "Trust badges and key selling points.", icon: Sparkles },
   { id: "reviews", title: "Reviews", description: "Customer testimonials and ratings.", icon: Star },
   { id: "faq", title: "FAQ", description: "Frequently asked questions.", icon: HelpCircle },
@@ -78,6 +81,7 @@ export function EditSections({
       descriptionImages: (v: PreviewState["descriptionImages"]) =>
         onPreviewChange("descriptionImages", v),
       shipping: (v: PreviewState["shipping"]) => onPreviewChange("shipping", v),
+      display: (v: PreviewState["display"]) => onPreviewChange("display", v),
     }),
     [onPreviewChange],
   );
@@ -132,6 +136,16 @@ export function EditSections({
               landingId={landingId}
               initialValues={preview.shipping}
               onPreviewChange={callbacks.shipping}
+            />
+          );
+        }
+        if (section.id === "display") {
+          return (
+            <DisplaySection
+              key={section.id}
+              landingId={landingId}
+              initialValues={preview.display}
+              onPreviewChange={callbacks.display}
             />
           );
         }

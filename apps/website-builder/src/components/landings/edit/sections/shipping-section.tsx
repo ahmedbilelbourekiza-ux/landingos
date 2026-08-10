@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Truck, Store, AlertCircle } from "lucide-react";
+import { Truck, Store, BadgePercent, AlertCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -74,7 +74,8 @@ export function ShippingSection({
       const next = { ...prev, [key]: !prev[key] };
       // Blocked in the UI as well as the API: turning the last method off
       // would leave a product no customer could order, and catching it on the
-      // click explains why instead of failing on save.
+      // click explains why instead of failing on save. `freeShipping` is not
+      // a method — free-of-charge is still delivered — so it never trips this.
       if (!next.homeDeliveryEnabled && !next.stopDeskEnabled) {
         setValidationError("At least one shipping method must stay enabled.");
         return prev;
@@ -110,6 +111,38 @@ export function ShippingSection({
             {validationError}
           </p>
         )}
+
+        {/* CAPABILITY_AUDIT B2 — the checkout has zeroed the delivery charge
+            on this flag since the port; this switch is the half that was
+            missing. Separate from METHODS: free is a price, not a method. */}
+        <label
+          className={cn(
+            "flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors",
+            values.freeShipping ? "border-primary/40 bg-primary/5" : "bg-muted/20 hover:bg-muted/40",
+          )}
+        >
+          <input
+            type="checkbox"
+            checked={values.freeShipping}
+            onChange={() => toggle("freeShipping")}
+            className="mt-1 size-4 accent-primary"
+          />
+          <BadgePercent
+            className={cn(
+              "mt-0.5 size-4 shrink-0",
+              values.freeShipping ? "text-primary" : "text-muted-foreground",
+            )}
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="text-sm font-medium">
+              Free shipping{" "}
+              <span className="text-xs font-normal text-muted-foreground">· Livraison gratuite</span>
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              The customer pays no delivery charge — checkout totals exclude it.
+            </span>
+          </span>
+        </label>
 
         {METHODS.map((method) => {
           const checked = values[method.key];

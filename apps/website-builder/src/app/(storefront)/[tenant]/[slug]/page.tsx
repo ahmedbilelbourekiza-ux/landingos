@@ -27,8 +27,8 @@ async function load(tenantSlug: string, pageSlug: string) {
   const tenant = await resolveStorefrontTenant(tenantSlug);
   if (!tenant) return null;
 
-  const page = await withTenant(tenant.id, (db) =>
-    (db as any).landingPage.findFirst({
+  const [page, store] = await withTenant(tenant.id, async (db) => [
+    await (db as any).landingPage.findFirst({
       where: { slug: pageSlug, published: true, status: "PUBLISHED" },
       include: {
         media: { orderBy: { displayOrder: "asc" } },
@@ -40,9 +40,15 @@ async function load(tenantSlug: string, pageSlug: string) {
         theme: true,
       },
     }),
-  );
+    // The floating WhatsApp button's number (B2) — read here because the
+    // template deliberately reads no settings itself.
+    await (db as any).storeSettings.findUnique({
+      where: { tenantId: tenant.id },
+      select: { whatsapp: true },
+    }),
+  ]);
 
-  return page ? { tenant, page } : null;
+  return page ? { tenant, page, whatsapp: store?.whatsapp ?? null } : null;
 }
 
 export async function generateMetadata({
@@ -143,7 +149,11 @@ export default async function StorefrontLandingPage({
         {/* toLandingPageData, not toPreviewState: the latter is the EDITOR's
             shape and the template takes the public one. Passing the wrong
             mapper compiles fine and throws at render. */}
-        <LandingTemplate page={toLandingPageData(found.page)} theme={toThemeData(found.page.theme)} />
+        <LandingTemplate
+          page={toLandingPageData(found.page)}
+          theme={toThemeData(found.page.theme)}
+          whatsappNumber={found.whatsapp}
+        />
       </StorefrontApiProvider>
     </div>
   );

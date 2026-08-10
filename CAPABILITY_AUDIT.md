@@ -44,12 +44,17 @@ merchant can see.** Verified per toggle:
 | `freeShipping` | yes | **YES — checkout zeroes shipping** (`storefront/[tenant]/orders/route.ts:109`) | **none** |
 | `stickyBuyButton` | yes | yes (`sticky-buy-button.tsx`) | **none** |
 `freeShipping` is the sharpest: a working money-affecting capability no
-merchant can switch on. **Slice 2:** a display/behaviour editor section wiring
-`freeShipping`, `stickyBuyButton`, `showReviews/FAQ/Features` (with the
-template taught to honour the three `show*`), and `floatingWhatsapp` gets its
-storefront component (number from `StoreSettings.whatsapp`).
-`countdownEnabled` needs a target date **column** — recorded, not built (see
-§4).
+merchant can switch on. **Slice 2 — DONE 10 Aug:** a new Display editor
+section drives the five toggles through the order-form route (which had
+accepted them since the port); `freeShipping` joined the Shipping section
+(the route already took it); `floatingWhatsapp` got its storefront component
+(number plumbed from `StoreSettings.whatsapp` by the page query, wa.me
+normalisation 0→213); the editor preview honours the toggles live. Tests:
+builder-sections 56/56 (toggle persistence through both routes), storefront
+30/30 (the freeShipping money contract — total excludes the delivery charge —
+and the WhatsApp render/absence contract). Live-verified through the real
+editor and store-settings screens. `countdownEnabled` needs a target date
+**column** — recorded, not built (see §4).
 
 **B3. Categories: full CRUD API, read-only screen.**
 EXISTS: `POST/GET /api/builder/categories`, `PATCH/DELETE …/[id]` (validated,

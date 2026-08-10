@@ -931,3 +931,36 @@ describe('benefits and FAQ reach the customer (LB.12)', { skip }, () => {
     );
   });
 });
+
+describe('the display and shipping toggles have real write paths (B2)', { skip }, () => {
+  test('the order-form route persists the display toggles alone', async () => {
+    const r = await patch(`/api/builder/landings/${pageId}/order-form`, tokens.owner, {
+      showFAQ: false, stickyBuyButton: false, floatingWhatsapp: true,
+    });
+    assert.equal(r.status, 200);
+    const s = await withTenant(tenant, (tx) =>
+      (tx as any).landingSetting.findUnique({ where: { landingPageId: pageId } }),
+    );
+    assert.equal(s.showFAQ, false);
+    assert.equal(s.stickyBuyButton, false);
+    assert.equal(s.floatingWhatsapp, true);
+    // Restore for anything that runs after.
+    await patch(`/api/builder/landings/${pageId}/order-form`, tokens.owner, {
+      showFAQ: true, stickyBuyButton: true, floatingWhatsapp: false,
+    });
+  });
+
+  test('the shipping route persists freeShipping beside the methods', async () => {
+    const r = await patch(`/api/builder/landings/${pageId}/shipping`, tokens.owner, {
+      homeDeliveryEnabled: true, stopDeskEnabled: false, freeShipping: true,
+    });
+    assert.equal(r.status, 200);
+    const s = await withTenant(tenant, (tx) =>
+      (tx as any).landingSetting.findUnique({
+        where: { landingPageId: pageId }, select: { freeShipping: true },
+      }),
+    );
+    assert.equal(s.freeShipping, true);
+    await patch(`/api/builder/landings/${pageId}/shipping`, tokens.owner, { freeShipping: false });
+  });
+});

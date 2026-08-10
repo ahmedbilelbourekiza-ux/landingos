@@ -64,14 +64,13 @@ export function previewToLandingPage(preview: PreviewState): LandingPageData {
     })),
     setting: {
       countdownEnabled: false,
-      stickyBuyButton: true,
-      floatingWhatsapp: false,
-      // TRUE in the preview, deliberately: the drawer must show the reviews,
-      // benefits and FAQ the merchant is editing right now — a preview that
-      // hides what you just typed reads as a save that failed (LB.12).
-      showReviews: true,
-      showFAQ: true,
-      showFeatures: true,
+      // The merchant's own toggles (B2) — the preview shows exactly what the
+      // published page will: flip FAQ off and the drawer's FAQ disappears.
+      stickyBuyButton: preview.display.stickyBuyButton,
+      floatingWhatsapp: preview.display.floatingWhatsapp,
+      showReviews: preview.display.showReviews,
+      showFAQ: preview.display.showFAQ,
+      showFeatures: preview.display.showFeatures,
       homeDeliveryEnabled: preview.shipping.homeDeliveryEnabled,
       stopDeskEnabled: preview.shipping.stopDeskEnabled,
     },

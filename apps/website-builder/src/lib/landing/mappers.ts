@@ -226,6 +226,14 @@ export function toPreviewState(page: LandingWithRelations): PreviewState {
     shipping: {
       homeDeliveryEnabled: page.setting?.homeDeliveryEnabled ?? true,
       stopDeskEnabled: page.setting?.stopDeskEnabled ?? false,
+      freeShipping: page.setting?.freeShipping ?? false,
+    },
+    display: {
+      stickyBuyButton: page.setting?.stickyBuyButton ?? true,
+      floatingWhatsapp: page.setting?.floatingWhatsapp ?? false,
+      showReviews: page.setting?.showReviews ?? true,
+      showFAQ: page.setting?.showFAQ ?? true,
+      showFeatures: page.setting?.showFeatures ?? true,
     },
   };
 }

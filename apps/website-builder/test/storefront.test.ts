@@ -482,3 +482,52 @@ describe('the checkout body is the contract the form sends (LB.1)', { skip }, ()
     assert.ok(Array.isArray(w.baladias));
   });
 });
+
+describe('free shipping and the floating WhatsApp reach the customer (B2)', { skip }, () => {
+  test('freeShipping zeroes the delivery charge the customer pays', async () => {
+    // The flag has been honoured by checkout since the port; what was missing
+    // was any way to set it. Arrange the row the way the editor's new switch
+    // lands it, then prove the money.
+    await withTenant(tenantA, (db) => (db as any).landingSetting.upsert({
+      where: { landingPageId: publishedA },
+      create: { tenantId: tenantA, landingPageId: publishedA, freeShipping: true },
+      update: { freeShipping: true },
+    }));
+    const r = await post(`/api/storefront/${slugA}/orders`, {
+      landingPageId: publishedA, customerName: 'Free Ship', phone: '0555030405',
+      wilayaId, baladiaName: 'Somewhere', quantity: 1, shippingMethod: 'HOME',
+    });
+    assert.equal(r.status, 201);
+    assert.equal(r.body.data.total, '3000', 'the 500 delivery charge must not be billed');
+    // Leave the flag off for every pricing assertion that follows.
+    await withTenant(tenantA, (db) => (db as any).landingSetting.update({
+      where: { landingPageId: publishedA }, data: { freeShipping: false },
+    }));
+  });
+
+  test('the WhatsApp button renders only when toggled AND a number exists', async () => {
+    const before = await get(`/${slugA}/shared-item`);
+    assert.ok(!/data-testid="floating-whatsapp"/.test(before.text), 'absent by default');
+
+    await withTenant(tenantA, async (db) => {
+      await (db as any).landingSetting.update({
+        where: { landingPageId: publishedA }, data: { floatingWhatsapp: true },
+      });
+      await (db as any).storeSettings.upsert({
+        where: { tenantId: tenantA },
+        create: { tenantId: tenantA, whatsapp: '0555 12 34 56' },
+        update: { whatsapp: '0555 12 34 56' },
+      });
+    });
+    const on = await get(`/${slugA}/shared-item`);
+    assert.match(on.text, /data-testid="floating-whatsapp"/);
+    // The local 0… number became international digits for wa.me.
+    assert.match(on.text, /wa\.me\/213555123456/);
+
+    await withTenant(tenantA, (db) => (db as any).landingSetting.update({
+      where: { landingPageId: publishedA }, data: { floatingWhatsapp: false },
+    }));
+    const off = await get(`/${slugA}/shared-item`);
+    assert.ok(!/data-testid="floating-whatsapp"/.test(off.text), 'the toggle is the off switch');
+  });
+});

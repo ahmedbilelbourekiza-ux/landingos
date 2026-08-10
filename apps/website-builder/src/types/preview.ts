@@ -14,10 +14,23 @@ export interface DescriptionImagesPreviewValues {
 }
 
 // Shipping methods offered for this product. At least one must stay enabled —
-// a product offering neither cannot be ordered.
+// a product offering neither cannot be ordered. `freeShipping` zeroes the
+// delivery charge at checkout (the API has honoured it since the port; the
+// switch reached the editor with CAPABILITY_AUDIT B2).
 export interface ShippingPreviewValues {
   homeDeliveryEnabled: boolean;
   stopDeskEnabled: boolean;
+  freeShipping: boolean;
+}
+
+// Which optional sections the page shows — the LandingSetting toggles that
+// were stored and honoured nowhere a merchant could reach (B2).
+export interface DisplayPreviewValues {
+  stickyBuyButton: boolean;
+  floatingWhatsapp: boolean;
+  showReviews: boolean;
+  showFAQ: boolean;
+  showFeatures: boolean;
 }
 
 export interface PreviewState {
@@ -31,4 +44,5 @@ export interface PreviewState {
   orderForm: OrderFormPreviewValues;
   descriptionImages: DescriptionImagesPreviewValues;
   shipping: ShippingPreviewValues;
+  display: DisplayPreviewValues;
 }
