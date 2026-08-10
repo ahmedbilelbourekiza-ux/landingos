@@ -1,9 +1,11 @@
 # HANDOFF_PRODUCTION — deployment and production state
 
-**Written:** 9 August 2026, ~19:00 UTC · **For:** the next conversation/agent
-picking this project up. Read this FIRST for anything touching production;
-`PROJECT_STATE.md` (platform history), `BUILDER_HANDOFF.md` (product) and
-`UIUX_PASS.md` (the UI/UX + mobile passes) remain the deep references.
+**Written:** 9 August 2026, ~19:00 UTC · **Updated:** 10 August 2026 (the
+separate production database is now LIVE — see §4) · **For:** the next
+conversation/agent picking this project up. Read this FIRST for anything
+touching production; `PROJECT_STATE.md` (platform history),
+`BUILDER_HANDOFF.md` (product) and `UIUX_PASS.md` (the UI/UX + mobile passes)
+remain the deep references.
 
 ---
 
@@ -44,10 +46,12 @@ picking this project up. Read this FIRST for anything touching production;
 
 ## 3. IMPORTANT PRODUCTION INFRASTRUCTURE STATE
 
-- **Database:** production uses the EXISTING Neon database
-  (`ep-summer-shadow-…/neondb`, eu-central-1) — **the same database local dev
-  and the contract suites use.** It contains months of test fixtures
-  alongside the demo/acme tenants.
+- **Database (since 10 Aug 2026):** production uses the DEDICATED
+  `landingos_prod` database on the same Neon cluster
+  (`ep-summer-shadow-…`, eu-central-1), connected as `landingos_app` via the
+  pooler. **Local dev and the contract suites stay on `neondb`** — the shared
+  fixture/dev database no longer serves production. `neondb` was left
+  untouched (rollback = revert Render's `DATABASE_URL` path to `/neondb`).
 - **The RLS incident (9 Aug), fixed:** Render's `DATABASE_URL` originally
   carried the owner credential (`neondb_owner`, BYPASSRLS) — with the app
   deliberately writing no `where: {tenantId}`, production served **every
@@ -71,7 +75,42 @@ picking this project up. Read this FIRST for anything touching production;
 - **Not deployed:** `services/worker` — no scheduled ERP jobs (follow-up
   escalation, overdue sweep, carrier polling) run in production.
 
-## 4. SEPARATE PRODUCTION DATABASE (prepared, NOT executed)
+## 4. SEPARATE PRODUCTION DATABASE (EXECUTED 10 Aug 2026 — clean start)
+
+**This section's plan was carried out on 10 August 2026 with the user's
+explicit approval, using the clean-start option.** What happened, in order:
+
+1. `_provision-prod-db.ts` ran: `landingos_prod` created on the same cluster,
+   `landingos_app` granted on existing + future objects, role verified
+   NOBYPASSRLS/NOSUPERUSER. The script was deleted afterwards, per its own
+   "throwaway (deleted after use)" contract (its content survives in the
+   9–10 Aug session records).
+2. `prisma db push` (exit 0, datasource confirmed `landingos_prod`), then
+   `apply-rls` (48/48 tenant-scoped tables, USING + WITH CHECK, FORCE; the 5
+   expected unscoped tables), then `seed:reference` (58 wilayas / 537
+   baladias). **No `seed:demo` — the database started clean.**
+3. The full isolation preflight ran against the new database with the real
+   role split — every check PASS (deny-by-default, per-transaction scoping,
+   writes constrained, no connection leakage), scratch schema dropped.
+4. Final state read as the app role itself: `landingos_app@landingos_prod`,
+   0 tenants, 0 users, 58/537 reference rows.
+5. The user changed Render's `DATABASE_URL` path from `/neondb` to
+   `/landingos_prod` (credential, host, params unchanged). A startup hiccup
+   during the switch was resolved by the user; the end state was then
+   verified from outside (§6).
+6. **Post-switch verification:** health green incl. `isolation: rls`; root
+   `/` → 307 `/console`; unauthed `/console` → login; login + signup pages
+   200 with the full form; signup API validates (422 on empty body, writes
+   nothing); `ar`→RTL / `fr`→LTR served correctly; and the database-identity
+   proof — `/acme` and `/demo`, both previously-live storefronts, now 404.
+
+**Consequence of clean start:** the demo/acme tenants and every account that
+existed in `neondb` do NOT exist in production. Real tenants enter through
+`/console/signup`. Nothing was migrated and nothing was deleted from `neondb`.
+
+The original rationale and preparation notes are kept below for the record.
+
+### (historical) The original proposal, as prepared on 9 Aug
 
 **Why it was proposed.** Three independent reasons, all observed:
 1. **Fixture pollution** — the shared DB holds hundreds of contract-test
@@ -103,23 +142,14 @@ real tenants.
   deliberately **no** `seed:demo`). Then Render's `DATABASE_URL` changes to
   the pooled `landingos_app` URL with `/landingos_prod` as the database.
 
-**NOT executed:** none of it. The script has never run (its execution was
-permission-blocked and then deliberately deferred); `landingos_prod` does not
-exist; Render still points at `neondb`. **Do not execute any of this, and do
-not change Render's database connection, without the user's explicit
-approval.**
-
-**The decision that must precede the switch:** the new database starts
-EMPTY. The demo/acme tenants, their pages, and everything the user created
-while testing production live in `neondb` and will not follow automatically.
-Before switching, the user must decide: start production clean (tenants
-re-created via signup), or plan a deliberate data migration for whichever
-tenants are real. This is a product decision, not a technical default.
+**(historical)** At the time of the 9-Aug writing, none of this had run and
+the instruction was to wait for explicit approval plus the migrate-or-clean
+decision. On 10 Aug the user gave both (approval + **clean start**), and the
+plan above was executed exactly as written.
 
 ## 5. REMAINING WORK (in rough priority order)
 
-1. **Separate production database** (§4) — prepared, awaiting approval + the
-   migrate-or-clean decision.
+1. ~~Separate production database~~ — **DONE 10 Aug 2026** (§4, clean start).
 2. **Decommission `erp-serveur`** — user's dashboard; suspend → verify
    nothing breaks → delete.
 3. **Route-level loading states (UI.6)** — move `ConsoleShell` into
@@ -207,13 +237,14 @@ The exact first steps, in order:
 3. **Confirm `origin/main` still equals `a42676b`** (`git fetch && git log
    --oneline origin/main -1`) — if it moved, someone else deployed; re-read
    the situation before assuming this document's state.
-4. **Know the two open decisions owned by the user:** the separate production
-   database (§4 — including migrate-or-clean) and the `erp-serveur`
-   decommission. Neither may be started unprompted.
+4. **Know the open decision owned by the user:** the `erp-serveur`
+   decommission. (The separate-database decision was resolved and executed
+   10 Aug — §4.) It may not be started unprompted.
 5. The most valuable next engineering work, if the user asks "what now":
    UI.6 loading states (perceived speed) or the storefront JS diet (customer
    phones) — both scoped in §5.
 6. The demo login for local browser work is documented in the project memory
-   (`owner@demo.test`, demo tenant); the shared DB is LIVE — clean up any
-   fixtures or sessions you create (audit sessions carry distinctive
-   user-agent strings for exactly this).
+   (`owner@demo.test`, demo tenant) — it exists in `neondb` (dev/tests) ONLY;
+   production (`landingos_prod`) has no demo accounts and must stay that way.
+   Never seed demo/test fixtures into `landingos_prod`; local fixtures in
+   `neondb` still get cleaned up after scripted checks.
