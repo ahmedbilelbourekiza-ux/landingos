@@ -154,10 +154,15 @@ queue executed — LB.12 Benefits/FAQ, the display toggles, categories UI,
 tenant storefront identity, custom domains, workspace defaults, sessions
 screen — eight local commits (`ee896b4..6f3a1b4`), each measure→fix→test→
 live-verify→commit. NONE of it is deployed (deploys were off-limits).
-When it ships: no schema changes are in these commits, so a plain deploy
-suffices; the audit's §2 removals and §4 decisions (incl. B7 version
-history, which DOES need a new table + prod `db push`+RLS run) remain open
-and user-owned.**
+When it ships: no PRISMA-schema changes are in these commits, so a plain
+deploy suffices — with ONE database step now attached: the TenantDomain
+RLS resolution policy (`tenant_isolation_verified`, added to apply-rls
+after the pre-deploy Q&A found the custom-domain read path dead under RLS)
+is applied to `neondb` only. **Custom domains cannot resolve in production
+until `npm run rls` runs against `landingos_prod`** — safe-not-working
+until then, and that run is the user's call. The audit's §2 removals and
+§4 decisions (incl. B7 version history, which DOES need a new table + prod
+`db push`+RLS run) remain open and user-owned.**
 
 1. ~~Separate production database~~ — **DONE 10 Aug 2026** (§4, clean start).
 2. **Decommission `erp-serveur`** — user's dashboard; suspend → verify

@@ -190,3 +190,39 @@ describe('verification is the gate', { skip }, () => {
     assert.match(html, /data-testid="domains-manager"/);
   });
 });
+
+describe('a verified domain resolves; an unverified one serves nothing', { skip }, () => {
+  test('resolution over real HTTP flips on verifiedAt and nothing else', async () => {
+    // The defect this pins: TenantDomain's plain tenant policy blanked the
+    // UNBOUND read tenantByDomain performs, so even a VERIFIED domain fell
+    // through to the platform door. The `tenant_isolation_verified` policy
+    // (apply-rls) opens exactly the rows whose facts are public anyway.
+    const hostname = `resolve-${stamp}.example.com`;
+    const created = await post('/api/platform/domains', tokens.a, { domain: hostname });
+    assert.equal(created.status, 201);
+
+    // `x-forwarded-host` is currentHost()'s FIRST branch — the header the
+    // production proxy sets. (fetch refuses to send a bare `Host`.)
+    const probe = async () => {
+      const r = await fetch(`${BASE}/`, {
+        headers: { 'x-forwarded-host': hostname },
+        redirect: 'manual',
+      });
+      return r.headers.get('location') ?? '';
+    };
+
+    assert.match(await probe(), /\/console$/, 'unverified: the platform door, never a storefront');
+
+    // Land verification the way the DNS route's one write would.
+    await withTenant(tenantA, (tx) =>
+      (tx as any).tenantDomain.updateMany({
+        where: { domain: hostname }, data: { verifiedAt: new Date() },
+      }),
+    );
+    assert.match(
+      await probe(),
+      new RegExp(`/dom-a-${stamp}$`),
+      'verified: the same request now lands on the tenant storefront',
+    );
+  });
+});

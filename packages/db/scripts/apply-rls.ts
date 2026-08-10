@@ -153,6 +153,32 @@ async function main() {
   `);
   console.log('Invitation: added token-resolution policy for join flow');
 
+  /* TenantDomain needs a third special case — the same circularity class as
+   * the two above, found live on 10 Aug 2026 (CAPABILITY_AUDIT B5 follow-up).
+   *
+   * Resolving a custom domain is what DISCOVERS the tenant, so it necessarily
+   * happens before any tenant is bound — and under the plain tenant policy
+   * the unbound read returned nothing, which left `tenantByDomain` refusing
+   * VERIFIED rows too: the whole custom-domain read path was safe but dead,
+   * unnoticed for as long as no row could exist.
+   *
+   * Unlike a membership or an invitation, a VERIFIED domain is public by
+   * construction: the hostname serves that tenant's storefront to the whole
+   * internet, and the mapping is readable in DNS anyway. So this policy needs
+   * no session variable — it opens exactly the rows whose facts are already
+   * public. What stays closed is everything that is not: UNVERIFIED rows —
+   * which carry the verification tokens mid-proof — remain readable only
+   * through their own tenant's binding, and writes of every row are still
+   * governed by the tenant policy's WITH CHECK (FOR SELECT here, nothing
+   * else). */
+  await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS ${POLICY}_verified ON "TenantDomain"`);
+  await prisma.$executeRawUnsafe(`
+    CREATE POLICY ${POLICY}_verified ON "TenantDomain"
+      FOR SELECT
+      USING ("verifiedAt" IS NOT NULL)
+  `);
+  console.log('TenantDomain: added verified-domain resolution policy for storefront routing');
+
   console.log(`policies applied to ${applied} tables (USING + WITH CHECK, FORCE enabled)`);
   console.log('not scoped, by design: ' + unscoped.join(', '));
 

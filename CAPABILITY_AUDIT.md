@@ -127,7 +127,18 @@ Pre-existing, not introduced by B5 — it never had a row to reveal it. Failure
 direction is closed (nothing serves that shouldn't). The fix is the same
 special-case apply-rls got for Membership/Invitation: a pre-binding
 resolution policy on TenantDomain (verified rows readable unbound), applied
-to BOTH databases + a pinned test. NOT fixed yet — awaiting the user's word.**
+to BOTH databases + a pinned test.
+FIXED 10 Aug (user-approved): `tenant_isolation_verified` on TenantDomain —
+`FOR SELECT USING ("verifiedAt" IS NOT NULL)`, no session variable because a
+verified domain is public by construction (it serves the storefront to the
+whole internet and the mapping is in DNS); unverified rows and their tokens
+stay tenant-bound; writes untouched. Applied to **neondb only**; the pinned
+test ("resolution over real HTTP flips on verifiedAt and nothing else",
+platform/domains 10/10) drives `x-forwarded-host` through the running server
+both ways, and the curl Host-header probe confirms: unverified → /console,
+verified → the tenant storefront. **landingos_prod still lacks the policy —
+custom domains stay safely dead there until `npm run rls` runs against it,
+which is the user's production-change call.**
 
 **B6. Sessions: the write side quietly got built; the screen didn't.**
 EXISTS: `Session.lastSeenAt` IS now written (throttled touch,
