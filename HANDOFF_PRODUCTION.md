@@ -11,9 +11,15 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-- **Deployed commit:** `a42676b` ("A session outlives its membership, a phone
-  gets its language back") — verified serving by an **authed marker**
-  (`locale-mobile` in the rendered console shell), not assumed from the push.
+- **Deployed commit:** `86a4e90` (10 Aug 2026, ~01:45 UTC — UI.6 + the whole
+  CAPABILITY_AUDIT queue B1–B6/B9 + the TenantDomain RLS fix). Verified
+  serving by unauthed markers only the new build answers:
+  `/console/settings/domains` 404→307-to-login and `/api/platform/domains`
+  404→401 flipped exactly at deploy. The `tenant_isolation_verified` policy
+  was then applied to `landingos_prod` (apply-rls output: the TenantDomain
+  line + 48/48 on all four checks) and proven live both ways with a
+  throwaway tenant over real HTTP (verified → its storefront, unverified →
+  /console), fixture deleted after.
 - **Production URL:** `https://landingos.onrender.com` (Render, Docker,
   auto-deploys from `origin/main`). The bare domain root 307-redirects to
   `/console`.
@@ -154,15 +160,17 @@ queue executed — LB.12 Benefits/FAQ, the display toggles, categories UI,
 tenant storefront identity, custom domains, workspace defaults, sessions
 screen — eight local commits (`ee896b4..6f3a1b4`), each measure→fix→test→
 live-verify→commit. NONE of it is deployed (deploys were off-limits).
-When it ships: no PRISMA-schema changes are in these commits, so a plain
-deploy suffices — with ONE database step now attached: the TenantDomain
-RLS resolution policy (`tenant_isolation_verified`, added to apply-rls
-after the pre-deploy Q&A found the custom-domain read path dead under RLS)
-is applied to `neondb` only. **Custom domains cannot resolve in production
-until `npm run rls` runs against `landingos_prod`** — safe-not-working
-until then, and that run is the user's call. The audit's §2 removals and
-§4 decisions (incl. B7 version history, which DOES need a new table + prod
-`db push`+RLS run) remain open and user-owned.**
+SHIPPED 10 Aug ~01:45 UTC with the user's explicit go-ahead: pushed
+`1cd499e..86a4e90`, deploy verified by marker flips, then `npm run rls`
+against `landingos_prod` (TenantDomain line + 48/48), then the both-ways
+storefront-resolution probe with a throwaway tenant. The audit's §2
+removals and §4 decisions (incl. B7 version history, which DOES need a new
+table + prod `db push`+RLS run) remain open and user-owned. One
+observation from the probe, recorded for the hardening queue: Render's
+edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
+`currentHost()` trusts it — impact is limited to choosing among PUBLIC
+storefront surfaces (no private read moves, RLS binds as always), but
+canonicalising the trusted host list would close the spoof.**
 
 1. ~~Separate production database~~ — **DONE 10 Aug 2026** (§4, clean start).
 2. **Decommission `erp-serveur`** — user's dashboard; suspend → verify
