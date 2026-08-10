@@ -149,6 +149,16 @@ plan above was executed exactly as written.
 
 ## 5. REMAINING WORK (in rough priority order)
 
+**10 Aug (overnight session): `CAPABILITY_AUDIT.md` was written and its
+queue executed — LB.12 Benefits/FAQ, the display toggles, categories UI,
+tenant storefront identity, custom domains, workspace defaults, sessions
+screen — eight local commits (`ee896b4..6f3a1b4`), each measure→fix→test→
+live-verify→commit. NONE of it is deployed (deploys were off-limits).
+When it ships: no schema changes are in these commits, so a plain deploy
+suffices; the audit's §2 removals and §4 decisions (incl. B7 version
+history, which DOES need a new table + prod `db push`+RLS run) remain open
+and user-owned.**
+
 1. ~~Separate production database~~ — **DONE 10 Aug 2026** (§4, clean start).
 2. **Decommission `erp-serveur`** — user's dashboard; suspend → verify
    nothing breaks → delete.
