@@ -40,7 +40,9 @@ export function ProductInfo({
         <PriceBlock price={page.price} oldPrice={page.oldPrice} currency={page.currency} />
       </div>
 
-      <BenefitsList />
+      {/* LB.12 — the merchant's own benefits when any exist, the standard COD
+          badges otherwise; `showFeatures` (default true) can hide the strip. */}
+      {(page.setting?.showFeatures ?? true) && <BenefitsList features={page.features} />}
 
       <VariantSelectors store={store} currency={page.currency} />
 

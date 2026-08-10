@@ -17,7 +17,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | # | Slice | Size | Why |
 |---|---|---|---|
 | **LB.11** | Real-credential smoke test: Meta/TikTok/GA4 with test pixels + `testCode` | S | No request has crossed the REAL endpoints — the ZR/Ecom precedent; **the one remaining gate before real ad spend**, and untestable locally by construction |
-| **LB.12** | Benefits + FAQ end to end (routes + editor sections + unhardcode `toLandingPageData`) | M | The last two "Coming Soon" stubs; tables and storefront renderers already exist. Deliberately NOT rushed in on deploy-eve: pages sell without them and the stubs say so honestly |
+| ~~**LB.12**~~ | ~~Benefits + FAQ end to end~~ | M | **DONE 10 Aug 2026** (`CAPABILITY_AUDIT.md` B1, CHANGELOG §LB.12). The audit found it was deeper than recorded: the storefront FAQ/Reviews renderers were **mounted by nothing** (saved reviews travelled in the payload and rendered nowhere) and BenefitsList hardcoded four badges. Now: `features`/`faqs` PUT routes, Benefits+FAQ editor sections replace the stubs, mappers unhardcoded, sections mounted with `show*` gating (default true), benefits data-driven with the four badges as fallback. builder-sections 54/54, live-verified through the real editor + public page |
 | **LB.13** | Editor i18n (the 54 legacy components speak English in an ar/fr console) | M | Commercial for the Arabic-first market. The storefront half (the thank-you page) closed in LB.10 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
 | **LB.15** | Editor money inputs off `type="number"` (pricing section) | S | D-06 style residue; single values round-trip exactly, arithmetic is Decimal server-side since LB.10 |

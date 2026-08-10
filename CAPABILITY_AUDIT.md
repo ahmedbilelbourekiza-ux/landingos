@@ -26,7 +26,13 @@ MISSING: any API route (`landings/[id]/features|faqs` do not exist), any
 editor section, and the two mappers hardcode them away —
 `toPreviewState`/`toLandingPageData` (`lib/landing/mappers.ts:243,252`) and
 `preview-to-landing.ts:58,60` emit `features: []`, `faqs: []` always.
-A merchant cannot state a product benefit or answer a question. **Slice 1.**
+A merchant cannot state a product benefit or answer a question. **Slice 1 —
+DONE 10 Aug** (and the measurement deepened it: the FAQ **and Reviews**
+storefront renderers were mounted by NOTHING — saved reviews travelled in the
+data payload and rendered nowhere — and BenefitsList hardcoded four badges.
+All mounted now, benefits data-driven with the badges as fallback, `show*`
+gating honoured, builder-sections 54/54, verified through the live editor and
+public page).
 
 **B2. The LandingSetting display toggles — stored, honoured nowhere a
 merchant can see.** Verified per toggle:

@@ -1,4 +1,4 @@
-import type { LandingPage, LandingMedia, LandingVariant, LandingReview, LandingSetting } from "@/generated/prisma";
+import type { LandingPage, LandingMedia, LandingVariant, LandingReview, LandingFeature, LandingFAQ, LandingSetting } from "@/generated/prisma";
 import type { PreviewState } from "@/types/preview";
 import type { LandingListItem } from "@/lib/landing/mock-landings";
 import type { VariantGroup } from "@/lib/landing/mock-landings";
@@ -13,6 +13,8 @@ type LandingWithRelations = LandingPage & {
   media: LandingMedia[];
   variants: LandingVariant[];
   reviews: LandingReview[];
+  features: LandingFeature[];
+  faqs: LandingFAQ[];
   setting: LandingSetting | null;
   theme: LandingTheme | null;
 };
@@ -200,6 +202,21 @@ export function toPreviewState(page: LandingWithRelations): PreviewState {
         avatarUrl: r.customerAvatar,
       })),
     },
+    benefits: {
+      benefits: page.features.map((f) => ({
+        id: f.id,
+        icon: f.icon,
+        title: f.title,
+        description: f.description,
+      })),
+    },
+    faq: {
+      faqs: page.faqs.map((f) => ({
+        id: f.id,
+        question: f.question,
+        answer: f.answer,
+      })),
+    },
     orderForm: {
       config: parseOrderFormConfig(page.setting, page.buttonText),
     },
@@ -240,7 +257,13 @@ export function toLandingPageData(page: LandingWithRelations): LandingPageData {
       extraPrice: v.extraPrice.toNumber(),
       displayOrder: v.displayOrder,
     })),
-    features: [],
+    features: page.features.map((f) => ({
+      id: f.id,
+      icon: f.icon,
+      title: f.title,
+      description: f.description,
+      displayOrder: f.displayOrder,
+    })),
     reviews: page.reviews.map((r) => ({
       id: r.id,
       customerName: r.customerName,
@@ -249,7 +272,12 @@ export function toLandingPageData(page: LandingWithRelations): LandingPageData {
       reviewText: r.reviewText,
       displayOrder: r.displayOrder,
     })),
-    faqs: [],
+    faqs: page.faqs.map((f) => ({
+      id: f.id,
+      question: f.question,
+      answer: f.answer,
+      displayOrder: f.displayOrder,
+    })),
     setting: page.setting
       ? {
           countdownEnabled: page.setting.countdownEnabled,

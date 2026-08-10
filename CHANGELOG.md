@@ -12,6 +12,26 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.12** Benefits + FAQ end to end (10 August 2026, from `CAPABILITY_AUDIT.md` B1).
+  The audit's measurement made it bigger than the queue entry: beyond the known
+  gaps (no `features`/`faqs` routes, "Coming Soon" editor stubs,
+  `toLandingPageData` hardcoding both empty), the storefront FAQ **and
+  Reviews** renderers were **mounted by nothing** — a merchant's saved reviews
+  reached the browser inside the data payload and produced no markup — and
+  `BenefitsList` rendered four hardcoded badges. Shipped: replace-all PUT
+  routes for `features`/`faqs` mirroring the reviews route; Benefits + FAQ
+  editor sections (dnd ordering, curated icon-key set shared with the
+  renderer so the picker cannot offer what the page cannot draw); both
+  mappers unhardcoded; `ReviewsSection`/`FAQSection` mounted in the template
+  gated on `showReviews`/`showFAQ` (default true); `BenefitsList` data-driven
+  with the four COD badges as the empty-state fallback, gated on
+  `showFeatures`; the editor preview shows the three sections while editing.
+  Tests: builder-sections 50→54 (round-trip + replace semantics, icon-key
+  validation, cross-tenant 404, and the render contract — markup present
+  when on, absent when off, asserted with payload-immune `>text<` patterns).
+  Verified in the live app: benefit + FAQ added through the real editor,
+  rendered on the public Arabic storefront.
+
 **Recorded differently from every phase before it, deliberately.** This phase's
 findings live in `BUILDER_AUDIT.md` (the before-measurement, taken in the
 running app), its architecture and verification in `BUILDER_HANDOFF.md` (a

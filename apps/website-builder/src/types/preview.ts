@@ -3,6 +3,8 @@ import type { PricingPreviewValues } from "@/components/landings/edit/sections/p
 import type { ImagesPreviewValues } from "@/components/landings/edit/sections/images-section";
 import type { VariantsPreviewValues } from "@/components/landings/edit/sections/variants-section";
 import type { ReviewsPreviewValues } from "@/components/landings/edit/sections/reviews-section";
+import type { BenefitsPreviewValues } from "@/components/landings/edit/sections/benefits-section";
+import type { FaqPreviewValues } from "@/components/landings/edit/sections/faq-section";
 import type { OrderFormPreviewValues } from "@/components/landings/edit/sections/order-form-section";
 
 // Long-form images shown below the description. Held as a plain URL list
@@ -24,6 +26,8 @@ export interface PreviewState {
   images: ImagesPreviewValues;
   variants: VariantsPreviewValues;
   reviews: ReviewsPreviewValues;
+  benefits: BenefitsPreviewValues;
+  faq: FaqPreviewValues;
   orderForm: OrderFormPreviewValues;
   descriptionImages: DescriptionImagesPreviewValues;
   shipping: ShippingPreviewValues;

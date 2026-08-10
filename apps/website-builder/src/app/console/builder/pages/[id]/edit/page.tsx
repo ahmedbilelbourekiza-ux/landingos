@@ -44,7 +44,9 @@ export default async function ConsoleEditLandingPage({
     include: {
       media: { orderBy: { displayOrder: "asc" } },
       variants: { orderBy: { displayOrder: "asc" } },
+      features: { orderBy: { displayOrder: "asc" } },
       reviews: { orderBy: { displayOrder: "asc" } },
+      faqs: { orderBy: { displayOrder: "asc" } },
       setting: true,
       theme: true,
     },

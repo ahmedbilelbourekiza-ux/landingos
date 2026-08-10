@@ -25,6 +25,8 @@ import { PricingSection } from "./sections/pricing-section";
 import { ImagesSection } from "./sections/images-section";
 import { VariantsSection } from "./sections/variants-section";
 import { ReviewsSection } from "./sections/reviews-section";
+import { BenefitsSection } from "./sections/benefits-section";
+import { FaqSection } from "./sections/faq-section";
 import { OrderFormSection } from "./sections/order-form-section";
 import { DescriptionImagesSection } from "./sections/description-images-section";
 import { ShippingSection } from "./sections/shipping-section";
@@ -70,6 +72,8 @@ export function EditSections({
       images: (v: PreviewState["images"]) => onPreviewChange("images", v),
       variants: (v: PreviewState["variants"]) => onPreviewChange("variants", v),
       reviews: (v: PreviewState["reviews"]) => onPreviewChange("reviews", v),
+      benefits: (v: PreviewState["benefits"]) => onPreviewChange("benefits", v),
+      faq: (v: PreviewState["faq"]) => onPreviewChange("faq", v),
       orderForm: (v: PreviewState["orderForm"]) => onPreviewChange("orderForm", v),
       descriptionImages: (v: PreviewState["descriptionImages"]) =>
         onPreviewChange("descriptionImages", v),
@@ -148,6 +152,26 @@ export function EditSections({
               landingId={landingId}
               initialValues={preview.reviews}
               onPreviewChange={callbacks.reviews}
+            />
+          );
+        }
+        if (section.id === "benefits") {
+          return (
+            <BenefitsSection
+              key={section.id}
+              landingId={landingId}
+              initialValues={preview.benefits}
+              onPreviewChange={callbacks.benefits}
+            />
+          );
+        }
+        if (section.id === "faq") {
+          return (
+            <FaqSection
+              key={section.id}
+              landingId={landingId}
+              initialValues={preview.faq}
+              onPreviewChange={callbacks.faq}
             />
           );
         }

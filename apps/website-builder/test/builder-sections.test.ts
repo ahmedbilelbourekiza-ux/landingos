@@ -805,3 +805,129 @@ describe('the last screens: delivery prices, order detail, creation', { skip }, 
     assert.equal(unentitled.status, 404);
   });
 });
+
+describe('benefits and FAQ reach the customer (LB.12)', { skip }, () => {
+  test('a replace-all PUT stores each list in array order', async () => {
+    const ben = await put(`/api/builder/landings/${pageId}/features`, tokens.owner, {
+      items: [
+        { icon: 'truck', title: 'توصيل خلال 48 ساعة', description: 'لكل الولايات' },
+        { icon: 'shield-check', title: 'ضمان استرجاع' },
+      ],
+    });
+    assert.equal(ben.status, 200);
+    assert.equal(ben.body.data.count, 2);
+
+    const faq = await put(`/api/builder/landings/${pageId}/faqs`, tokens.owner, {
+      items: [
+        { question: 'كم تستغرق مدة التوصيل؟', answer: 'من 24 إلى 72 ساعة حسب الولاية.' },
+        { question: 'هل الدفع عند الاستلام؟', answer: 'نعم، الدفع عند الاستلام متاح.' },
+      ],
+    });
+    assert.equal(faq.status, 200);
+
+    const rows = await withTenant(tenant, async (tx) => ({
+      features: await (tx as any).landingFeature.findMany({
+        where: { landingPageId: pageId }, orderBy: { displayOrder: 'asc' },
+      }),
+      faqs: await (tx as any).landingFAQ.findMany({
+        where: { landingPageId: pageId }, orderBy: { displayOrder: 'asc' },
+      }),
+    }));
+    assert.equal((rows as any).features.length, 2);
+    assert.equal((rows as any).features[0].icon, 'truck');
+    assert.equal((rows as any).features[1].displayOrder, 1);
+    assert.equal((rows as any).faqs.length, 2);
+
+    // Replace, not append: a second PUT with one item leaves one row.
+    const again = await put(`/api/builder/landings/${pageId}/faqs`, tokens.owner, {
+      items: [{ question: 'سؤال واحد', answer: 'جواب واحد' }],
+    });
+    assert.equal(again.status, 200);
+    const left = await withTenant(tenant, (tx) =>
+      (tx as any).landingFAQ.count({ where: { landingPageId: pageId } }),
+    );
+    assert.equal(left, 1);
+  });
+
+  test('an icon that is not a key, and an empty answer, are refused', async () => {
+    // The icon column feeds a component lookup, never markup — a URL or
+    // arbitrary text must die at the validation layer.
+    const badIcon = await put(`/api/builder/landings/${pageId}/features`, tokens.owner, {
+      items: [{ icon: 'https://evil.example/x.svg', title: 'X' }],
+    });
+    assert.equal(badIcon.status, 422);
+
+    const noAnswer = await put(`/api/builder/landings/${pageId}/faqs`, tokens.owner, {
+      items: [{ question: 'سؤال', answer: '' }],
+    });
+    assert.equal(noAnswer.status, 422);
+  });
+
+  test("another tenant's page is a 404 through both new sections", async () => {
+    for (const section of ['features', 'faqs']) {
+      const r = await put(`/api/builder/landings/${otherPageId}/${section}`, tokens.owner, { items: [] });
+      assert.equal(r.status, 404, `${section} must not reach another tenant`);
+    }
+  });
+
+  test('the published page renders them, and the show* switches hide them', async () => {
+    // Restore both lists (earlier tests replaced the FAQ down to one row).
+    await put(`/api/builder/landings/${pageId}/features`, tokens.owner, {
+      items: [{ icon: 'truck', title: 'توصيل خلال 48 ساعة' }],
+    });
+    await put(`/api/builder/landings/${pageId}/faqs`, tokens.owner, {
+      items: [{ question: 'كم تستغرق مدة التوصيل؟', answer: 'من 24 إلى 72 ساعة.' }],
+    });
+    const on = await api(`/api/builder/landings/${pageId}/publish`, tokens.owner, {
+      method: 'POST', body: JSON.stringify({ published: true }),
+    });
+    assert.equal(on.status, 200);
+
+    // The CURRENT slug, read from the row — an earlier general-section test
+    // renames this page's slug, and a path built from the fixture's original
+    // one 404s for a reason that has nothing to do with what this asserts.
+    const { slug: liveSlug } = await withTenant(tenant, (tx) =>
+      (tx as any).landingPage.findUnique({ where: { id: pageId }, select: { slug: true } }),
+    );
+    const path = `/sec-a-${stamp}/${liveSlug}`;
+    const live = await fetch(BASE + path);
+    assert.equal(live.status, 200);
+    const html = await live.text();
+    // RENDERED markup, not the serialized data payload — the defect this
+    // slice fixed was precisely "in the payload, in no markup". `>text<` only
+    // matches an element's text; the flight payload holds JSON-escaped
+    // strings and cannot satisfy it. `id="faq"` is the section's own wrapper.
+    assert.match(html, /id="faq"/);
+    assert.match(html, />كم تستغرق مدة التوصيل؟</);
+    assert.match(html, />توصيل خلال 48 ساعة</);
+
+    // The off switches. No API writes these yet (that is the next slice), so
+    // set them the way a future write path would land them.
+    await withTenant(tenant, (tx) =>
+      (tx as any).landingSetting.upsert({
+        where: { landingPageId: pageId },
+        create: {
+          tenantId: tenant, landingPageId: pageId,
+          showFAQ: false, showFeatures: false, showReviews: false,
+        },
+        update: { showFAQ: false, showFeatures: false, showReviews: false },
+      }),
+    );
+    const hidden = await fetch(BASE + path);
+    const hiddenHtml = await hidden.text();
+    // The same patterns that PROVED presence above now prove absence — an
+    // absence assertion whose pattern never matched anything would be
+    // vacuous, which is why both sides use identical shapes.
+    assert.ok(!/id="faq"/.test(hiddenHtml), 'FAQ section must not render when showFAQ is off');
+    assert.ok(!/>كم تستغرق مدة التوصيل؟</.test(hiddenHtml), 'FAQ markup must not render when showFAQ is off');
+    assert.ok(!/>توصيل خلال 48 ساعة</.test(hiddenHtml), 'benefits markup must not render when showFeatures is off');
+
+    // Leave the switches on for any test that follows.
+    await withTenant(tenant, (tx) =>
+      (tx as any).landingSetting.update({
+        where: { landingPageId: pageId },
+        data: { showFAQ: true, showFeatures: true, showReviews: true },
+      }),
+    );
+  });
+});

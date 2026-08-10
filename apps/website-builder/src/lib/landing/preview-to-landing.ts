@@ -4,10 +4,10 @@ import type { LandingPageData } from "@/types/landing";
 // Maps the edit workspace's PreviewState to the LandingPageData shape that
 // the public LandingTemplate expects. Used by the Preview Drawer only — the
 // public route /l/[slug] renders from Prisma via toLandingPageData().
-// Fields not yet editable (features, faqs, seo, setting) use empty defaults
-// rather than mock data — no mock fallback anywhere.
+// Fields not yet editable (seo, most of setting) use empty defaults rather
+// than mock data — no mock fallback anywhere.
 export function previewToLandingPage(preview: PreviewState): LandingPageData {
-  const { general, pricing, images, variants, reviews, orderForm } = preview;
+  const { general, pricing, images, variants, reviews, benefits, faq, orderForm } = preview;
 
   const media = [
     ...(images.heroUrl
@@ -55,15 +55,22 @@ export function previewToLandingPage(preview: PreviewState): LandingPageData {
       displayOrder: i,
     })),
     variants: flatVariants,
-    features: [],
+    features: benefits.benefits.map((b, i) => ({
+      id: b.id, icon: b.icon, title: b.title, description: b.description, displayOrder: i,
+    })),
     reviews: flatReviews,
-    faqs: [],
+    faqs: faq.faqs.map((f, i) => ({
+      id: f.id, question: f.question, answer: f.answer, displayOrder: i,
+    })),
     setting: {
       countdownEnabled: false,
       stickyBuyButton: true,
       floatingWhatsapp: false,
-      showReviews: false,
-      showFAQ: false,
+      // TRUE in the preview, deliberately: the drawer must show the reviews,
+      // benefits and FAQ the merchant is editing right now — a preview that
+      // hides what you just typed reads as a save that failed (LB.12).
+      showReviews: true,
+      showFAQ: true,
       showFeatures: true,
       homeDeliveryEnabled: preview.shipping.homeDeliveryEnabled,
       stopDeskEnabled: preview.shipping.stopDeskEnabled,
