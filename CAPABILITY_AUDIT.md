@@ -124,9 +124,16 @@ EXISTS: `Session.lastSeenAt` IS now written (throttled touch,
 `packages/auth/src/session.ts:181` — the orphans exemption's "design question"
 got answered); `destroySessionsForUser` exists; userAgent/ip stored.
 MISSING: any "your active sessions" UI (profile screen) and any
-sign-out-other-sessions control. **Slice 6.** (The orphans exemption for
-`lastSeenAt` is now misleading — its scan only reads `apps/…/src`, which is
-why it still passes. Fix the exemption text in the same slice.)
+sign-out-other-sessions control. **Slice — DONE 10 Aug:** the profile gained
+a sessions section (ua/ip/last-seen per row, the presenting one marked) and
+a "sign out other sessions" action on a new `destroyOtherSessions(userId,
+keepSessionId)` in @landingos/auth. Suite platform/sessions 2/2 — the kept
+session survives, the revoked cookie is a 307-to-login immediately. The
+`lastSeenAt` orphans exemption came OFF the list (now referenced), as did
+`TenantDomain.verificationToken`/`isPrimary` after B5 — the exemption-
+staleness test demanded both removals itself, which is that machinery
+working. Live-verified: the demo account showed 25 accumulated sessions;
+one click left 1.
 
 **B7. Version history / undo (= half of LB.14).**
 EXISTS: nothing — confirmed: no version/history table in the schema; every

@@ -12,6 +12,17 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **B6 (CAPABILITY_AUDIT)** Sessions become visible and revocable (10 August
+  2026). The write side had quietly existed — a throttled `lastSeenAt` touch
+  in resolveSession, ua/ip columns, destroy helpers — with no screen. The
+  profile now lists every live session (presenting one marked) with a
+  "sign out other sessions" action on the new `destroyOtherSessions`
+  (keeps by session id, trusts no raw token). Suite platform/sessions 2/2:
+  the kept session survives, a revoked cookie is a stranger immediately.
+  Three orphans exemptions retired (`Session.lastSeenAt`,
+  `TenantDomain.verificationToken`, `.isPrimary`) — the staleness test
+  demanded it once B5/B6 made them referenced, exactly as designed.
+
 - **B9 (CAPABILITY_AUDIT)** Workspace defaults unfreeze (10 August 2026).
   No `tenant.update` existed anywhere: a company's name, default language,
   currency and timezone were whatever signup wrote, forever. Now

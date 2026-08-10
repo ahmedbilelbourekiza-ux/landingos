@@ -13,6 +13,7 @@ export {
   switchTenant,
   destroySession,
   destroySessionsForUser,
+  destroyOtherSessions,
   purgeExpiredSessions,
   sessionCookieOptions,
   type ResolvedSession,

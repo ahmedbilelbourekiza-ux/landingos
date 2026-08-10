@@ -223,6 +223,20 @@ export async function destroySession(rawToken: string): Promise<void> {
 }
 
 /** Revoke every session for a user — password change, suspension, "sign out everywhere". */
+/**
+ * End every session of a user EXCEPT `keepSessionId` (the stored hash, as
+ * `ResolvedSession.sessionId` carries it) — the "sign out everywhere else" a
+ * security screen offers (B6). The caller proves it holds the kept session
+ * by having resolved it; nothing here trusts a raw token.
+ */
+export async function destroyOtherSessions(userId: string, keepSessionId: string): Promise<number> {
+  const db = asPlatform();
+  const { count } = await db.session.deleteMany({
+    where: { userId, id: { not: keepSessionId } },
+  });
+  return count;
+}
+
 export async function destroySessionsForUser(userId: string): Promise<number> {
   const { count } = await asPlatform().session.deleteMany({ where: { userId } });
   return count;

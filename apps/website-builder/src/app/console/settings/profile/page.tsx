@@ -8,6 +8,7 @@ import {
   hashPassword,
   verifyPassword,
   destroySessionsForUser,
+  destroyOtherSessions,
   createSession,
   sessionCookieOptions,
 } from "@landingos/auth";
@@ -95,6 +96,17 @@ async function changePassword(formData: FormData) {
   redirect("/console/settings/profile?saved=password");
 }
 
+/* B6 (CAPABILITY_AUDIT) — "sign out everywhere else". The write side of
+ * session management quietly existed (lastSeenAt has a throttled writer,
+ * destroy helpers, userAgent/ip stored); this is the screen it never had. */
+async function signOutOthers() {
+  "use server";
+  const session = await requireConsoleSession("/console/settings/profile");
+  await destroyOtherSessions(session.user.id, session.sessionId);
+  revalidatePath("/console/settings/profile");
+  redirect("/console/settings/profile?saved=1");
+}
+
 export default async function ProfilePage({
   searchParams,
 }: {
@@ -103,6 +115,14 @@ export default async function ProfilePage({
   const session = await requireConsoleSession("/console/settings/profile");
   const { saved, error } = await searchParams;
   const t = await getTranslations();
+
+  // Every live session of THIS user — the model is user-keyed and unscoped,
+  // so the filter is the isolation (same argument as the workspace route).
+  const sessions = await asPlatform().session.findMany({
+    where: { userId: session.user.id, expiresAt: { gt: new Date() } },
+    orderBy: [{ lastSeenAt: "desc" }, { createdAt: "desc" }],
+    select: { id: true, userAgent: true, ip: true, lastSeenAt: true, createdAt: true },
+  });
 
   /* LP.11. On the PROFILE screen because a notification feed is one per person
      across every product — putting it inside the ERP would mean a second copy
@@ -254,6 +274,48 @@ export default async function ProfilePage({
           initial={prefs}
         />
       )}
+
+      {/* B6 — the sessions this account holds, and the door that closes the
+          others. `lastSeenAt` is the throttled touch resolveSession writes. */}
+      <section
+        aria-labelledby="sessions-title"
+        data-testid="sessions-section"
+        className="space-y-3 rounded-lg border border-border bg-card p-4"
+      >
+        <h2 id="sessions-title" className="text-sm font-semibold tracking-tight">
+          {t("settings.sessions")}
+        </h2>
+        <p className="text-xs text-muted-foreground">{t("settings.sessionsHint")}</p>
+        <ul className="flex flex-col gap-2">
+          {sessions.map((s) => (
+            <li
+              key={s.id}
+              data-current={String(s.id === session.sessionId)}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-muted/30 px-3 py-2 text-xs"
+            >
+              <span className="max-w-72 truncate font-medium" title={s.userAgent ?? undefined}>
+                {s.userAgent ?? "—"}
+              </span>
+              {s.ip && <span dir="ltr" className="font-mono text-muted-foreground">{s.ip}</span>}
+              <span className="text-muted-foreground">
+                {(s.lastSeenAt ?? s.createdAt).toISOString().slice(0, 16).replace("T", " ")}
+              </span>
+              {s.id === session.sessionId && (
+                <span className="rounded-full border border-border px-2 py-0.5 text-muted-foreground">
+                  {t("settings.sessionCurrent")}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+        {sessions.length > 1 && (
+          <form action={signOutOthers}>
+            <button type="submit" data-testid="sign-out-others" className="ui-btn ui-btn-default tap">
+              {t("settings.signOutOthers")}
+            </button>
+          </form>
+        )}
+      </section>
       </PageBody>
     </>
   );

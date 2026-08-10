@@ -76,26 +76,12 @@ const UNREFERENCED_BY_DESIGN = new Map<string, string>([
   ],
 
   // ---- ahead of a feature, each naming the work -----------------------------
-  [
-    'TenantDomain.verificationToken',
-    'AHEAD OF A FEATURE: custom-domain management. The READ path is complete and '
-    + 'safe — `tenantByDomain` refuses a row with no `verifiedAt` — but no screen '
-    + 'adds a domain, so nothing mints the token yet. Phase 8 (storefront), not '
-    + 'ERP parity.',
-  ],
-  [
-    'TenantDomain.isPrimary',
-    'AHEAD OF A FEATURE: custom-domain management, as above. Which of several '
-    + 'verified hostnames canonical links should use. Meaningless until a tenant '
-    + 'can add a second one.',
-  ],
-  [
-    'Session.lastSeenAt',
-    'AHEAD OF A FEATURE: session management (Phase 8). Showing somebody their '
-    + 'active sessions and letting them end one needs a last-seen; writing it on '
-    + 'every request is a write per request, which is the design question that '
-    + 'work has to answer first.',
-  ],
+  // TenantDomain.verificationToken and .isPrimary left this list on
+  // 10 Aug 2026 (B5): the domains routes and the Settings → Domains screen
+  // now mint, verify and read both.
+  // Session.lastSeenAt left this list on 10 Aug 2026 (B6): the throttled
+  // writer had existed in packages/auth (outside this scan) for a while, and
+  // the profile screen's sessions section now names it in the app source.
   [
     'Subscription.seats',
     'AHEAD OF A FEATURE: seat billing. **No seat limit is enforced anywhere** — '
