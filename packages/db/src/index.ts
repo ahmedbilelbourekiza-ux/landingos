@@ -1,6 +1,7 @@
 export {
   withUser,
   withInvitationToken,
+  withVerifiedDomains,
   withTenant,
   forTenant,
   asPlatform,

@@ -168,9 +168,28 @@ removals and §4 decisions (incl. B7 version history, which DOES need a new
 table + prod `db push`+RLS run) remain open and user-owned. One
 observation from the probe, recorded for the hardening queue: Render's
 edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
-`currentHost()` trusts it — impact is limited to choosing among PUBLIC
-storefront surfaces (no private read moves, RLS binds as always), but
-canonicalising the trusted host list would close the spoof.**
+`currentHost()` trusts it.**
+
+> ### ⚠ PRODUCTION IS ONE COMMIT BEHIND ON RLS — read before any domain work
+>
+> The host-trust fix (committed locally, NOT deployed) also corrects a defect
+> in the `tenant_isolation_verified` policy that **was applied to
+> `landingos_prod` on 10 Aug**. The first version,
+> `USING ("verifiedAt" IS NOT NULL)`, has no binding guard — and because
+> Postgres ORs permissive policies, it adds every verified domain row to what
+> **every tenant-bound read** returns, not just the pre-tenant lookup. A
+> tenant owning nothing saw another tenant's hostname (measured in dev).
+>
+> **Actual production exposure today: none** — `landingos_prod` holds 1
+> tenant and 0 TenantDomain rows, so there is nothing to leak, and the
+> console's domains screen has no rows to widen. The window closes the moment
+> anyone links a second domain.
+>
+> **To close it:** deploy the host-trust commit AND re-run
+> `npm run rls` against `landingos_prod` (the script is idempotent; it
+> replaces the policy with the guarded version). Dev `neondb` already has the
+> corrected policy. Until then, treat production custom domains as
+> not-yet-safe for a second tenant.
 
 1. ~~Separate production database~~ — **DONE 10 Aug 2026** (§4, clean start).
 2. **Decommission `erp-serveur`** — user's dashboard; suspend → verify

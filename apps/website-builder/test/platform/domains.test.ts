@@ -1,4 +1,5 @@
 import { test, describe, before, after } from 'node:test';
+import http from 'node:http';
 import assert from 'node:assert/strict';
 
 import { asPlatform, withTenant, disconnect } from '@landingos/db';
@@ -191,38 +192,120 @@ describe('verification is the gate', { skip }, () => {
   });
 });
 
-describe('a verified domain resolves; an unverified one serves nothing', { skip }, () => {
-  test('resolution over real HTTP flips on verifiedAt and nothing else', async () => {
-    // The defect this pins: TenantDomain's plain tenant policy blanked the
-    // UNBOUND read tenantByDomain performs, so even a VERIFIED domain fell
-    // through to the platform door. The `tenant_isolation_verified` policy
-    // (apply-rls) opens exactly the rows whose facts are public anyway.
-    const hostname = `resolve-${stamp}.example.com`;
+describe('a verified domain resolves, and only the edge decides which', { skip }, () => {
+  /* Host-header control needs node:http — fetch() forbids setting `Host`,
+   * which is what made the first manual probe of this silently invalid. */
+  function rawGet(path: string, headers: Record<string, string>) {
+    return new Promise<{ status: number; location: string }>((resolve, reject) => {
+      const url = new URL(BASE);
+      const req = http.request(
+        { host: url.hostname, port: url.port || 80, path, method: 'GET', headers },
+        (res) => {
+          res.resume();
+          resolve({ status: res.statusCode ?? 0, location: res.headers.location ?? '' });
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+  }
+
+  let hostname = '';
+
+  before(async () => {
+    if (skip) return;
+    hostname = `resolve-${stamp}.example.com`;
     const created = await post('/api/platform/domains', tokens.a, { domain: hostname });
     assert.equal(created.status, 201);
+  });
 
-    // `x-forwarded-host` is currentHost()'s FIRST branch — the header the
-    // production proxy sets. (fetch refuses to send a bare `Host`.)
-    const probe = async () => {
-      const r = await fetch(`${BASE}/`, {
-        headers: { 'x-forwarded-host': hostname },
-        redirect: 'manual',
-      });
-      return r.headers.get('location') ?? '';
-    };
+  test('an unverified domain serves nothing, whichever header carries it', async () => {
+    for (const headers of [
+      { Host: hostname },
+      { 'X-Forwarded-Host': hostname },
+    ]) {
+      const r = await rawGet('/', headers);
+      assert.match(r.location, /\/console$/, `unverified via ${Object.keys(headers)[0]}`);
+    }
+  });
 
-    assert.match(await probe(), /\/console$/, 'unverified: the platform door, never a storefront');
-
+  test('a verified domain resolves when the EDGE routed by that hostname', async () => {
     // Land verification the way the DNS route's one write would.
     await withTenant(tenantA, (tx) =>
       (tx as any).tenantDomain.updateMany({
         where: { domain: hostname }, data: { verifiedAt: new Date() },
       }),
     );
+    // `Host` is the header the edge validates — an unconfigured hostname never
+    // reaches the app (production answers 403 x-render-routing). This is the
+    // legitimate custom-domain shape.
+    const r = await rawGet('/', { Host: hostname });
     assert.match(
-      await probe(),
+      r.location,
       new RegExp(`/dom-a-${stamp}$`),
-      'verified: the same request now lands on the tenant storefront',
+      'verified + edge-routed: the tenant storefront',
     );
+  });
+
+  test('a CLIENT-supplied X-Forwarded-Host cannot redirect a platform request', async () => {
+    /* THE SPOOF, pinned. Measured before the fix: `GET /demo` carrying a
+     * victim's verified hostname in X-Forwarded-Host rendered the VICTIM's
+     * storefront — one header re-pointed any URL at any tenant. The request
+     * arrives AT the platform's own address, so the claim is ignored now. */
+    const root = await rawGet('/', { Host: '127.0.0.1:3000', 'X-Forwarded-Host': hostname });
+    assert.match(root.location, /\/console$/, 'the platform door, not the tenant');
+
+    // And the sharper half: a real storefront path must keep serving ITS OWN
+    // tenant rather than being swapped for the header's.
+    const swapped = await rawGet(`/dom-b-${stamp}`, {
+      Host: '127.0.0.1:3000',
+      'X-Forwarded-Host': hostname,
+    });
+    assert.equal(swapped.status, 200, "the path's own tenant still resolves");
+
+    // A list-valued header must not let an attacker prepend a hostname.
+    const listed = await rawGet('/', {
+      Host: '127.0.0.1:3000',
+      'X-Forwarded-Host': `${hostname}, 127.0.0.1:3000`,
+    });
+    assert.match(listed.location, /\/console$/, 'the nearest hop wins, not the injected first entry');
+  });
+});
+
+describe('the resolution policy does not widen tenant-bound reads', { skip }, () => {
+  test("a tenant's own domain list contains only its own rows", async () => {
+    /* THE DEFECT THIS PINS, measured on 10 Aug 2026: the first version of
+     * `tenant_isolation_verified` was `USING ("verifiedAt" IS NOT NULL)` with
+     * no binding guard. Postgres ORs permissive policies, so every verified
+     * row joined what EVERY tenant-bound read returned — a tenant owning
+     * nothing saw another tenant's hostname, and the console's own domains
+     * screen would have listed other companies'. The guard
+     * (`app.domain_lookup`, set only by withVerifiedDomains) is what keeps
+     * the pre-tenant lookup from being a cross-tenant window. */
+    const mine = `owned-${stamp}.example.com`;
+    const created = await post('/api/platform/domains', tokens.a, { domain: mine });
+    assert.equal(created.status, 201);
+    await withTenant(tenantA, (tx) =>
+      (tx as any).tenantDomain.updateMany({ where: { domain: mine }, data: { verifiedAt: new Date() } }),
+    );
+
+    // Tenant B owns no verified domain. Bound to itself, it must see none of A's.
+    const seenByB = await withTenant(tenantB, (tx) =>
+      (tx as any).tenantDomain.findMany({ select: { domain: true } }),
+    );
+    const leaked = (seenByB as any[]).filter((d) => d.domain === mine);
+    assert.deepEqual(leaked, [], "another tenant's verified domain must not appear in a bound read");
+
+    // And through the API the console uses, which is the same read.
+    const listB = await api('/api/platform/domains', tokens.b);
+    assert.equal(listB.status, 200);
+    assert.ok(
+      !listB.body.data.items.some((d: any) => d.domain === mine),
+      "the console's domain list must not show another tenant's hostname",
+    );
+
+    // The owner still sees its own — the policy narrowed nothing legitimate.
+    const listA = await api('/api/platform/domains', tokens.a);
+    assert.ok(listA.body.data.items.some((d: any) => d.domain === mine), 'the owner still sees its own row');
   });
 });

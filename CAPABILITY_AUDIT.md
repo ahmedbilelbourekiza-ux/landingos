@@ -136,9 +136,31 @@ stay tenant-bound; writes untouched. Applied to **neondb only**; the pinned
 test ("resolution over real HTTP flips on verifiedAt and nothing else",
 platform/domains 10/10) drives `x-forwarded-host` through the running server
 both ways, and the curl Host-header probe confirms: unverified → /console,
-verified → the tenant storefront. **landingos_prod still lacks the policy —
-custom domains stay safely dead there until `npm run rls` runs against it,
-which is the user's production-change call.**
+verified → the tenant storefront. Applied to `landingos_prod` 10 Aug (user-approved deploy) and proven live
+there with a throwaway tenant.
+
+**THEN CORRECTED (same night, host-trust slice — committed, NOT deployed).**
+Two defects, both found by measuring rather than reading:
+1. **`currentHost()` trusted `x-forwarded-host` wholesale.** Render's edge
+   passes a client-sent value through, so `GET /demo` carrying a victim's
+   verified hostname rendered the VICTIM's storefront — any URL could be
+   re-pointed at any tenant by one header (cache-poisoning / brand
+   impersonation; public data only). Fixed by trusting what the EDGE
+   validates: a request arriving at a platform address (`*.onrender.com`,
+   localhost, `PUBLIC_HOST`/`RENDER_EXTERNAL_HOSTNAME`) is a platform
+   request whatever a forwarded header claims; list-valued headers take the
+   nearest hop, not the injected first entry; non-hostname values are
+   rejected outright.
+2. **The policy itself widened tenant-bound reads.** `USING ("verifiedAt" IS
+   NOT NULL)` with no binding guard ORs into EVERY bound read — a tenant
+   owning nothing saw another tenant's domain, and the console's own list
+   would have shown other companies'. Fixed with the house pattern: a
+   `withVerifiedDomains()` binding (`app.domain_lookup`) that only the
+   pre-tenant lookup sets, mirroring `withUser`/`withInvitationToken`.
+   platform/domains 13/13 pins both, including the leak itself.
+**`landingos_prod` still carries the UNGUARDED policy** (harmless there
+today: 1 tenant, 0 domain rows) — it needs the deploy plus a re-run of
+`npm run rls`; see HANDOFF_PRODUCTION's warning block.
 
 **B6. Sessions: the write side quietly got built; the screen didn't.**
 EXISTS: `Session.lastSeenAt` IS now written (throttled touch,

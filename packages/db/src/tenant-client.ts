@@ -37,6 +37,8 @@ const TENANT_SETTING = 'app.tenant_id';
 const USER_SETTING = 'app.user_id';
 /** Bound by withInvitationToken, read by Invitation's token-resolution policy. */
 const INVITATION_SETTING = 'app.invitation_token';
+/* Set only by withVerifiedDomains, for the pre-tenant custom-domain lookup. */
+const DOMAIN_LOOKUP_SETTING = 'app.domain_lookup';
 
 /**
  * Interactive-transaction budget.
@@ -202,6 +204,36 @@ export async function withInvitationToken<T>(
   }
   return client().$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`SELECT set_config($1, $2, true)`, INVITATION_SETTING, token);
+    return work(tx as unknown as TenantDb);
+  }, TX_OPTIONS);
+}
+
+/**
+ * Resolve a VERIFIED custom domain to the tenant that owns it, before any
+ * tenant is known — the third pre-binding circularity, alongside withUser and
+ * withInvitationToken.
+ *
+ * A storefront request arrives at a hostname and nothing else: the domain row
+ * is what NAMES the tenant, so it cannot be read through a binding that does
+ * not exist yet. The matching policy (`tenant_isolation_verified`) opens only
+ * VERIFIED rows and only while this binding is set, so an unverified row and
+ * its in-flight verification token stay reachable exclusively through their
+ * own tenant's binding.
+ *
+ * WHY THE BINDING RATHER THAN AN UNCONDITIONAL POLICY: Postgres ORs permissive
+ * policies. A policy that opened verified rows unconditionally would add them
+ * to what every TENANT-BOUND read sees too — the console's own domains list
+ * would then show other companies' hostnames. That is not hypothetical; it is
+ * what the first version of this policy did, caught by the suite the same
+ * night it was written.
+ *
+ * Read-only by construction: the policy is `FOR SELECT`, and every write to
+ * TenantDomain still goes through withTenant, where the tenant policy's
+ * `WITH CHECK` governs it.
+ */
+export async function withVerifiedDomains<T>(work: (db: TenantDb) => Promise<T>): Promise<T> {
+  return client().$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`SELECT set_config($1, $2, true)`, DOMAIN_LOOKUP_SETTING, 'on');
     return work(tx as unknown as TenantDb);
   }, TX_OPTIONS);
 }

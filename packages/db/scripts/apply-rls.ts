@@ -162,20 +162,35 @@ async function main() {
    * VERIFIED rows too: the whole custom-domain read path was safe but dead,
    * unnoticed for as long as no row could exist.
    *
-   * Unlike a membership or an invitation, a VERIFIED domain is public by
-   * construction: the hostname serves that tenant's storefront to the whole
-   * internet, and the mapping is readable in DNS anyway. So this policy needs
-   * no session variable — it opens exactly the rows whose facts are already
-   * public. What stays closed is everything that is not: UNVERIFIED rows —
-   * which carry the verification tokens mid-proof — remain readable only
-   * through their own tenant's binding, and writes of every row are still
-   * governed by the tenant policy's WITH CHECK (FOR SELECT here, nothing
-   * else). */
+   * A VERIFIED domain is public by construction — the hostname serves that
+   * tenant's storefront to the whole internet and the mapping is readable in
+   * DNS — so what this policy opens is not secret. But it must still be
+   * GATED ON THE BINDING, exactly like the two above, and the reason is worth
+   * stating because the first version of this policy got it wrong and the
+   * suite caught it the same night:
+   *
+   *   Postgres ORs permissive policies. `USING ("verifiedAt" IS NOT NULL)`
+   *   with no binding guard does not merely open the unbound lookup — it adds
+   *   every verified row to what a TENANT-BOUND read sees, so the console's
+   *   own domains list would show other companies' hostnames. Measured: a
+   *   tenant owning nothing saw another tenant's domain.
+   *
+   * With the guard, the row opens only inside withVerifiedDomains() — the one
+   * code path that resolves a hostname before a tenant is known.
+   * `current_setting(..., true)` yields NULL when unset, so every other
+   * context (bound or unbound) falls through to the tenant policy alone.
+   *
+   * Unverified rows — which carry the verification tokens mid-proof — stay
+   * readable only through their own tenant's binding, and every write is
+   * still governed by the tenant policy's WITH CHECK (FOR SELECT here). */
   await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS ${POLICY}_verified ON "TenantDomain"`);
   await prisma.$executeRawUnsafe(`
     CREATE POLICY ${POLICY}_verified ON "TenantDomain"
       FOR SELECT
-      USING ("verifiedAt" IS NOT NULL)
+      USING (
+        "verifiedAt" IS NOT NULL
+        AND current_setting('app.domain_lookup', true) = 'on'
+      )
   `);
   console.log('TenantDomain: added verified-domain resolution policy for storefront routing');
 

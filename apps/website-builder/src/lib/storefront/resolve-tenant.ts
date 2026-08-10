@@ -3,7 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { headers } from "next/headers";
 
-import { asPlatform } from "@landingos/db";
+import { asPlatform, withVerifiedDomains } from "@landingos/db";
 
 /* =============================================================================
  * Which tenant is this storefront request for? (M-17)
@@ -69,11 +69,88 @@ export function isReservedSlug(slug: string): boolean {
   return RESERVED_TENANT_SLUGS.includes(slug.toLowerCase());
 }
 
-/** The hostname of the current request, without the port. */
+/* -----------------------------------------------------------------------------
+ * WHICH HOSTNAME IS THIS REQUEST FOR, AND WHO IS ALLOWED TO SAY SO
+ *
+ * `x-forwarded-host` is CLIENT INPUT. Render's edge passes a client-supplied
+ * one straight through, so trusting it wholesale meant anyone could serve any
+ * tenant's storefront from any URL by adding a header — measured, not
+ * theorised: `GET /demo` with `X-Forwarded-Host: <victim's verified domain>`
+ * rendered the VICTIM's storefront instead of demo's.
+ *
+ * `host`, by contrast, IS validated at the edge: an unconfigured hostname
+ * never reaches the app at all (Render answers 403 `x-render-routing` — the
+ * deploy probe proved it), because that header is what the edge routes by.
+ *
+ * So the rule is: a request that ARRIVED AT the platform's own address is a
+ * platform request, whatever a forwarded header claims about it. The forwarded
+ * value is honoured only when the request did not arrive at a platform address
+ * — the genuine custom-domain shape, where the edge has already accepted the
+ * hostname — and even then the value must survive the DB's verified-domain
+ * lookup, which is the second gate that has always been there.
+ * -------------------------------------------------------------------------- */
+
+/** Hostnames the platform answers on ITSELF, where no custom domain applies. */
+function platformHosts(): Set<string> {
+  const set = new Set<string>([
+    "localhost",
+    "127.0.0.1",
+    "[::1]",
+    "0.0.0.0",
+  ]);
+  // The deployment's own names, when the environment states them.
+  for (const key of ["PUBLIC_HOST", "RENDER_EXTERNAL_HOSTNAME"] as const) {
+    const value = process.env[key];
+    if (value) set.add(normalizeHost(value) ?? value.toLowerCase());
+  }
+  return set;
+}
+
+function isPlatformHost(host: string): boolean {
+  // `*.onrender.com` is always the platform's own surface — the domains route
+  // refuses to let a tenant claim one, so a request arriving there is a
+  // platform request by construction, with or without PUBLIC_HOST set.
+  if (host === "onrender.com" || host.endsWith(".onrender.com")) return true;
+  if (host.endsWith(".localhost")) return true;
+  return platformHosts().has(host);
+}
+
+/**
+ * One hostname from one header value: lowercased, port removed, and rejected
+ * outright if it is not a plain hostname.
+ *
+ * A comma-separated value means the header crossed several hops — or that
+ * somebody injected one. The LAST entry is the one written by the hop nearest
+ * us, so it is the only entry with any claim to trust; taking the first would
+ * take precisely the value an attacker prepends.
+ */
+function normalizeHost(raw: string | null): string | null {
+  if (!raw) return null;
+  const parts = raw.split(",");
+  const nearest = parts[parts.length - 1].trim().toLowerCase();
+  const withoutPort = nearest.replace(/:\d+$/, "");
+  if (!withoutPort || withoutPort.length > 253) return null;
+  // Hostname charset only: letters, digits, hyphens, dots. No scheme, no path,
+  // no whitespace, no credentials — a value carrying any of those is not a
+  // hostname and must not become one by truncation.
+  if (!/^[a-z0-9.-]+$/.test(withoutPort)) return null;
+  return withoutPort;
+}
+
+/**
+ * The hostname of the current request, without the port — trusted only as far
+ * as the header it came from deserves. See the block comment above.
+ */
 async function currentHost(): Promise<string | null> {
   const h = await headers();
-  const raw = h.get("x-forwarded-host") ?? h.get("host");
-  return raw ? raw.split(":")[0].toLowerCase() : null;
+  const direct = normalizeHost(h.get("host"));
+  const forwarded = normalizeHost(h.get("x-forwarded-host"));
+
+  // Arrived at the platform's own address: ignore any claim to the contrary.
+  if (direct && isPlatformHost(direct)) return direct;
+
+  // Otherwise the edge accepted this hostname; prefer what it routed by.
+  return direct ?? forwarded;
 }
 
 /**
@@ -89,11 +166,19 @@ async function currentHost(): Promise<string | null> {
 export const tenantByDomain = cache(async (): Promise<StorefrontTenant | null> => {
   const host = await currentHost();
   if (!host) return null;
+  // A platform hostname has no custom-domain row by construction, and asking
+  // costs a query on every console and API request that is not a storefront.
+  if (isPlatformHost(host)) return null;
 
-  const domain = await asPlatform().tenantDomain.findUnique({
-    where: { domain: host },
-    include: { tenant: true },
-  });
+  // The pre-tenant binding: `tenant_isolation_verified` opens VERIFIED rows
+  // only inside this, so the lookup that discovers a tenant can happen before
+  // one is bound without widening what any bound read sees.
+  const domain = await withVerifiedDomains((db) =>
+    (db as any).tenantDomain.findUnique({
+      where: { domain: host },
+      include: { tenant: true },
+    }),
+  );
 
   if (!domain || !domain.verifiedAt) return null;
   if (domain.tenant.deletedAt || domain.tenant.status !== "ACTIVE") return null;
