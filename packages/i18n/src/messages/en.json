@@ -40,6 +40,16 @@
       "colCategory": "Category",
       "colUpdated": "Updated"
     },
+    "categories": {
+      "create": "New category",
+      "name": "Name",
+      "slug": "Address",
+      "show": "Show",
+      "hide": "Hide",
+      "delete": "Delete",
+      "confirmDelete": "Really delete?",
+      "deleteHint": "Deleting a category keeps its pages — they just lose the label."
+    },
     "overview": {
       "attention": "Needs attention",
       "attentionHint": "Each item opens the screen where it gets handled.",

@@ -40,6 +40,16 @@
       "colCategory": "الفئة",
       "colUpdated": "آخر تعديل"
     },
+    "categories": {
+      "create": "فئة جديدة",
+      "name": "الاسم",
+      "slug": "العنوان",
+      "show": "إظهار",
+      "hide": "إخفاء",
+      "delete": "حذف",
+      "confirmDelete": "تأكيد الحذف؟",
+      "deleteHint": "حذف الفئة يُبقي صفحاتها — تفقد التصنيف فقط."
+    },
     "overview": {
       "attention": "يتطلب تدخلاً",
       "attentionHint": "كل عنصر يفتح الشاشة التي تعالجه فيها.",

@@ -12,6 +12,17 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **B3 (CAPABILITY_AUDIT)** Categories become manageable (10 August 2026).
+  The CRUD routes existed — validated, permission-gated, suite-covered — and
+  the console screen was a read-only list. Added the create form (slug
+  auto-follows the name until touched, charset enforced while typing),
+  per-row visibility toggle and two-step inline delete, gated on the same
+  `website-builder:pages:write` the routes check; `builder.categories.*` keys
+  in en/fr/ar. New contract test: deleting a category releases its pages
+  (the FK's SetNull, which the screen's hint promises) rather than deleting
+  them. `Category.coverImage`/`icon` remain accept-only with no renderer —
+  reclassified as removal candidates in the audit's §2.
+
 - **B2 (CAPABILITY_AUDIT)** The LandingSetting toggles get their controls
   (10 August 2026). All five display toggles plus `freeShipping` were stored
   and (partially) honoured with no way for a merchant to set them —

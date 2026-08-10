@@ -964,3 +964,38 @@ describe('the display and shipping toggles have real write paths (B2)', { skip }
     await patch(`/api/builder/landings/${pageId}/shipping`, tokens.owner, { freeShipping: false });
   });
 });
+
+describe('categories are manageable from the screen (B3)', { skip }, () => {
+  test('the screen offers the write controls to a writer', async () => {
+    const r = await fetch(`${BASE}/console/builder/categories`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    assert.match(html, /data-testid="category-create-form"/);
+  });
+
+  test('deleting a category releases its pages instead of taking them along', async () => {
+    const created = await api('/api/builder/categories', tokens.owner, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Doomed', slug: `doomed-${stamp}` }),
+    });
+    assert.equal(created.status, 201);
+    const catId = created.body.data.id;
+
+    const attach = await patch(`/api/builder/landings/${pageId}/general`, tokens.owner, {
+      categoryId: catId,
+    });
+    assert.equal(attach.status, 200);
+
+    const del = await api(`/api/builder/categories/${catId}`, tokens.owner, { method: 'DELETE' });
+    assert.equal(del.status, 200);
+
+    // The FK is SetNull by design: the page survives, uncategorised — which
+    // is what the screen's delete hint promises.
+    const row = await withTenant(tenant, (tx) =>
+      (tx as any).landingPage.findUnique({ where: { id: pageId }, select: { categoryId: true } }),
+    );
+    assert.equal(row.categoryId, null);
+  });
+});

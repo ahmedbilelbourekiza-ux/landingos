@@ -62,9 +62,16 @@ permission-gated); a console list screen; `Category.icon/coverImage/sortOrder/
 isVisible` columns.
 MISSING: any create/edit/hide/delete control (the screen greps clean of
 forms and fetches); `coverImage` is accepted by the API and **rendered by
-nothing** — not even the storefront category page. **Slice 3** (UI onto the
-existing routes; coverImage either gets its storefront render there or joins
-§2).
+nothing** — not even the storefront category page. **Slice 3 — DONE 10 Aug:**
+create form (auto-slug from the name, the API's charset enforced while
+typing), visibility toggle and two-step inline delete on each row, all gated
+on the same `pages:write` permission the routes check, i18n'd in en/fr/ar
+(builder.categories.*). New tests: the screen offers the controls to a
+writer, and delete releases pages (SetNull) instead of taking them along —
+builder-sections 58/58, i18n parity 20/20. Live-verified in the Arabic
+console. `coverImage`/`icon` stay accept-only with no render — reclassified
+to §2 as removal candidates unless a storefront category redesign claims
+them.
 
 **B4. Store settings: the screen edits nine fields, the model holds fourteen.**
 EXISTS: `StoreSettings` columns all accepted by `PUT /api/builder/settings/

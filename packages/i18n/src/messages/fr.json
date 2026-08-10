@@ -40,6 +40,16 @@
       "colCategory": "Catégorie",
       "colUpdated": "Mise à jour"
     },
+    "categories": {
+      "create": "Nouvelle catégorie",
+      "name": "Nom",
+      "slug": "Adresse",
+      "show": "Afficher",
+      "hide": "Masquer",
+      "delete": "Supprimer",
+      "confirmDelete": "Vraiment supprimer ?",
+      "deleteHint": "Supprimer une catégorie conserve ses pages — elles perdent seulement l'étiquette."
+    },
     "overview": {
       "attention": "Demande une intervention",
       "attentionHint": "Chaque élément ouvre l'écran où le traiter.",
