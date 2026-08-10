@@ -12,6 +12,18 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **B5 (CAPABILITY_AUDIT)** Custom domains get their write half (10 August
+  2026). The read path was complete and safe from the day the schema landed —
+  `tenantByDomain` refuses rows without `verifiedAt` — and nothing could
+  create a row. Now: claim routes minting 128-bit tokens, DNS TXT
+  verification (`_landingos-verify.<domain>`, exact match, the ONLY writer
+  of `verifiedAt`), exclusive make-primary on verified rows, delete; a
+  Settings → Domains screen with the TXT + CNAME instructions in three
+  locales. New permission `platform:domains:manage`, deliberately SENSITIVE
+  in rbac (OWNER/ADMIN only — a domain decides where customer traffic
+  goes). New suite platform/domains 9/9; the positive DNS path is honestly
+  untestable without a real zone and says so in the suite header.
+
 - **B4 (CAPABILITY_AUDIT)** The storefront wears the tenant's identity
   (10 August 2026). Measuring the "store settings are half-editable" finding
   exposed the sharper defect: the landing template's nav and footer rendered

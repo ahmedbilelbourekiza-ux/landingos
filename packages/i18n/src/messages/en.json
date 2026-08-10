@@ -1034,6 +1034,8 @@
     "profileHint": "Your name, language and password.",
     "store": "Store profile",
     "storeHint": "Public name, contact details and social links.",
+    "domains": "Custom domains",
+    "domainsHint": "Your storefront on your own hostname.",
     "deliveryPrices": "Delivery prices",
     "deliveryPricesHint": "What each wilaya costs, for home delivery and stop desk.",
     "integrations": "Integrations",
@@ -1057,5 +1059,23 @@
     "passwordChanged": "Password changed. Other sessions were signed out.",
     "passwordHint": "At least 12 characters.",
     "email": "Email"
+  },
+  "domains": {
+    "title": "Custom domains",
+    "hint": "Serve your storefront on your own hostname.",
+    "notice": "Add a domain, prove it with the DNS record shown, then point the hostname at the platform. Unverified domains serve nothing.",
+    "add": "Link domain",
+    "placeholder": "shop.example.com",
+    "verify": "Verify",
+    "verified": "Verified",
+    "pending": "Awaiting DNS proof",
+    "makePrimary": "Make primary",
+    "primary": "Primary",
+    "remove": "Unlink",
+    "confirmRemove": "Really unlink?",
+    "recordName": "TXT record",
+    "recordValue": "Value",
+    "txtHint": "Create this TXT record in your DNS zone, then press Verify. Propagation can take up to an hour.",
+    "cnameHint": "To serve traffic, also point the hostname (CNAME) at:"
   }
 }

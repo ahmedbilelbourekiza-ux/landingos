@@ -86,6 +86,10 @@ const SENSITIVE = [
   '*:finance:read',
   'platform:billing:*',
   'platform:team:*',
+  // B5. A verified domain decides where CUSTOMER TRAFFIC goes — claiming or
+  // deleting one is at least as sensitive as billing, so only a bare `*`
+  // (OWNER/ADMIN) reaches it by role.
+  'platform:domains:manage',
 ];
 
 export interface AuthContext {

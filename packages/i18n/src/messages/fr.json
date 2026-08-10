@@ -1034,6 +1034,8 @@
     "profileHint": "Votre nom, votre langue et votre mot de passe.",
     "store": "Profil de la boutique",
     "storeHint": "Nom public, coordonnées et liens sociaux.",
+    "domains": "Domaines personnalisés",
+    "domainsHint": "Votre boutique sur votre propre nom de domaine.",
     "deliveryPrices": "Tarifs de livraison",
     "deliveryPricesHint": "Le coût par wilaya, à domicile et en stop desk.",
     "integrations": "Intégrations",
@@ -1057,5 +1059,23 @@
     "passwordChanged": "Mot de passe modifié. Les autres sessions ont été fermées.",
     "passwordHint": "Au moins 12 caractères.",
     "email": "E-mail"
+  },
+  "domains": {
+    "title": "Domaines personnalisés",
+    "hint": "Servez votre boutique sur votre propre nom de domaine.",
+    "notice": "Ajoutez un domaine, prouvez-le avec l'enregistrement DNS affiché, puis pointez le nom vers la plateforme. Un domaine non vérifié ne sert rien.",
+    "add": "Lier le domaine",
+    "placeholder": "boutique.exemple.com",
+    "verify": "Vérifier",
+    "verified": "Vérifié",
+    "pending": "En attente de preuve DNS",
+    "makePrimary": "Rendre principal",
+    "primary": "Principal",
+    "remove": "Délier",
+    "confirmRemove": "Vraiment délier ?",
+    "recordName": "Enregistrement TXT",
+    "recordValue": "Valeur",
+    "txtHint": "Créez cet enregistrement TXT dans votre zone DNS, puis appuyez sur Vérifier. La propagation peut prendre jusqu'à une heure.",
+    "cnameHint": "Pour servir le trafic, pointez aussi le nom (CNAME) vers :"
   }
 }

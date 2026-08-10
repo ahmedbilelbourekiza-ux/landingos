@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { CreditCard, Plug, Store, Truck, UserRound, Users } from "lucide-react";
+import { CreditCard, Globe, Plug, Store, Truck, UserRound, Users } from "lucide-react";
 
 import { can } from "@landingos/auth";
 
@@ -53,6 +53,15 @@ export default async function SettingsIndex() {
       title: t("settings.deliveryPrices"),
       description: t("settings.deliveryPricesHint"),
       visible: !!auth && can(auth, "website-builder:settings:write"),
+    },
+    {
+      href: "/console/settings/domains",
+      icon: Globe,
+      title: t("settings.domains"),
+      description: t("settings.domainsHint"),
+      // `platform:domains:manage` is SENSITIVE — a domain decides where
+      // customer traffic goes, so OWNER/ADMIN only (B5).
+      visible: !!auth && can(auth, "platform:domains:manage"),
     },
     {
       href: "/console/settings/integrations",

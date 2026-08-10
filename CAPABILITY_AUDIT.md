@@ -103,10 +103,21 @@ read path — `tenantByDomain` refuses unverified rows; the bare-domain root
 already routes a verified domain to its storefront (commit `acbc96a`).
 MISSING: everything write-side — no route names the model, no screen adds a
 domain, nothing mints a token, nothing checks DNS, nothing sets `verifiedAt`
-or `isPrimary`. **Slice 5:** settings screen + routes (add → token shown as
-DNS TXT record → verify via DNS lookup → primary). Security-sensitive: the
-verify step is what stops hostname theft; the existing refuse-unverified read
-path must stay the gate.
+or `isPrimary`. **Slice 5 — DONE 10 Aug:** `/api/platform/domains` (list,
+claim with 128-bit token), `[id]` (delete, make-primary — verified rows
+only, exclusive per tenant), `[id]/verify` (TXT lookup at
+`_landingos-verify.<domain>`, exact token match, nothing else writes
+`verifiedAt`); hostname normalisation refuses the platform's own surfaces
+(`*.onrender.com`, localhost) and junk; a Settings → Domains screen with
+DNS instructions (TXT proof + CNAME pointer), i18n'd en/fr/ar. Gated on new
+`platform:domains:manage`, added to rbac's SENSITIVE list — OWNER/ADMIN
+only, the same tier as billing. New suite `platform/domains` 9/9 (refusals,
+cross-tenant 404s, manager 403/404, failed-verify-writes-nothing,
+primary-exclusivity); team 63/63 and billing 19/19 re-proven after the rbac
+change. The POSITIVE DNS path is untestable without real DNS — recorded in
+the suite header, same honest class as carrier endpoints. The read path
+(`tenantByDomain` refusing unverified rows) is untouched. Live-verified:
+claim → token + instructions → clean verify failure → delete.
 
 **B6. Sessions: the write side quietly got built; the screen didn't.**
 EXISTS: `Session.lastSeenAt` IS now written (throttled touch,
