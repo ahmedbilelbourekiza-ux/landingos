@@ -81,8 +81,21 @@ MISSING: controls for `logo`/`favicon` (an upload route exists at
 `/api/builder/upload` — the pieces just aren't joined), and **no storefront
 renderer for any social link** (facebook/instagram/tiktok/whatsapp are
 editable and shown to no customer; `telegram` additionally has no field).
-**Slice 4:** logo/favicon controls + a storefront footer/social strip;
-telegram gets its field there or joins §2.
+**Slice 4 — DONE 10 Aug, and the measurement made it a defect fix:** the
+landing template's nav and footer rendered THE PLATFORM'S brand — the
+LandingOS wordmark linking to "/", "© LandingOS" — on every tenant's
+customer-facing page. Now the tenant's identity flows into the template
+(`StorefrontStoreData` from the page query): nav brand + logo linking to
+their own storefront root, footer with name/description/social links
+(handle→canonical-URL normalisation) and their © line, platform mark only as
+the no-settings-row fallback. Console: `telegram` field added; `logo`/
+`favicon` are FILE inputs handled inside the server action via the same
+`storeImage` the upload route uses (same caps, same per-tenant prefix), with
+previews and remove boxes. `favicon` finally has a consumer — the storefront
+layout's metadata serves it on every page (its only prior "lib" hit was a
+reserved-filename list, i.e. nothing). Tests: storefront 32/32 (identity
+renders when set, platform fallback when no row). Live-verified: /demo/clogs
+wears "Demo Trading Co." in nav and footer.
 
 **B5. Custom domains (the audit's seed example, confirmed exactly).**
 EXISTS: `TenantDomain` with `verificationToken`/`isPrimary`; a complete SAFE

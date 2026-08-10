@@ -531,3 +531,37 @@ describe('free shipping and the floating WhatsApp reach the customer (B2)', { sk
     assert.ok(!/data-testid="floating-whatsapp"/.test(off.text), 'the toggle is the off switch');
   });
 });
+
+describe("the storefront wears the tenant's identity, not the platform's (B4)", { skip }, () => {
+  test('nav and footer carry the store name, logo and socials once set', async () => {
+    await withTenant(tenantA, (db) => (db as any).storeSettings.upsert({
+      where: { tenantId: tenantA },
+      create: {
+        tenantId: tenantA, storeName: 'Shop A Store', storeDescription: 'The finest test goods.',
+        logo: '/uploads/test-logo.png', facebook: 'shopa', telegram: '@shopa_tg',
+      },
+      update: {
+        storeName: 'Shop A Store', storeDescription: 'The finest test goods.',
+        logo: '/uploads/test-logo.png', facebook: 'shopa', telegram: '@shopa_tg',
+      },
+    }));
+
+    const r = await get(`/${slugA}/shared-item`);
+    assert.equal(r.status, 200);
+    assert.match(r.text, /data-testid="store-brand"/);
+    assert.match(r.text, /data-testid="store-logo"/);
+    assert.match(r.text, />Shop A Store</);
+    // A bare handle became the canonical link; a handle with @ lost it.
+    assert.match(r.text, /data-social="facebook"[^>]*/);
+    assert.match(r.text, /facebook\.com\/shopa/);
+    assert.match(r.text, /t\.me\/shopa_tg/);
+    assert.match(r.text, /The finest test goods\./);
+  });
+
+  test('a tenant with no settings row keeps the platform fallback', async () => {
+    const r = await get(`/${slugB}/shared-item`);
+    assert.equal(r.status, 200);
+    assert.ok(!/data-testid="store-brand"/.test(r.text), 'no store row, no store brand');
+    assert.match(r.text, /data-testid="storefront-footer"/);
+  });
+});

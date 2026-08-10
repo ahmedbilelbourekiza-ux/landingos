@@ -68,6 +68,24 @@ export interface LandingSettingData {
   stopDeskEnabled: boolean;
 }
 
+/* The tenant's public identity — CAPABILITY_AUDIT B4. The storefront chrome
+ * (nav, footer, floating WhatsApp, favicon) renders THIS, not the platform's
+ * brand: a customer on a tenant's page is in that tenant's shop. Null fields
+ * simply don't render; a null store falls back to the platform mark (a page
+ * served before the tenant ever opened Settings → Store). */
+export interface StorefrontStoreData {
+  name: string | null;
+  description: string | null;
+  logo: string | null;
+  facebook: string | null;
+  instagram: string | null;
+  tiktok: string | null;
+  whatsapp: string | null;
+  telegram: string | null;
+  /** The tenant's own storefront root ("/acme") — the brand link's target. */
+  homePath: string;
+}
+
 export interface LandingPageData {
   id: string;
   title: string;

@@ -6,6 +6,7 @@ import { can } from "@landingos/auth";
 import { notFound } from "next/navigation";
 
 import { requireConsoleSession } from "@/lib/console/session";
+import { storeImage } from "@/lib/image-upload";
 import { getTranslations } from "next-intl/server";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 
@@ -29,6 +30,18 @@ const FIELDS = [
   { name: "instagram", label: "Instagram" },
   { name: "tiktok", label: "TikTok" },
   { name: "whatsapp", label: "WhatsApp" },
+  // B4 — accepted by the API and rendered by the storefront footer since B4;
+  // it simply had no field.
+  { name: "telegram", label: "Telegram" },
+] as const;
+
+/* The two image identities (B4). File inputs handled INSIDE the server
+ * action via the same storeImage the upload route uses — same size cap, same
+ * format allow-list, same per-tenant prefix. A submitted file replaces; the
+ * clear checkbox removes; neither means "keep what is there". */
+const IMAGES = [
+  { file: "logoFile", clear: "logoClear", column: "logo", label: "Logo" },
+  { file: "faviconFile", clear: "faviconClear", column: "favicon", label: "Favicon" },
 ] as const;
 
 async function save(formData: FormData) {
@@ -44,6 +57,20 @@ async function save(formData: FormData) {
   if (!data.storeName) redirect("/console/settings/store?error=name");
 
   const tenantId = session.auth.tenantId;
+
+  for (const img of IMAGES) {
+    const file = formData.get(img.file);
+    if (file instanceof File && file.size > 0) {
+      const result = await storeImage(file, tenantId);
+      if (!result.ok) redirect("/console/settings/store?error=upload");
+      data[img.column] = result.url;
+    } else if (formData.get(img.clear)) {
+      data[img.column] = null;
+    }
+    // Neither a file nor the clear box: the column stays untouched — it is
+    // absent from `data`, and absent keys update nothing.
+  }
+
   await withTenant(tenantId, (db) =>
     (db as any).storeSettings.upsert({
       where: { tenantId },
@@ -102,7 +129,9 @@ export default async function StoreSettingsPage({
             borderColor: "var(--danger-border)",
           }}
         >
-          A store name is required.
+          {error === "upload"
+            ? "The image was refused — JPEG, PNG, WebP or AVIF up to 8 MB."
+            : "A store name is required."}
         </p>
       ) : null}
 
@@ -125,6 +154,36 @@ export default async function StoreSettingsPage({
                 settings?.[f.name] ??
                 (f.name === "storeName" ? session.tenant?.name ?? "" : "")
               }
+              className="ui-control tap w-full"
+            />
+          </div>
+        ))}
+
+        {IMAGES.map((img) => (
+          <div key={img.column} className="space-y-1">
+            <label htmlFor={img.file} className="ui-label">
+              {img.label}
+            </label>
+            {settings?.[img.column] && (
+              <span className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={settings[img.column]}
+                  alt=""
+                  data-testid={`current-${img.column}`}
+                  className="h-8 w-auto max-w-24 rounded border border-border object-contain"
+                />
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <input type="checkbox" name={img.clear} className="size-3.5 accent-primary" />
+                  Remove
+                </label>
+              </span>
+            )}
+            <input
+              id={img.file}
+              name={img.file}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/avif"
               className="ui-control tap w-full"
             />
           </div>

@@ -40,15 +40,33 @@ async function load(tenantSlug: string, pageSlug: string) {
         theme: true,
       },
     }),
-    // The floating WhatsApp button's number (B2) — read here because the
-    // template deliberately reads no settings itself.
+    // The tenant's public identity (B4) — nav brand, footer, socials, the
+    // floating WhatsApp number — read here because the template deliberately
+    // reads no settings itself.
     await (db as any).storeSettings.findUnique({
       where: { tenantId: tenant.id },
-      select: { whatsapp: true },
+      select: {
+        storeName: true, storeDescription: true, logo: true,
+        facebook: true, instagram: true, tiktok: true, whatsapp: true, telegram: true,
+      },
     }),
   ]);
 
-  return page ? { tenant, page, whatsapp: store?.whatsapp ?? null } : null;
+  const storeData = store
+    ? {
+        name: store.storeName ?? tenant.name,
+        description: store.storeDescription,
+        logo: store.logo,
+        facebook: store.facebook,
+        instagram: store.instagram,
+        tiktok: store.tiktok,
+        whatsapp: store.whatsapp,
+        telegram: store.telegram,
+        homePath: `/${tenantSlug}`,
+      }
+    : null;
+
+  return page ? { tenant, page, store: storeData } : null;
 }
 
 export async function generateMetadata({
@@ -152,7 +170,7 @@ export default async function StorefrontLandingPage({
         <LandingTemplate
           page={toLandingPageData(found.page)}
           theme={toThemeData(found.page.theme)}
-          whatsappNumber={found.whatsapp}
+          store={found.store}
         />
       </StorefrontApiProvider>
     </div>

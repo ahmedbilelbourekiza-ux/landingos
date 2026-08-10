@@ -1,7 +1,32 @@
+import type { Metadata } from "next";
+
 import { withTenant } from "@landingos/db";
 
 import { resolveStorefrontTenant } from "@/lib/storefront/resolve-tenant";
 import { TrackingScripts, type BrowserIntegration } from "@/components/landing/tracking-scripts";
+
+/* The tenant's favicon (B4) — `StoreSettings.favicon` was accepted and
+ * stored since the port and served to nobody. Declared at the LAYOUT so
+ * every storefront page — home, category, product, thank-you — carries the
+ * tenant's icon without any page remembering to, the same argument as the
+ * tracking scripts below. Absent, the browser falls back to the platform
+ * default exactly as before. */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ tenant: string }>;
+}): Promise<Metadata> {
+  const { tenant: slug } = await params;
+  const tenant = await resolveStorefrontTenant(slug);
+  if (!tenant) return {};
+  const settings = (await withTenant(tenant.id, (db) =>
+    (db as any).storeSettings.findUnique({
+      where: { tenantId: tenant.id },
+      select: { favicon: true },
+    }),
+  )) as { favicon: string | null } | null;
+  return settings?.favicon ? { icons: { icon: settings.favicon } } : {};
+}
 
 /* =============================================================================
  * The storefront layout (LB.5).

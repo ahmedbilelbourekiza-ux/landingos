@@ -23,16 +23,20 @@ import { createLandingOrderStore, type LandingOrderStore } from "@/lib/landing/s
 export function LandingTemplate({
   page,
   theme = DEFAULT_THEME,
-  whatsappNumber = null,
+  store = null,
 }: {
   page: LandingPageData;
   theme?: LandingThemeData;
-  /** StoreSettings.whatsapp, supplied by the storefront page's query — the
-   *  template reads no settings itself. Null hides the floating button
-   *  regardless of the toggle (B2). */
-  whatsappNumber?: string | null;
+  /** The tenant's public identity (B4) — nav brand, footer, socials and the
+   *  floating WhatsApp number all come from here, supplied by the storefront
+   *  page's query. The template reads no settings itself. Null (the editor
+   *  preview, a tenant with no settings row) falls back to the platform
+   *  mark and renders no store-dependent chrome. */
+  store?: import("@/types/landing").StorefrontStoreData | null;
 }) {
-  const [store] = React.useState<LandingOrderStore>(() =>
+  // `orderStore` — the client-side order state, renamed from `store` when the
+  // tenant-identity prop of that name arrived (B4). Two stores, two words.
+  const [orderStore] = React.useState<LandingOrderStore>(() =>
     createLandingOrderStore(page),
   );
   const setting = page.setting;
@@ -40,9 +44,9 @@ export function LandingTemplate({
   return (
     <ThemeProvider theme={theme}>
       <AnnouncementBar />
-      <SiteNav />
+      <SiteNav store={store} />
       <main className="flex-1">
-        <ProductSection page={page} store={store} />
+        <ProductSection page={page} store={orderStore} />
         <DescriptionImages images={page.descriptionImages} />
         {/* LB.12 — these two sections existed since the port and were mounted
             by NOTHING: a merchant's saved reviews travelled to the browser in
@@ -52,16 +56,16 @@ export function LandingTemplate({
         {(setting?.showReviews ?? true) && <ReviewsSection reviews={page.reviews} />}
         {(setting?.showFAQ ?? true) && <FAQSection faqs={page.faqs} />}
       </main>
-      <SiteFooter />
+      <SiteFooter store={store} />
       {setting?.stickyBuyButton && (
         <StickyBuyButton
-          store={store}
+          store={orderStore}
           buttonText={page.buttonText}
           currency={page.currency}
         />
       )}
-      {setting?.floatingWhatsapp && whatsappNumber && (
-        <FloatingWhatsapp number={whatsappNumber} />
+      {setting?.floatingWhatsapp && store?.whatsapp && (
+        <FloatingWhatsapp number={store.whatsapp} />
       )}
     </ThemeProvider>
   );

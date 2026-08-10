@@ -12,6 +12,19 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **B4 (CAPABILITY_AUDIT)** The storefront wears the tenant's identity
+  (10 August 2026). Measuring the "store settings are half-editable" finding
+  exposed the sharper defect: the landing template's nav and footer rendered
+  the PLATFORM's wordmark — linking to "/", "© LandingOS" — on every
+  tenant's customer page, while their own name/logo/socials sat unrendered
+  in StoreSettings. The tenant's identity now flows from the page query into
+  the template (nav brand + logo → their storefront root; footer name,
+  description, social links with handle→URL normalisation, their © line;
+  platform mark only when no settings row exists). Console additions:
+  `telegram` field; `logo`/`favicon` file inputs handled in the server
+  action via the upload route's own `storeImage`; `favicon` gains its first
+  real consumer (storefront layout metadata). storefront 30→32.
+
 - **B3 (CAPABILITY_AUDIT)** Categories become manageable (10 August 2026).
   The CRUD routes existed — validated, permission-gated, suite-covered — and
   the console screen was a read-only list. Added the create form (slug
