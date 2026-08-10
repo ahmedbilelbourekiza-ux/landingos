@@ -118,6 +118,16 @@ change. The POSITIVE DNS path is untestable without real DNS — recorded in
 the suite header, same honest class as carrier endpoints. The read path
 (`tenantByDomain` refusing unverified rows) is untouched. Live-verified:
 claim → token + instructions → clean verify failure → delete.
+**FOUND LATER THE SAME NIGHT (pre-deploy Q&A, both-ways Host-header probe):
+the READ path is safe but DEAD — `tenantByDomain` reads through the UNBOUND
+app role and `TenantDomain` carries the standard `tenant_isolation` policy,
+so RLS returns null even for VERIFIED rows (probed: owner sees the verified
+row, app role sees nothing; a verified domain's root still 307s to /console).
+Pre-existing, not introduced by B5 — it never had a row to reveal it. Failure
+direction is closed (nothing serves that shouldn't). The fix is the same
+special-case apply-rls got for Membership/Invitation: a pre-binding
+resolution policy on TenantDomain (verified rows readable unbound), applied
+to BOTH databases + a pinned test. NOT fixed yet — awaiting the user's word.**
 
 **B6. Sessions: the write side quietly got built; the screen didn't.**
 EXISTS: `Session.lastSeenAt` IS now written (throttled touch,
