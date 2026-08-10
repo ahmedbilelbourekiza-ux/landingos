@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { CreditCard, Globe, Plug, Store, Truck, UserRound, Users } from "lucide-react";
+import { Building2, CreditCard, Globe, Plug, Store, Truck, UserRound, Users } from "lucide-react";
 
 import { can } from "@landingos/auth";
 
@@ -53,6 +53,15 @@ export default async function SettingsIndex() {
       title: t("settings.deliveryPrices"),
       description: t("settings.deliveryPricesHint"),
       visible: !!auth && can(auth, "website-builder:settings:write"),
+    },
+    {
+      href: "/console/settings/workspace",
+      icon: Building2,
+      title: t("settings.workspace"),
+      description: t("settings.workspaceHint"),
+      // `platform:workspace:manage` is SENSITIVE — renaming the company and
+      // switching its currency are owner-tier decisions (B9).
+      visible: !!auth && can(auth, "platform:workspace:manage"),
     },
     {
       href: "/console/settings/domains",

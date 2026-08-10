@@ -12,6 +12,15 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **B9 (CAPABILITY_AUDIT)** Workspace defaults unfreeze (10 August 2026).
+  No `tenant.update` existed anywhere: a company's name, default language,
+  currency and timezone were whatever signup wrote, forever. Now
+  `PATCH /api/platform/workspace` — keyed to the caller's session and
+  nothing from the request (Tenant is deliberately unscoped, so application
+  logic IS the isolation here), slug immutable, values validated against
+  the real locale/currency/IANA sets — plus a Settings → Workspace screen.
+  New SENSITIVE permission `platform:workspace:manage`. Suite 4/4.
+
 - **B5 (CAPABILITY_AUDIT)** Custom domains get their write half (10 August
   2026). The read path was complete and safe from the day the schema landed —
   `tenantByDomain` refuses rows without `verifiedAt` — and nothing could

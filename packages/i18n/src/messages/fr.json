@@ -1036,6 +1036,8 @@
     "storeHint": "Nom public, coordonnées et liens sociaux.",
     "domains": "Domaines personnalisés",
     "domainsHint": "Votre boutique sur votre propre nom de domaine.",
+    "workspace": "Espace de travail",
+    "workspaceHint": "Nom, langue, devise et fuseau horaire.",
     "deliveryPrices": "Tarifs de livraison",
     "deliveryPricesHint": "Le coût par wilaya, à domicile et en stop desk.",
     "integrations": "Intégrations",
@@ -1077,5 +1079,15 @@
     "recordValue": "Valeur",
     "txtHint": "Créez cet enregistrement TXT dans votre zone DNS, puis appuyez sur Vérifier. La propagation peut prendre jusqu'à une heure.",
     "cnameHint": "Pour servir le trafic, pointez aussi le nom (CNAME) vers :"
+  },
+  "workspace": {
+    "title": "Espace de travail",
+    "hint": "Les valeurs par défaut de l'entreprise — nom, langue, devise, fuseau.",
+    "name": "Nom de l'entreprise",
+    "slug": "Adresse",
+    "slugHint": "L'adresse est permanente — c'est chaque lien que vous avez partagé.",
+    "locale": "Langue par défaut",
+    "currency": "Devise",
+    "timezone": "Fuseau horaire"
   }
 }

@@ -1036,6 +1036,8 @@
     "storeHint": "Public name, contact details and social links.",
     "domains": "Custom domains",
     "domainsHint": "Your storefront on your own hostname.",
+    "workspace": "Workspace",
+    "workspaceHint": "Name, language, currency and timezone.",
     "deliveryPrices": "Delivery prices",
     "deliveryPricesHint": "What each wilaya costs, for home delivery and stop desk.",
     "integrations": "Integrations",
@@ -1077,5 +1079,15 @@
     "recordValue": "Value",
     "txtHint": "Create this TXT record in your DNS zone, then press Verify. Propagation can take up to an hour.",
     "cnameHint": "To serve traffic, also point the hostname (CNAME) at:"
+  },
+  "workspace": {
+    "title": "Workspace",
+    "hint": "The company's display defaults — name, language, currency, timezone.",
+    "name": "Company name",
+    "slug": "Address",
+    "slugHint": "The address is permanent — it is every link you have shared.",
+    "locale": "Default language",
+    "currency": "Currency",
+    "timezone": "Timezone"
   }
 }

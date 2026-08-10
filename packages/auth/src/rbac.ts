@@ -90,6 +90,9 @@ const SENSITIVE = [
   // deleting one is at least as sensitive as billing, so only a bare `*`
   // (OWNER/ADMIN) reaches it by role.
   'platform:domains:manage',
+  // B9. Renaming the company and switching its display currency are
+  // owner-tier decisions, same argument as billing.
+  'platform:workspace:manage',
 ];
 
 export interface AuthContext {

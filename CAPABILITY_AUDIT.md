@@ -141,8 +141,14 @@ it. Recorded for the ERP queue (LEGACY_PARITY owns prioritisation).
 
 **B9. Tenant display defaults are frozen at signup.** `Tenant.locale/
 currency/timezone/name` — **no `tenant.update` call exists anywhere** in api
-or lib. `timezone` is read (formatting); nothing can ever change it. Small
-slice: owner-gated fields on the general settings screen. **Slice 7.**
+or lib. `timezone` is read (formatting); nothing can ever change it.
+**Slice — DONE 10 Aug:** `PATCH /api/platform/workspace` (own row only,
+keyed to the session and nothing from the request; slug immutable and
+ignored if sent; locale/currency/timezone validated against real sets) + a
+Settings → Workspace screen, i18n'd en/fr/ar. New permission
+`platform:workspace:manage`, SENSITIVE (OWNER/ADMIN). Suite
+platform/workspace 4/4 — incl. "the neighbour's row must not move" and the
+slug-never-moves contract. Live-verified.
 
 ## §2 REMOVE — declared/stored, served to nobody (record, do NOT build)
 
