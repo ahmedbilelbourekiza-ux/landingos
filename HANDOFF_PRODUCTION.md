@@ -185,11 +185,29 @@ edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
 > console's domains screen has no rows to widen. The window closes the moment
 > anyone links a second domain.
 >
-> **To close it:** deploy the host-trust commit AND re-run
-> `npm run rls` against `landingos_prod` (the script is idempotent; it
-> replaces the policy with the guarded version). Dev `neondb` already has the
-> corrected policy. Until then, treat production custom domains as
-> not-yet-safe for a second tenant.
+> **CLOSED 10 Aug (user-approved):** `90f3d43` pushed to `origin/main`, and
+> `npm run rls` re-run against `landingos_prod`. The live policy is now
+> `USING (("verifiedAt" IS NOT NULL) AND (current_setting('app.domain_lookup',
+> true) = 'on'))`, verified by reading `pg_policies` from production, and the
+> behaviour was proven there with throwaway tenants (stranger's bound read
+> `[]`, owner still sees its own row, pre-tenant lookup still resolves).
+> Nothing had leaked: production held **0 verified rows** throughout, and the
+> policy only ever opened verified ones.
+>
+> ### ⚠ ONE COUPLING THE NEXT SESSION MUST KNOW
+> The guarded policy and the new build are a **matched pair**. The policy
+> opens a verified row only inside `withVerifiedDomains()`, which exists only
+> in `90f3d43`. If a build older than that is ever served (rollback, failed
+> deploy), custom domains resolve to NOTHING — safe, but silently dead.
+> **A rollback past `90f3d43` therefore requires re-running the previous
+> apply-rls too, or custom domains break.**
+>
+> The deploy of `90f3d43` could NOT be confirmed by external probe, and the
+> reason is worth recording: every change in it is server-side (client bundle
+> byte-identical), and the corrected policy independently produces the same
+> answer to the spoof probe that the fixed build does. The definitive check
+> is the first real verified custom domain — if it serves its storefront, the
+> build is current.
 
 1. ~~Separate production database~~ — **DONE 10 Aug 2026** (§4, clean start).
 2. **Decommission `erp-serveur`** — user's dashboard; suspend → verify

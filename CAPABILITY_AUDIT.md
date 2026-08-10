@@ -158,9 +158,13 @@ Two defects, both found by measuring rather than reading:
    `withVerifiedDomains()` binding (`app.domain_lookup`) that only the
    pre-tenant lookup sets, mirroring `withUser`/`withInvitationToken`.
    platform/domains 13/13 pins both, including the leak itself.
-**`landingos_prod` still carries the UNGUARDED policy** (harmless there
-today: 1 tenant, 0 domain rows) — it needs the deploy plus a re-run of
-`npm run rls`; see HANDOFF_PRODUCTION's warning block.
+Both fixes are now LIVE in production: `90f3d43` pushed and `npm run rls`
+re-run against `landingos_prod` (10 Aug, user-approved). Production's policy
+was read back from `pg_policies` to confirm the guard, and the three
+properties were proven there with throwaway tenants. Nothing had leaked —
+production carried 0 VERIFIED rows the whole time, and the unguarded policy
+only ever opened verified ones. The user's own `selliora16.com` (linked
+12:53 UTC, unverified) was read but never modified.
 
 **B6. Sessions: the write side quietly got built; the screen didn't.**
 EXISTS: `Session.lastSeenAt` IS now written (throttled touch,
