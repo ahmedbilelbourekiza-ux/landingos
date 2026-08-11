@@ -1,12 +1,15 @@
 # EDITOR_I18N — LB.13, the landing editor learns Arabic and French
 
-**Started:** 11 August 2026 · **Closes:** `BUILDER_AUDIT.md` M-04 ("The editor
-speaks English in a French/Arabic console") · **Method:** the standing order,
-per slice — measure → fix → test → verify live in `ar` (RTL) **and** `fr` (LTR)
-→ commit → update this document.
+**Started and finished:** 11 August 2026 · **Closes:** `BUILDER_AUDIT.md` M-04
+("The editor speaks English in a French/Arabic console") · **Method:** the
+standing order, per slice — measure → fix → test → verify live in `ar` (RTL)
+**and** `fr` (LTR) → commit → update this document.
 
-This file is the slice log. `NEXT_STEPS.md` and `HANDOFF_PRODUCTION.md` §5 point
-at it and are updated once, at the end.
+**Status: COMPLETE, LOCAL ONLY, NOT DEPLOYED.** Seven commits, `43b55c6..33d0c66`.
+`NEXT_STEPS.md` and `HANDOFF_PRODUCTION.md` §5 point here.
+
+> **Read §3 first if you are the user.** Four things were deliberately left as
+> your decision rather than guessed at.
 
 ---
 
