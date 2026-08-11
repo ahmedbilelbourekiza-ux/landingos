@@ -309,7 +309,11 @@
       "iconBadgeCheck": "Check badge",
       "iconHeart": "Heart",
       "iconLeaf": "Leaf",
-      "iconZap": "Lightning"
+      "iconZap": "Lightning",
+      "previewNoHero": "No hero image yet",
+      "previewNoHeroHint": "Add one in Images & media — it becomes the top of the page and the social share image.",
+      "previewUntitled": "Untitled page",
+      "previewUnnamedGroup": "Unnamed group"
     }
   },
   "erp": {

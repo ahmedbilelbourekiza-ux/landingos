@@ -1,12 +1,14 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 
 import type { PreviewState } from "@/types/preview";
 
 // Product title + description. Animated on change for a subtle live-update
 // feel.
 export function PreviewProductInfo({ preview }: { preview: PreviewState }) {
+  const t = useTranslations();
   const { title, description } = preview.general;
   return (
     <>
@@ -17,7 +19,7 @@ export function PreviewProductInfo({ preview }: { preview: PreviewState }) {
         transition={{ duration: 0.15 }}
         className="line-clamp-2 text-sm font-semibold tracking-tight"
       >
-        {title || "Untitled landing page"}
+        {title || t("builder.editor.previewUntitled")}
       </motion.h3>
       {description && (
         <motion.p

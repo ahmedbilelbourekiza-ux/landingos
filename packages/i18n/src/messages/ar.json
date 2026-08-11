@@ -309,7 +309,11 @@
       "iconBadgeCheck": "شارة تحقّق",
       "iconHeart": "قلب",
       "iconLeaf": "ورقة",
-      "iconZap": "برق"
+      "iconZap": "برق",
+      "previewNoHero": "لا توجد صورة رئيسية بعد",
+      "previewNoHeroHint": "أضف واحدة في «الصور والوسائط» — تصبح أعلى الصفحة وصورة المشاركة.",
+      "previewUntitled": "صفحة بلا عنوان",
+      "previewUnnamedGroup": "مجموعة بلا اسم"
     }
   },
   "erp": {

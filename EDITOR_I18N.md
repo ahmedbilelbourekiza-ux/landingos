@@ -83,7 +83,7 @@ paragraph did, and so did the header's `Unsaved Changes` badge).
 | **LB.13c** | Images & Media, Landing page images, image card, avatar picker | 4 | **DONE** — see §2 |
 | **LB.13d** | Variants, Shipping, Order form (+ `FIELD_DEFS`) | 7 | **DONE** — see §2 |
 | **LB.13e** | Benefits, Reviews, FAQ, Display | 7 | **DONE** — see §2 |
-| **LB.13f** | The live preview components | 8 | pending — carries a decision, §3 |
+| **LB.13f** | The live preview components | 6 | **DONE** — see §2; the decision it carried is answered there |
 
 ---
 
@@ -433,6 +433,64 @@ assigned to state, not text; `mappers.ts`'s ternaries are CSS lengths;
 from that module anywhere); `mock-data.ts` is demo fixture content, not chrome;
 `media-picker-dialog.tsx` is one of §0's ten unreachable files. The genuine
 remainder is the live preview — LB.13f.
+
+### LB.13f — the live preview, and the question "which language is a preview in?"
+
+**The slice was queued as a decision and the measurement answered it.** The
+preview panel renders a miniature of the customer's page, so two kinds of
+string live in it and they do NOT follow the same rule:
+
+- **What the customer will see** — field labels, placeholders, the buy button,
+  the shipping and total lines. The public storefront is **Arabic by design**
+  for an Algerian buyer: `purchase-form.tsx` renders «سعر التوصيل» and
+  «الإجمالي» as constants, and `defaultOrderFormConfig` holds «اختر الولاية…»,
+  «اطلب الآن» and the rest. So translating these to the console's locale would
+  be wrong in the strongest sense — **a preview that says "Total" while the
+  page will say «الإجمالي» is not previewing the page.** They mirror the
+  storefront.
+- **What the editor says ABOUT the preview** — the no-hero empty state, the
+  "Order form" caption, the untitled-page and unnamed-group fallbacks. That is
+  the console talking to the merchant, and it follows the console's locale.
+
+The rule is written at the top of `preview-hero.tsx`, where the panel's first
+component is, so the next person adding a preview component finds it.
+
+**Half of it was a fidelity bug, not a translation gap.** "Select wilaya…" and
+"Select commune…" were hardcoded — while `config.wilaya.placeholder` and
+`config.baladia.placeholder` sat right there, holding **the merchant's own
+configured text**. The preview was ignoring a field it exists to preview. Same
+for the buy button: `config.buttonText || "Order Now"` now falls back to
+`defaultOrderFormConfig.buttonText`, which is the storefront's actual default.
+Nothing was translated to fix these; the right value already existed.
+
+**"Shipping" and "Total" had no config source, so they got one home.**
+`STOREFRONT_COPY` in `lib/landing/mock-order-form.ts` — deliberately NOT in the
+catalogue, with the reason written beside it — and **both** `purchase-form.tsx`
+and `preview-order-form.tsx` read it. That removes a duplicate rather than
+adding one: the alternative was copying two Arabic constants into the preview
+and letting them drift from the page they claim to mirror.
+
+**Tests.** i18n 20/20 · storefront **32/32** (the suite that covers the
+checkout path this touched) · builder-sections 58/58. `tsc`: the same 6
+pre-existing errors — after one of my own, a JSX comment placed inside an
+attribute list, which the typecheck caught before the build did.
+
+**Verified live**, build `PRwzH-GveFYubOfUq68wH`:
+
+- **In a FRENCH console**, the preview reads «Aperçu · Ordinateur · Mobile ·
+  Formulaire de commande · Ouvrir la page en ligne» — console chrome in French
+  — around «الاسم الكامل · أدخل اسمك الكامل · رقم الهاتف · الولاية · اختر
+  الولاية… · اطلب الآن», the customer's Arabic. Selecting Adrar produced
+  «سعر التوصيل DA 400.00» and «الإجمالي DA 3,300.00». That is the split working.
+- In an Arabic console the chrome joins it: «معاينة · حاسوب · هاتف · نموذج
+  الطلب · فتح الصفحة المنشورة».
+- The no-hero empty state, reached by clearing a real page's images
+  client-side: «لا توجد صورة رئيسية بعد» / «أضف واحدة في «الصور والوسائط» —
+  تصبح أعلى الصفحة وصورة المشاركة.»
+- **The storefront still renders its own copy** after the refactor: the live
+  public page returns 200 with «الإجمالي» in the served HTML.
+- Nothing was written — the image removals were cancelled and the page reloads
+  with its hero and both gallery images intact.
 
 ---
 

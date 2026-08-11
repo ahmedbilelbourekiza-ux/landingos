@@ -3,7 +3,12 @@
 import * as React from "react";
 import { formatPrice } from "@/lib/landing/format";
 import type { PreviewState } from "@/types/preview";
-import { normalizeOrder } from "@/lib/landing/mock-order-form";
+import {
+  normalizeOrder,
+  defaultOrderFormConfig,
+  STOREFRONT_COPY,
+} from "@/lib/landing/mock-order-form";
+import { useTranslations } from "next-intl";
 import { useStorefrontApi } from "@/lib/storefront/api-base";
 import type { WilayaItem } from "@/lib/storefront/contract";
 
@@ -18,6 +23,7 @@ import type { WilayaItem } from "@/lib/storefront/contract";
 // console delivery-prices endpoint it used before carries no communes and a
 // different shape, which is how the preview crashed (B-05).
 export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
+  const t = useTranslations();
   // Bound to this tenant's storefront API by StorefrontApiProvider.
   const api = useStorefrontApi();
   const { config } = preview.orderForm;
@@ -71,7 +77,7 @@ export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
   return (
     <div className="flex flex-col gap-1.5 border-t bg-muted/20 p-3">
       <span className="mb-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-        Order Form
+        {t("builder.editor.orderForm")}
       </span>
 
       {/* Regular fields (except wilaya/baladia which get special selectors) */}
@@ -83,7 +89,7 @@ export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
             <div key={key} className="flex flex-col gap-0.5">
               <span className="text-[9px] font-medium text-foreground">
                 {field.label || key}
-                {field.required && <span className="ml-0.5 text-destructive">*</span>}
+                {field.required && <span className="ms-0.5 text-destructive">*</span>}
               </span>
               <span className="rounded border border-border bg-background px-1.5 py-1 text-[9px] text-muted-foreground/60">
                 {field.placeholder || "—"}
@@ -96,8 +102,8 @@ export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
       {config.wilaya?.visible && (
         <div className="flex flex-col gap-0.5">
           <span className="text-[9px] font-medium text-foreground">
-            {config.wilaya.label || "Wilaya"}
-            {config.wilaya.required && <span className="ml-0.5 text-destructive">*</span>}
+            {config.wilaya.label || defaultOrderFormConfig.wilaya.label}
+            {config.wilaya.required && <span className="ms-0.5 text-destructive">*</span>}
           </span>
           <select
             value={selectedWilaya}
@@ -107,7 +113,7 @@ export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
             }}
             className="rounded border border-border bg-background px-1.5 py-1 text-[9px] text-foreground"
           >
-            <option value="">Select wilaya...</option>
+            <option value="">{config.wilaya.placeholder || defaultOrderFormConfig.wilaya.placeholder}</option>
             {wilayas.map((w) => (
               <option key={w.id} value={w.id}>
                 {w.code} — {w.name}
@@ -121,15 +127,15 @@ export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
       {config.baladia?.visible && selectedWilayaData && (
         <div className="flex flex-col gap-0.5">
           <span className="text-[9px] font-medium text-foreground">
-            {config.baladia.label || "Baladia"}
-            {config.baladia.required && <span className="ml-0.5 text-destructive">*</span>}
+            {config.baladia.label || defaultOrderFormConfig.baladia.label}
+            {config.baladia.required && <span className="ms-0.5 text-destructive">*</span>}
           </span>
           <select
             value={selectedBaladia}
             onChange={(e) => setSelectedBaladia(e.target.value ? Number(e.target.value) : "")}
             className="rounded border border-border bg-background px-1.5 py-1 text-[9px] text-foreground"
           >
-            <option value="">Select commune...</option>
+            <option value="">{config.baladia.placeholder || defaultOrderFormConfig.baladia.placeholder}</option>
             {selectedWilayaData.baladias.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -143,13 +149,13 @@ export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
       {selectedWilaya !== "" && (
         <div className="mt-0.5 flex flex-col gap-0.5 text-[9px] text-muted-foreground">
           <div className="flex justify-between">
-            <span>Shipping</span>
+            <span>{STOREFRONT_COPY.shippingLabel}</span>
             <span className="tabular-nums">
               {shipping > 0 ? formatPrice(shipping, preview.pricing.currency) : "—"}
             </span>
           </div>
           <div className="flex justify-between border-t pt-0.5 font-medium text-foreground">
-            <span>Total</span>
+            <span>{STOREFRONT_COPY.totalLabel}</span>
             <span className="tabular-nums">
               {formatPrice(total, preview.pricing.currency)}
             </span>
@@ -159,7 +165,7 @@ export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
 
       {/* Submit button */}
       <span className="mt-1 inline-flex items-center justify-center rounded-md bg-foreground px-3 py-1.5 text-[10px] font-medium text-background">
-        {config.buttonText || "Order Now"}
+        {config.buttonText || defaultOrderFormConfig.buttonText}
       </span>
     </div>
   );

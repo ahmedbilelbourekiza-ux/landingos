@@ -309,7 +309,11 @@
       "iconBadgeCheck": "Badge validé",
       "iconHeart": "Cœur",
       "iconLeaf": "Feuille",
-      "iconZap": "Éclair"
+      "iconZap": "Éclair",
+      "previewNoHero": "Aucune image principale",
+      "previewNoHeroHint": "Ajoutez-en une dans Images et médias — elle devient le haut de la page et l'image de partage.",
+      "previewUntitled": "Page sans titre",
+      "previewUnnamedGroup": "Groupe sans nom"
     }
   },
   "erp": {

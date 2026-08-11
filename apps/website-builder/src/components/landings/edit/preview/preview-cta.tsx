@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 
 import type { PreviewState } from "@/types/preview";
+import { defaultOrderFormConfig } from "@/lib/landing/mock-order-form";
 
 // CTA button. Renders the purchase button text on a solid background.
 export function PreviewCTA({ preview }: { preview: PreviewState }) {
@@ -16,7 +17,7 @@ export function PreviewCTA({ preview }: { preview: PreviewState }) {
       className="mt-1"
     >
       <span className="inline-flex w-full items-center justify-center rounded-md bg-foreground px-3 py-2 text-[11px] font-medium text-background">
-        {buttonText || "Order Now"}
+        {buttonText || defaultOrderFormConfig.buttonText}
       </span>
     </motion.div>
   );

@@ -96,6 +96,25 @@ export const defaultOrderFormConfig: OrderFormConfig = {
   buttonText: "اطلب الآن",
 };
 
+/* LB.13 — the storefront's own summary copy, in ONE place.
+ *
+ * These are NOT console strings and deliberately do not go through the
+ * catalogue. The public landing page is Arabic for an Algerian customer by
+ * design (the whole file above is Arabic for the same reason), and the
+ * EDITOR'S PREVIEW has to show what that customer will actually see — a
+ * preview that renders "Total" while the page renders «الإجمالي» is not
+ * previewing the page.
+ *
+ * They live here because `purchase-form.tsx` and `preview-order-form.tsx` both
+ * need them, and two copies of one sentence is the drift this project keeps
+ * cataloguing. Changing the storefront's wording is a storefront decision;
+ * this module is where it is made.
+ */
+export const STOREFRONT_COPY = {
+  shippingLabel: "سعر التوصيل",
+  totalLabel: "الإجمالي",
+} as const;
+
 // Metadata for each field — the CATALOGUE KEY for the name shown in the
 // editor, and the key used to access the field in the config object.
 //

@@ -3,11 +3,13 @@
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/landing/format";
 import type { PreviewState } from "@/types/preview";
+import { useTranslations } from "next-intl";
 
 // Variant selectors. Renders one group at a time with the first option
 // highlighted as selected (matching the public landing template's default
 // selection behavior).
 export function PreviewVariants({ preview }: { preview: PreviewState }) {
+  const t = useTranslations();
   const { variants, pricing } = preview;
   if (variants.groups.length === 0) return null;
 
@@ -16,7 +18,7 @@ export function PreviewVariants({ preview }: { preview: PreviewState }) {
       {variants.groups.map((group) => (
         <div key={group.id} className="flex flex-col gap-0.5">
           <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-            {group.name || "Group"}
+            {group.name || t("builder.editor.previewUnnamedGroup")}
           </span>
           <div className="flex flex-wrap gap-1">
             {group.options.map((opt, i) => (

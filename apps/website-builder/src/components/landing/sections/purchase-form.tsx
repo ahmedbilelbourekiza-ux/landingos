@@ -17,7 +17,11 @@ import type { LandingOrderStore } from "@/lib/landing/store";
 import { useOrderTotals, useUnitPrice } from "@/lib/landing/store";
 import { readTrackingCookies, track } from "@/components/landing/tracking-scripts";
 import { useDraftCapture } from "@/lib/landing/use-draft-capture";
-import { normalizeOrder, type OrderFormConfig } from "@/lib/landing/mock-order-form";
+import {
+  normalizeOrder,
+  STOREFRONT_COPY,
+  type OrderFormConfig,
+} from "@/lib/landing/mock-order-form";
 import type { ShippingMethod } from "@/types/landing";
 import { useStorefrontApi, useStorefrontHref } from "@/lib/storefront/api-base";
 import type { CheckoutBodyInput, CheckoutSuccess, WilayaItem } from "@/lib/storefront/contract";
@@ -510,7 +514,7 @@ export function PurchaseForm({
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">
-              سعر التوصيل
+              {STOREFRONT_COPY.shippingLabel}
               {shippingMethod && availableMethods.length > 1 && (
                 <span className="mr-1 text-xs">
                   ({shippingMethod === "DESK" ? "مكتب" : "منزل"})
@@ -522,7 +526,7 @@ export function PurchaseForm({
             </span>
           </div>
           <div className="flex justify-between border-t pt-1 font-semibold">
-            <span>الإجمالي</span>
+            <span>{STOREFRONT_COPY.totalLabel}</span>
             <span className="tabular-nums">{formatPrice(grandTotal, currency)}</span>
           </div>
         </div>
