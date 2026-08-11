@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Star } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 
@@ -19,12 +20,13 @@ export function StarRatingInput({
 }) {
   const [hover, setHover] = React.useState<number | null>(null);
   const display = hover ?? value;
+  const t = useTranslations();
 
   return (
     <div
       className="flex items-center gap-0.5"
       role="radiogroup"
-      aria-label="Rating"
+      aria-label={t("builder.editor.rating")}
       onKeyDown={(e) => {
         if (e.key === "ArrowRight" || e.key === "ArrowUp") {
           e.preventDefault();
@@ -44,7 +46,7 @@ export function StarRatingInput({
             type="button"
             role="radio"
             aria-checked={value === starValue}
-            aria-label={`${starValue} star${starValue > 1 ? "s" : ""}`}
+            aria-label={t("builder.editor.starCount", { count: starValue })}
             className="rounded p-0.5 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => onChange(starValue)}
             onMouseEnter={() => setHover(starValue)}

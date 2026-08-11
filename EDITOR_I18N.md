@@ -82,7 +82,7 @@ paragraph did, and so did the header's `Unsaved Changes` badge).
 | **LB.13b** | General, Pricing, SEO | 4 | **DONE** — see §2 |
 | **LB.13c** | Images & Media, Landing page images, image card, avatar picker | 4 | **DONE** — see §2 |
 | **LB.13d** | Variants, Shipping, Order form (+ `FIELD_DEFS`) | 7 | **DONE** — see §2 |
-| **LB.13e** | Benefits, Reviews, FAQ, Display | 6 | pending |
+| **LB.13e** | Benefits, Reviews, FAQ, Display | 7 | **DONE** — see §2 |
 | **LB.13f** | The live preview components | 8 | pending — carries a decision, §3 |
 
 ---
@@ -371,6 +371,68 @@ sections actually operated:
   `ms-auto`, which in Arabic puts them 13 px from the button's left edge (the
   END in RTL) instead of pinned to the start.
 - Nothing was written: every save was refused by client-side validation.
+
+### LB.13e — Benefits, Reviews, FAQ, Display
+
+**Fixed.** 56 keys across `benefits-section`, `faq-section`,
+`reviews-section`, `review-card-editor`, `star-rating-input`,
+`display-section` and `lib/landing/benefit-icons.ts`: every row's labels,
+placeholders and `aria-label`s, all four empty states, all six validation
+refusals, and the five display toggles — whose first three reuse
+`builder.editor.benefits` / `.reviews` / `.faq`, because a toggle that named a
+section differently from the section itself would be describing two things.
+
+**The benefit-icon picker was offering raw lucide keys.** A merchant chose
+between `shield-check`, `refresh-ccw` and `thumbs-up` — identifiers on screen
+where names belong, which is M-04 in its purest form. `BENEFIT_ICON_NAME_KEYS`
+now sits beside `BENEFIT_ICONS` in the same module, keyed off it so the two
+cannot drift. **The names describe what the icon DEPICTS, not what it means** —
+"Droplet", not "Freshness" — because what a droplet stands for is the
+merchant's decision, not the editor's.
+
+**The star rating was doing English pluralisation by hand.**
+`` `${n} star${n > 1 ? "s" : ""}` `` was the accessible name of every star, in
+every locale. It is `builder.editor.starCount` as an ICU plural now, and Arabic
+gets grammar English cannot express — verified in the running page:
+«نجمة واحدة» (singular), **«نجمتان» (the dual)**, then «3 نجوم · 4 نجوم ·
+5 نجوم» (paucal). French reads «1 étoile · 2 étoiles».
+
+**A third `t` shadow, same as slice b's.** `TOGGLES.map((t) => …)` bound `t` to
+a toggle inside the block that had to call the translator; renamed to `item`.
+Also `review-card-editor` was passing `alt={review.customerName || "Avatar"}`
+on an image inside a *named* button — the customer's name announced twice, with
+an English fallback. It is `alt=""` now.
+
+**Tests.** i18n 20/20 · builder-sections 58/58 · storefront 32/32.
+`tsc`: the same 6 pre-existing errors. Re-scan: **0 remaining strings** in all
+seven files.
+
+**Verified live**, build `nT9MDJQTHu36Go8yKDACg`, both directions, with a
+benefit, a question and a review added and saved for real:
+
+- `ar` / RTL — Display reads «العرض · المزايا · التقييمات · الأسئلة الشائعة ·
+  زر شراء ثابت · واتساب عائم» with all five descriptions; the icon picker lists
+  «شاحنة · محفظة · درع · ميدالية · بريق · قطرة · نجمة · هدية · ساعة · إعجاب ·
+  صندوق · سهم إرجاع · شارة تحقّق · قلب · ورقة · برق»; the review row announces
+  «اسحب التقييم 1 · تغيير الصورة الرمزية · اسم العميل للتقييم 1 · إزالة
+  التقييم 1» and the stars «نجمة واحدة · نجمتان · 3 نجوم · 4 نجوم · 5 نجوم».
+- **All three validation paths driven**: saving an empty benefit, question and
+  review produced «يجب أن يكون لكل ميزة عنوان.» / «يجب أن يكون لكل سؤال نص.» /
+  «يجب أن يكون لكل تقييم اسم عميل.», each refused before any request.
+- `fr` / LTR — «Affichage · Avantages · Avis · FAQ · Bouton d'achat fixe ·
+  WhatsApp flottant», icons «Camion · Portefeuille · Bouclier · Médaille ·
+  Étincelles · Goutte», row names «Réordonner l'avantage · Icône de l'avantage
+  · Supprimer l'avantage · Titre de l'avantage · Description de l'avantage
+  (facultatif)», and the stars «1 étoile · 2 étoiles · …».
+- Nothing was written: every save was refused by client-side validation.
+
+**What the full re-scan of the editor tree still reports, and why each is not a
+gap:** `edit-workspace.tsx`'s `"PUBLISHED"`/`"DRAFT"` are the status ENUM being
+assigned to state, not text; `mappers.ts`'s ternaries are CSS lengths;
+`create.ts`'s `CURRENCIES` list is a **dead export** (only `slugify` is imported
+from that module anywhere); `mock-data.ts` is demo fixture content, not chrome;
+`media-picker-dialog.tsx` is one of §0's ten unreachable files. The genuine
+remainder is the live preview — LB.13f.
 
 ---
 

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Eye, Star, HelpCircle, Sparkles, MousePointerClick, MessageCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 import {
@@ -22,36 +23,39 @@ import { useBuilderApi } from "@/lib/builder/api-base";
  * The WhatsApp toggle names its dependency instead of failing silently: the
  * button renders only when Settings → Store also has a WhatsApp number. */
 
+/* The first three name the SECTIONS they show, so they reuse those sections'
+ * own keys — a toggle that said "Benefits" while the section above it said
+ * something else would be describing two things. */
 const TOGGLES = [
   {
     key: "showFeatures" as const,
     icon: Sparkles,
-    title: "Benefits",
-    description: "The trust-badge strip under the price.",
+    titleKey: "builder.editor.benefits",
+    descriptionKey: "builder.editor.displayBenefitsDesc",
   },
   {
     key: "showReviews" as const,
     icon: Star,
-    title: "Reviews",
-    description: "Customer testimonials, when any exist.",
+    titleKey: "builder.editor.reviews",
+    descriptionKey: "builder.editor.displayReviewsDesc",
   },
   {
     key: "showFAQ" as const,
     icon: HelpCircle,
-    title: "FAQ",
-    description: "The questions accordion, when any exist.",
+    titleKey: "builder.editor.faq",
+    descriptionKey: "builder.editor.displayFaqDesc",
   },
   {
     key: "stickyBuyButton" as const,
     icon: MousePointerClick,
-    title: "Sticky buy button",
-    description: "The order bar that follows the customer as they scroll.",
+    titleKey: "builder.editor.stickyBuyButton",
+    descriptionKey: "builder.editor.stickyBuyButtonDesc",
   },
   {
     key: "floatingWhatsapp" as const,
     icon: MessageCircle,
-    title: "Floating WhatsApp",
-    description: "A chat button — needs a WhatsApp number in Settings → Store.",
+    titleKey: "builder.editor.floatingWhatsapp",
+    descriptionKey: "builder.editor.floatingWhatsappDesc",
   },
 ];
 
@@ -65,6 +69,7 @@ export function DisplaySection({
   onPreviewChange: (values: DisplayPreviewValues) => void;
 }) {
   const api = useBuilderApi();
+  const t = useTranslations();
   const [values, setValues] = React.useState<DisplayPreviewValues>(initialValues);
 
   const section = useSectionState({
@@ -96,20 +101,22 @@ export function DisplaySection({
   return (
     <SectionShell
       id="display"
-      title="Display"
-      description="Which sections your page shows."
+      title={t("builder.editor.display")}
+      description={t("builder.editor.displayDesc")}
       icon={Eye}
       state={section.state}
       onSave={section.save}
       onCancel={handleCancel}
     >
       <div className="flex flex-col gap-3">
-        {TOGGLES.map((t) => {
-          const checked = values[t.key];
-          const Icon = t.icon;
+        {/* The parameter was named `t`, which now shadows the translator
+            inside the very block that has to call it. */}
+        {TOGGLES.map((item) => {
+          const checked = values[item.key];
+          const Icon = item.icon;
           return (
             <label
-              key={t.key}
+              key={item.key}
               className={cn(
                 "flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors",
                 checked ? "border-primary/40 bg-primary/5" : "bg-muted/20 hover:bg-muted/40",
@@ -118,7 +125,7 @@ export function DisplaySection({
               <input
                 type="checkbox"
                 checked={checked}
-                onChange={() => toggle(t.key)}
+                onChange={() => toggle(item.key)}
                 className="mt-1 size-4 accent-primary"
               />
               <Icon
@@ -128,8 +135,10 @@ export function DisplaySection({
                 )}
               />
               <span className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium">{t.title}</span>
-                <span className="text-[11px] text-muted-foreground">{t.description}</span>
+                <span className="text-sm font-medium">{t(item.titleKey)}</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {t(item.descriptionKey)}
+                </span>
               </span>
             </label>
           );

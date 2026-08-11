@@ -17,6 +17,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Star, Plus, AlertCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { type ReviewItem } from "@/lib/landing/mock-reviews";
@@ -47,6 +48,7 @@ export function ReviewsSection({
   // Where this editor sends its requests. The legacy dashboard and the
   // console mount the same components against different bases.
   const api = useBuilderApi();
+  const t = useTranslations();
   const [reviews, setReviews] = React.useState<ReviewItem[]>(initialValues.reviews);
 
   const section = useSectionState({
@@ -139,15 +141,15 @@ export function ReviewsSection({
   const handleSave = async () => {
     for (const r of reviews) {
       if (!r.customerName.trim()) {
-        setValidationError("Every review needs a customer name.");
+        setValidationError(t("builder.editor.reviewNameRequired"));
         return;
       }
       if (!r.reviewText.trim()) {
-        setValidationError("Every review needs review text.");
+        setValidationError(t("builder.editor.reviewTextRequired"));
         return;
       }
       if (!r.rating || r.rating < 1) {
-        setValidationError("Every review needs a rating.");
+        setValidationError(t("builder.editor.reviewRatingRequired"));
         return;
       }
     }
@@ -164,8 +166,8 @@ export function ReviewsSection({
   return (
     <SectionShell
       id="reviews"
-      title="Reviews"
-      description="Customer testimonials and ratings."
+      title={t("builder.editor.reviews")}
+      description={t("builder.editor.reviewsDesc")}
       icon={Star}
       state={section.state}
       onSave={handleSave}
@@ -184,7 +186,7 @@ export function ReviewsSection({
 
         {reviews.length === 0 && (
           <div className="flex items-center justify-center rounded-xl border border-dashed py-8 text-sm text-muted-foreground">
-            No reviews yet. Add one below.
+            {t("builder.editor.noReviews")}
           </div>
         )}
 
@@ -218,8 +220,8 @@ export function ReviewsSection({
           className="w-full"
         >
           <Plus className="size-4" />
-          Add Review
-          <span className="ml-auto text-xs text-muted-foreground">
+          {t("builder.editor.addReview")}
+          <span className="ms-auto text-xs text-muted-foreground">
             {reviews.length}/{MAX_REVIEWS}
           </span>
         </Button>

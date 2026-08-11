@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { HelpCircle, Plus, AlertCircle, GripVertical, Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +59,7 @@ function FaqRow({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: faq.id });
+  const t = useTranslations();
 
   return (
     <div
@@ -71,7 +73,7 @@ function FaqRow({
       <div className="flex items-center gap-2">
         <button
           type="button"
-          aria-label="Reorder question"
+          aria-label={t("builder.editor.reorderQuestion")}
           className="cursor-grab touch-none rounded p-1 text-muted-foreground hover:bg-muted"
           {...attributes}
           {...listeners}
@@ -79,8 +81,9 @@ function FaqRow({
           <GripVertical className="size-4" />
         </button>
         <Input
-          aria-label="Question"
-          placeholder="e.g. How long does delivery take?"
+          aria-label={t("builder.editor.question")}
+          dir="auto"
+          placeholder={t("builder.editor.questionPlaceholder")}
           value={faq.question}
           onChange={(e) => onChange(faq.id, { question: e.target.value })}
         />
@@ -88,7 +91,7 @@ function FaqRow({
           type="button"
           variant="ghost"
           size="icon"
-          aria-label="Remove question"
+          aria-label={t("builder.editor.removeQuestion")}
           className="shrink-0 text-muted-foreground hover:text-destructive"
           onClick={() => onRemove(faq.id)}
         >
@@ -96,8 +99,9 @@ function FaqRow({
         </Button>
       </div>
       <Textarea
-        aria-label="Answer"
-        placeholder="The answer your customers see"
+        aria-label={t("builder.editor.answer")}
+        dir="auto"
+        placeholder={t("builder.editor.answerPlaceholder")}
         rows={3}
         value={faq.answer}
         onChange={(e) => onChange(faq.id, { answer: e.target.value })}
@@ -116,6 +120,7 @@ export function FaqSection({
   onPreviewChange: (values: FaqPreviewValues) => void;
 }) {
   const api = useBuilderApi();
+  const t = useTranslations();
   const [faqs, setFaqs] = React.useState<FaqItem[]>(initialValues.faqs);
   const [validationError, setValidationError] = React.useState<string | null>(null);
 
@@ -172,11 +177,11 @@ export function FaqSection({
   const handleSave = async () => {
     for (const f of faqs) {
       if (!f.question.trim()) {
-        setValidationError("Every FAQ needs a question.");
+        setValidationError(t("builder.editor.questionRequired"));
         return;
       }
       if (!f.answer.trim()) {
-        setValidationError("Every FAQ needs an answer.");
+        setValidationError(t("builder.editor.answerRequired"));
         return;
       }
     }
@@ -193,8 +198,8 @@ export function FaqSection({
   return (
     <SectionShell
       id="faq"
-      title="FAQ"
-      description="Frequently asked questions."
+      title={t("builder.editor.faq")}
+      description={t("builder.editor.faqDesc")}
       icon={HelpCircle}
       state={section.state}
       onSave={handleSave}
@@ -210,7 +215,7 @@ export function FaqSection({
 
         {faqs.length === 0 && (
           <div className="flex items-center justify-center rounded-xl border border-dashed py-8 text-sm text-muted-foreground">
-            No questions yet. Add one below.
+            {t("builder.editor.noQuestions")}
           </div>
         )}
 
@@ -230,8 +235,8 @@ export function FaqSection({
           className="w-full"
         >
           <Plus className="size-4" />
-          Add Question
-          <span className="ml-auto text-xs text-muted-foreground">
+          {t("builder.editor.addQuestion")}
+          <span className="ms-auto text-xs text-muted-foreground">
             {faqs.length}/{MAX_FAQS}
           </span>
         </Button>

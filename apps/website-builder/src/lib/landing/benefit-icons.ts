@@ -45,3 +45,33 @@ export const BENEFIT_ICONS: Record<string, LucideIcon> = {
 };
 
 export const DEFAULT_BENEFIT_ICON = "badge-check";
+
+/* LB.13 — the picker offered its options as raw lucide keys.
+ *
+ * A merchant choosing a badge read "shield-check" and "refresh-ccw" in an
+ * Arabic console, which is the M-04 complaint in its purest form: an
+ * identifier on screen where a name belongs. The names describe WHAT THE ICON
+ * DEPICTS rather than what it might mean — "Droplet", not "Freshness" — because
+ * what a droplet stands for is the merchant's decision, not the editor's.
+ *
+ * Keyed off BENEFIT_ICONS so the two cannot drift: a key added there without a
+ * name here is caught by the editor-i18n test rather than shipping as a blank
+ * option. */
+export const BENEFIT_ICON_NAME_KEYS: Record<keyof typeof BENEFIT_ICONS & string, string> = {
+  truck: "builder.editor.iconTruck",
+  wallet: "builder.editor.iconWallet",
+  "shield-check": "builder.editor.iconShieldCheck",
+  award: "builder.editor.iconAward",
+  sparkles: "builder.editor.iconSparkles",
+  droplet: "builder.editor.iconDroplet",
+  star: "builder.editor.iconStar",
+  gift: "builder.editor.iconGift",
+  clock: "builder.editor.iconClock",
+  "thumbs-up": "builder.editor.iconThumbsUp",
+  package: "builder.editor.iconPackage",
+  "refresh-ccw": "builder.editor.iconRefreshCcw",
+  "badge-check": "builder.editor.iconBadgeCheck",
+  heart: "builder.editor.iconHeart",
+  leaf: "builder.editor.iconLeaf",
+  zap: "builder.editor.iconZap",
+};

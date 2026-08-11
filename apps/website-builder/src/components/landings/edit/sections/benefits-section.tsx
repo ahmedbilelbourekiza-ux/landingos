@@ -19,11 +19,16 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Sparkles, Plus, AlertCircle, GripVertical, Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { BENEFIT_ICONS, DEFAULT_BENEFIT_ICON } from "@/lib/landing/benefit-icons";
+import {
+  BENEFIT_ICONS,
+  BENEFIT_ICON_NAME_KEYS,
+  DEFAULT_BENEFIT_ICON,
+} from "@/lib/landing/benefit-icons";
 import {
   SectionShell,
   useSectionState,
@@ -63,6 +68,7 @@ function BenefitRow({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: benefit.id });
+  const t = useTranslations();
   const Icon = BENEFIT_ICONS[benefit.icon] ?? BENEFIT_ICONS[DEFAULT_BENEFIT_ICON];
 
   return (
@@ -77,7 +83,7 @@ function BenefitRow({
       <div className="flex items-center gap-2">
         <button
           type="button"
-          aria-label="Reorder benefit"
+          aria-label={t("builder.editor.reorderBenefit")}
           className="cursor-grab touch-none rounded p-1 text-muted-foreground hover:bg-muted"
           {...attributes}
           {...listeners}
@@ -88,14 +94,18 @@ function BenefitRow({
           <Icon className="size-4" aria-hidden />
         </span>
         <select
-          aria-label="Benefit icon"
+          aria-label={t("builder.editor.benefitIcon")}
           className="h-9 rounded-md border bg-background px-2 text-sm"
           value={benefit.icon in BENEFIT_ICONS ? benefit.icon : DEFAULT_BENEFIT_ICON}
           onChange={(e) => onChange(benefit.id, { icon: e.target.value })}
         >
+          {/* The option text used to be the raw lucide key — a merchant read
+              "shield-check" and "refresh-ccw" in an Arabic console. The name
+              map lives beside BENEFIT_ICONS so the picker cannot offer an
+              option the catalogue has no name for. */}
           {Object.keys(BENEFIT_ICONS).map((key) => (
             <option key={key} value={key}>
-              {key}
+              {t(BENEFIT_ICON_NAME_KEYS[key] ?? "builder.editor.benefitIcon")}
             </option>
           ))}
         </select>
@@ -103,22 +113,24 @@ function BenefitRow({
           type="button"
           variant="ghost"
           size="icon"
-          aria-label="Remove benefit"
-          className="ml-auto text-muted-foreground hover:text-destructive"
+          aria-label={t("builder.editor.removeBenefit")}
+          className="ms-auto text-muted-foreground hover:text-destructive"
           onClick={() => onRemove(benefit.id)}
         >
           <Trash2 className="size-4" />
         </Button>
       </div>
       <Input
-        aria-label="Benefit title"
-        placeholder="e.g. Free 30-day returns"
+        aria-label={t("builder.editor.benefitTitle")}
+        dir="auto"
+        placeholder={t("builder.editor.benefitTitlePlaceholder")}
         value={benefit.title}
         onChange={(e) => onChange(benefit.id, { title: e.target.value })}
       />
       <Input
-        aria-label="Benefit description (optional)"
-        placeholder="Optional detail shown under the title"
+        aria-label={t("builder.editor.benefitDescription")}
+        dir="auto"
+        placeholder={t("builder.editor.benefitDescriptionPlaceholder")}
         value={benefit.description ?? ""}
         onChange={(e) =>
           onChange(benefit.id, { description: e.target.value || null })
@@ -138,6 +150,7 @@ export function BenefitsSection({
   onPreviewChange: (values: BenefitsPreviewValues) => void;
 }) {
   const api = useBuilderApi();
+  const t = useTranslations();
   const [benefits, setBenefits] = React.useState<BenefitItem[]>(initialValues.benefits);
   const [validationError, setValidationError] = React.useState<string | null>(null);
 
@@ -202,7 +215,7 @@ export function BenefitsSection({
   const handleSave = async () => {
     for (const b of benefits) {
       if (!b.title.trim()) {
-        setValidationError("Every benefit needs a title.");
+        setValidationError(t("builder.editor.benefitTitleRequired"));
         return;
       }
     }
@@ -219,8 +232,8 @@ export function BenefitsSection({
   return (
     <SectionShell
       id="benefits"
-      title="Benefits"
-      description="Trust badges and key selling points."
+      title={t("builder.editor.benefits")}
+      description={t("builder.editor.benefitsDesc")}
       icon={Sparkles}
       state={section.state}
       onSave={handleSave}
@@ -236,7 +249,7 @@ export function BenefitsSection({
 
         {benefits.length === 0 && (
           <div className="flex items-center justify-center rounded-xl border border-dashed py-8 text-sm text-muted-foreground">
-            No custom benefits yet — the page shows the four standard COD badges until you add your own.
+            {t("builder.editor.noBenefits")}
           </div>
         )}
 
@@ -261,8 +274,8 @@ export function BenefitsSection({
           className="w-full"
         >
           <Plus className="size-4" />
-          Add Benefit
-          <span className="ml-auto text-xs text-muted-foreground">
+          {t("builder.editor.addBenefit")}
+          <span className="ms-auto text-xs text-muted-foreground">
             {benefits.length}/{MAX_BENEFITS}
           </span>
         </Button>

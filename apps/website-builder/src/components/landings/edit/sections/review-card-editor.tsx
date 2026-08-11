@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, X, UserCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,6 +32,7 @@ export function ReviewCardEditor({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: review.id });
+  const t = useTranslations();
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -51,7 +53,7 @@ export function ReviewCardEditor({
         <button
           type="button"
           className="grid size-8 shrink-0 cursor-grab place-items-center text-muted-foreground active:cursor-grabbing"
-          aria-label={`Drag review ${index + 1}`}
+          aria-label={t("builder.editor.dragReview", { number: index + 1 })}
           {...attributes}
           {...listeners}
         >
@@ -63,12 +65,12 @@ export function ReviewCardEditor({
           type="button"
           onClick={() => onPickAvatar(review.id)}
           className="relative size-10 shrink-0 overflow-hidden rounded-full border-2 border-border transition-colors hover:border-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label="Change avatar"
+          aria-label={t("builder.editor.changeAvatar")}
         >
           {review.avatarUrl ? (
             <Image
               src={review.avatarUrl}
-              alt={review.customerName || "Avatar"}
+              alt=""
               fill
               sizes="40px"
               className="object-cover"
@@ -84,8 +86,9 @@ export function ReviewCardEditor({
         <Input
           type="text"
           value={review.customerName}
-          placeholder="Customer name"
-          aria-label={`Review ${index + 1} customer name`}
+          dir="auto"
+          placeholder={t("builder.editor.fieldCustomerName")}
+          aria-label={t("builder.editor.reviewNameAria", { number: index + 1 })}
           onPointerDown={(e) => e.stopPropagation()}
           onChange={(e) => onChange(review.id, { customerName: e.target.value })}
           className="h-8 flex-1"
@@ -97,7 +100,7 @@ export function ReviewCardEditor({
           variant="ghost"
           size="icon"
           className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
-          aria-label={`Remove review ${index + 1}`}
+          aria-label={t("builder.editor.removeReview", { number: index + 1 })}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onRemove(review.id)}
         >
@@ -106,7 +109,7 @@ export function ReviewCardEditor({
       </div>
 
       {/* Rating */}
-      <div className="ml-10 mt-2">
+      <div className="ms-10 mt-2">
         <StarRatingInput
           value={review.rating}
           onChange={(rating) => onChange(review.id, { rating })}
@@ -115,11 +118,12 @@ export function ReviewCardEditor({
       </div>
 
       {/* Review text */}
-      <div className="ml-10 mt-2">
+      <div className="ms-10 mt-2">
         <Textarea
           value={review.reviewText}
-          placeholder="What did the customer say?"
-          aria-label={`Review ${index + 1} text`}
+          dir="auto"
+          placeholder={t("builder.editor.reviewTextPlaceholder")}
+          aria-label={t("builder.editor.reviewTextAria", { number: index + 1 })}
           onPointerDown={(e) => e.stopPropagation()}
           onChange={(e) => onChange(review.id, { reviewText: e.target.value })}
           rows={2}
