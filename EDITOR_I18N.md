@@ -81,7 +81,7 @@ paragraph did, and so did the header's `Unsaved Changes` badge).
 | **LB.13a** | Editor shell + section frame + the save path's error text | 15 | **DONE** — see §2 |
 | **LB.13b** | General, Pricing, SEO | 4 | **DONE** — see §2 |
 | **LB.13c** | Images & Media, Landing page images, image card, avatar picker | 4 | **DONE** — see §2 |
-| **LB.13d** | Variants, Shipping, Order form (+ `FIELD_DEFS`) | 6 | pending |
+| **LB.13d** | Variants, Shipping, Order form (+ `FIELD_DEFS`) | 7 | **DONE** — see §2 |
 | **LB.13e** | Benefits, Reviews, FAQ, Display | 6 | pending |
 | **LB.13f** | The live preview components | 8 | pending — carries a decision, §3 |
 
@@ -308,6 +308,70 @@ errors. Re-scan of the four files: **0 remaining hardcoded strings**.
 - Nothing was written: the review card added to reach the avatar picker was
   client-side state only and was never saved.
 
+### LB.13d — Variants, Shipping, Order form
+
+**Fixed.** 44 keys across `variants-section`, `variant-group-editor`,
+`variant-option-row`, `shipping-section`, `order-form-section`,
+`order-form-field-editor` and `lib/landing/mock-order-form.ts`.
+
+**A data module was holding seven English sentences.** `FIELD_DEFS` carried
+`displayName: "Customer Name"` … `"Quantity"`, and the editor rendered them
+verbatim — as the field's heading AND inside three `aria-label`s per row. It
+carries `nameKey` now and the section resolves it, so the checkout form's field
+names read «اسم العميل · رقم الهاتف · الولاية · البلدية · العنوان · ملاحظات ·
+الكمية» in Arabic. Nothing else consumed `displayName` (checked across the
+whole app), and the storefront uses only `normalizeOrder` and
+`defaultOrderFormConfig` from this module, both untouched.
+
+**Shipping reuses the vocabulary the console already fixed.** The two method
+names are `settings.homeDelivery` / `settings.stopDesk` — the delivery-prices
+screen names the same carriers, and a second wording would let the two screens
+disagree. The `· Domicile` / `· Bureau` gloss stays French in every locale on
+purpose: those are the words on a ZR or Ecom manifest, so a merchant comparing
+this screen to carrier paperwork is comparing the same term. **In French this
+now reads "Livraison à domicile · Domicile", which is redundant — flagged in
+§3 as a wording call rather than decided here.** The free-shipping row lost its
+gloss entirely, because "Livraison gratuite" IS the French translation; the
+gloss only ever existed to give a French term to an English screen.
+
+**A string the scanner never saw.** `"At least one shipping method must stay
+enabled."` sits inside a `setValues` updater, four levels deep in a callback —
+invisible to a line-oriented scan and found only by reading the file. It is why
+§0 calls 166 a lower bound.
+
+**Tests.** i18n 20/20 · builder-sections 58/58 · **storefront 32/32**. The
+storefront suite first came back 18/32 with `429`s; that is the public-write
+rate limiter, not a regression — re-run against a server started with
+`CHECKOUT_RATE_LIMIT=1000 DRAFT_RATE_LIMIT=5000` (the documented dev loop) it
+is green. `tsc`: the same 6 pre-existing errors. Re-scan of all seven files:
+**0 remaining hardcoded strings**.
+
+**Verified live**, build `YBILccPeOTrziZ_S1Vlbq`, both directions, with the
+sections actually operated:
+
+- `fr` — «Livraison · Livraison gratuite · Livraison à domicile · Domicile ·
+  Stop desk · Bureau», «Variantes · Aucun groupe de variantes», and the order
+  form listing «Nom du client · Numéro de téléphone · Wilaya · Baladia ·
+  Adresse · Remarques · Quantité», each with «Requis · Libellé · Texte
+  indicatif».
+- **Variant validation driven through three states**: an unnamed group, then a
+  named group with no options → «« Couleur » doit avoir au moins une option.»,
+  then an option with no label → «Chaque option de « Couleur » doit avoir un
+  libellé.» — the group's own name interpolated into both.
+- The row's accessible names, read from the DOM: «Nom du groupe 1 · Supprimer
+  le groupe 1 · Glisser l'option 1 · Libellé de l'option 1 · Supplément pour
+  l'option 1 · Supprimer l'option 1».
+- `ar` / RTL — «التوصيل · توصيل مجاني · التوصيل إلى المنزل · Domicile · مكتب
+  الاستلام · Bureau», «المتغيّرات», «نموذج الطلب», and the same validation
+  interpolating an Arabic group name: «اللون» تحتاج خياراً واحداً على الأقل.
+- **The last-method guard, tripped for real**: unchecking the only enabled
+  shipping method in Arabic produced «يجب أن تبقى طريقة توصيل واحدة على الأقل
+  مفعّلة.» and the checkbox stayed on — refused, not merely reported.
+- **RTL geometry measured**: the group/option counters moved `ml-auto` →
+  `ms-auto`, which in Arabic puts them 13 px from the button's left edge (the
+  END in RTL) instead of pinned to the start.
+- Nothing was written: every save was refused by client-side validation.
+
 ---
 
 ## §3 FLAGGED — the user's decisions, not guesses
@@ -325,3 +389,11 @@ errors. Re-scan of the four files: **0 remaining hardcoded strings**.
    reader reaches. `end-4` is the fix, and it would also move the **mobile
    navigation drawer's** close button — a screen the UI/UX pass verified on a
    real device. *Decision: separate slice with its own device check.*
+4. **The French shipping gloss now reads redundantly** (LB.13d). The two
+   methods render `title · gloss`, where the gloss is the carrier's French
+   short code. In Arabic that is the point — «التوصيل إلى المنزل · Domicile»
+   lets a merchant match this screen to a ZR/Ecom manifest. In French it reads
+   "Livraison à domicile · Domicile". Three ways out, none obviously right:
+   drop the gloss in `fr` only (a locale conditional in the markup), fold it
+   into the title per locale (loses the two-tone styling), or leave it. *Left
+   as-is pending your call.*

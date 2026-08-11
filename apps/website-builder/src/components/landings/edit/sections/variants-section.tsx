@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Layers, Plus, AlertCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { type VariantGroup } from "@/lib/landing/mock-landings";
@@ -32,6 +33,7 @@ export function VariantsSection({
   // Where this editor sends its requests. The legacy dashboard and the
   // console mount the same components against different bases.
   const api = useBuilderApi();
+  const t = useTranslations();
   const [groups, setGroups] = React.useState<VariantGroup[]>(initialValues.groups);
 
   const section = useSectionState({
@@ -91,16 +93,16 @@ export function VariantsSection({
     // Validate: every group must have a name and at least one option with a label.
     for (const g of groups) {
       if (!g.name.trim()) {
-        setValidationError("Every group must have a name.");
+        setValidationError(t("builder.editor.groupNameRequired"));
         return;
       }
       if (g.options.length === 0) {
-        setValidationError(`"${g.name}" needs at least one option.`);
+        setValidationError(t("builder.editor.groupNeedsOption", { name: g.name }));
         return;
       }
       for (const o of g.options) {
         if (!o.label.trim()) {
-          setValidationError(`Every option in "${g.name}" needs a label.`);
+          setValidationError(t("builder.editor.optionNeedsLabel", { name: g.name }));
           return;
         }
       }
@@ -118,8 +120,8 @@ export function VariantsSection({
   return (
     <SectionShell
       id="variants"
-      title="Variants"
-      description="Colors, sizes, and product options."
+      title={t("builder.editor.variants")}
+      description={t("builder.editor.variantsDesc")}
       icon={Layers}
       state={section.state}
       onSave={handleSave}
@@ -138,7 +140,7 @@ export function VariantsSection({
 
         {groups.length === 0 && (
           <div className="flex items-center justify-center rounded-xl border border-dashed py-8 text-sm text-muted-foreground">
-            No variant groups yet. Add one below.
+            {t("builder.editor.noVariantGroups")}
           </div>
         )}
 
@@ -161,8 +163,8 @@ export function VariantsSection({
           className="w-full"
         >
           <Plus className="size-4" />
-          Add Group
-          <span className="ml-auto text-xs text-muted-foreground">
+          {t("builder.editor.addGroup")}
+          <span className="ms-auto text-xs text-muted-foreground">
             {groups.length}/{MAX_GROUPS}
           </span>
         </Button>

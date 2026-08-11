@@ -1,6 +1,7 @@
 "use client";
 
 import { Eye, EyeOff, Asterisk, GripVertical } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -29,6 +30,7 @@ export function OrderFormFieldEditor({
   field: OrderFormField;
   onChange: (key: FieldKey, patch: Partial<OrderFormField>) => void;
 }) {
+  const t = useTranslations();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: fieldKey });
 
@@ -48,7 +50,7 @@ export function OrderFormFieldEditor({
           <button
             type="button"
             className="cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
-            aria-label={`Reorder ${displayName}`}
+            aria-label={t("builder.editor.reorderField", { name: displayName })}
             {...attributes}
             {...listeners}
           >
@@ -64,11 +66,11 @@ export function OrderFormFieldEditor({
               onCheckedChange={(v) => onChange(fieldKey, { required: v })}
               disabled={!field.visible}
               className="scale-75"
-              aria-label={`${displayName} required`}
+              aria-label={t("builder.editor.fieldRequiredToggle", { name: displayName })}
             />
             <span className="flex items-center gap-0.5">
               <Asterisk className="size-3" />
-              Required
+              {t("common.required")}
             </span>
           </label>
           {/* Visible toggle */}
@@ -77,7 +79,7 @@ export function OrderFormFieldEditor({
               checked={field.visible}
               onCheckedChange={(v) => onChange(fieldKey, { visible: v })}
               className="scale-75"
-              aria-label={`${displayName} visible`}
+              aria-label={t("builder.editor.fieldVisibleToggle", { name: displayName })}
             />
             {field.visible ? (
               <Eye className="size-3.5" />
@@ -91,21 +93,27 @@ export function OrderFormFieldEditor({
       {/* Label + Placeholder inputs */}
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
-          <Label className="text-[11px] text-muted-foreground">Label</Label>
+          <Label className="text-[11px] text-muted-foreground">
+            {t("builder.editor.fieldLabel")}
+          </Label>
           <Input
             type="text"
             value={field.label}
-            placeholder="Field label"
+            dir="auto"
+            placeholder={t("builder.editor.fieldLabelPlaceholder")}
             onChange={(e) => onChange(fieldKey, { label: e.target.value })}
             className="h-8"
           />
         </div>
         <div className="flex flex-col gap-1">
-          <Label className="text-[11px] text-muted-foreground">Placeholder</Label>
+          <Label className="text-[11px] text-muted-foreground">
+            {t("builder.editor.fieldPlaceholder")}
+          </Label>
           <Input
             type="text"
             value={field.placeholder}
-            placeholder="Field placeholder"
+            dir="auto"
+            placeholder={t("builder.editor.fieldPlaceholderPlaceholder")}
             onChange={(e) => onChange(fieldKey, { placeholder: e.target.value })}
             className="h-8"
           />

@@ -3,6 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ export function VariantOptionRow({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: option.id });
+  const t = useTranslations();
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -46,7 +48,7 @@ export function VariantOptionRow({
       <button
         type="button"
         className="grid size-7 shrink-0 cursor-grab place-items-center text-muted-foreground active:cursor-grabbing"
-        aria-label={`Drag option ${index + 1}`}
+        aria-label={t("builder.editor.dragOption", { number: index + 1 })}
         {...attributes}
         {...listeners}
       >
@@ -57,8 +59,8 @@ export function VariantOptionRow({
       <Input
         type="text"
         value={option.label}
-        placeholder="Option label"
-        aria-label={`Option ${index + 1} label`}
+        placeholder={t("builder.editor.optionLabelPlaceholder")}
+        aria-label={t("builder.editor.optionLabelAria", { number: index + 1 })}
         onPointerDown={(e) => e.stopPropagation()}
         onChange={(e) => onChange(option.id, { label: e.target.value })}
         className="h-8 flex-1"
@@ -73,7 +75,7 @@ export function VariantOptionRow({
           step="1"
           value={option.extraPrice || ""}
           placeholder="0"
-          aria-label={`Option ${index + 1} extra price`}
+          aria-label={t("builder.editor.optionPriceAria", { number: index + 1 })}
           onPointerDown={(e) => e.stopPropagation()}
           onChange={(e) =>
             onChange(option.id, {
@@ -90,7 +92,7 @@ export function VariantOptionRow({
         variant="ghost"
         size="icon"
         className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
-        aria-label={`Remove option ${index + 1}`}
+        aria-label={t("builder.editor.removeOption", { number: index + 1 })}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={() => onRemove(option.id)}
       >

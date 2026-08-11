@@ -96,16 +96,20 @@ export const defaultOrderFormConfig: OrderFormConfig = {
   buttonText: "اطلب الآن",
 };
 
-// Metadata for each field — the display name shown in the editor and the
-// key used to access the field in the config object.
+// Metadata for each field — the CATALOGUE KEY for the name shown in the
+// editor, and the key used to access the field in the config object.
+//
+// LB.13: this held `displayName: "Customer Name"` and friends, which put seven
+// English sentences in a data module the editor rendered verbatim. A name a
+// person reads is a key like every other one; the editor resolves it.
 export const FIELD_DEFS = [
-  { key: "customerName", displayName: "Customer Name" },
-  { key: "phone", displayName: "Phone Number" },
-  { key: "wilaya", displayName: "Wilaya" },
-  { key: "baladia", displayName: "Baladia" },
-  { key: "address", displayName: "Address" },
-  { key: "notes", displayName: "Notes" },
-  { key: "quantity", displayName: "Quantity" },
+  { key: "customerName", nameKey: "builder.editor.fieldCustomerName" },
+  { key: "phone", nameKey: "builder.editor.fieldPhone" },
+  { key: "wilaya", nameKey: "builder.editor.fieldWilaya" },
+  { key: "baladia", nameKey: "builder.editor.fieldBaladia" },
+  { key: "address", nameKey: "builder.editor.fieldAddress" },
+  { key: "notes", nameKey: "builder.editor.fieldNotes" },
+  { key: "quantity", nameKey: "builder.editor.fieldQuantity" },
 ] as const;
 
 export type FieldKey = (typeof FIELD_DEFS)[number]["key"];

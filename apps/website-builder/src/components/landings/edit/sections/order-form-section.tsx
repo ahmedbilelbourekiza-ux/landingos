@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ShoppingCart } from "lucide-react";
+import { useTranslations } from "next-intl";
 import {
   DndContext,
   closestCenter,
@@ -51,6 +52,7 @@ export function OrderFormSection({
   // Where this editor sends its requests. The legacy dashboard and the
   // console mount the same components against different bases.
   const api = useBuilderApi();
+  const t = useTranslations();
   const [config, setConfig] = React.useState<OrderFormConfig>(initialValues.config);
 
   const section = useSectionState({
@@ -103,11 +105,12 @@ export function OrderFormSection({
     section.markDirty();
   };
 
-  // Display names come from FIELD_DEFS; the render order comes from the
-  // config. Kept as a lookup so reordering never has to touch the metadata.
+  // Display names come from FIELD_DEFS' catalogue keys; the render order comes
+  // from the config. Kept as a lookup so reordering never has to touch the
+  // metadata, and resolved here so the row component takes a finished string.
   const displayNames = React.useMemo(
-    () => Object.fromEntries(FIELD_DEFS.map((d) => [d.key, d.displayName])) as Record<FieldKey, string>,
-    [],
+    () => Object.fromEntries(FIELD_DEFS.map((d) => [d.key, t(d.nameKey)])) as Record<FieldKey, string>,
+    [t],
   );
 
   const handleCancel = () => {
@@ -118,8 +121,8 @@ export function OrderFormSection({
   return (
     <SectionShell
       id="order-form"
-      title="Order Form"
-      description="Configure the purchase form fields."
+      title={t("builder.editor.orderForm")}
+      description={t("builder.editor.orderFormDesc")}
       icon={ShoppingCart}
       state={section.state}
       onSave={section.save}
@@ -127,8 +130,7 @@ export function OrderFormSection({
     >
       <div className="flex flex-col gap-3">
         <p className="text-[11px] text-muted-foreground">
-          Drag the handle to reorder. Fields appear on the storefront form in
-          this order, top to bottom.
+          {t("builder.editor.orderFormHint")}
         </p>
 
         <DndContext
@@ -153,18 +155,18 @@ export function OrderFormSection({
 
         <div className="rounded-xl border bg-muted/20 p-3">
           <Label className="text-xs text-muted-foreground">
-            Purchase Button Text
+            {t("builder.editor.orderButtonLabel")}
           </Label>
           <Input
             type="text"
             value={config.buttonText}
             dir="auto"
-            placeholder="اطلب الآن"
+            placeholder={t("builder.editor.orderButtonPlaceholder")}
             onChange={(e) => updateButtonText(e.target.value)}
             className="mt-1.5 h-9"
           />
           <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Shown on the submit button at the bottom of the form.
+            {t("builder.editor.orderButtonHint")}
           </p>
         </div>
       </div>

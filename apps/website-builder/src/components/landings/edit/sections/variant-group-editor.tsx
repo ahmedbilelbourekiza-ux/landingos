@@ -17,6 +17,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Plus, Trash2, AlertCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ export function VariantGroupEditor({
   onChange: (id: string, patch: Partial<VariantGroup>) => void;
   onDelete: (id: string) => void;
 }) {
+  const t = useTranslations();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -88,12 +90,12 @@ export function VariantGroupEditor({
       {/* Group header */}
       <div className="mb-3 flex items-center gap-2">
         <div className="flex flex-1 items-center gap-2">
-          <Label className="text-xs text-muted-foreground">Group {index + 1}</Label>
+          <Label className="text-xs text-muted-foreground">{t("builder.editor.groupLabel", { number: index + 1 })}</Label>
           <Input
             type="text"
             value={group.name}
-            placeholder="e.g. Color, Size, Pack"
-            aria-label={`Group ${index + 1} name`}
+            placeholder={t("builder.editor.groupNamePlaceholder")}
+            aria-label={t("builder.editor.groupNameAria", { number: index + 1 })}
             onChange={(e) => onChange(group.id, { name: e.target.value })}
             className="h-8"
           />
@@ -103,7 +105,7 @@ export function VariantGroupEditor({
           variant="ghost"
           size="icon"
           className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
-          aria-label={`Delete group ${index + 1}`}
+          aria-label={t("builder.editor.deleteGroup", { number: index + 1 })}
           onClick={() => onDelete(group.id)}
         >
           <Trash2 className="size-4" />
@@ -137,7 +139,7 @@ export function VariantGroupEditor({
         {group.options.length === 0 && (
           <p className="flex items-center gap-1.5 py-2 text-xs text-muted-foreground">
             <AlertCircle className="size-3.5" />
-            Add at least one option.
+            {t("builder.editor.optionNeeded")}
           </p>
         )}
       </div>
@@ -152,8 +154,8 @@ export function VariantGroupEditor({
         disabled={group.options.length >= MAX_OPTIONS}
       >
         <Plus className="size-3.5" />
-        Add Option
-        <span className="ml-auto text-xs text-muted-foreground">
+        {t("builder.editor.addOption")}
+        <span className="ms-auto text-xs text-muted-foreground">
           {group.options.length}/{MAX_OPTIONS}
         </span>
       </Button>

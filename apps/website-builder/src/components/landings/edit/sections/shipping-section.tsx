@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Truck, Store, BadgePercent, AlertCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 import {
@@ -22,20 +23,30 @@ import { useBuilderApi } from "@/lib/builder/api-base";
 // Per-wilaya prices for both methods are configured globally in Delivery
 // Prices, not here — this only decides which methods this product offers.
 
+/* The two method NAMES reuse `settings.homeDelivery` / `settings.stopDesk` —
+ * the delivery-prices screen already names them for the same carriers, and a
+ * second wording would let the two screens disagree about one thing.
+ *
+ * The subtitle is the carrier's own short code, and it stays French in every
+ * locale on purpose: "Domicile" and "Bureau" are what the carrier's paperwork
+ * and dashboards say in Algeria, so a merchant matching this screen against a
+ * ZR or Ecom manifest is matching the same word. In the French console the
+ * gloss reads a little redundantly beside the French title — recorded in
+ * EDITOR_I18N.md §3 as a wording call rather than decided here. */
 const METHODS = [
   {
     key: "homeDeliveryEnabled" as const,
     icon: Truck,
-    title: "Home Delivery",
-    subtitle: "Domicile",
-    description: "Courier delivers to the customer's address.",
+    titleKey: "settings.homeDelivery",
+    subtitleKey: "builder.editor.homeDeliveryGloss",
+    descriptionKey: "builder.editor.homeDeliveryDesc",
   },
   {
     key: "stopDeskEnabled" as const,
     icon: Store,
-    title: "Stop Desk",
-    subtitle: "Bureau",
-    description: "Customer collects from the carrier's office. Usually cheaper.",
+    titleKey: "settings.stopDesk",
+    subtitleKey: "builder.editor.stopDeskGloss",
+    descriptionKey: "builder.editor.stopDeskDesc",
   },
 ];
 
@@ -51,6 +62,7 @@ export function ShippingSection({
   // Where this editor sends its requests. The legacy dashboard and the
   // console mount the same components against different bases.
   const api = useBuilderApi();
+  const t = useTranslations();
   const [values, setValues] = React.useState<ShippingPreviewValues>(initialValues);
   const [validationError, setValidationError] = React.useState<string | null>(null);
 
@@ -78,7 +90,7 @@ export function ShippingSection({
       // click explains why instead of failing on save. `freeShipping` is not
       // a method — free-of-charge is still delivered — so it never trips this.
       if (!next.homeDeliveryEnabled && !next.stopDeskEnabled) {
-        setValidationError("At least one shipping method must stay enabled.");
+        setValidationError(t("builder.editor.oneMethodRequired"));
         return prev;
       }
       setValidationError(null);
@@ -98,8 +110,8 @@ export function ShippingSection({
   return (
     <SectionShell
       id="shipping"
-      title="Shipping"
-      description="Home delivery, stop desk, or both."
+      title={t("builder.editor.shipping")}
+      description={t("builder.editor.shippingDesc")}
       icon={Truck}
       state={section.state}
       onSave={section.save}
@@ -135,12 +147,14 @@ export function ShippingSection({
             )}
           />
           <span className="flex flex-col gap-0.5">
+            {/* No French gloss here, unlike the two methods below: "Livraison
+                gratuite" IS the French translation, so the gloss existed only
+                to give a French term to an English screen. */}
             <span className="text-sm font-medium">
-              Free shipping{" "}
-              <span className="text-xs font-normal text-muted-foreground">· Livraison gratuite</span>
+              {t("builder.editor.freeShipping")}
             </span>
             <span className="text-[11px] text-muted-foreground">
-              The customer pays no delivery charge — checkout totals exclude it.
+              {t("builder.editor.freeShippingHint")}
             </span>
           </span>
         </label>
@@ -170,13 +184,13 @@ export function ShippingSection({
               />
               <span className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium">
-                  {method.title}{" "}
+                  {t(method.titleKey)}{" "}
                   <span className="text-xs font-normal text-muted-foreground">
-                    · {method.subtitle}
+                    · {t(method.subtitleKey)}
                   </span>
                 </span>
                 <span className="text-[11px] text-muted-foreground">
-                  {method.description}
+                  {t(method.descriptionKey)}
                 </span>
               </span>
             </label>
@@ -185,10 +199,9 @@ export function ShippingSection({
 
         <p className="text-[11px] text-muted-foreground">
           {enabledCount === 1
-            ? "Only one method is enabled, so checkout skips the selector and uses it automatically."
-            : "Customers choose between both methods at checkout."}{" "}
-          Stop Desk is hidden for any wilaya with no desk price set in Delivery
-          Prices.
+            ? t("builder.editor.oneMethodHint")
+            : t("builder.editor.bothMethodsHint")}{" "}
+          {t("builder.editor.stopDeskWilayaNote")}
         </p>
       </div>
     </SectionShell>
