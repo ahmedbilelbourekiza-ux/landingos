@@ -1,6 +1,7 @@
 "use client";
 
 import { Monitor, Smartphone } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 
@@ -16,18 +17,20 @@ export function PreviewDeviceToggle({
   value: PreviewDevice;
   onChange: (value: PreviewDevice) => void;
 }) {
+  const t = useTranslations();
+
   return (
     <div
       className="flex items-center gap-1 rounded-lg border bg-muted/40 p-1"
       role="radiogroup"
-      aria-label="Preview device"
+      aria-label={t("builder.editor.device")}
     >
       {(
         [
-          { value: "desktop", label: "Desktop", icon: Monitor },
-          { value: "mobile", label: "Mobile", icon: Smartphone },
+          { value: "desktop", labelKey: "builder.editor.deviceDesktop", icon: Monitor },
+          { value: "mobile", labelKey: "builder.editor.deviceMobile", icon: Smartphone },
         ] as const
-      ).map(({ value: v, label, icon: Icon }) => {
+      ).map(({ value: v, labelKey, icon: Icon }) => {
         const isActive = value === v;
         return (
           <button
@@ -44,7 +47,7 @@ export function PreviewDeviceToggle({
             )}
           >
             <Icon className="size-3.5" />
-            {label}
+            {t(labelKey)}
           </button>
         );
       })}

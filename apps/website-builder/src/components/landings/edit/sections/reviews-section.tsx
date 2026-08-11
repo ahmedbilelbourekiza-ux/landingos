@@ -23,6 +23,7 @@ import { type ReviewItem } from "@/lib/landing/mock-reviews";
 import {
   SectionShell,
   useSectionState,
+  refuseIfFailed,
 } from "@/components/landings/edit/section";
 import { ReviewCardEditor } from "./review-card-editor";
 import { AvatarPickerDialog } from "./avatar-picker-dialog";
@@ -65,7 +66,7 @@ export function ReviewsSection({
         body: JSON.stringify({ items: payload }),
       });
       const json = await res.json();
-      if (!json.success) throw new Error(json.error?.message || "Save failed");
+      refuseIfFailed(json);
     },
   });
   const [validationError, setValidationError] = React.useState<string | null>(

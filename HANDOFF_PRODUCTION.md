@@ -225,7 +225,13 @@ edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
    suspects. This is the customer-facing surface on Algerian mobile networks.
 5. **Deploy `services/worker`** when scheduled ERP jobs are wanted in
    production (needs `WORKER_SECRET` on both sides).
-6. From the audits, still open: editor i18n (LB.13, 54 components), Benefits/
+6. **Editor i18n (LB.13) — IN PROGRESS since 11 Aug, local only, NOT deployed.**
+   `EDITOR_I18N.md` is the slice log and carries the corrected measurement
+   (the create screen was already done; 10 of the audit's "54 components" are
+   dead code) plus three flagged decisions for the user: the dead components,
+   a `rtl:` Tailwind variant that emits no CSS anywhere in the app, and
+   `ui/sheet.tsx`'s physically-positioned close button.
+7. From the audits, still open: Benefits/
    FAQ (LB.12), notification write-time i18n, analytics comparisons (PM.10),
    builder list pagination, LB.11 real-credential tracking smoke test (still
    gates real ad spend), UI.7 settings i18n residue, calculator step

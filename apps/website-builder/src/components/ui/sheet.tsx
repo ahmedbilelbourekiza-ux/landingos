@@ -3,6 +3,7 @@
 import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { XIcon } from "lucide-react"
+import { useTranslations } from "next-intl"
 
 import { cn } from "@/lib/utils"
 
@@ -52,6 +53,8 @@ function SheetContent({
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
 }) {
+  const t = useTranslations()
+
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -74,7 +77,14 @@ function SheetContent({
         {children}
         <SheetPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
           <XIcon className="size-4" />
-          <span className="sr-only">Close</span>
+          {/* Same as dialog.tsx: the one string this primitive says to a
+              person, and it said it in English in every locale.
+              NOTE (recorded, not changed here): the button is positioned
+              `right-4`, a PHYSICAL edge, so in Arabic it sits on the far side
+              from where a reader closes things. Making it `end-4` would also
+              move the mobile navigation drawer's close button, a screen this
+              slice does not verify — see the LB.13 findings. */}
+          <span className="sr-only">{t("common.close")}</span>
         </SheetPrimitive.Close>
       </SheetPrimitive.Content>
     </SheetPortal>

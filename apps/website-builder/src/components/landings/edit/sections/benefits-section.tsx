@@ -27,6 +27,7 @@ import { BENEFIT_ICONS, DEFAULT_BENEFIT_ICON } from "@/lib/landing/benefit-icons
 import {
   SectionShell,
   useSectionState,
+  refuseIfFailed,
 } from "@/components/landings/edit/section";
 import { useBuilderApi } from "@/lib/builder/api-base";
 
@@ -154,7 +155,7 @@ export function BenefitsSection({
         body: JSON.stringify({ items: payload }),
       });
       const json = await res.json();
-      if (!json.success) throw new Error(json.error?.message || "Save failed");
+      refuseIfFailed(json);
     },
   });
 

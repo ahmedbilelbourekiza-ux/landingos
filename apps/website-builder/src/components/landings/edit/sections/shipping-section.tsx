@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import {
   SectionShell,
   useSectionState,
+  refuseIfFailed,
 } from "@/components/landings/edit/section";
 import type { ShippingPreviewValues } from "@/types/preview";
 import { useBuilderApi } from "@/lib/builder/api-base";
@@ -61,7 +62,7 @@ export function ShippingSection({
         body: JSON.stringify(values),
       });
       const json = await res.json();
-      if (!json.success) throw new Error(json.error?.message || "Save failed");
+      refuseIfFailed(json);
     },
   });
 

@@ -24,6 +24,7 @@ import { type MediaItem } from "@/lib/landing/mock-media";
 import {
   SectionShell,
   useSectionState,
+  refuseIfFailed,
 } from "@/components/landings/edit/section";
 import { SortableImageCard } from "./image-card";
 import type { DescriptionImagesPreviewValues } from "@/types/preview";
@@ -91,7 +92,7 @@ export function DescriptionImagesSection({
         }),
       });
       const json = await res.json();
-      if (!json.success) throw new Error(json.error?.message || "Save failed");
+      refuseIfFailed(json);
     },
   });
 

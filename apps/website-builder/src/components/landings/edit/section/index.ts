@@ -8,5 +8,5 @@ export { SectionStatus as SectionStatusBadge } from "./section-status";
 export { UnsavedIndicator } from "./unsaved-indicator";
 export { SaveButton } from "./save-button";
 export { CancelButton } from "./cancel-button";
-export { useSectionState } from "./use-section-state";
+export { useSectionState, refuseIfFailed, ApiRefusal } from "./use-section-state";
 export type { SectionStatus, SectionState } from "./use-section-state";

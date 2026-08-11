@@ -13,6 +13,7 @@ import { slugify } from "@/lib/landing/create";
 import {
   SectionShell,
   useSectionState,
+  refuseIfFailed,
 } from "@/components/landings/edit/section";
 import { Field } from "./field";
 import { useBuilderApi } from "@/lib/builder/api-base";
@@ -67,7 +68,7 @@ export function GeneralSection({
         }),
       });
       const json = await res.json();
-      if (!json.success) throw new Error(json.error?.message || "Save failed");
+      refuseIfFailed(json);
     },
   });
 

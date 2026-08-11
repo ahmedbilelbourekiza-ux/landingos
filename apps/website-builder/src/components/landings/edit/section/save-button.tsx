@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2, Save } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import type { SectionStatus } from "./use-section-state";
@@ -16,6 +17,7 @@ export function SaveButton({
   status: SectionStatus;
   onClick: () => void;
 }) {
+  const t = useTranslations();
   const isSaving = status === "saving";
   // Disabled when saving (in flight) or when the section is idle/saved
   // (nothing to save). Enabled when dirty or error (retry).
@@ -34,7 +36,7 @@ export function SaveButton({
       ) : (
         <Save className="size-4" />
       )}
-      {status === "error" ? "Retry" : "Save"}
+      {status === "error" ? t("common.retry") : t("common.save")}
     </Button>
   );
 }

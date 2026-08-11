@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   Settings2,
   Image as ImageIcon,
@@ -33,25 +34,31 @@ import { DescriptionImagesSection } from "./sections/description-images-section"
 import { ShippingSection } from "./sections/shipping-section";
 import { DisplaySection } from "./sections/display-section";
 import { SeoSection, type SeoValues } from "./sections/seo-section";
+/* LB.13 — the registry names KEYS, not English.
+ *
+ * Each entry's title/description also appear on the section component's own
+ * SectionShell, so the two used to hold two copies of the same sentence and
+ * were free to disagree. Naming the key here and reading the SAME key there
+ * makes the duplication a reference instead of a copy. */
 const SECTIONS: {
   id: string;
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
   icon: LucideIcon;
 }[] = [
-  { id: "general", title: "General", description: "Title, slug, description, and button text.", icon: Settings2 },
-  { id: "images", title: "Images & Media", description: "Product gallery, videos, and thumbnails.", icon: ImageIcon },
-  { id: "description-images", title: "Landing Page Images", description: "Long-form images shown below the product description.", icon: Rows3 },
-  { id: "pricing", title: "Pricing", description: "Price, old price, and currency.", icon: Tag },
-  { id: "variants", title: "Variants", description: "Colors, sizes, and product options.", icon: Layers },
-  { id: "shipping", title: "Shipping", description: "Home delivery, stop desk, or both.", icon: Truck },
-  { id: "order-form", title: "Order Form", description: "Configure the purchase form fields.", icon: ShoppingCart },
-  { id: "display", title: "Display", description: "Which sections your page shows.", icon: Eye },
-  { id: "benefits", title: "Benefits", description: "Trust badges and key selling points.", icon: Sparkles },
-  { id: "reviews", title: "Reviews", description: "Customer testimonials and ratings.", icon: Star },
-  { id: "faq", title: "FAQ", description: "Frequently asked questions.", icon: HelpCircle },
-  { id: "seo", title: "SEO", description: "Search and social meta tags.", icon: Search },
-  { id: "integrations", title: "Integrations", description: "Webhook, Facebook Pixel, and analytics.", icon: Plug },
+  { id: "general", titleKey: "builder.editor.general", descriptionKey: "builder.editor.generalDesc", icon: Settings2 },
+  { id: "images", titleKey: "builder.editor.images", descriptionKey: "builder.editor.imagesDesc", icon: ImageIcon },
+  { id: "description-images", titleKey: "builder.editor.descriptionImages", descriptionKey: "builder.editor.descriptionImagesDesc", icon: Rows3 },
+  { id: "pricing", titleKey: "builder.editor.pricing", descriptionKey: "builder.editor.pricingDesc", icon: Tag },
+  { id: "variants", titleKey: "builder.editor.variants", descriptionKey: "builder.editor.variantsDesc", icon: Layers },
+  { id: "shipping", titleKey: "builder.editor.shipping", descriptionKey: "builder.editor.shippingDesc", icon: Truck },
+  { id: "order-form", titleKey: "builder.editor.orderForm", descriptionKey: "builder.editor.orderFormDesc", icon: ShoppingCart },
+  { id: "display", titleKey: "builder.editor.display", descriptionKey: "builder.editor.displayDesc", icon: Eye },
+  { id: "benefits", titleKey: "builder.editor.benefits", descriptionKey: "builder.editor.benefitsDesc", icon: Sparkles },
+  { id: "reviews", titleKey: "builder.editor.reviews", descriptionKey: "builder.editor.reviewsDesc", icon: Star },
+  { id: "faq", titleKey: "builder.editor.faq", descriptionKey: "builder.editor.faqDesc", icon: HelpCircle },
+  { id: "seo", titleKey: "builder.editor.seo", descriptionKey: "builder.editor.seoDesc", icon: Search },
+  { id: "integrations", titleKey: "builder.editor.integrations", descriptionKey: "builder.editor.integrationsDesc", icon: Plug },
 ];
 
 export function EditSections({
@@ -68,6 +75,7 @@ export function EditSections({
   landingId: string;
   initialSeo: SeoValues;
 }) {
+  const t = useTranslations();
   const callbacks = React.useMemo(
     () => ({
       general: (v: PreviewState["general"]) => onPreviewChange("general", v),
@@ -219,19 +227,24 @@ export function EditSections({
             <EditSectionCard
               key={section.id}
               id={section.id}
-              title={section.title}
-              description="Tracking pixels and webhooks."
+              title={t(section.titleKey)}
+              description={t(section.descriptionKey)}
               icon={section.icon}
             >
+              {/* The sentence and the link are separate keys rather than one
+                  interpolated string: nothing else in this console composes
+                  rich text through the catalogue, and a translator handed a
+                  sentence with markup in it is the usual way a locale ends up
+                  with a broken tag. */}
               <p className="text-sm text-muted-foreground">
-                Tracking (Meta, TikTok, GA4, Tag Manager, Google Ads) and outgoing
-                webhooks are configured once for the whole workspace and apply to
-                every page automatically —{" "}
-                <a href="/console/settings/integrations" className="underline">
-                  open Settings → Integrations
-                </a>
-                .
+                {t("builder.editor.integrationsBody")}
               </p>
+              <a
+                href="/console/settings/integrations"
+                className="mt-2 inline-block text-sm underline"
+              >
+                {t("builder.editor.integrationsLink")}
+              </a>
             </EditSectionCard>
           );
         }
@@ -239,8 +252,8 @@ export function EditSections({
           <EditSectionCard
             key={section.id}
             id={section.id}
-            title={section.title}
-            description={section.description}
+            title={t(section.titleKey)}
+            description={t(section.descriptionKey)}
             icon={section.icon}
           >
             <SectionComingSoon />

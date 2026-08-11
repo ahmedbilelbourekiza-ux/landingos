@@ -8,6 +8,7 @@ import { type VariantGroup } from "@/lib/landing/mock-landings";
 import {
   SectionShell,
   useSectionState,
+  refuseIfFailed,
 } from "@/components/landings/edit/section";
 import { VariantGroupEditor } from "./variant-group-editor";
 import { useBuilderApi } from "@/lib/builder/api-base";
@@ -51,7 +52,7 @@ export function VariantsSection({
         body: JSON.stringify({ items: flatVariants }),
       });
       const json = await res.json();
-      if (!json.success) throw new Error(json.error?.message || "Save failed");
+      refuseIfFailed(json);
     },
   });
   const [validationError, setValidationError] = React.useState<string | null>(null);

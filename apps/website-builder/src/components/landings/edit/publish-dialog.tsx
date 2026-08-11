@@ -1,6 +1,7 @@
 "use client";
 
 import { Globe, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import {
   Dialog,
@@ -28,18 +29,17 @@ export function PublishDialog({
   isUpdate: boolean;
   onConfirm: () => void;
 }) {
+  const t = useTranslations();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Globe className="size-5" />
-            {isUpdate ? "Update Landing?" : "Publish Landing?"}
+            {isUpdate ? t("builder.editor.updateTitle") : t("builder.editor.publishTitle")}
           </DialogTitle>
-          <DialogDescription>
-            This landing will become publicly accessible. Customers can view
-            it and submit orders through the purchase form.
-          </DialogDescription>
+          <DialogDescription>{t("builder.editor.publishBody")}</DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2 sm:gap-2">
           <Button
@@ -47,15 +47,15 @@ export function PublishDialog({
             onClick={() => onOpenChange(false)}
             disabled={isPublishing}
           >
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={onConfirm} disabled={isPublishing}>
             {isPublishing && <Loader2 className="size-4 animate-spin" />}
             {isPublishing
-              ? "Publishing..."
+              ? t("builder.editor.publishing")
               : isUpdate
-                ? "Update"
-                : "Publish"}
+                ? t("builder.editor.update")
+                : t("builder.editor.publish")}
           </Button>
         </DialogFooter>
       </DialogContent>

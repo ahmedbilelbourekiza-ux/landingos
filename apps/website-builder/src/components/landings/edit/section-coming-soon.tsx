@@ -1,4 +1,7 @@
+"use client";
+
 import { Wrench } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 // Placeholder body for sections whose editing UI hasn't been built yet.
 // Every section card renders this today; as real forms land in future tasks,
@@ -6,6 +9,8 @@ import { Wrench } from "lucide-react";
 // deliberately calm — a single icon and two lines — so the workspace reads
 // as "intentionally minimal" rather than "broken."
 export function SectionComingSoon() {
+  const t = useTranslations();
+
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
       <span
@@ -15,9 +20,11 @@ export function SectionComingSoon() {
         <Wrench className="size-5" strokeWidth={1.5} />
       </span>
       <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium text-muted-foreground">Coming Soon</p>
+        <p className="text-sm font-medium text-muted-foreground">
+          {t("builder.editor.comingSoon")}
+        </p>
         <p className="text-xs text-muted-foreground/70">
-          This section will be available in a future update.
+          {t("builder.editor.comingSoonHint")}
         </p>
       </div>
     </div>

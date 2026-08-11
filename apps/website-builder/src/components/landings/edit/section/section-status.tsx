@@ -1,4 +1,7 @@
+"use client";
+
 import { Loader2, Check, AlertCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { UnsavedIndicator } from "./unsaved-indicator";
 import type { SectionStatus } from "./use-section-state";
@@ -8,6 +11,8 @@ import type { SectionStatus } from "./use-section-state";
 // clean, being saved, succeeded, or failed. `idle` renders nothing — the
 // absence of a badge IS the "all good" signal.
 export function SectionStatus({ status }: { status: SectionStatus }) {
+  const t = useTranslations();
+
   switch (status) {
     case "dirty":
       return <UnsavedIndicator />;
@@ -19,7 +24,7 @@ export function SectionStatus({ status }: { status: SectionStatus }) {
           aria-live="polite"
         >
           <Loader2 className="size-3.5 animate-spin" aria-hidden />
-          Saving…
+          {t("common.saving")}
         </span>
       );
     case "saved":
@@ -30,7 +35,7 @@ export function SectionStatus({ status }: { status: SectionStatus }) {
           aria-live="polite"
         >
           <Check className="size-3.5" aria-hidden />
-          Saved
+          {t("common.saved")}
         </span>
       );
     case "error":
@@ -41,7 +46,7 @@ export function SectionStatus({ status }: { status: SectionStatus }) {
           aria-live="assertive"
         >
           <AlertCircle className="size-3.5" aria-hidden />
-          Error
+          {t("builder.editor.failed")}
         </span>
       );
     case "idle":

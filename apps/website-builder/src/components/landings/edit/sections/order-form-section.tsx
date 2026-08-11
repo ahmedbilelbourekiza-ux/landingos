@@ -30,6 +30,7 @@ import {
 import {
   SectionShell,
   useSectionState,
+  refuseIfFailed,
 } from "@/components/landings/edit/section";
 import { OrderFormFieldEditor } from "./order-form-field-editor";
 import { useBuilderApi } from "@/lib/builder/api-base";
@@ -60,7 +61,7 @@ export function OrderFormSection({
         body: JSON.stringify(config),
       });
       const json = await res.json();
-      if (!json.success) throw new Error(json.error?.message || "Save failed");
+      refuseIfFailed(json);
     },
   });
 

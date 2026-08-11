@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   ArrowLeft,
   Eye,
@@ -40,8 +40,14 @@ export function EditWorkspaceHeader({
   onOpenLanding: () => void;
   onBack: () => void;
 }) {
+  const t = useTranslations();
   const isPublished = publishStatus === "PUBLISHED";
   const isPublishing = publishStatus === "PUBLISHING";
+  const publishLabel = isPublishing
+    ? t("builder.editor.publishing")
+    : isPublished
+      ? t("builder.editor.update")
+      : t("builder.editor.publish");
 
   return (
     <header className="sticky top-16 z-20 flex h-14 items-center justify-between gap-3 border-b bg-background/80 px-4 backdrop-blur-md sm:px-6">
@@ -51,9 +57,17 @@ export function EditWorkspaceHeader({
           variant="ghost"
           size="icon"
           className="size-8 shrink-0"
-          aria-label="Back to Landing Pages"
+          aria-label={t("builder.editor.back")}
           onClick={onBack}
         >
+          {/* Deliberately NOT `rtl:rotate-180`. That class emits no CSS here —
+              this build defines no `rtl` variant (globals.css declares only
+              `dark`), and Tailwind v4 does not ship one, so the utility is
+              silently dropped. Verified in the running page: no rule for it
+              exists in the served stylesheet. Two other files already carry
+              dead `rtl:` classes for the same reason; making the variant real
+              is a global CSS change that would alter screens this slice does
+              not verify, so it is recorded rather than done here. */}
           <ArrowLeft className="size-4" />
         </Button>
         <span className="truncate text-sm font-medium">{landingTitle}</span>
@@ -63,8 +77,11 @@ export function EditWorkspaceHeader({
             variant="outline"
             className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-500"
           >
-            <AlertCircle className="mr-1 size-3" />
-            Unsaved Changes
+            {/* `mr-1` was a physical margin in an app that flips: in Arabic it
+                pushed the icon AWAY from its label. `me-1` is the logical
+                edge and reads correctly both ways. */}
+            <AlertCircle className="me-1 size-3" />
+            {t("builder.editor.unsavedChanges")}
           </Badge>
         )}
       </div>
@@ -74,9 +91,14 @@ export function EditWorkspaceHeader({
           action (publish) was an anonymous globe. The aria-labels are
           unconditional; sighted users at `sm+` read the visible text. */}
       <div className="flex shrink-0 items-center gap-2">
-        <Button variant="outline" size="sm" aria-label="Preview" onClick={onPreview}>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={t("builder.editor.preview")}
+          onClick={onPreview}
+        >
           <Eye className="size-4" />
-          <span className="hidden sm:inline">Preview</span>
+          <span className="hidden sm:inline">{t("builder.editor.preview")}</span>
         </Button>
 
         {isPublished && (
@@ -88,7 +110,7 @@ export function EditWorkspaceHeader({
               className="hidden md:inline-flex"
             >
               <Link2 className="size-4" />
-              <span className="hidden lg:inline">Copy Link</span>
+              <span className="hidden lg:inline">{t("builder.editor.copyLink")}</span>
             </Button>
             <Button
               variant="outline"
@@ -97,14 +119,14 @@ export function EditWorkspaceHeader({
               className="hidden md:inline-flex"
             >
               <ExternalLink className="size-4" />
-              <span className="hidden lg:inline">Open</span>
+              <span className="hidden lg:inline">{t("builder.editor.open")}</span>
             </Button>
           </>
         )}
 
         <Button
           size="sm"
-          aria-label={isPublishing ? "Publishing" : isPublished ? "Update" : "Publish"}
+          aria-label={publishLabel}
           onClick={onPublish}
           disabled={isPublishing}
         >
@@ -113,25 +135,26 @@ export function EditWorkspaceHeader({
           ) : (
             <Globe className="size-4" />
           )}
-          <span className="hidden sm:inline">
-            {isPublishing
-              ? "Publishing..."
-              : isPublished
-                ? "Update"
-                : "Publish"}
-          </span>
+          <span className="hidden sm:inline">{publishLabel}</span>
         </Button>
       </div>
     </header>
   );
 }
 
+/* Draft and Published are the LandingPage status vocabulary, so they read from
+ * `status.landingPage.*` — the same keys the pages list's StatusPill uses. A
+ * second wording of "Published" in the editor would let the two screens
+ * disagree about the same row. PUBLISHING is transient and belongs to the
+ * editor alone, so it keeps its own key. */
 function PublishStatusBadge({ status }: { status: PublishStatus }) {
+  const t = useTranslations();
+
   if (status === "DRAFT") {
     return (
       <Badge variant="outline" className="gap-1.5 border-transparent bg-muted text-muted-foreground">
         <span className="size-1.5 rounded-full bg-muted-foreground/60" />
-        Draft
+        {t("status.landingPage.draft")}
       </Badge>
     );
   }
@@ -139,7 +162,7 @@ function PublishStatusBadge({ status }: { status: PublishStatus }) {
     return (
       <Badge variant="outline" className="gap-1.5 border-transparent bg-muted text-muted-foreground">
         <Loader2 className="size-3 animate-spin" />
-        Publishing...
+        {t("builder.editor.publishing")}
       </Badge>
     );
   }
@@ -149,7 +172,7 @@ function PublishStatusBadge({ status }: { status: PublishStatus }) {
       className="gap-1.5 border-transparent bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
     >
       <span className="size-1.5 rounded-full bg-emerald-500" />
-      Published
+      {t("status.landingPage.published")}
     </Badge>
   );
 }

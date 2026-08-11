@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   Sheet,
   SheetContent,
@@ -28,6 +29,7 @@ export function PreviewDrawer({
 }) {
   // Bound to the console API by BuilderApiProvider.
   const api = useBuilderApi();
+  const t = useTranslations();
   const [theme, setTheme] = React.useState<LandingThemeData>(DEFAULT_THEME);
 
   React.useEffect(() => {
@@ -50,9 +52,9 @@ export function PreviewDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-3xl">
         <SheetHeader className="sticky top-0 z-10 border-b bg-background/80 px-6 py-3 backdrop-blur-md">
-          <SheetTitle className="text-sm">Live Preview</SheetTitle>
+          <SheetTitle className="text-sm">{t("builder.editor.livePreview")}</SheetTitle>
           <SheetDescription className="sr-only">
-            Live preview of the landing page with current unsaved changes.
+            {t("builder.editor.livePreviewHint")}
           </SheetDescription>
         </SheetHeader>
         <div className="min-h-[calc(100vh-3rem)]">

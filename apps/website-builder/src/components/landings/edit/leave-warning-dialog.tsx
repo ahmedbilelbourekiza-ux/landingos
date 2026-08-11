@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import {
   Dialog,
@@ -24,25 +25,24 @@ export function LeaveWarningDialog({
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 }) {
+  const t = useTranslations();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="size-5 text-amber-500" />
-            Unsaved Changes
+            {t("builder.editor.unsavedChanges")}
           </DialogTitle>
-          <DialogDescription>
-            You have unsaved changes that will be lost if you leave. Are you
-            sure you want to continue?
-          </DialogDescription>
+          <DialogDescription>{t("builder.editor.leaveBody")}</DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Stay
+            {t("builder.editor.stay")}
           </Button>
           <Button variant="destructive" onClick={onConfirm}>
-            Leave Anyway
+            {t("builder.editor.leaveAnyway")}
           </Button>
         </DialogFooter>
       </DialogContent>

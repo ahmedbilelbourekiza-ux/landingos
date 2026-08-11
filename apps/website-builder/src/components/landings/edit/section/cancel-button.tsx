@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import type { SectionStatus } from "./use-section-state";
@@ -16,6 +17,8 @@ export function CancelButton({
   status: SectionStatus;
   onClick: () => void;
 }) {
+  const t = useTranslations();
+
   if (status === "idle" || status === "saved") return null;
 
   return (
@@ -27,7 +30,7 @@ export function CancelButton({
       disabled={status === "saving"}
     >
       <X className="size-4" />
-      Cancel
+      {t("common.cancel")}
     </Button>
   );
 }
