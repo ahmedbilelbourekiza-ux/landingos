@@ -80,7 +80,7 @@ paragraph did, and so did the header's `Unsaved Changes` badge).
 |---|---|---|---|
 | **LB.13a** | Editor shell + section frame + the save path's error text | 15 | **DONE** — see §2 |
 | **LB.13b** | General, Pricing, SEO | 4 | **DONE** — see §2 |
-| **LB.13c** | Images & Media, Landing page images, image card, avatar picker | 4 | pending |
+| **LB.13c** | Images & Media, Landing page images, image card, avatar picker | 4 | **DONE** — see §2 |
 | **LB.13d** | Variants, Shipping, Order form (+ `FIELD_DEFS`) | 6 | pending |
 | **LB.13e** | Benefits, Reviews, FAQ, Display | 6 | pending |
 | **LB.13f** | The live preview components | 8 | pending — carries a decision, §3 |
@@ -251,6 +251,62 @@ forms actually driven:
   the templates screen already renders on the same swatch.
 - Nothing was written: every save was refused client-side; after reload the
   title reads `minimalist` and the old price is empty.
+
+### LB.13c — the two media sections, the image card, the avatar picker
+
+**Fixed.** 22 keys across `images-section`, `description-images-section`,
+`image-card` and `avatar-picker-dialog`: the hero heading and its hint, both
+empty states, gallery and description-image headings, the add/uploading button,
+the counts (`{count} / {max} images` interpolated, so Arabic reads «1 / 12
+صورة» with the right noun), both reorder hints, and every validation and upload
+message.
+
+**Three upload messages were leaking English past the catalogue.** Both
+sections did `setValidationError(json.error?.message || "Upload failed")` and
+`"Network error during upload"` — the same shape LB.13a closed for saves,
+in the one code path that does not go through `useSectionState`, because an
+upload is a plain `fetch` inside a change handler. They read the catalogue now
+(`builder.editor.uploadRefused`, `common.error.network`).
+
+**Two accessibility defects fixed while translating them:**
+
+1. **The remove buttons had no accessible name at all.** Both the gallery
+   card's and the hero card's are icon-only `<Button>`s with a bare `<X/>`
+   inside — they announced as "button" and nothing more. Both now carry
+   `aria-label={t("builder.editor.removeImage")}`; confirmed in the running
+   page («إزالة الصورة»).
+2. **The avatar options were named from generated English data.**
+   `mock-reviews.ts` builds `label: "Avatar 3"`, and that string was BOTH the
+   button's `aria-label` and the image's `alt` — so a screen reader heard the
+   English name twice per option. The label is now built from the position
+   through `builder.editor.avatarOption`, and the image inside the button is
+   `alt=""`, which is what a decorative image inside a named control should be.
+
+**RTL, measured rather than assumed.** The hero card's badge moved
+`left-2 → start-2` and its remove button `right-2 → end-2`; the gallery card's
+grip indicator `left-1.5 → start-1.5`. In Arabic the card measured
+x = 41…483 with the «رئيسية» badge at x = 436 (the right edge — the START in
+RTL) and the remove button at x = 50 (the left — the END). Both classes emit
+real CSS, unlike the `rtl:` variant §3 records.
+
+**Tests.** i18n 20/20 · builder-sections 58/58. `tsc`: the same 6 pre-existing
+errors. Re-scan of the four files: **0 remaining hardcoded strings**.
+
+**Verified live**, build `MmydBiN8gwOudqgIXsZnj`, both directions:
+
+- `ar` / RTL — «الصور والوسائط · الصورة الرئيسية · تظهر بحجم كبير أعلى الصفحة ·
+  رئيسية · المعرض · إضافة صورة · لا توجد صور في المعرض بعد · 1 / 12 صورة ·
+  اسحب لإعادة الترتيب · اضغط «رئيسية» للترقية» and «صور الصفحة · صور الوصف ·
+  0 / 20 صورة · اسحب لإعادة الترتيب · يراها العملاء بهذا الترتيب».
+- The avatar dialog **opened and measured** at 512×480: «اختر صورة رمزية»,
+  its hint, and options named «صورة رمزية 1…4» with empty `alt` on the images.
+- `fr` / LTR — «Images et médias · Image principale · Affichée en grand en haut
+  de la page · PRINCIPALE · Galerie · Ajouter une image · 1 / 12 images ·
+  Glissez pour réordonner · Appuyez sur Principale pour promouvoir»,
+  «Images de la page · Images de description», and the dialog reading
+  «Choisir un avatar» with «Avatar nº 1…3».
+- Nothing was written: the review card added to reach the avatar picker was
+  client-side state only and was never saved.
 
 ---
 

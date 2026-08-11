@@ -17,6 +17,7 @@ import {
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Rows3, Plus, AlertCircle, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -55,6 +56,7 @@ export function DescriptionImagesSection({
   // Where this editor sends its requests. The legacy dashboard and the
   // console mount the same components against different bases.
   const api = useBuilderApi();
+  const t = useTranslations();
   // Preview state carries URLs only, so ids are synthesised for dnd-kit. They
   // are positional and never persisted — the server assigns displayOrder from
   // array position on save.
@@ -129,7 +131,7 @@ export function DescriptionImagesSection({
     e.target.value = "";
 
     if (images.length >= MAX_IMAGES) {
-      setValidationError(`Maximum ${MAX_IMAGES} description images.`);
+      setValidationError(t("builder.editor.maxDescriptionImages", { max: MAX_IMAGES }));
       return;
     }
 
@@ -141,7 +143,7 @@ export function DescriptionImagesSection({
       const res = await fetch(api("/upload"), { method: "POST", body: formData });
       const json = await res.json();
       if (!json.success) {
-        setValidationError(json.error?.message || "Upload failed");
+        setValidationError(t("builder.editor.uploadRefused"));
         return;
       }
       setImages((prev) => [
@@ -150,7 +152,7 @@ export function DescriptionImagesSection({
       ]);
       section.markDirty();
     } catch {
-      setValidationError("Network error during upload");
+      setValidationError(t("common.error.network"));
     } finally {
       setUploading(false);
     }
@@ -165,8 +167,8 @@ export function DescriptionImagesSection({
   return (
     <SectionShell
       id="description-images"
-      title="Landing Page Images"
-      description="Long-form images shown below the product description."
+      title={t("builder.editor.descriptionImages")}
+      description={t("builder.editor.descriptionImagesDesc")}
       icon={Rows3}
       state={section.state}
       onSave={async () => {
@@ -185,7 +187,7 @@ export function DescriptionImagesSection({
 
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">
-            Description images{" "}
+            {t("builder.editor.descriptionImagesLabel")}{" "}
             <span className="text-xs text-muted-foreground">({images.length})</span>
           </span>
           <Button
@@ -196,7 +198,7 @@ export function DescriptionImagesSection({
             disabled={images.length >= MAX_IMAGES || uploading}
           >
             {uploading ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-            {uploading ? "Uploading..." : "Add Image"}
+            {uploading ? t("builder.editor.uploading") : t("builder.editor.addImage")}
           </Button>
           <input
             ref={fileInputRef}
@@ -209,8 +211,7 @@ export function DescriptionImagesSection({
 
         {images.length === 0 ? (
           <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed text-center text-sm text-muted-foreground">
-            No description images yet — these appear below the product
-            description, in the order shown here.
+            {t("builder.editor.noDescriptionImages")}
           </div>
         ) : (
           <DndContext
@@ -242,9 +243,9 @@ export function DescriptionImagesSection({
           )}
         >
           <span>
-            {images.length} / {MAX_IMAGES} images
+            {t("builder.editor.imageCount", { count: images.length, max: MAX_IMAGES })}
           </span>
-          <span>Drag to reorder · Order shown is the order customers see</span>
+          <span>{t("builder.editor.reorderCustomerHint")}</span>
         </div>
       </div>
     </SectionShell>

@@ -17,6 +17,7 @@ import {
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Image as ImageIcon, Plus, AlertCircle, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,7 @@ export function ImagesSection({
   // Where this editor sends its requests. The legacy dashboard and the
   // console mount the same components against different bases.
   const api = useBuilderApi();
+  const t = useTranslations();
   // Build initial MediaItem arrays from the preview values (which only carry
   // URLs). When loading from Prisma, the hero is the first media row and
   // the gallery is the rest.
@@ -112,7 +114,7 @@ export function ImagesSection({
   const handleAddImage = (item: MediaItem) => {
     if (gallery.length >= MAX_IMAGES - 1) {
       // -1 because hero counts toward the 12-image max
-      setValidationError(`Maximum ${MAX_IMAGES} images total.`);
+      setValidationError(t("builder.editor.maxImages", { max: MAX_IMAGES }));
       return;
     }
     setValidationError(null);
@@ -175,7 +177,7 @@ export function ImagesSection({
     e.target.value = "";
 
     if (totalImages >= MAX_IMAGES) {
-      setValidationError(`Maximum ${MAX_IMAGES} images total.`);
+      setValidationError(t("builder.editor.maxImages", { max: MAX_IMAGES }));
       return;
     }
 
@@ -187,7 +189,9 @@ export function ImagesSection({
       const res = await fetch(api("/upload"), { method: "POST", body: formData });
       const json = await res.json();
       if (!json.success) {
-        setValidationError(json.error?.message || "Upload failed");
+        // The envelope's message is the developer-facing one (see
+        // use-section-state.ts); the reader gets the catalogue's sentence.
+        setValidationError(t("builder.editor.uploadRefused"));
         return;
       }
       handleAddImage({
@@ -196,7 +200,7 @@ export function ImagesSection({
         filename: file.name,
       });
     } catch {
-      setValidationError("Network error during upload");
+      setValidationError(t("common.error.network"));
     } finally {
       setUploading(false);
     }
@@ -205,7 +209,7 @@ export function ImagesSection({
   // --- Save / Cancel ---
   const handleSave = async () => {
     if (!hero) {
-      setValidationError("At least one hero image is required.");
+      setValidationError(t("builder.editor.heroRequired"));
       return;
     }
     setValidationError(null);
@@ -222,8 +226,8 @@ export function ImagesSection({
   return (
     <SectionShell
       id="images"
-      title="Images & Media"
-      description="Product gallery, videos, and thumbnails."
+      title={t("builder.editor.images")}
+      description={t("builder.editor.imagesDesc")}
       icon={ImageIcon}
       state={section.state}
       onSave={handleSave}
@@ -244,16 +248,16 @@ export function ImagesSection({
         {/* Hero image */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Hero image</span>
+            <span className="text-sm font-medium">{t("builder.editor.heroImage")}</span>
             <span className="text-xs text-muted-foreground">
-              Shown large on the landing page
+              {t("builder.editor.heroHint")}
             </span>
           </div>
           {hero ? (
             <HeroImageCard item={hero} onRemove={handleRemoveHero} />
           ) : (
             <div className="flex aspect-[16/10] items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
-              No hero image — add one below
+              {t("builder.editor.noHero")}
             </div>
           )}
         </div>
@@ -262,7 +266,7 @@ export function ImagesSection({
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">
-              Gallery{" "}
+              {t("builder.editor.gallery")}{" "}
               <span className="text-xs text-muted-foreground">
                 ({gallery.length})
               </span>
@@ -275,7 +279,7 @@ export function ImagesSection({
               disabled={totalImages >= MAX_IMAGES || uploading}
             >
               {uploading ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-              {uploading ? "Uploading..." : "Add Image"}
+              {uploading ? t("builder.editor.uploading") : t("builder.editor.addImage")}
             </Button>
             <input
               ref={fileInputRef}
@@ -288,7 +292,7 @@ export function ImagesSection({
 
           {gallery.length === 0 ? (
             <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
-              No gallery images yet
+              {t("builder.editor.noGallery")}
             </div>
           ) : (
             <DndContext
@@ -324,8 +328,8 @@ export function ImagesSection({
               : "text-muted-foreground",
           )}
         >
-          <span>{totalImages} / {MAX_IMAGES} images</span>
-          <span>Drag to reorder · Click Hero to promote</span>
+          <span>{t("builder.editor.imageCount", { count: totalImages, max: MAX_IMAGES })}</span>
+          <span>{t("builder.editor.reorderHeroHint")}</span>
         </div>
       </div>
     </SectionShell>

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { GripVertical, X, Crown } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -25,6 +26,7 @@ export function SortableImageCard({
   onRemove: (id: string) => void;
   onSetHero?: (id: string) => void;
 }) {
+  const t = useTranslations();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
 
@@ -55,7 +57,7 @@ export function SortableImageCard({
       <button
         type="button"
         className="absolute inset-0 cursor-grab active:cursor-grabbing"
-        aria-label={`Drag ${item.filename}`}
+        aria-label={t("builder.editor.dragImage", { name: item.filename })}
         {...attributes}
         {...listeners}
       />
@@ -75,7 +77,7 @@ export function SortableImageCard({
             }}
           >
             <Crown className="size-3" />
-            Hero
+            {t("builder.editor.hero")}
           </Button>
         ) : (
           // Keeps the remove button pinned right when there is no hero action.
@@ -86,6 +88,10 @@ export function SortableImageCard({
           size="icon"
           variant="secondary"
           className="pointer-events-auto size-7"
+          // An icon-only button with no accessible name — it announced as
+          // "button" and nothing else. Naming it is the same fix the mobile
+          // audit applied to the header's publish control.
+          aria-label={t("builder.editor.removeImage")}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
@@ -103,8 +109,8 @@ export function SortableImageCard({
         </span>
       </div>
 
-      {/* Drag handle indicator — top-left */}
-      <span className="absolute left-1.5 top-1.5 text-white/50 opacity-0 transition-opacity group-hover:opacity-100">
+      {/* Drag handle indicator — the leading corner, whichever that is */}
+      <span className="absolute start-1.5 top-1.5 text-white/50 opacity-0 transition-opacity group-hover:opacity-100">
         <GripVertical className="size-3.5" />
       </span>
     </div>
@@ -120,6 +126,8 @@ export function HeroImageCard({
   item: MediaItem;
   onRemove: (id: string) => void;
 }) {
+  const t = useTranslations();
+
   return (
     <div className="group relative aspect-[16/10] overflow-hidden rounded-xl border bg-card">
       <Image
@@ -129,14 +137,17 @@ export function HeroImageCard({
         sizes="(max-width: 1024px) 100vw, 600px"
         className="object-cover"
       />
-      <span className="absolute left-2 top-2 rounded-md bg-foreground px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-background">
-        Hero
+      {/* `start-2` / `end-2`: the badge leads and the remove control trails,
+          in whichever direction the reader's text runs. */}
+      <span className="absolute start-2 top-2 rounded-md bg-foreground px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-background">
+        {t("builder.editor.hero")}
       </span>
       <Button
         type="button"
         size="icon"
         variant="secondary"
-        className="absolute right-2 top-2 size-7 opacity-0 transition-opacity group-hover:opacity-100"
+        className="absolute end-2 top-2 size-7 opacity-0 transition-opacity group-hover:opacity-100"
+        aria-label={t("builder.editor.removeImage")}
         onClick={() => onRemove(item.id)}
       >
         <X className="size-3.5" />

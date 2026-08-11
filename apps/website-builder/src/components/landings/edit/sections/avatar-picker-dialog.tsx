@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { Check } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import {
   Dialog,
@@ -27,19 +28,25 @@ export function AvatarPickerDialog({
   onPick: (url: string) => void;
   selectedUrl: string | null;
 }) {
+  const t = useTranslations();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Choose avatar</DialogTitle>
+          <DialogTitle>{t("builder.editor.chooseAvatar")}</DialogTitle>
           <DialogDescription>
-            Select an avatar from the library. Upload comes in a future update.
+            {t("builder.editor.chooseAvatarHint")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-5 gap-2 sm:grid-cols-6">
-          {mockAvatarOptions.map((option) => {
+          {mockAvatarOptions.map((option, index) => {
             const isSelected = option.url === selectedUrl;
+            // The library's own `label` is the generated English "Avatar 3".
+            // It is the option's only accessible name, so it is built here
+            // from the position instead of shipped as data.
+            const label = t("builder.editor.avatarOption", { number: index + 1 });
             return (
               <button
                 key={option.id}
@@ -52,11 +59,11 @@ export function AvatarPickerDialog({
                   "relative aspect-square overflow-hidden rounded-full border-2 transition-all hover:border-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   isSelected && "border-foreground",
                 )}
-                aria-label={option.label}
+                aria-label={label}
               >
                 <Image
                   src={option.url}
-                  alt={option.label}
+                  alt=""
                   fill
                   sizes="56px"
                   className="object-cover"
