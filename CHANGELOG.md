@@ -12,6 +12,84 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.13** The landing editor learns Arabic and French (11 August 2026,
+  closing `BUILDER_AUDIT.md` M-04). Seven slices, each measure → fix → test →
+  verify live in `ar` (RTL) **and** `fr` (LTR) → commit: the editor shell and
+  section frame; General/Pricing/SEO; the two media sections; Variants/
+  Shipping/Order form; Benefits/Reviews/FAQ/Display; the live preview; and the
+  guard. **213 `builder.editor.*` keys** in three locales (catalogue 963 →
+  1 176) across **31 live components** plus `ui/dialog`, `ui/sheet`,
+  `lib/landing/mock-order-form`, `lib/landing/benefit-icons` and the
+  storefront's `purchase-form`. Full record in **`EDITOR_I18N.md`**.
+
+  **The measurement corrected the audit before any code moved.** M-04 said "54
+  editor components and the create screen". The create screen was already
+  translated, and an import-graph walk from every entry under `app/` found
+  **ten of those components unreachable** — the legacy dashboard's page list,
+  superseded by the server-rendered pages screen and imported only by each
+  other. They were deliberately NOT translated: translating a screen nobody
+  can open makes dead code look maintained. Real scope: 31 live components.
+
+  **What it found that M-04 never described**, each by driving the running app
+  rather than reading it:
+  - **Every section's save rendered the API's ENGLISH developer message.**
+    `throw new Error(json.error?.message || "Save failed")` ×12, while
+    `lib/console/action-errors.ts` states in its own header that the envelope's
+    message is for a log and the screen must key off the CODE. Now
+    `refuseIfFailed` throws an `ApiRefusal` carrying only the code and
+    `useSectionState` resolves it through `actionErrors(t)` — the same map
+    every other console write uses. A `fetch` rejection is a `TypeError` by
+    spec and says the request never left; anything else gets the honest generic
+    sentence rather than a lie about the network.
+  - **`rtl:` emits no CSS anywhere in this app.** Added `rtl:rotate-180` to the
+    back arrow, saw `transform: none` in the running page, and found no rule
+    for it in the served stylesheet: `globals.css` declares only
+    `@custom-variant dark` and Tailwind v4 ships no `rtl` variant. The class
+    was removed rather than shipped as a no-op; **two files already carry the
+    same dead classes** (`console/data-table.tsx`, `ui/calendar.tsx`) and are
+    recorded for a decision. Eleven physical margins DID become logical
+    (`ml-`/`mr-`/`left-`/`right-` → `ms-`/`me-`/`start-`/`end-`), each measured
+    in Arabic — e.g. the hero card at x=41…483 with its badge at x=436 and its
+    remove button at x=50.
+  - **Two icon-only controls had no accessible name at all** (the gallery and
+    hero remove buttons); **two more announced their name twice**, because an
+    `alt` duplicated the button's label (avatar picker, review card).
+  - **A label pointed at a heading**: the SEO input's `id="seo-title"` was
+    exactly the id `SectionShell` gives its own `<h2>` for a section called
+    `seo`, so `getElementById` returned the heading.
+  - **Seven English names lived in a data module** (`FIELD_DEFS.displayName`),
+    and the benefit picker offered raw lucide keys (`shield-check`,
+    `refresh-ccw`). Both carry catalogue keys now.
+  - **The preview ignored the config it exists to preview**: "Select wilaya…"
+    was hardcoded over the merchant's own `config.wilaya.placeholder`.
+  - **The star rating pluralised English by hand.** As an ICU plural, Arabic
+    gets grammar English cannot express — «نجمة واحدة», the DUAL «نجمتان»,
+    then «3 نجوم».
+
+  **The decision LB.13f had to make, recorded because it generalises:** a
+  preview panel contains two kinds of string. What the CUSTOMER will see mirrors
+  the storefront — Arabic by design for an Algerian buyer — because a preview
+  that says "Total" while the page says «الإجمالي» is not previewing the page.
+  What the EDITOR says ABOUT the preview follows the console's locale. Two
+  storefront labels moved into one shared `STOREFRONT_COPY` that both
+  `purchase-form.tsx` and the preview read, deleting a duplicate rather than
+  adding one.
+
+  **The guard, because a green suite proved nothing here.** Every existing
+  i18n check asks whether a key the code REQUESTS exists; a `t()` scan cannot
+  see 166 strings that never went through `t()`. The suite now also asserts
+  *the editor holds no user-facing English*, with exclusions by rule
+  (SCREAMING_CASE enums, Tailwind, identifiers, paths, non-latin) and one
+  named exemption for the unreachable `media-picker-dialog.tsx`. **Proven to
+  bite**: reintroducing one literal in `seo-section.tsx` failed it; restoring
+  returned 22/22.
+
+  Tests: i18n **22/22** · builder-sections **58/58** · console-shell **20/20**
+  · storefront **32/32**; `tsc` shows the same six pre-existing errors in this
+  tree as before the first slice. **Nothing was written to the database** —
+  every live check drove the real forms and every save was refused by
+  validation or stubbed to fail. Local commits only; not deployed.
+
 - **B6 (CAPABILITY_AUDIT)** Sessions become visible and revocable (10 August
   2026). The write side had quietly existed — a throttled `lastSeenAt` touch
   in resolveSession, ua/ip columns, destroy helpers — with no screen. The

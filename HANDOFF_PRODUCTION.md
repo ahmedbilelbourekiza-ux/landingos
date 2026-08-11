@@ -225,12 +225,17 @@ edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
    suspects. This is the customer-facing surface on Algerian mobile networks.
 5. **Deploy `services/worker`** when scheduled ERP jobs are wanted in
    production (needs `WORKER_SECRET` on both sides).
-6. **Editor i18n (LB.13) — IN PROGRESS since 11 Aug, local only, NOT deployed.**
-   `EDITOR_I18N.md` is the slice log and carries the corrected measurement
-   (the create screen was already done; 10 of the audit's "54 components" are
-   dead code) plus three flagged decisions for the user: the dead components,
-   a `rtl:` Tailwind variant that emits no CSS anywhere in the app, and
-   `ui/sheet.tsx`'s physically-positioned close button.
+6. **Editor i18n (LB.13) — DONE 11 Aug, LOCAL ONLY, NOT DEPLOYED.** Seven
+   commits (`43b55c6..` through the guard). `EDITOR_I18N.md` is the full
+   record: the corrected measurement, a per-slice log with the live evidence,
+   and §3's four open decisions. Suites green per file (i18n 22/22 including a
+   new guard that fails on any hardcoded editor string, builder-sections
+   58/58, console-shell 20/20, storefront 32/32); verified in `ar` and `fr`
+   against the running app; **nothing written to the database.**
+   Two things a deployer should know: it edits `packages/i18n` (shared by
+   every screen) and `components/ui/{dialog,sheet}` (shared by every dialog),
+   and it touches the storefront's `purchase-form.tsx` — two Arabic labels now
+   read from one shared constant, covered by storefront 32/32.
 7. From the audits, still open: Benefits/
    FAQ (LB.12), notification write-time i18n, analytics comparisons (PM.10),
    builder list pagination, LB.11 real-credential tracking smoke test (still

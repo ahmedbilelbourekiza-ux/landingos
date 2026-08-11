@@ -74,6 +74,41 @@ paragraph did, and so did the header's `Unsaved Changes` badge).
 
 ---
 
+## §0b WHERE IT ENDED — 11 August 2026, local only, NOT deployed
+
+**LB.13 is complete.** Seven commits, `43b55c6..` through the guard, each
+measure → fix → test → verify live in `ar` and `fr` → commit → update this file.
+
+- **213 keys** under `builder.editor.*` (catalogue: 963 → 1 176), in all three
+  locales, terminology taken from what the console already says.
+- **31 live editor components** rewritten, plus four shared modules
+  (`ui/dialog`, `ui/sheet`, `lib/landing/mock-order-form`,
+  `lib/landing/benefit-icons`) and the storefront's `purchase-form`.
+- **Suites, per file, against the running server:** i18n **22/22** (20 before,
+  plus the two new guard tests) · builder-sections **58/58** · console-shell
+  **20/20** · storefront **32/32**. `tsc` shows the same six pre-existing
+  errors in this tree that it showed before the first slice.
+- **Nothing was written to the database** at any point. Every live check
+  drove the real forms and every save was either refused by validation or
+  stubbed to fail; the demo pages read unchanged after reload.
+
+**What LB.13 turned out to include beyond translation** — each found by
+driving the running app, none of it in M-04's description:
+
+| | |
+|---|---|
+| The save path shouted English | Twelve sections rendered the API's developer-facing message. Now code-keyed through `actionErrors` (LB.13a) |
+| Two controls had no accessible name at all | The gallery and hero remove buttons (LB.13c) |
+| A label pointed at a heading | `id="seo-title"` collided with `SectionShell`'s `<h2>` (LB.13b) |
+| Seven names lived in a data module | `FIELD_DEFS.displayName` (LB.13d) |
+| A picker offered raw identifiers | `shield-check`, `refresh-ccw` (LB.13e) |
+| The preview ignored the config it previews | Hardcoded "Select wilaya…" over the merchant's own placeholder (LB.13f) |
+| An accessible name was announced twice | `alt` duplicating a button's label, in the avatar picker and the review card (LB.13c/e) |
+| `rtl:` emits no CSS anywhere in the app | Three pre-existing dead classes; recorded, not fixed (§3) |
+| Eleven physical margins in a bidirectional app | `ml-`/`mr-`/`left-`/`right-` → `ms-`/`me-`/`start-`/`end-`, each measured in RTL |
+
+---
+
 ## §1 SLICES
 
 | # | Slice | Files | State |
@@ -84,6 +119,7 @@ paragraph did, and so did the header's `Unsaved Changes` badge).
 | **LB.13d** | Variants, Shipping, Order form (+ `FIELD_DEFS`) | 7 | **DONE** — see §2 |
 | **LB.13e** | Benefits, Reviews, FAQ, Display | 7 | **DONE** — see §2 |
 | **LB.13f** | The live preview components | 6 | **DONE** — see §2; the decision it carried is answered there |
+| **LB.13g** | The guard that keeps it closed | 1 | **DONE** — see §2 |
 
 ---
 
@@ -491,6 +527,38 @@ attribute list, which the typecheck caught before the build did.
   public page returns 200 with «الإجمالي» in the served HTML.
 - Nothing was written — the image removals were cancelled and the page reloads
   with its hero and both gallery images intact.
+
+### LB.13g — the guard, because a green suite proved nothing here
+
+**The whole of M-04 lived under a green i18n suite.** Every check in
+`packages/i18n/test/messages.test.ts` asks whether a key the code REQUESTS
+exists — in three locales, derived from the manifests and the status
+registries, and from a scan of `t("…")` calls. **A `t()` scan cannot see a
+string that never went through `t()`**, which is precisely what 166 hardcoded
+sentences are. `NEXT_STEPS.md` already says this about the UI.7 residue; LB.13
+is the same blindness at ten times the size.
+
+So the suite gains the other half: *the editor holds no user-facing English*.
+It reads the editor tree for user-facing string literals — JSX text, text-
+carrying props, object `label`/`title`/`displayName` fields, zod and toast
+messages, display ternaries — and asserts the list is empty. Comments, imports,
+Tailwind strings, identifiers, paths, SCREAMING_CASE enum values and non-latin
+text are excluded by rule rather than by list, so the exclusions do not need
+maintaining.
+
+**One exemption, by name and with its reason**: `media-picker-dialog.tsx`, one
+of §0's ten unreachable files. Translating a dialog nobody can open would make
+dead code look maintained, and the comment says that deleting the file should
+delete the exemption.
+
+**Proven to bite, not just to pass.** Replacing one `t("…")` call in
+`seo-section.tsx` with its old literal made the suite fail with
+`seo-section.tsx:93 [prop:label] Search title`; restoring it returned the suite
+to 22/22. A guard that has only ever been green is a guard nobody has tested.
+
+Widening the scan to the whole console is the obvious next step and would
+immediately light up UI.7's known settings residue — which is why the scope is
+stated in the test rather than quietly widened here.
 
 ---
 

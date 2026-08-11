@@ -159,6 +159,16 @@ dispatch, fire-and-forget on customer paths. And none of it has ever run:
 - **M-04 · The editor speaks English in a French/Arabic console.** The 54
   editor components and the create screen are untranslated (legacy import);
   the storefront thank-you page is hardcoded English for an Arabic customer.
+  **CLOSED 11 August 2026 by LB.13 (`EDITOR_I18N.md`) — and the measurement
+  corrected this entry twice.** The create screen was already translated by
+  then, and **ten of the "54 components" are unreachable from `app/`**: the
+  legacy dashboard's page list, superseded by the server-rendered pages
+  screen and imported only by each other. Real scope was 31 live components
+  with hardcoded strings (of 48 reachable), 213 keys. The thank-you page had
+  already closed in LB.10.
+  It also contained a defect this entry did not describe: every section's save
+  rendered the platform envelope's **developer-facing English message**, which
+  `lib/console/action-errors.ts` states must never reach a screen.
 - **M-05 · Money enters through `type="number"`** on the create screen —
   the exact input style D-06's rules refuse for `Decimal` columns.
 - **M-06 · Dead per-page columns:** `LandingPage.facebookPixel` and

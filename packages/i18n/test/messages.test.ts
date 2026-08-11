@@ -290,3 +290,151 @@ describe('every key the code asks for exists in every locale', () => {
     assert.deepEqual(missing, [], `keys used in code but missing from a catalogue:\n${missing.join('\n')}`);
   });
 });
+
+
+/* =============================================================================
+ * LB.13's guard — THE OTHER HALF OF THE PROBLEM, which the scan above cannot
+ * see by construction.
+ *
+ * Everything before this asks whether a key the code REQUESTS exists. M-04 was
+ * the opposite failure: 166 strings across 32 editor components that never
+ * asked for a key at all. They were English literals rendered straight into an
+ * Arabic console, and every check in this file passed the whole time — a
+ * `t("…")` scan cannot find a string that never went through `t()`. NEXT_STEPS
+ * says exactly this about the UI.7 settings residue.
+ *
+ * So this reads the editor's source for USER-FACING string literals and
+ * asserts there are none. It is the same general form as LP.17's navigation
+ * test and AUDIT.2's route inventory: derive the list rather than maintain one.
+ *
+ * WHAT IT DELIBERATELY DOES NOT FLAG, and why each is not a gap:
+ *   - SCREAMING_CASE — `"PUBLISHED"`, `"IMAGE"`, `"DZD"`. Enum values and
+ *     vocabulary the API defines, assigned to state, never rendered as prose.
+ *   - Tailwind class strings and identifiers/slugs/paths.
+ *   - Non-latin text. The storefront's own copy is Arabic ON PURPOSE
+ *     (STOREFRONT_COPY, defaultOrderFormConfig) — see EDITOR_I18N.md §2 on
+ *     which language a preview speaks.
+ *   - Comments, imports and type declarations.
+ *
+ * Scope is the editor tree plus the two data modules that now carry catalogue
+ * KEYS instead of sentences. Widening it to the whole console is the natural
+ * next step and would light up UI.7's known residue, which is why it is not
+ * done here.
+ * ========================================================================== */
+
+const EDITOR_DIRS = [
+  path.join(CONSOLE_SRC, 'components', 'landings', 'edit'),
+  path.join(CONSOLE_SRC, 'lib', 'landing', 'mock-order-form.ts'),
+  path.join(CONSOLE_SRC, 'lib', 'landing', 'benefit-icons.ts'),
+];
+
+/** Props whose string value a person reads. */
+const TEXT_PROPS = new Set([
+  'label', 'title', 'description', 'placeholder', 'hint', 'text', 'message',
+  'heading', 'subtitle', 'caption', 'aria-label', 'alt', 'displayName',
+  'confirmLabel', 'cancelLabel', 'emptyText', 'tooltip', 'error', 'note',
+]);
+
+/** Props whose string value is machinery, never prose. */
+const CODE_PROPS =
+  /^(className|class|style|id|href|src|key|type|name|dir|lang|value|htmlFor|accept|role|method|action|rel|target|as|variant|size|tone|icon|autoComplete|inputMode|pattern|mode|sizes|loading|width|height|fill|viewBox|d|xmlns|aria-hidden|aria-live|aria-controls|aria-labelledby|aria-describedby|testId|colSpan|rows|cols|min|max|step|maxLength|form|strokeWidth)$/;
+
+const isEnumLike = (s: string) => /^[A-Z][A-Z0-9_]*$/.test(s);
+const isClassString = (s: string) =>
+  /^[a-z0-9:/[\]().,%_+-]+(\s+[a-z0-9:/[\]().,%_+-]+)*$/.test(s) && /[-/:]/.test(s);
+const isIdentifier = (s: string) => /^[a-zA-Z_][\w.-]*$/.test(s) && !/\s/.test(s);
+const isPathLike = (s: string) => /^[./@]/.test(s) || /^https?:/.test(s);
+const hasLatinWord = (s: string) => /[A-Za-z]{2,}/.test(s);
+
+/* The exemption list, in the shape `orphans.test.ts` uses: a file is excused
+ * only with a reason, and the reason is the record.
+ *
+ * `media-picker-dialog.tsx` is UNREACHABLE — nothing in `app/` imports it,
+ * directly or transitively (EDITOR_I18N.md §0 has the import-graph walk). It
+ * is one of ten legacy files superseded by the server-rendered pages screen,
+ * and translating a dialog no one can open would make dead code look
+ * maintained. It is a removal candidate, not a translation gap (§3).
+ *
+ * DELETING THE FILE SHOULD DELETE THIS LINE. If the list ever names a file
+ * that is reachable again, the exemption is wrong and the string is real. */
+const EXEMPT_FILES = new Set(['media-picker-dialog.tsx']);
+
+function editorSources(): string[] {
+  return EDITOR_DIRS.flatMap((p) =>
+    fs.existsSync(p) && fs.statSync(p).isDirectory() ? sourceFiles(p) : [p],
+  ).filter((p) => fs.existsSync(p) && !EXEMPT_FILES.has(path.basename(p)));
+}
+
+describe('the editor holds no user-facing English (LB.13 / M-04)', () => {
+  const files = editorSources();
+
+  test('the scan found the editor', () => {
+    assert.ok(files.length > 25, `only ${files.length} editor files were scanned`);
+  });
+
+  test('no component renders a hardcoded sentence', () => {
+    const found: string[] = [];
+
+    for (const file of files) {
+      const raw = fs.readFileSync(file, 'utf8');
+      // Blank out comments so prose ABOUT the code never counts.
+      const code = raw
+        .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+        .replace(/(^|[^:])\/\/[^\n]*/g, (m, p) => p + m.slice(p.length).replace(/./g, ' '));
+
+      code.split('\n').forEach((rawLine, i) => {
+        if (/^\s*(import|export type|export interface)\b/.test(rawLine)) return;
+        // Mask t("…") so a translated call is never mistaken for a literal.
+        const line = rawLine.replace(/\bt\(\s*"[^"]*"/g, 't("@")');
+
+        const flag = (what: string, value: string) => {
+          const v = value.trim();
+          if (!v || !hasLatinWord(v)) return;
+          if (isEnumLike(v) || isClassString(v) || isPathLike(v)) return;
+          found.push(`${path.basename(file)}:${i + 1} [${what}] ${v}`);
+        };
+
+        // JSX text: `>text<` or `>text` at end of line, `>` not part of `=>`.
+        for (const m of line.matchAll(/(?<![=\-!<>])>\s*([^<>{}\n]*[A-Za-z][^<>{}\n]*?)\s*(?=<|$)/g)) {
+          const v = m[1].trim();
+          if (/^[)\];,.:]/.test(v) || /[;(){}=]/.test(v)) continue;
+          if (isIdentifier(v) && !/^[A-Z]/.test(v)) continue;
+          flag('jsx-text', v);
+        }
+
+        // JSX props.
+        for (const m of line.matchAll(/(?:^|\s)([A-Za-z][A-Za-z-]*)=\{?"([^"]{2,})"\}?/g)) {
+          const [, prop, value] = m;
+          if (prop.startsWith('data-') || prop.startsWith('on')) continue;
+          if (TEXT_PROPS.has(prop)) { flag(`prop:${prop}`, value); continue; }
+          if (CODE_PROPS.test(prop)) continue;
+          if (isIdentifier(value) || isClassString(value)) continue;
+          flag(`prop:${prop}`, value);
+        }
+
+        // Object-literal text fields — the FIELD_DEFS.displayName shape.
+        for (const m of line.matchAll(/\b([A-Za-z]+)\s*:\s*"([^"]{2,})"/g)) {
+          if (!TEXT_PROPS.has(m[1])) continue;
+          flag(`obj:${m[1]}`, m[2]);
+        }
+
+        // Validation / thrown / toast messages.
+        for (const m of line.matchAll(/\b(?:min|max|regex|length|refine|nonempty|Error|toast|alert|confirm)\(\s*(?:[^,()"]*,\s*)?"([^"]{4,})"/g)) {
+          flag('message', m[1]);
+        }
+
+        // `cond ? "A" : "B"` used as display text.
+        for (const m of line.matchAll(/\?\s*"([^"]{2,})"\s*:\s*"([^"]{2,})"/g)) {
+          flag('ternary', m[1]);
+          flag('ternary', m[2]);
+        }
+      });
+    }
+
+    assert.deepEqual(
+      found,
+      [],
+      `hardcoded user-facing strings in the editor — each needs a catalogue key:\n${found.join('\n')}`,
+    );
+  });
+});
