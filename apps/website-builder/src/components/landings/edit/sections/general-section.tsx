@@ -5,6 +5,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Settings2, Check } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,17 +28,38 @@ export interface GeneralPreviewValues {
   themeId: string | null;
 }
 
-const generalSchema = z.object({
-  title: z.string().min(2, "Title must be at least 2 characters").max(120, "Title must be at most 120 characters"),
-  slug: z.string().min(2, "Slug must be at least 2 characters").regex(/^[a-z0-9-]+$/, "Use lowercase letters, numbers, and hyphens only"),
-  description: z.string().max(300, "Description must be at most 300 characters").optional().or(z.literal("")),
-  buttonText: z.string().min(1, "Button text is required"),
-  announcement: z.string().optional().or(z.literal("")),
-  categoryId: z.string().nullable().optional(),
-  themeId: z.string().nullable().optional(),
-});
+/* LB.13 — the schema is BUILT, not declared.
+ *
+ * A zod message is a sentence a merchant reads, so it has to come from the
+ * catalogue like every other one. This was a module constant, which is
+ * evaluated before any component exists and therefore before there is a `t`
+ * to call; building it from `t` inside the component is what lets the refusal
+ * arrive in the reader's language. Memoised on `t`, so the resolver identity
+ * stays stable across renders and react-hook-form is not handed a new one
+ * every time. */
+function buildGeneralSchema(t: (key: string) => string) {
+  return z.object({
+    title: z
+      .string()
+      .min(2, t("builder.editor.titleMin"))
+      .max(120, t("builder.editor.titleMax")),
+    slug: z
+      .string()
+      .min(2, t("builder.editor.slugMin"))
+      .regex(/^[a-z0-9-]+$/, t("builder.editor.slugCharset")),
+    description: z
+      .string()
+      .max(300, t("builder.editor.descriptionMax"))
+      .optional()
+      .or(z.literal("")),
+    buttonText: z.string().min(1, t("builder.editor.ctaRequired")),
+    announcement: z.string().optional().or(z.literal("")),
+    categoryId: z.string().nullable().optional(),
+    themeId: z.string().nullable().optional(),
+  });
+}
 
-type GeneralFormValues = z.infer<typeof generalSchema>;
+type GeneralFormValues = z.infer<ReturnType<typeof buildGeneralSchema>>;
 
 export function GeneralSection({
   landingId,
@@ -51,6 +73,7 @@ export function GeneralSection({
   // Where this editor sends its requests. The legacy dashboard and the
   // console mount the same components against different bases.
   const api = useBuilderApi();
+  const t = useTranslations();
   const section = useSectionState({
     save: async () => {
       const values = form.getValues();
@@ -72,8 +95,9 @@ export function GeneralSection({
     },
   });
 
+  const schema = React.useMemo(() => buildGeneralSchema(t), [t]);
   const form = useForm<GeneralFormValues>({
-    resolver: zodResolver(generalSchema),
+    resolver: zodResolver(schema),
     defaultValues: initialValues,
     mode: "onBlur",
   });
@@ -145,37 +169,44 @@ export function GeneralSection({
   return (
     <SectionShell
       id="general"
-      title="General"
-      description="Title, slug, description, and button text."
+      // The same keys the section registry names, so the card the workspace
+      // draws and the shell this section draws cannot disagree.
+      title={t("builder.editor.general")}
+      description={t("builder.editor.generalDesc")}
       icon={Settings2}
       state={section.state}
       onSave={handleSave}
       onCancel={handleCancel}
     >
       <form className="flex flex-col gap-5" onSubmit={(e) => e.preventDefault()}>
-        <Field label="Landing title" error={form.formState.errors.title?.message} htmlFor="title" required>
-          <Input id="title" placeholder="e.g. Lumière Vitamin C Serum" aria-invalid={!!form.formState.errors.title} {...register("title")} />
+        <Field label={t("builder.editor.titleLabel")} error={form.formState.errors.title?.message} htmlFor="title" required>
+          <Input id="title" dir="auto" placeholder={t("builder.editor.titlePlaceholder")} aria-invalid={!!form.formState.errors.title} {...register("title")} />
         </Field>
 
-        <Field label="Slug" error={form.formState.errors.slug?.message} htmlFor="slug" required hint="The URL of your landing page">
+        <Field label={t("builder.editor.slugLabel")} error={form.formState.errors.slug?.message} htmlFor="slug" required hint={t("builder.editor.slugHint")}>
           <div className="flex items-stretch overflow-hidden rounded-md border focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
             <span className="grid select-none place-items-center bg-muted px-3 text-sm text-muted-foreground">/</span>
-            <Input id="slug" className="rounded-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0" placeholder="lumiere-vitamin-c-serum" aria-invalid={!!form.formState.errors.slug} value={slugValue ?? ""} onChange={onSlugChange} />
+            {/* `dir="ltr"` for the same reason the categories screen sets it:
+                the API's charset is latin, and an address typed inside an RTL
+                paragraph reorders on screen while the stored value does not. */}
+            <Input id="slug" dir="ltr" className="rounded-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0" placeholder="lumiere-vitamin-c-serum" aria-invalid={!!form.formState.errors.slug} value={slugValue ?? ""} onChange={onSlugChange} />
           </div>
         </Field>
 
-        <Field label="Short description" error={form.formState.errors.description?.message} htmlFor="description" hint={`${descLength}/300`}>
-          <Textarea id="description" rows={3} maxLength={300} placeholder="A short product description shown on the landing page." {...register("description")} />
+        <Field label={t("builder.editor.descriptionLabel")} error={form.formState.errors.description?.message} htmlFor="description" hint={`${descLength}/300`}>
+          <Textarea id="description" dir="auto" rows={3} maxLength={300} placeholder={t("builder.editor.descriptionPlaceholder")} {...register("description")} />
         </Field>
 
-        <Field label="Category" htmlFor="categoryId" hint="Optional">
+        {/* `builder.pages.colCategory` rather than a second wording — the
+            pages list already names this concept for the same rows. */}
+        <Field label={t("builder.pages.colCategory")} htmlFor="categoryId" hint={t("common.optional")}>
           <select
             id="categoryId"
             value={categoryIdValue ?? ""}
             onChange={(e) => setValue("categoryId", e.target.value || null, { shouldValidate: true })}
             className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
           >
-            <option value="">Uncategorized</option>
+            <option value="">{t("builder.editor.uncategorized")}</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
@@ -183,36 +214,42 @@ export function GeneralSection({
         </Field>
 
         {/* Theme selector */}
-        <Field label="Theme" htmlFor="themeId" hint="Visual identity for this landing page">
+        <Field label={t("builder.editor.themeLabel")} htmlFor="themeId" hint={t("builder.editor.themeHint")}>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {themes.map((t) => {
-              const isSelected = themeIdValue === t.id;
+            {/* The callback parameter was named `t`, which now shadows the
+                translator. Renamed rather than aliased — a swatch is a theme. */}
+            {themes.map((theme) => {
+              const isSelected = themeIdValue === theme.id;
               return (
                 <button
-                  key={t.id}
+                  key={theme.id}
                   type="button"
-                  onClick={() => setValue("themeId", t.id, { shouldValidate: true })}
+                  onClick={() => setValue("themeId", theme.id, { shouldValidate: true })}
                   className={cn(
-                    "relative flex flex-col gap-2 rounded-xl border p-3 text-left transition-all",
+                    "relative flex flex-col gap-2 rounded-xl border p-3 text-start transition-all",
                     isSelected ? "border-primary ring-1 ring-primary" : "border-border hover:border-primary/40",
                   )}
                 >
                   {/* Color palette */}
                   <div className="flex gap-1">
-                    <span className="size-5 rounded-full border" style={{ backgroundColor: t.primary }} />
-                    <span className="size-5 rounded-full border" style={{ backgroundColor: t.accent }} />
-                    <span className="size-5 rounded-full border" style={{ backgroundColor: t.background }} />
+                    <span className="size-5 rounded-full border" style={{ backgroundColor: theme.primary }} />
+                    <span className="size-5 rounded-full border" style={{ backgroundColor: theme.accent }} />
+                    <span className="size-5 rounded-full border" style={{ backgroundColor: theme.background }} />
                   </div>
-                  <span className="truncate text-xs font-medium">{t.name}</span>
-                  {/* Sample button */}
+                  <span className="truncate text-xs font-medium">{theme.name}</span>
+                  {/* Sample button. The SAME key the templates screen puts on
+                      its identical swatch — the two screens draw the same
+                      thing and must say the same thing about it. */}
                   <span
                     className="rounded-md px-2 py-1 text-center text-[10px] font-bold text-white"
-                    style={{ backgroundColor: t.primary }}
+                    style={{ backgroundColor: theme.primary }}
                   >
-                    عرض المنتج
+                    {t("builder.templates.buttonSample")}
                   </span>
                   {isSelected && (
-                    <span className="absolute right-2 top-2 grid size-4 place-items-center rounded-full bg-primary text-primary-foreground">
+                    // `end-2` rather than `right-2`: the tick belongs on the
+                    // corner the reader's own text ends at.
+                    <span className="absolute end-2 top-2 grid size-4 place-items-center rounded-full bg-primary text-primary-foreground">
                       <Check className="size-3" />
                     </span>
                   )}
@@ -223,11 +260,15 @@ export function GeneralSection({
         </Field>
 
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="CTA button text" error={form.formState.errors.buttonText?.message} htmlFor="buttonText" required>
-            <Input id="buttonText" dir="auto" placeholder="اشتر الآن" aria-invalid={!!form.formState.errors.buttonText} {...register("buttonText")} />
+          <Field label={t("builder.editor.ctaLabel")} error={form.formState.errors.buttonText?.message} htmlFor="buttonText" required>
+            {/* The placeholder is a SUGGESTION for the merchant's own
+                storefront copy, so it follows the console's locale rather than
+                staying hardcoded Arabic. The field is `dir="auto"`, so
+                whatever they actually type still reads correctly. */}
+            <Input id="buttonText" dir="auto" placeholder={t("builder.editor.ctaPlaceholder")} aria-invalid={!!form.formState.errors.buttonText} {...register("buttonText")} />
           </Field>
-          <Field label="Announcement bar" error={form.formState.errors.announcement?.message} htmlFor="announcement" hint="Optional">
-            <Input id="announcement" placeholder="Free delivery nationwide · Cash on Delivery available" {...register("announcement")} />
+          <Field label={t("builder.editor.announcementLabel")} error={form.formState.errors.announcement?.message} htmlFor="announcement" hint={t("common.optional")}>
+            <Input id="announcement" dir="auto" placeholder={t("builder.editor.announcementPlaceholder")} {...register("announcement")} />
           </Field>
         </div>
       </form>

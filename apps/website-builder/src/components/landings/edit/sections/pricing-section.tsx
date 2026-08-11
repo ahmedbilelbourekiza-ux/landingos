@@ -5,6 +5,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Tag } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Input } from "@/components/ui/input";
 import {
@@ -30,33 +31,38 @@ export interface PricingPreviewValues {
   currency: string;
 }
 
+/* The code is the stored value and never changes; only the NAME beside it is
+ * read, so the list carries a key rather than a sentence. */
 const PRICING_CURRENCIES = [
-  { code: "DZD", label: "DZD — Algerian Dinar" },
-  { code: "EUR", label: "EUR — Euro" },
-  { code: "USD", label: "USD — US Dollar" },
+  { code: "DZD", labelKey: "builder.editor.currencyDZD" },
+  { code: "EUR", labelKey: "builder.editor.currencyEUR" },
+  { code: "USD", labelKey: "builder.editor.currencyUSD" },
 ] as const;
 
-const pricingSchema = z
-  .object({
-    price: z.coerce.number().positive("Price must be greater than 0"),
-    oldPrice: z.coerce
-      .number()
-      .positive("Old price must be greater than 0")
-      .optional()
-      .or(z.literal("").transform(() => undefined)),
-    currency: z.enum(["DZD", "EUR", "USD"]),
-  })
-  .superRefine((data, ctx) => {
-    if (data.oldPrice !== undefined && data.oldPrice <= data.price) {
-      ctx.addIssue({
-        path: ["oldPrice"],
-        code: z.ZodIssueCode.custom,
-        message: "Old price must be higher than the current price",
-      });
-    }
-  });
+/** Built from `t` inside the component — see general-section.tsx's note. */
+function buildPricingSchema(t: (key: string) => string) {
+  return z
+    .object({
+      price: z.coerce.number().positive(t("builder.editor.pricePositive")),
+      oldPrice: z.coerce
+        .number()
+        .positive(t("builder.editor.oldPricePositive"))
+        .optional()
+        .or(z.literal("").transform(() => undefined)),
+      currency: z.enum(["DZD", "EUR", "USD"]),
+    })
+    .superRefine((data, ctx) => {
+      if (data.oldPrice !== undefined && data.oldPrice <= data.price) {
+        ctx.addIssue({
+          path: ["oldPrice"],
+          code: z.ZodIssueCode.custom,
+          message: t("builder.editor.oldPriceHigher"),
+        });
+      }
+    });
+}
 
-type PricingFormValues = z.infer<typeof pricingSchema>;
+type PricingFormValues = z.infer<ReturnType<typeof buildPricingSchema>>;
 
 export function PricingSection({
   landingId,
@@ -70,8 +76,10 @@ export function PricingSection({
   // Where this editor sends its requests. The legacy dashboard and the
   // console mount the same components against different bases.
   const api = useBuilderApi();
+  const t = useTranslations();
+  const schema = React.useMemo(() => buildPricingSchema(t), [t]);
   const form = useForm<PricingFormValues>({
-    resolver: zodResolver(pricingSchema),
+    resolver: zodResolver(schema),
     defaultValues: initialValues,
     mode: "onBlur",
   });
@@ -136,8 +144,8 @@ export function PricingSection({
   return (
     <SectionShell
       id="pricing"
-      title="Pricing"
-      description="Price, old price, and currency."
+      title={t("builder.editor.pricing")}
+      description={t("builder.editor.pricingDesc")}
       icon={Tag}
       state={section.state}
       onSave={handleSave}
@@ -159,22 +167,22 @@ export function PricingSection({
         </div>
 
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="Current price" error={form.formState.errors.price?.message} htmlFor="price" required>
+          <Field label={t("builder.editor.priceLabel")} error={form.formState.errors.price?.message} htmlFor="price" required>
             <Input id="price" type="number" step="1" min="0" placeholder="2990" aria-invalid={!!form.formState.errors.price} {...register("price")} />
           </Field>
 
-          <Field label="Old price" error={form.formState.errors.oldPrice?.message as string | undefined} htmlFor="oldPrice" hint="Optional — shown struck-through">
+          <Field label={t("builder.editor.oldPriceLabel")} error={form.formState.errors.oldPrice?.message as string | undefined} htmlFor="oldPrice" hint={t("builder.editor.oldPriceHint")}>
             <Input id="oldPrice" type="number" step="1" min="0" placeholder="3900" aria-invalid={!!form.formState.errors.oldPrice} {...register("oldPrice")} />
           </Field>
 
-          <Field label="Currency" error={form.formState.errors.currency?.message} htmlFor="currency">
+          <Field label={t("builder.editor.currencyLabel")} error={form.formState.errors.currency?.message} htmlFor="currency">
             <Select value={currency} onValueChange={(v) => setValue("currency", v as "DZD" | "EUR" | "USD", { shouldValidate: true })}>
               <SelectTrigger id="currency" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {PRICING_CURRENCIES.map((c) => (
-                  <SelectItem key={c.code} value={c.code}>{c.label}</SelectItem>
+                  <SelectItem key={c.code} value={c.code}>{t(c.labelKey)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

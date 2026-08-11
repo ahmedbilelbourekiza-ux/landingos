@@ -79,7 +79,7 @@ paragraph did, and so did the header's `Unsaved Changes` badge).
 | # | Slice | Files | State |
 |---|---|---|---|
 | **LB.13a** | Editor shell + section frame + the save path's error text | 15 | **DONE** — see §2 |
-| **LB.13b** | General, Pricing, SEO | 3 | pending |
+| **LB.13b** | General, Pricing, SEO | 4 | **DONE** — see §2 |
 | **LB.13c** | Images & Media, Landing page images, image card, avatar picker | 4 | pending |
 | **LB.13d** | Variants, Shipping, Order form (+ `FIELD_DEFS`) | 6 | pending |
 | **LB.13e** | Benefits, Reviews, FAQ, Display | 6 | pending |
@@ -165,6 +165,92 @@ verified in the running page.*
 physical margin in an app that flips, so in Arabic it pushed the icon away from
 its own label. Now `me-1` (`.me-1{margin-inline-end:var(--spacing)}` confirmed
 present in the built stylesheet).
+
+### LB.13b — General, Pricing, SEO
+
+**Fixed.** 35 keys. All three sections' shells now read the SAME keys the
+registry names. General: title, address (with its hint), short description,
+category (reusing `builder.pages.colCategory` — the pages list already names
+this concept for these rows), the uncategorised option, theme + hint, buy
+button text, announcement bar, and every placeholder. Pricing: the three field
+labels, the old-price hint, and the currency NAMES — the list now carries a key
+beside each code, because the code is the stored value and only the name is
+read. SEO: both labels, the description placeholder, the empty-preview line and
+the share-image note.
+
+**The zod schemas had to move.** Both `generalSchema` and `pricingSchema` were
+module constants, evaluated before any component exists and therefore before
+there is a `t` to call, so their messages could not come from the catalogue at
+all. They are now `buildGeneralSchema(t)` / `buildPricingSchema(t)`, memoised
+on `t` inside the component so react-hook-form is not handed a new resolver
+every render. This is the shape any future section with validation should copy.
+
+**The SEO counter is interpolated, not concatenated.** Under budget it is two
+numbers and needs no translation; over budget it is
+`{length}/{budget} — search engines will truncate` as one key, so the clause
+sits wherever the language puts it.
+
+**Two defects found by driving the page, both fixed:**
+
+1. **`id="seo-title"` collided with the section heading.** `SectionShell`
+   gives its `<h2>` `id={`${id}-title`}` and this section's id is `seo`, so the
+   input and the heading claimed the same id — `document.getElementById`
+   returned the heading, and the "Search title" label pointed at it instead of
+   at the field. Caught because a script trying to type into `#seo-title` got
+   an `HTMLHeadingElement`. The input is `seo-search-title` now, and
+   `label.control === input` is asserted in the running page. No other section
+   collides (only the `-title` suffix is generated, and no other section has an
+   input by that name).
+2. **The theme swatch shadowed the translator.** `themes.map((t) => …)` bound
+   `t` to a theme inside the block that needed to call `t(key)`. Renamed to
+   `theme`; the swatch's sample-button label is now
+   `builder.templates.buttonSample` — the SAME key the templates screen puts on
+   its identical swatch, so the two screens cannot describe one thing two ways.
+
+**One deliberate content change, recorded because it is a judgement call:** the
+buy-button placeholder was hardcoded Arabic («اشتر الآن») in every locale. It is
+a SUGGESTION for the merchant's own storefront copy, so it now follows the
+console's locale ("Buy now" / «Achetez maintenant» / «اشتر الآن»). The field is
+`dir="auto"`, so whatever they actually type still renders correctly.
+
+**RTL correctness that emits real CSS:** the required-field asterisk in the
+shared `Field` moved from `ml-0.5` to `ms-0.5` (measured:
+`margin-inline-start: 2px` in Arabic), the selected-theme tick from `right-2`
+to `end-2`, the swatch from `text-left` to `text-start`, and the address input
+gained `dir="ltr"` — the API's charset is latin, and an address typed inside an
+RTL paragraph reorders on screen while the stored value does not (the same
+reason `category-create-form.tsx` sets it).
+
+**Tests.** i18n 20/20 · builder-sections 58/58. `tsc`: the same 6 pre-existing
+errors in this tree, before and after. A re-scan of the three files reports
+**0 remaining hardcoded strings**.
+
+**Verified live**, build `tESVgJYOniTA219aj5cgD`, both directions, with the
+forms actually driven:
+
+- `ar` / RTL — General reads «عام · العنوان · عنوان الويب · وصف مختصر · الفئة ·
+  السمة · نص زر الشراء · شريط الإعلان», every placeholder Arabic, the address
+  field `dir="ltr"`; Pricing «التسعير · السعر الحالي · السعر القديم · العملة ·
+  DZD — دينار جزائري»; SEO «تحسين محركات البحث · عنوان البحث · وصف البحث».
+- **Validation driven, not assumed.** A 1-character title, `BAD SLUG!` and an
+  empty button text produced «يجب ألا يقل العنوان عن حرفين.» / «استخدم حروفاً
+  لاتينية صغيرة وأرقاماً وشرطات فقط.» / «نص الزر مطلوب.», and an old price of
+  10 against a current 2 900 produced «يجب أن يكون السعر القديم أعلى من السعر
+  الحالي.» — each refused client-side, so nothing was sent.
+- `fr` / LTR — «Général · Titre · Adresse · Description courte · Catégorie ·
+  Thème · Texte du bouton d'achat · Bandeau d'annonce», «Tarification · Prix
+  actuel · Ancien prix · Devise · DZD — Dinar algérien», «Référencement».
+  `BAD SLUG!` → «Utilisez uniquement des minuscules, des chiffres et des
+  tirets.»
+- The over-budget SEO counter, exercised at 70 characters against a 60 budget:
+  «70/60 — les moteurs de recherche tronqueront» and «70/60 — ستقتطع محركات
+  البحث الزائد».
+- **Not verified, and why:** the theme swatch's sample-button label. The demo
+  tenant has zero themes (`/api/builder/themes` → `items: []`), so the grid
+  renders empty and the label has nothing to draw. The key it uses is the one
+  the templates screen already renders on the same swatch.
+- Nothing was written: every save was refused client-side; after reload the
+  title reads `minimalist` and the old price is empty.
 
 ---
 

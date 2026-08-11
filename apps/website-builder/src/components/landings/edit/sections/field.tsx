@@ -24,7 +24,10 @@ export function Field({
       <div className="flex items-baseline justify-between gap-2">
         <Label htmlFor={htmlFor}>
           {label}
-          {required && <span className="ml-0.5 text-destructive">*</span>}
+          {/* `ms-0.5`, not `ml-0.5`: the asterisk belongs immediately after
+              the label in the reader's own direction, and every section's
+              required fields go through this one component. */}
+          {required && <span className="ms-0.5 text-destructive">*</span>}
         </Label>
         {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
       </div>

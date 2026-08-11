@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Search } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,6 +47,7 @@ export function SeoSection({
   initialValues: SeoValues;
 }) {
   const api = useBuilderApi();
+  const t = useTranslations();
   const [values, setValues] = React.useState<SeoValues>(initialValues);
 
   const section = useSectionState({
@@ -68,14 +70,19 @@ export function SeoSection({
     section.markDirty();
   };
 
+  // Under budget the hint is two numbers, which need no translation; over it,
+  // the warning is a sentence and comes from the catalogue with the numbers
+  // interpolated, so the clause can sit wherever the language puts it.
   const counter = (length: number, budget: number) =>
-    length > budget ? `${length}/${budget} — search engines will truncate` : `${length}/${budget}`;
+    length > budget
+      ? t("builder.editor.seoCounterOver", { length, budget })
+      : `${length}/${budget}`;
 
   return (
     <SectionShell
       id="seo"
-      title="SEO"
-      description="Search and social meta tags."
+      title={t("builder.editor.seo")}
+      description={t("builder.editor.seoDesc")}
       icon={Search}
       state={section.state}
       onSave={section.save}
@@ -83,12 +90,17 @@ export function SeoSection({
     >
       <div className="flex flex-col gap-4">
         <Field
-          label="Search title"
-          htmlFor="seo-title"
+          label={t("builder.editor.seoTitleLabel")}
+          // NOT `seo-title`. SectionShell gives its heading `id={`${id}-title`}`,
+          // and this section's id is `seo` — so the input and the <h2> claimed
+          // the same id, `document.getElementById` returned the heading, and
+          // this label pointed at it instead of at the field. Found by
+          // querying the running page, not by reading.
+          htmlFor="seo-search-title"
           hint={counter(values.seoTitle.length, TITLE_BUDGET)}
         >
           <Input
-            id="seo-title"
+            id="seo-search-title"
             value={values.seoTitle}
             onChange={(e) => update({ seoTitle: e.target.value })}
             maxLength={200}
@@ -97,7 +109,7 @@ export function SeoSection({
           />
         </Field>
         <Field
-          label="Search description"
+          label={t("builder.editor.seoDescriptionLabel")}
           htmlFor="seo-description"
           hint={counter(values.seoDescription.length, DESCRIPTION_BUDGET)}
         >
@@ -107,7 +119,7 @@ export function SeoSection({
             onChange={(e) => update({ seoDescription: e.target.value })}
             maxLength={500}
             rows={3}
-            placeholder="What a customer sees under the title in search results and link previews."
+            placeholder={t("builder.editor.seoDescriptionPlaceholder")}
             dir="auto"
           />
         </Field>
@@ -119,12 +131,12 @@ export function SeoSection({
             {values.seoTitle.trim() || pageTitle}
           </p>
           <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-            {values.seoDescription.trim() || "Add a description so search results and shared links say more than the title."}
+            {values.seoDescription.trim() || t("builder.editor.seoEmptyPreview")}
           </p>
         </div>
 
         <p className="text-xs text-muted-foreground">
-          The social share image is the page&apos;s hero image, set in Images &amp; Media.
+          {t("builder.editor.seoShareImage")}
         </p>
       </div>
     </SectionShell>
