@@ -12,6 +12,32 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.29** The Sheet's close button moves to the logical edge (12 August
+  2026, night — **local only, not pushed, not deployed**).
+
+  **The fix.** `ui/sheet.tsx`'s close button was `absolute top-4 right-4` — a
+  PHYSICAL edge, with an LB.13 note recorded beside it. It is `end-4` now: in
+  LTR nothing moves; in Arabic the button sits at the inline end (the left),
+  away from where the title starts, which is where a reader closes things.
+
+  **The scope, corrected by measurement.** The backlog said this "also
+  affects the mobile nav drawer's close button in RTL" — it does not: the
+  console's mobile navigation drawer is a CUSTOM component
+  (`console-sidebar.tsx`) built on logical properties from the start
+  (`start-0`, `border-e`, `end-2`), and `ui/sidebar.tsx` (the other Sheet
+  user) is imported by nothing. The ONLY live Sheet surface is the editor's
+  preview drawer, and that is where the fix lands and was verified.
+
+  **Verified** at 375×812 with the browser's mobile emulation: in Arabic the
+  preview drawer's close button moved from x 343–359 (physical right, over
+  the RTL title start) to **x 17–33** (inline end); in French it stays at the
+  right edge (x 347–363), unchanged. builder-sections 73/73 ran against the
+  build carrying this change. **Caveat, stated rather than implied: no
+  physical phone is reachable from this environment** — the verification is
+  Chrome viewport emulation (375×812, touch emulation), the same method the
+  UI passes used before their real-device checks; the change itself is one
+  physical→logical class swap with no layout arithmetic to disagree on.
+
 - **LB.28** The "dead `rtl:` variant" was never dead — the record was (12
   August 2026, night — **local only, not pushed, not deployed**).
 
