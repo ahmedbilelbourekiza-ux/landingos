@@ -236,6 +236,9 @@ edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
    every screen) and `components/ui/{dialog,sheet}` (shared by every dialog),
    and it touches the storefront's `purchase-form.tsx` — two Arabic labels now
    read from one shared constant, covered by storefront 32/32.
+   **LB.16 (12 Aug) deleted the ten dead legacy components** LB.13's
+   measurement found — `EDITOR_I18N.md` §4. Every builder screen re-verified
+   live at 200; all eight builder suites green.
 7. From the audits, still open: Benefits/
    FAQ (LB.12), notification write-time i18n, analytics comparisons (PM.10),
    builder list pagination, LB.11 real-credential tracking smoke test (still

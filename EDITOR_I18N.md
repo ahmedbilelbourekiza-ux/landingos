@@ -5,11 +5,12 @@
 standing order, per slice — measure → fix → test → verify live in `ar` (RTL)
 **and** `fr` (LTR) → commit → update this document.
 
-**Status: COMPLETE, LOCAL ONLY, NOT DEPLOYED.** Seven commits, `43b55c6..33d0c66`.
+**Status: COMPLETE, LOCAL ONLY, NOT DEPLOYED.** Seven commits, `43b55c6..33d0c66`,
+plus **LB.16** (§4) which deleted the ten dead components §0 found.
 `NEXT_STEPS.md` and `HANDOFF_PRODUCTION.md` §5 point here.
 
-> **Read §3 first if you are the user.** Four things were deliberately left as
-> your decision rather than guessed at.
+> **Read §3 first if you are the user.** Four things were left as your decision
+> rather than guessed at; the first is now resolved (§4), three remain open.
 
 ---
 
@@ -39,11 +40,11 @@ landings/landing-status-badge.tsx edit/sections/media-picker-dialog.tsx
 ```
 
 They are imported only by each other (`landing-card` → `landing-actions-menu`,
-`landing-status-badge`; nothing imports `landing-card`). **They are not
+`landing-status-badge`; nothing imports `landing-card`). **They were not
 translated** — translating a screen no one can open is worse than leaving it,
-because it makes the dead code look maintained. They are removal candidates and
-are listed in §3 for the user's decision, in the shape `CAPABILITY_AUDIT.md` §2
-uses.
+because it makes the dead code look maintained. They were listed in §3 for the
+user's decision, in the shape `CAPABILITY_AUDIT.md` §2 uses — and **deleted on
+12 August 2026, see §4.**
 
 **So LB.13's real scope is the 48 live editor components.** A conservative scan
 (`scratchpad/scan2.mjs`: JSX text, user-facing props, zod/toast messages,
@@ -567,9 +568,11 @@ stated in the test rather than quietly widened here.
 
 ## §3 FLAGGED — the user's decisions, not guesses
 
-1. **The ten dead legacy components (§0).** Not translated. Removal candidate:
-   they are the pre-console page list, superseded by the server-rendered
-   screen, and reachable from nothing. *Decision: delete, or keep and say why.*
+1. ~~**The ten dead legacy components (§0).**~~ **RESOLVED — deleted 12 August
+   2026 (LB.16), on the user's instruction.** Re-confirmed unreachable first
+   (repo-wide search for filenames AND exported symbols, plus a fresh
+   import-graph walk); all ten deleted, the i18n guard's exemption removed with
+   them, every builder screen re-checked live. See §4.
 2. **`rtl:` is a dead variant across the app.** Three existing usages emit
    nothing (`data-table.tsx`, `calendar.tsx` ×2). The fix is one line in
    `globals.css` — `@custom-variant rtl (&:where([dir="rtl"], [dir="rtl"] *));`
@@ -588,3 +591,67 @@ stated in the test rather than quietly widened here.
    drop the gloss in `fr` only (a locale conditional in the markup), fold it
    into the title per locale (loses the two-tone styling), or leave it. *Left
    as-is pending your call.*
+
+---
+
+## §4 LB.16 — the ten dead components, deleted (12 August 2026)
+
+§3's first flag, resolved on the user's instruction.
+
+**Re-confirmed before deleting, three ways.** A repo-wide search for the ten
+FILENAMES; a second for their exported SYMBOLS (`LandingTable`, `FilterTabs`,
+`SortSelect`, `SearchBar`, `LandingCard`, `LandingsHeader`,
+`LandingEmptyState`, `LandingActionsMenu`, `LandingStatusBadge`,
+`MediaPickerDialog`, `LandingRowActions`) — because a file can be imported
+under a name that does not match its path; and a fresh run of the import-graph
+walk from every entry under `app/`. Every hit was one of the ten importing
+another (`landing-table` and `landing-card` → `landing-status-badge` +
+`landing-actions-menu`) or a documentation mention. Nothing live pointed at
+any of them.
+
+**Deleted** (`git rm`, so the history keeps them):
+
+```
+landings/landing-table.tsx         landings/landing-card.tsx
+landings/filter-tabs.tsx           landings/landings-header.tsx
+landings/sort-select.tsx           landings/landing-empty-state.tsx
+landings/search-bar.tsx            landings/landing-actions-menu.tsx
+landings/landing-status-badge.tsx  landings/edit/sections/media-picker-dialog.tsx
+```
+
+`components/landings/` now contains exactly one thing: `edit/`. The list screen
+lives in `app/console/builder/(shell)/pages/page.tsx` and always did.
+
+**The i18n guard's exemption went with the file, not into an empty set.** Its
+own comment said "deleting the file should delete this line". The `EXEMPT_FILES`
+set is gone rather than kept empty, with the reasoning recorded in its place: a
+list that exists is an invitation to add to it, and every string that scan finds
+in a live component is a real defect. Restoring it later means writing the
+reason beside the name again.
+
+**Tests** (per file, against build `Fze7kWeNyqhgRRkXQII8w`): i18n **22/22**
+(the guard included) · builder-sections **58/58** · console-shell **20/20** ·
+storefront **32/32** · builder-api **23/23** · hardening **12/12** · webhooks
+**10/10** · tracking **15/15**. `tsc`: the same six pre-existing errors in this
+tree, unchanged.
+
+> **A note on `tracking`, so nobody mistakes it for a regression.** It first
+> came back 12/15. That is the documented dev-loop requirement, not the
+> deletion: the suite needs the server started with
+> `META_GRAPH_BASE`/`TIKTOK_API_BASE`/`GA4_API_BASE` pointed at the local stub
+> (`http://127.0.0.1:48790`). Restarted correctly it is 15/15.
+
+**Verified live**: every builder screen answers 200 — overview, pages, new
+page, categories, templates, orders, abandoned carts and the editor — the pages
+list renders its six rows with translated column headers, and the browser
+console is clean.
+
+**Found while confirming, deliberately NOT deleted:** `toListItem` in
+`lib/landing/mappers.ts` and the `LandingListItem` type in
+`lib/landing/mock-landings.ts` are now fully orphaned. `toListItem` was in fact
+**already dead before this deletion** — nothing imported it — and
+`LandingListItem` had no consumer outside the ten plus `toListItem` itself.
+`VariantGroup` and `VariantOption` from the same module stay live (the variants
+editor uses them), so `mock-landings.ts` must not be deleted wholesale. This is
+left as a separate, smaller cleanup rather than widened into a deletion the
+instruction did not name.

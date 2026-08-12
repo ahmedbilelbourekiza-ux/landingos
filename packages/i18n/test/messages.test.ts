@@ -346,23 +346,21 @@ const isIdentifier = (s: string) => /^[a-zA-Z_][\w.-]*$/.test(s) && !/\s/.test(s
 const isPathLike = (s: string) => /^[./@]/.test(s) || /^https?:/.test(s);
 const hasLatinWord = (s: string) => /[A-Za-z]{2,}/.test(s);
 
-/* The exemption list, in the shape `orphans.test.ts` uses: a file is excused
- * only with a reason, and the reason is the record.
+/* THERE IS NO EXEMPTION LIST, and that is the point.
  *
- * `media-picker-dialog.tsx` is UNREACHABLE — nothing in `app/` imports it,
- * directly or transitively (EDITOR_I18N.md §0 has the import-graph walk). It
- * is one of ten legacy files superseded by the server-rendered pages screen,
- * and translating a dialog no one can open would make dead code look
- * maintained. It is a removal candidate, not a translation gap (§3).
+ * This scan briefly carried one entry — `media-picker-dialog.tsx`, unreachable
+ * from `app/` and therefore not worth translating. Its comment said "deleting
+ * the file should delete this line", and LB.16 deleted the file. The list went
+ * with it rather than being kept as an empty set waiting to be filled: an
+ * exemption list that exists is an invitation to add to it, and every string
+ * this scan finds in a LIVE component is a real defect.
  *
- * DELETING THE FILE SHOULD DELETE THIS LINE. If the list ever names a file
- * that is reachable again, the exemption is wrong and the string is real. */
-const EXEMPT_FILES = new Set(['media-picker-dialog.tsx']);
-
+ * If a future file genuinely needs excusing, restore the list WITH the reason
+ * written beside the name — the shape `orphans.test.ts` uses. */
 function editorSources(): string[] {
   return EDITOR_DIRS.flatMap((p) =>
     fs.existsSync(p) && fs.statSync(p).isDirectory() ? sourceFiles(p) : [p],
-  ).filter((p) => fs.existsSync(p) && !EXEMPT_FILES.has(path.basename(p)));
+  ).filter((p) => fs.existsSync(p));
 }
 
 describe('the editor holds no user-facing English (LB.13 / M-04)', () => {
