@@ -239,7 +239,24 @@ edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
    **LB.16 (12 Aug) deleted the ten dead legacy components** LB.13's
    measurement found — `EDITOR_I18N.md` §4. Every builder screen re-verified
    live at 200; all eight builder suites green.
-7. From the audits, still open: Benefits/
+7. **Feature pass (12 Aug) — LOCAL ONLY, NOT DEPLOYED.**
+   `FEATURE_PASS_AUG12.md` is the record: seven slices (LB.16–LB.22), nine
+   defects found and fixed on the way, and the two requested features I
+   deliberately did NOT build, with the reasons.
+
+   > ### ⚠ LB.20 ADDS A TABLE — READ BEFORE DEPLOYING THIS CODE
+   > `LandingDeliveryPrice` exists in `neondb` (dev) ONLY. Deploying this code
+   > to production without creating it gives a **runtime error on the checkout
+   > path** — the money path. Against production, in this order:
+   >
+   > ```
+   > npm run push --workspace @landingos/db
+   > npm run rls  --workspace @landingos/db
+   > ```
+   >
+   > Expect 49/49 on all four RLS checks (it was 48/48). **I have deliberately
+   > run neither against production.**
+8. From the audits, still open: Benefits/
    FAQ (LB.12), notification write-time i18n, analytics comparisons (PM.10),
    builder list pagination, LB.11 real-credential tracking smoke test (still
    gates real ad spend), UI.7 settings i18n residue, calculator step
