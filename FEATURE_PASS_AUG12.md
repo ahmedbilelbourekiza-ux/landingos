@@ -1,16 +1,20 @@
 # FEATURE_PASS — 12 August 2026, the dead-code deletion and the feature queue
 
-**Status: LOCAL ONLY, NOTHING PUSHED, NOTHING DEPLOYED.** Feature commits
-`93c4f00..e49ba19` on `master`, followed by a documentation backfill on the same
-day. `origin/main` is at `b767928`.
+**Status: DEPLOYED TO PRODUCTION 12 Aug 2026 (evening), user-approved — the
+range `b767928..e3939e9` including this pass, LB.25, LB.26 and the LB.20
+migration. `HANDOFF_PRODUCTION.md` §1 is the deploy record.** The lines below
+describe the state as of the session itself; the hold banners in §4/§5 are
+each superseded by a dated update in place. Original status at time of
+writing: local only, feature commits `93c4f00..e49ba19` on `master`,
+`origin/main` at `b767928`.
 
 **Method:** the standing order, per slice — measure → fix → test → verify live
 in the running app → commit → document, before starting the next.
 
 > **Read §5 first.** It carries three decisions taken AFTER this session:
-> LB.20's production migration is **held off** (do not touch production),
-> LB.23 is **decided but blocked** on a Meta Developer App, and LB.24 is
-> **on hold**.
+> LB.20's production migration was **held off, then executed 12 Aug 2026
+> with user approval** (see the update in §5), LB.23 is **decided but
+> blocked** on a Meta Developer App, and LB.24 is **on hold**.
 
 **Where else this pass is recorded.** This file is the session-level record —
 the defect list, the database state, the decisions. The per-slice history lives
@@ -177,9 +181,14 @@ Nine, none of which was the feature I was building:
 run; `packages/db/.env` does not name `landingos_prod`), followed by
 `npm run rls` — **48 → 49 tenant-scoped tables**, all four checks 49/49.
 
-> ### ⚠ THE PRODUCTION MIGRATION IS ON HOLD — DECIDED AFTER THIS SESSION
+> ### ✔ UPDATE 12 Aug 2026 (evening): THE HOLD WAS LIFTED AND THE MIGRATION RAN
 >
-> **Do not touch production. The dev-only state stands until further notice.**
+> **User-approved and executed against `landingos_prod` before the app
+> deploy: diff previewed (one table only), push confirmed on the right
+> datasource, RLS 49/49, table empty. `HANDOFF_PRODUCTION.md` §1 is the
+> record. The paragraphs below are the historical hold as written.**
+>
+> **(historical) Do not touch production. The dev-only state stands until further notice.**
 >
 > `LandingDeliveryPrice` is a new table and it exists in **`neondb` (dev) only**.
 > The migration is *deliberately* being held off — this is a decision, not an
@@ -225,10 +234,14 @@ discarded.
 > record a fresh session reads; the measurement under each one is from the
 > session itself and still stands.
 
-### On hold: LB.20's production migration — DO NOT TOUCH PRODUCTION
+### ~~On hold: LB.20's production migration~~ — EXECUTED 12 Aug 2026 (user-approved)
 
-**Decision: the production database migration is deliberately held off for
-now. The dev-only state stands until further notice.**
+**UPDATE: the hold was lifted with explicit approval and the migration ran
+against production before the app deploy — `HANDOFF_PRODUCTION.md` §1. The
+paragraphs below are the historical decision as written.**
+
+**(historical) Decision: the production database migration is deliberately
+held off for now. The dev-only state stands until further notice.**
 
 `LandingDeliveryPrice` exists in `neondb` (dev) only. This is not an oversight
 and not a step to "finish" on your own initiative — the code is written, tested

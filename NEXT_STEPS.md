@@ -18,16 +18,16 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 |---|---|---|---|
 | **LB.11** | Real-credential smoke test: Meta/TikTok/GA4 with test pixels + `testCode` | S | No request has crossed the REAL endpoints — the ZR/Ecom precedent; **the one remaining gate before real ad spend**, and untestable locally by construction |
 | ~~**LB.12**~~ | ~~Benefits + FAQ end to end~~ | M | **DONE 10 Aug 2026** (`CAPABILITY_AUDIT.md` B1, CHANGELOG §LB.12). The audit found it was deeper than recorded: the storefront FAQ/Reviews renderers were **mounted by nothing** (saved reviews travelled in the payload and rendered nowhere) and BenefitsList hardcoded four badges. Now: `features`/`faqs` PUT routes, Benefits+FAQ editor sections replace the stubs, mappers unhardcoded, sections mounted with `show*` gating (default true), benefits data-driven with the four badges as fallback. builder-sections 54/54, live-verified through the real editor + public page |
-| ~~**LB.13**~~ | ~~Editor i18n~~ | M | **DONE 11 Aug 2026, local only — `EDITOR_I18N.md` is the full record.** Seven slices, 213 `builder.editor.*` keys in en/fr/ar, 31 live components plus four shared modules. Suites: i18n 22/22 (two new guard tests), builder-sections 58/58, console-shell 20/20, storefront 32/32; verified live in `ar` (RTL) and `fr` (LTR) with the forms driven, not read. The measurement corrected M-04 twice — the create screen was already translated, and 10 of the "54 components" are dead legacy code reachable from nothing. It also closed a class the audit never named: the save path rendered the API's ENGLISH developer message in every locale. **Three decisions remain yours: `EDITOR_I18N.md` §3.** |
-| ~~**LB.16**~~ | ~~The ten dead components, deleted~~ | S | **DONE 12 Aug 2026, local only.** Re-confirmed unreachable three ways — filenames, exported SYMBOLS, a fresh import-graph walk — before `git rm`. The i18n guard's exemption for `media-picker-dialog.tsx` went WITH the file rather than into an empty set, because a list that exists is an invitation to add to it. `components/landings/` now holds only `edit/`. All eight builder suites green; every builder screen re-verified at 200. See the narrative below |
-| ~~**LB.17**~~ | ~~Back-navigation on ERP detail screens~~ | S | **DONE 12 Aug 2026, local only.** A reported defect, and the measurement was sharper than the report: a back link EXISTED but sat after the title as a 44×20px muted word with no arrow. `PageHeader`'s own comment says its breadcrumb was built to replace this link and the product detail's — UI.22 built the primitive and migrated only the order detail. erp/screens 173/173 |
-| ~~**LB.18**~~ | ~~The finance module becomes optional~~ | M | **DONE 12 Aug 2026, local only.** Four things make "removed" mean something: the nav loses Finance AND the Calculator, both screens 404 on a typed URL, all nine finance handlers refuse with `FINANCE_DISABLED`, and NOTHING IS DELETED. erp/finance 38→44 |
-| ~~**LB.19**~~ | ~~Product categories in the catalogue~~ | M | **DONE 12 Aug 2026, local only.** Pages already had categories since B3; products had unguided free text. Closed WITHOUT converting to a relation — the schema states a reasoned decision against that. erp/catalog 72→75 |
-| ~~**LB.20**~~ | ~~Per-product delivery pricing~~ | M–L | **DONE 12 Aug 2026, local only. ⚠ ADDS A TABLE — production migration deliberately HELD OFF, see the narrative.** The schema did not support it: `TenantDeliveryPrice` is unique on `(tenantId, wilayaId)`. builder-sections 62→67, storefront 32/32, packages/db 33/33 |
-| ~~**LB.21**~~ | ~~Landing pages publish into the ERP catalogue~~ | M | **DONE 12 Aug 2026, local only.** All products or one. `CatalogProductLink` is the idempotency key; ADOPTION is what protects a catalogue the merchant already filled in by hand. builder-sections 67→72 |
-| ~~**LB.22**~~ | ~~A theme generated from a product image~~ | M | **DONE 12 Aug 2026, local only.** The hard part is readability, not colour-finding. builder-sections 58→62 |
-| ~~**LB.25**~~ | ~~Merge the Finances screen into the Calculator~~ | S–M | **DONE 12 Aug 2026, local only.** Measured first: both screens wrote the SAME record through the same route. The expense form + list and the superseded marker moved to `/console/erp/calculator`, now titled Finances; the finance screen and its nav item are deleted; the URL stays. erp/screens 173→172, finance 44, ai 31, access 205 |
-| ~~**LB.26**~~ | ~~The preview/storefront theme-bleed bug~~ | M | **DONE 12 Aug 2026, local only.** A landing page rendered the VIEWER's dark/light (console toggle in the editor; the visitor's OS on the published page) instead of its own theme — `--theme-background` had a writer and no reader. The ThemeProvider now paints its canvas and redefines the console token names in scope; the mini preview wraps in it; the never-sent `themeId` now reaches the preview state. storefront 33, builder-sections 73 |
+| ~~**LB.13**~~ | ~~Editor i18n~~ | M | **DONE 11 Aug 2026; DEPLOYED to production 12 Aug (evening) — `EDITOR_I18N.md` is the full record.** Seven slices, 213 `builder.editor.*` keys in en/fr/ar, 31 live components plus four shared modules. Suites: i18n 22/22 (two new guard tests), builder-sections 58/58, console-shell 20/20, storefront 32/32; verified live in `ar` (RTL) and `fr` (LTR) with the forms driven, not read. The measurement corrected M-04 twice — the create screen was already translated, and 10 of the "54 components" are dead legacy code reachable from nothing. It also closed a class the audit never named: the save path rendered the API's ENGLISH developer message in every locale. **Three decisions remain yours: `EDITOR_I18N.md` §3.** |
+| ~~**LB.16**~~ | ~~The ten dead components, deleted~~ | S | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** Re-confirmed unreachable three ways — filenames, exported SYMBOLS, a fresh import-graph walk — before `git rm`. The i18n guard's exemption for `media-picker-dialog.tsx` went WITH the file rather than into an empty set, because a list that exists is an invitation to add to it. `components/landings/` now holds only `edit/`. All eight builder suites green; every builder screen re-verified at 200. See the narrative below |
+| ~~**LB.17**~~ | ~~Back-navigation on ERP detail screens~~ | S | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** A reported defect, and the measurement was sharper than the report: a back link EXISTED but sat after the title as a 44×20px muted word with no arrow. `PageHeader`'s own comment says its breadcrumb was built to replace this link and the product detail's — UI.22 built the primitive and migrated only the order detail. erp/screens 173/173 |
+| ~~**LB.18**~~ | ~~The finance module becomes optional~~ | M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** Four things make "removed" mean something: the nav loses Finance AND the Calculator, both screens 404 on a typed URL, all nine finance handlers refuse with `FINANCE_DISABLED`, and NOTHING IS DELETED. erp/finance 38→44 |
+| ~~**LB.19**~~ | ~~Product categories in the catalogue~~ | M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** Pages already had categories since B3; products had unguided free text. Closed WITHOUT converting to a relation — the schema states a reasoned decision against that. erp/catalog 72→75 |
+| ~~**LB.20**~~ | ~~Per-product delivery pricing~~ | M–L | **DONE 12 Aug 2026; DEPLOYED the same evening WITH its production migration (user-approved — `landingos_prod` push + RLS 49/49, quote=charge verified live with a real order).** The schema did not support it: `TenantDeliveryPrice` is unique on `(tenantId, wilayaId)`. builder-sections 62→67, storefront 32/32, packages/db 33/33 |
+| ~~**LB.21**~~ | ~~Landing pages publish into the ERP catalogue~~ | M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** All products or one. `CatalogProductLink` is the idempotency key; ADOPTION is what protects a catalogue the merchant already filled in by hand. builder-sections 67→72 |
+| ~~**LB.22**~~ | ~~A theme generated from a product image~~ | M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** The hard part is readability, not colour-finding. builder-sections 58→62 |
+| ~~**LB.25**~~ | ~~Merge the Finances screen into the Calculator~~ | S–M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** Measured first: both screens wrote the SAME record through the same route. The expense form + list and the superseded marker moved to `/console/erp/calculator`, now titled Finances; the finance screen and its nav item are deleted; the URL stays. erp/screens 173→172, finance 44, ai 31, access 205 |
+| ~~**LB.26**~~ | ~~The preview/storefront theme-bleed bug~~ | M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** A landing page rendered the VIEWER's dark/light (console toggle in the editor; the visitor's OS on the published page) instead of its own theme — `--theme-background` had a writer and no reader. The ThemeProvider now paints its canvas and redefines the console token names in scope; the mini preview wraps in it; the never-sent `themeId` now reaches the preview state. storefront 33, builder-sections 73 |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
@@ -36,10 +36,13 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 
 ### The 12 August pass — LB.16 to LB.22, slice by slice
 
-**All local, none deployed.** `origin/main` is at `b767928`; these are commits
-`93c4f00..e49ba19` on `master`. `FEATURE_PASS_AUG12.md` carries the session-level
-record (the defect list, the database state, the decisions); what follows is the
-per-slice narrative in the shape LP.16 and its neighbours use.
+**DEPLOYED 12 Aug 2026 (evening), user-approved** — the whole range
+`b767928..e3939e9` (these commits plus LB.25/LB.26) went to `origin/main`
+after the LB.20 production migration ran; see `HANDOFF_PRODUCTION.md` §1 for
+the deploy record and its live verification. `FEATURE_PASS_AUG12.md` carries
+the session-level record (the defect list, the database state, the
+decisions); what follows is the per-slice narrative in the shape LP.16 and
+its neighbours use.
 
 **LB.16 — DONE. The ten dead components, deleted.** LB.13's measurement found
 that ten of `BUILDER_AUDIT` M-04's "54 editor components" were unreachable from
@@ -103,7 +106,8 @@ duplication on the way: the screen and `GET /api/erp/products` each built their
 `productWhere` now, and a test asserts they return the same set for the same
 query string rather than restating the promise. erp/catalog 72 → **75**.
 
-**LB.20 — DONE (code); MIGRATION HELD OFF. Per-product delivery pricing.** The
+**LB.20 — DONE; MIGRATION EXECUTED IN PRODUCTION 12 Aug 2026 (user-approved).
+Per-product delivery pricing.** The
 schema did not support it: `TenantDeliveryPrice` is unique on
 `(tenantId, wilayaId)`, so a company had exactly one price per destination and a
 heavy or fragile product had to be absorbed into it. `LandingDeliveryPrice` is a
@@ -122,10 +126,11 @@ a 2900 product produced an order totalling **4400**, not the 3300 the company
 rate would have given. builder-sections 62 → **67**, storefront 32/32,
 packages/db 33/33.
 
-> **⚠ The production migration is deliberately held off (decided after the
-> session).** `LandingDeliveryPrice` exists in `neondb` (dev) only. Do not touch
-> production; the dev-only state stands until further notice. When it is
-> released, `HANDOFF_PRODUCTION.md` §5 carries the two commands.
+> **✔ The hold was lifted and the migration RAN 12 Aug 2026 (user-approved):**
+> DDL previewed against `landingos_prod` (only the one table), pushed with the
+> datasource confirmed in output, RLS re-applied at **49/49**, table confirmed
+> empty before the app deploy — then quote=charge proven in production with a
+> real order. `HANDOFF_PRODUCTION.md` §1 is the record.
 
 **LB.21 — DONE. Landing pages publish into the ERP catalogue.** The gap was
 quiet rather than loud: a merchant builds a product in the builder and it exists

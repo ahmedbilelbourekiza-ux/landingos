@@ -1,8 +1,8 @@
 # HANDOFF_PRODUCTION — deployment and production state
 
-**Written:** 9 August 2026, ~19:00 UTC · **Updated:** 10 August 2026 (the
-separate production database is now LIVE — see §4) · **For:** the next
-conversation/agent picking this project up. Read this FIRST for anything
+**Written:** 9 August 2026, ~19:00 UTC · **Updated:** 12 August 2026 (the
+LB.13–LB.26 deploy + the LB.20 production migration — see §1) · **For:** the
+next conversation/agent picking this project up. Read this FIRST for anything
 touching production; `PROJECT_STATE.md` (platform history),
 `BUILDER_HANDOFF.md` (product) and `UIUX_PASS.md` (the UI/UX + mobile passes)
 remain the deep references.
@@ -11,15 +11,47 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-- **Deployed commit:** `86a4e90` (10 Aug 2026, ~01:45 UTC — UI.6 + the whole
-  CAPABILITY_AUDIT queue B1–B6/B9 + the TenantDomain RLS fix). Verified
-  serving by unauthed markers only the new build answers:
-  `/console/settings/domains` 404→307-to-login and `/api/platform/domains`
-  404→401 flipped exactly at deploy. The `tenant_isolation_verified` policy
-  was then applied to `landingos_prod` (apply-rls output: the TenantDomain
-  line + 48/48 on all four checks) and proven live both ways with a
-  throwaway tenant over real HTTP (verified → its storefront, unverified →
-  /console), fixture deleted after.
+- **Deployed commit:** `e3939e9` (12 Aug 2026, evening — the full local range
+  `b767928..e3939e9`, 20 commits: LB.13 editor i18n, LB.16–LB.22 the feature
+  pass incl. per-product delivery pricing, LB.25 the Finances/Calculator
+  merge, LB.26 the storefront theme-bleed fix). **The commit REPLACED was
+  `b7679284bfd71ea666a5f3d13973a9b769ba828f`** — the rollback point if one is
+  ever needed (a rollback past it also needs the older apply-rls, per the
+  §5 coupling note).
+- **The LB.20 migration WAS APPLIED to production first, in order:** the DDL
+  was previewed with `prisma migrate diff` against `landingos_prod` (exactly
+  the one `LandingDeliveryPrice` table, no other drift), pushed via the owner
+  role on the direct endpoint (`Datasource … "landingos_prod"` confirmed in
+  the push output), then `apply-rls` — **49/49 on all four checks** (was
+  48/48) — and the table confirmed present with **0 rows** before the app
+  push. The env overrides were shell-only; `packages/db/.env` still points at
+  `neondb`.
+- **Deploy verified from outside, then in a real browser** (12 Aug): the
+  unauthed marker `/console/erp/finance` flipped 307-to-login → **404**
+  (LB.25 deleted the page; only the new build answers that) with
+  `/console/erp/calculator` still 307; health green
+  (`database ok · 58 wilayas · isolation rls · uploads r2`). Then a
+  throwaway tenant (`dv-aug12-check`) driven through the REAL journey on the
+  live domain: signup → page published → tenant delivery price (Adrar
+  500/300) → checkout **3,400** (2,900 + the tenant default) → a per-page
+  override of 900 set in the editor's Shipping section → quote **3,800** =
+  charge **3,800** on the stored order (D-LB.20.1 live in production) → the
+  LB.26 check with an emulated dark-OS visitor (page holds its theme;
+  `html.dark` stamped and ignored inside the scope) → the merged Finances
+  screen 200 with history + charge list, orders present, category control on
+  products, client-detail breadcrumb. **All fixtures deleted after**,
+  including an orphan sweep (see the finding below).
+- **Finding from the cleanup, worth its own slice:** `tenant.delete` cascades
+  platform rows but NOT product-domain rows — they carry `tenantId` as an
+  RLS-scoped column, not an FK to Tenant — so deleting the throwaway tenant
+  left its LandingPage/SalesOrder/Client/… rows orphaned until swept by
+  tenantId across all 49 scoped tables. Any future tenant-deletion feature
+  (or test cleanup) must do the same sweep; the dev harness's
+  `tenant.deleteMany` has been leaving the same orphans in `neondb`.
+- *(historical — the 10 Aug state this deploy replaced)* Deployed commit
+  `86a4e90`, verified by the domains-screen marker flips; the
+  `tenant_isolation_verified` policy applied to `landingos_prod` (48/48) and
+  proven both ways with a throwaway tenant, fixture deleted after.
 - **Production URL:** `https://landingos.onrender.com` (Render, Docker,
   auto-deploys from `origin/main`). The bare domain root 307-redirects to
   `/console`.
@@ -44,6 +76,7 @@ remain the deep references.
 
 | Commit | What it is |
 |---|---|
+| `b767928..e3939e9` | **12 Aug 2026 (evening): the LB.13–LB.26 range** — editor i18n (LB.13), dead-component deletion (LB.16), ERP detail back-nav (LB.17), the finance module switch (LB.18), product categories (LB.19), **per-product delivery pricing (LB.20, with its production migration applied first)**, catalogue publishing (LB.21), image-derived themes (LB.22), the Finances/Calculator merge (LB.25), the storefront theme-bleed fix (LB.26) |
 | `5ac85b0` | The UI/UX pass: builder overview rebuilt, table headers, editor variant-label + unsaved-state fixes, ERP order summary strip, notification timestamps, locale switcher auto-submit (~60 i18n keys) |
 | `4470c50` | Mobile UX fixes (filter-bar mobile collapse, orders-table mobile columns, strip static on phones, tap targets, storefront select sizing) + the **RLS boot/health guard** |
 | `8c23746` | Mobile drawer + toast portals — the header's `backdrop-blur` made it the containing block for `fixed` descendants; the drawer was pinned to a 55px box |
@@ -225,7 +258,7 @@ edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
    suspects. This is the customer-facing surface on Algerian mobile networks.
 5. **Deploy `services/worker`** when scheduled ERP jobs are wanted in
    production (needs `WORKER_SECRET` on both sides).
-6. **Editor i18n (LB.13) — DONE 11 Aug, LOCAL ONLY, NOT DEPLOYED.** Seven
+6. **Editor i18n (LB.13) — DONE 11 Aug, DEPLOYED 12 Aug (evening).** Seven
    commits (`43b55c6..` through the guard). `EDITOR_I18N.md` is the full
    record: the corrected measurement, a per-slice log with the live evidence,
    and §3's four open decisions. Suites green per file (i18n 22/22 including a
@@ -239,51 +272,34 @@ edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
    **LB.16 (12 Aug) deleted the ten dead legacy components** LB.13's
    measurement found — `EDITOR_I18N.md` §4. Every builder screen re-verified
    live at 200; all eight builder suites green.
-7. **Feature pass (12 Aug) — LOCAL ONLY, NOT DEPLOYED.**
+7. **Feature pass (12 Aug) — DEPLOYED 12 Aug 2026 (evening), user-approved.**
    `FEATURE_PASS_AUG12.md` is the record: seven slices (LB.16–LB.22), nine
-   defects found and fixed on the way, and the two requested features I
-   deliberately did NOT build, with the reasons.
+   defects found and fixed on the way, and the two requested features
+   deliberately NOT built, with the reasons.
 
-   > ### ⚠ LB.20's MIGRATION IS ON HOLD — DO NOT TOUCH PRODUCTION
+   > ### ✔ LB.20's MIGRATION WAS EXECUTED — 12 Aug 2026, user-approved
    >
-   > **Decided after the 12 Aug session: the production database migration is
-   > deliberately held off. The dev-only state stands until further notice.**
-   >
-   > `LandingDeliveryPrice` exists in `neondb` (dev) ONLY. This is a decision,
-   > not an unfinished step — nobody should complete it on their own
-   > initiative.
-   >
-   > **Consequence: LB.20's code must not reach production either.** Without
-   > the table it is a runtime error on the CHECKOUT path — the money path.
-   > Since nothing in this pass is deployed and `origin/main` is untouched,
-   > holding the migration and holding the deploy are the same act today.
-   >
-   > When the hold is lifted, against production, in this order:
-   >
-   > ```
-   > npm run push --workspace @landingos/db
-   > npm run rls  --workspace @landingos/db
-   > ```
-   >
-   > Expect 49/49 on all four RLS checks (it was 48/48). **Neither has been run
-   > against production.**
+   > **The hold was lifted by explicit approval and the migration ran against
+   > `landingos_prod` BEFORE the app deploy, in the documented order:** DDL
+   > previewed with `migrate diff` (exactly the one table, no other drift),
+   > `prisma db push` with the datasource confirmed `landingos_prod` in its
+   > output, then `apply-rls` — **49/49 on all four checks**, as predicted —
+   > and `LandingDeliveryPrice` confirmed present and EMPTY before the push
+   > to `origin/main`. Overrides were shell-env only; `packages/db/.env`
+   > still names `neondb`. The quote=charge property was then verified in
+   > production with a real order (§1).
 
-   **LB.25 (a later 12 Aug session, LOCAL ONLY, NOT DEPLOYED):** the Finances
-   screen merged into the Calculator — `/console/erp/finance` deleted,
+   **LB.25 (a later 12 Aug session — DEPLOYED 12 Aug, evening):** the
+   Finances screen merged into the Calculator — `/console/erp/finance`
+   deleted (it 404s in production now, and is the deploy's marker),
    `/console/erp/calculator` is the finance module's one screen, titled
-   Finances, now carrying the one-off expense form + list and the
-   current/superseded marker. No route/schema change, no migration. A deployer
-   should know the old finance URL 404s and the nav has one finance item, not
-   two. Record: CHANGELOG §LB.25, PROJECT_STATE and NEXT_STEPS per-slice
-   entries.
+   Finances, carrying the one-off expense form + list and the
+   current/superseded marker. Record: CHANGELOG §LB.25.
 
-   **LB.26 (same session, LOCAL ONLY, NOT DEPLOYED):** the theme-bleed fix —
+   **LB.26 (same session — DEPLOYED 12 Aug, evening):** the theme-bleed fix —
    a published landing page rendered the VISITOR's OS dark mode instead of
-   its own theme (and the editor previews followed the console toggle). This
-   one is CUSTOMER-FACING in production today: any dark-phone visitor to a
-   live storefront page currently sees the dark-flipped page, so it is worth
-   deploying with the next release. No route/schema change, no migration.
-   Record: CHANGELOG §LB.26.
+   its own theme. Verified in production with an emulated dark-OS visitor on
+   a real published page. Record: CHANGELOG §LB.26.
 
 8. **Decided but NOT started, both waiting on something (12 Aug decisions):**
    - **LB.23 — Facebook Ads linking.** Decided to build REAL ad-spend
@@ -373,9 +389,11 @@ The exact first steps, in order:
    `uploads: r2`. If `isolation` is missing, an old build is serving; if
    `BYPASSED`, stop everything and tell the user to fix Render's
    `DATABASE_URL` (see §3).
-3. **Confirm `origin/main` still equals `a42676b`** (`git fetch && git log
+3. **Confirm `origin/main` still equals `e3939e9`** (`git fetch && git log
    --oneline origin/main -1`) — if it moved, someone else deployed; re-read
-   the situation before assuming this document's state.
+   the situation before assuming this document's state. (One local docs
+   commit recording this deploy sits on `master` ahead of `main`,
+   deliberately unpushed.)
 4. **Know the open decision owned by the user:** the `erp-serveur`
    decommission. (The separate-database decision was resolved and executed
    10 Aug — §4.) It may not be started unprompted.

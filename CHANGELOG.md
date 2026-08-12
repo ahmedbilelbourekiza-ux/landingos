@@ -12,8 +12,43 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **DEPLOY — LB.13 through LB.26 reach production** (12 August 2026, evening,
+  **user-approved, including the LB.20 migration**). This supersedes every
+  "local only / not deployed / migration held off" statement in the entries
+  below.
+
+  **What.** `b767928..e3939e9` (20 commits) pushed to `origin/main`; Render
+  auto-deployed. The commit replaced — the rollback point — is
+  `b7679284bfd71ea666a5f3d13973a9b769ba828f`.
+
+  **Migration, first and in order.** Against `landingos_prod`: the DDL was
+  previewed with `prisma migrate diff` (exactly `LandingDeliveryPrice`, no
+  other drift), applied with `prisma db push` (datasource confirmed
+  `landingos_prod` in the output), then `apply-rls` — **49/49 on all four
+  checks**, as `FEATURE_PASS_AUG12.md` §4 predicted — and the table
+  confirmed present and EMPTY before the app push. Shell-env overrides only;
+  `packages/db/.env` still names `neondb`.
+
+  **Verified live on the production domain.** The deploy marker: unauthed
+  `/console/erp/finance` flipped 307-to-login → 404 (LB.25's deletion) with
+  `/console/erp/calculator` still 307; health green throughout. Then a
+  throwaway tenant driven through the real journey: signup → page published
+  → tenant delivery price → checkout **3,400** (the default path LB.20 must
+  not break) → per-page override → quote **3,800 = charge 3,800** on the
+  stored order (D-LB.20.1, in production) → LB.26 held for an emulated
+  dark-OS visitor on the real page → merged Finances screen, orders,
+  category control and detail breadcrumbs all present. Every fixture deleted
+  after, including a sweep of product-domain rows that survive a
+  `tenant.delete` (recorded as a finding in `HANDOFF_PRODUCTION.md` §1 — a
+  tenant delete cascades platform rows, not RLS-scoped product rows).
+
+  **Risk note.** A rollback past `90f3d43` still requires the older
+  apply-rls (the §5 coupling); rolling back to `b767928` itself is safe with
+  the new table present, since pre-LB.20 code never queries it.
+
 - **LB.26** A landing page wears its OWN theme, never the viewer's dark mode
-  (12 August 2026, **local only — not pushed, not deployed**).
+  (12 August 2026; deployed to production the same evening — see the deploy
+  entry above).
 
   **The reported bug.** The editor preview's background followed the console's
   dark/light toggle instead of the page's chosen colour template. Measured
@@ -72,8 +107,8 @@ touched, any **migration**, and any **risk**.
   radius/shadow fields, so editor previews render without the theme's radii
   (pre-existing, cosmetic, editor-only).
 
-- **LB.25** The Finances screen merges into the Calculator (12 August 2026,
-  **local only — not pushed, not deployed**).
+- **LB.25** The Finances screen merges into the Calculator (12 August 2026;
+  deployed to production the same evening — see the deploy entry above).
 
   **What changed.** `/console/erp/finance` is deleted, along with its nav item
   and its manual six-totals form (`RecordSavePanel`); the calculator screen at
@@ -121,11 +156,12 @@ touched, any **migration**, and any **risk**.
   **44** · erp/ai **31** · erp/access **205** · console-shell **20** · i18n
   **22** · product-registry **36** · calc **20**.
 
-- **LB.16–LB.22** The dead-code deletion and the feature pass (12 August 2026).
-  Seven slices, commits `93c4f00..e49ba19`, **local only — nothing pushed,
-  nothing deployed**. Per-slice narrative in `NEXT_STEPS.md`; tracking rows in
-  `PROJECT_STATE.md`; the session-level record (defect list, database state,
-  decisions) in **`FEATURE_PASS_AUG12.md`**.
+- **LB.16–LB.22** The dead-code deletion and the feature pass (12 August 2026;
+  deployed to production the same evening — see the deploy entry above).
+  Seven slices, commits `93c4f00..e49ba19`. Per-slice narrative in
+  `NEXT_STEPS.md`; tracking rows in `PROJECT_STATE.md`; the session-level
+  record (defect list, database state, decisions) in
+  **`FEATURE_PASS_AUG12.md`**.
 
   **What changed.** LB.16 deleted the ten unreachable legacy components LB.13's
   measurement found. LB.17 gave the ERP client and product detail screens the
@@ -138,18 +174,13 @@ touched, any **migration**, and any **risk**.
   into the ERP catalogue, all or one. LB.22 extracts a storefront theme from a
   product photograph.
 
-  **MIGRATION — and it is ON HOLD.** LB.20 adds one table,
-  `LandingDeliveryPrice` (`@@unique([tenantId, landingPageId, wilayaId])`,
-  cascade on the page). It was pushed to **`neondb` (dev) only**, followed by
-  `npm run rls` — 48 → **49** tenant-scoped tables, 49/49 on all four checks.
-  **The production migration is deliberately held off (decided after the
-  session). Do not touch production.** Nobody should "finish" it on their own
-  initiative.
-
-  **RISK, stated plainly.** LB.20's code cannot run without that table: a
-  deploy without it is a runtime error on the CHECKOUT path — the money path.
-  Holding the migration therefore means holding the deploy of this whole range,
-  which is the state today (`origin/main` is at `b767928` and untouched).
+  **MIGRATION.** LB.20 adds one table, `LandingDeliveryPrice`
+  (`@@unique([tenantId, landingPageId, wilayaId])`, cascade on the page). It
+  was pushed to `neondb` (dev) during the pass — 48 → **49** tenant-scoped
+  tables, 49/49 on all four RLS checks. The production migration was held off
+  at first, then **executed 12 Aug 2026 with the user's explicit approval**
+  (the deploy entry above carries the production record: same 49/49, table
+  confirmed empty before the app deploy, quote=charge verified live).
 
   **The rule this pass adds to the method:** *a feature that quotes a number and
   a feature that charges it must call the same function.* LB.20's two paths each
@@ -253,7 +284,8 @@ touched, any **migration**, and any **risk**.
   · storefront **32/32**; `tsc` shows the same six pre-existing errors in this
   tree as before the first slice. **Nothing was written to the database** —
   every live check drove the real forms and every save was refused by
-  validation or stubbed to fail. Local commits only; not deployed.
+  validation or stubbed to fail. Local commits at the time; deployed to
+  production 12 Aug 2026 (the deploy entry above).
 
 - **B6 (CAPABILITY_AUDIT)** Sessions become visible and revocable (10 August
   2026). The write side had quietly existed — a throttled `lastSeenAt` touch
