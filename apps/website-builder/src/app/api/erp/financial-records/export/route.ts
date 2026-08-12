@@ -1,4 +1,5 @@
 import { tenantRoute } from "@/lib/api/route";
+import { refuseIfFinanceOff } from "@/lib/erp/finance-module";
 import { toCsv } from "@/lib/erp/export";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,11 @@ const day = (d: Date) =>
     .join("/");
 
 export const GET = tenantRoute("erp:finance:read", async ({ db, searchParams }) => {
+  // LB.18 — a module the company switched off does not accept calls either;
+  // hiding the nav item is not what makes it gone.
+  const off = await refuseIfFinanceOff(db);
+  if (off) return off;
+
   const periodType = searchParams.get("periodType")?.trim();
 
   const items = await db.financialRecord.findMany({

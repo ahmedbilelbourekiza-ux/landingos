@@ -52,7 +52,43 @@ export const DEFAULT_SETTINGS = {
   workHoursEnd: 20,
   nightGraceMinutes: 120,
   fixedCosts: [] as Array<{ id: string; label: string; amount: string }>,
+  /* LB.18 — whether this company runs the books at all.
+   *
+   * Defaults TRUE, so every existing tenant is unaffected by the row not
+   * existing: `readSettings` overlays stored rows onto these defaults, and a
+   * tenant who never touches the switch keeps the module they have today.
+   *
+   * It hides a MODULE, and deliberately destroys nothing. "Delete the finance
+   * module" is a request to stop being shown something, not to shred the P&L —
+   * `FinancialRecord` is append-only by design ("a saved P&L is a statement
+   * somebody made"), and a switch that erased it would be the one action on
+   * this platform with no way back. Switching it on again restores the screens
+   * with their history intact. */
+  financeEnabled: true,
 } as const;
+
+/* The nav items that ARE the finance module.
+ *
+ * The calculator is in the list because it is part of the same module rather
+ * than a neighbour of it: the manifest already puts it behind the same
+ * `erp:finance:read` permission and in the same `insight` group, and a company
+ * that has switched off its books has no use for a profit calculator that
+ * writes into them.
+ *
+ * This list lives in the ERP because only the ERP knows what its own finance
+ * module consists of. The registry and the shell filter ids they are HANDED —
+ * neither may learn that "finance" is a thing, which is the contract
+ * `ProductManifest` exists to enforce. */
+export const FINANCE_NAV_IDS = ["finance", "calculator"] as const;
+
+/**
+ * Which of this product's nav items the tenant has switched off.
+ *
+ * Returns ids, not knowledge: the shell hides what it is told to hide.
+ */
+export function hiddenErpNavIds(settings: Pick<ErpSettings, "financeEnabled">): string[] {
+  return settings.financeEnabled === false ? [...FINANCE_NAV_IDS] : [];
+}
 
 /**
  * The stored settings, with every key present.
@@ -92,6 +128,9 @@ export const SETTINGS_SCHEMA: Record<string, Spec> = {
   autoReassign: { type: "boolean" },
   autoSuspend: { type: "boolean" },
   followupAutoAssign: { type: "boolean" },
+  // Declaring it here is all the settings SCREEN needs: that form builds its
+  // controls from this table, so the switch appears without touching the page.
+  financeEnabled: { type: "boolean" },
   minCallSeconds: { type: "number", min: 0, max: 3600 },
   alertMinutes: { type: "number", min: 1, max: 10080 },
   trackingPollMinutes: { type: "number", min: 1, max: 1440 },

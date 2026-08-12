@@ -57,10 +57,20 @@ export function SettingsForm({
             <label htmlFor={`set-${f.key}`} className="ui-label block">
               {f.label}
             </label>
+            {/* LB.18 — the consequence, for the settings whose label cannot
+                carry it. Rendered before the control so a reader meets the
+                caveat before the checkbox, and tied to it by `aria-describedby`
+                so it is not sighted-only. */}
+            {f.hint && (
+              <p id={`set-${f.key}-hint`} className="mt-1 text-xs text-muted-foreground">
+                {f.hint}
+              </p>
+            )}
 
             {f.kind === "boolean" ? (
               <input
                 id={`set-${f.key}`}
+                aria-describedby={f.hint ? `set-${f.key}-hint` : undefined}
                 type="checkbox"
                 checked={draft[f.key] === "true"}
                 onChange={(e) => set(f.key, String(e.target.checked))}
@@ -69,6 +79,7 @@ export function SettingsForm({
             ) : f.kind === "enum" ? (
               <select
                 id={`set-${f.key}`}
+                aria-describedby={f.hint ? `set-${f.key}-hint` : undefined}
                 value={draft[f.key] ?? ""}
                 onChange={(e) => set(f.key, e.target.value)}
                 className={`mt-1 ${FIELD}`}
@@ -83,6 +94,7 @@ export function SettingsForm({
               // a way it never is for a Decimal column.
               <input
                 id={`set-${f.key}`}
+                aria-describedby={f.hint ? `set-${f.key}-hint` : undefined}
                 type="number"
                 min={f.min}
                 max={f.max}

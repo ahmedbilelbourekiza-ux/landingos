@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { refuseIfFinanceOff } from "@/lib/erp/finance-module";
 import { Prisma } from "@landingos/db";
 
 import { tenantRoute, apiOk, apiError, pagination } from "@/lib/api/route";
@@ -22,6 +23,11 @@ export const PERIOD_TYPES = ["day", "week", "month", "quarter", "year", "custom"
  * There is deliberately no PATCH and no DELETE. Their absence is the guarantee.
  */
 export const GET = tenantRoute("erp:finance:read", async ({ db, searchParams }) => {
+  // LB.18 — a module the company switched off does not accept calls either;
+  // hiding the nav item is not what makes it gone.
+  const off = await refuseIfFinanceOff(db);
+  if (off) return off;
+
   const { skip, take, page, pageSize } = pagination(searchParams);
   const periodType = searchParams.get("periodType")?.trim();
 
@@ -77,6 +83,11 @@ const ZERO = new Prisma.Decimal(0);
 const money = (v: unknown) => toDecimal(v) ?? ZERO;
 
 export const POST = tenantRoute("erp:finance:write", async ({ db, req, session }) => {
+  // LB.18 — a module the company switched off does not accept calls either;
+  // hiding the nav item is not what makes it gone.
+  const off = await refuseIfFinanceOff(db);
+  if (off) return off;
+
   const parsed = SaveRecord.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");

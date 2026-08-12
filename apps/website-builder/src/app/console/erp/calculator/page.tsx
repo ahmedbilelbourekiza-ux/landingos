@@ -19,6 +19,7 @@ import { FixedCostsEditor } from "@/components/console/erp/settings-structured";
 import { readSettings } from "@/lib/erp/settings";
 import { prorateMonthlyAmount, alignedRange, monthlyFixedTotal } from "@/lib/erp/prorate";
 import { seesWholeBook } from "@/lib/erp/scope";
+import { financeEnabledFor } from "@/lib/erp/finance-module";
 import { PERIOD_TYPES } from "@/app/api/erp/financial-records/route";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +78,10 @@ export default async function ErpCalculatorScreen({
   // The same gate the finance screen applies, and for the same reason: this is
   // the company's P&L, and a nav item is a hint while a URL is typeable.
   if (!seesWholeBook(session)) notFound();
+
+  /* LB.18 — the calculator is part of the finance module, not a neighbour of
+     it: it writes the records the books are made of. Switched off with them. */
+  if (!(await financeEnabledFor(session.auth!.tenantId))) notFound();
 
   const params = await searchParams;
   const one = (key: string) => {

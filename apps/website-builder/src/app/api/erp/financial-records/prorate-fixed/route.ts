@@ -1,4 +1,5 @@
 import { tenantRoute, apiOk } from "@/lib/api/route";
+import { refuseIfFinanceOff } from "@/lib/erp/finance-module";
 import { readSettings } from "@/lib/erp/settings";
 import { prorateMonthlyAmount, monthlyFixedTotal } from "@/lib/erp/prorate";
 
@@ -31,6 +32,11 @@ const MS_PER_DAY = 86_400_000;
  *     legacy's first.
  */
 export const GET = tenantRoute("erp:finance:read", async ({ db, searchParams }) => {
+  // LB.18 — a module the company switched off does not accept calls either;
+  // hiding the nav item is not what makes it gone.
+  const off = await refuseIfFinanceOff(db);
+  if (off) return off;
+
   const settings = await readSettings(db);
   const monthly = monthlyFixedTotal(settings.fixedCosts);
 

@@ -1,4 +1,5 @@
 import { Prisma } from "@landingos/db";
+import { refuseIfFinanceOff } from "@/lib/erp/finance-module";
 
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
 import { toDate } from "@/lib/erp/serialize";
@@ -58,6 +59,11 @@ const COST_COLUMNS = [
 ] as const;
 
 export const GET = tenantRoute("erp:finance:read", async ({ db, searchParams }) => {
+  // LB.18 — a module the company switched off does not accept calls either;
+  // hiding the nav item is not what makes it gone.
+  const off = await refuseIfFinanceOff(db);
+  if (off) return off;
+
   const periodType = searchParams.get("periodType")?.trim();
   const startDate = toDate(searchParams.get("startDate"));
   const endDate = toDate(searchParams.get("endDate"));

@@ -47,6 +47,10 @@ const ERROR_KEYS: Record<string, string> = {
   // Its own message rather than the generic one, because this refusal names
   // something the reader can go and fix: the order has no carrier to book with.
   NO_CARRIER: "common.error.noCarrier",
+  // LB.18. Same reasoning as NO_CARRIER: this is not "that did not work", it is
+  // "your company switched this module off", and the message says where to
+  // switch it back on.
+  FINANCE_DISABLED: "common.error.financeDisabled",
   // The five ways a carrier can refuse, and they are FIVE because each one has a
   // different fix: change the carrier's integration, correct the address on the
   // order, correct what was sent, wait, or stop asking a carrier that only

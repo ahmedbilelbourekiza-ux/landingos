@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { refuseIfFinanceOff } from "@/lib/erp/finance-module";
 
 import { tenantRoute, apiOk, apiError, pagination } from "@/lib/api/route";
 import { toJson, toDecimal, toDate } from "@/lib/erp/serialize";
@@ -15,6 +16,11 @@ export const dynamic = "force-dynamic";
  * corrected would only produce a compensating negative charge.
  */
 export const GET = tenantRoute("erp:finance:read", async ({ db, searchParams }) => {
+  // LB.18 — a module the company switched off does not accept calls either;
+  // hiding the nav item is not what makes it gone.
+  const off = await refuseIfFinanceOff(db);
+  if (off) return off;
+
   const { skip, take, page, pageSize } = pagination(searchParams);
   const since = searchParams.get("since");
   const until = searchParams.get("until");
@@ -43,6 +49,11 @@ const AddCharge = z.object({
 });
 
 export const POST = tenantRoute("erp:finance:write", async ({ db, req, session }) => {
+  // LB.18 — a module the company switched off does not accept calls either;
+  // hiding the nav item is not what makes it gone.
+  const off = await refuseIfFinanceOff(db);
+  if (off) return off;
+
   const parsed = AddCharge.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");

@@ -12,6 +12,20 @@ import type { WriteOption } from "@/components/console/edit-field";
 export interface SettingField {
   readonly key: string;
   readonly label: string;
+  /**
+   * One sentence under the control, when the setting needs one — LB.18.
+   *
+   * Most do not: "Assign new orders automatically" says what it does. Some
+   * change what a person can SEE rather than what the system does, and for
+   * those the label cannot carry the consequence — "Show the finance module"
+   * does not say that nothing gets deleted.
+   *
+   * Derived, not listed: the page includes it when the catalogue has a
+   * `<key>Hint` message, so adding a hint is adding a translation and nothing
+   * else. That is the same rule this file already states about which settings
+   * get a control at all.
+   */
+  readonly hint?: string;
   readonly kind: "boolean" | "number" | "enum";
   /** Always a string on the wire; the form converts back by `kind` before sending. */
   readonly value: string;

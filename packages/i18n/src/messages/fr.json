@@ -759,7 +759,9 @@
       "noFixedCosts": "Aucune charge fixe enregistrée : chaque bilan sauvegardé ne compte donc ni loyer ni salaires.",
       "defaultCarrierByChannel": "Livreur par défaut par canal de vente",
       "channelCarrierHint": "Utilisé quand une commande de ce canal ne désigne aucun livreur. Le choix de la commande l’emporte toujours.",
-      "noChannels": "Aucun canal de vente pour le moment."
+      "noChannels": "Aucun canal de vente pour le moment.",
+      "financeEnabled": "Afficher le module Finances",
+      "financeEnabledHint": "Désactiver cette option retire Finances et le Calculateur de la navigation pour toute la société. Rien n'est supprimé — les enregistrements sont conservés et réapparaissent si vous la réactivez."
     },
     "queue": {
       "title": "Mes appels",
@@ -1068,7 +1070,8 @@
       "carrierRejected": "Le transporteur a refusé le colis.",
       "carrierUnreachable": "Transporteur injoignable. Aucun colis n'a été créé.",
       "carrierNoPolling": "Ce transporteur envoie seulement des mises à jour ; il n'y a rien à lui demander.",
-      "tooManyRows": "Cet export est trop volumineux. Affinez le filtre et réessayez."
+      "tooManyRows": "Cet export est trop volumineux. Affinez le filtre et réessayez.",
+      "financeDisabled": "Le module Finances est désactivé pour cette société. Réactivez-le dans les règles d'automatisation."
     },
     "previous": "Précédent",
     "next": "Suivant",

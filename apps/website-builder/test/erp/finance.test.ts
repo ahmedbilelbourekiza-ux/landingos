@@ -546,3 +546,98 @@ describe('the finance screen still works, and links nothing it cannot serve', ()
     assert.match(r.body, /data-testid="calc-grand"/);
   });
 });
+
+/* =============================================================================
+ * LB.18 — the finance module can be switched off, and switching it off is not
+ * a matter of hiding a link.
+ *
+ * A merchant who does not run books asked to remove the module. Three things
+ * have to be true for "removed" to mean anything, and only the first is
+ * visible: the nav loses Finance AND the Calculator, the screens 404 when the
+ * URL is typed, and the ROUTES refuse. Without the third, a module the company
+ * switched off still accepts writes from anything holding a session.
+ *
+ * The fourth assertion is the one that makes the switch safe to use: nothing is
+ * deleted. `FinancialRecord` is append-only by design — "a saved P&L is a
+ * statement somebody made" — so a control that erased it would be the only
+ * irreversible action on this platform. Turning it back on must return the
+ * history intact.
+ * ========================================================================== */
+describe('the finance module can be switched off (LB.18)', () => {
+  let off: Awaited<ReturnType<typeof makeErpTenant>>;
+
+  before(async () => {
+    if (skip) return;
+    off = await makeErpTenant(`finance-off-${uid()}`);
+    // A record to switch off AROUND, so the reversibility claim is about real
+    // data rather than an empty table.
+    await off.manager.api('POST', '/api/erp/financial-records', {
+      periodType: 'month',
+      startDate: monthStart(0),
+      endDate: monthEnd(0),
+      revenue: '1000',
+    });
+  });
+
+  test('it is on by default, so no existing tenant is affected', async () => {
+    const r = await off.manager.api('GET', '/api/erp/settings');
+    assert.equal(r.body.data.financeEnabled, true);
+  });
+
+  test('switching it off removes both nav items, and only those', async () => {
+    await off.manager.api('PUT', '/api/erp/settings', { financeEnabled: false });
+    const r = await html('/console/erp/orders', off.manager.token);
+    assert.equal(r.status, 200);
+    assert.ok(!r.body.includes('/console/erp/finance"'), 'finance is still in the nav');
+    assert.ok(!r.body.includes('/console/erp/calculator"'), 'calculator is still in the nav');
+    // The neighbour in the same group stays, so this is a module and not a group.
+    assert.ok(r.body.includes('/console/erp/analytics"'), 'analytics went with them');
+  });
+
+  test('and the screens 404 when the URL is typed', async () => {
+    for (const path of ['/console/erp/finance', '/console/erp/calculator']) {
+      const r = await html(path, off.manager.token);
+      assert.equal(r.status, 404, `${path} still rendered`);
+    }
+  });
+
+  test('and every finance route refuses, reads and writes alike', async () => {
+    const reads = [
+      '/api/erp/financial-records',
+      '/api/erp/financial-records/versions',
+      '/api/erp/financial-records/aggregate',
+      '/api/erp/unexpected-charges',
+    ];
+    for (const path of reads) {
+      const r = await off.manager.api('GET', path);
+      assert.equal(r.status, 404, `${path} still answered`);
+      assert.equal(r.body.error?.code, 'FINANCE_DISABLED');
+    }
+    // The write matters most: hiding a link stops nobody from posting.
+    const w = await off.manager.api('POST', '/api/erp/unexpected-charges', {
+      label: 'Van repair', amount: '4000', date: new Date().toISOString(),
+    });
+    assert.equal(w.status, 404);
+    assert.equal(w.body.error?.code, 'FINANCE_DISABLED');
+  });
+
+  test('a NON-finance route is untouched, so the switch is not a blanket', async () => {
+    const r = await off.manager.api('GET', '/api/erp/orders');
+    assert.equal(r.status, 200);
+  });
+
+  test('switching it back on returns the module AND its history', async () => {
+    await off.manager.api('PUT', '/api/erp/settings', { financeEnabled: true });
+
+    const screen = await html('/console/erp/finance', off.manager.token);
+    assert.equal(screen.status, 200);
+
+    const r = await off.manager.api('GET', '/api/erp/financial-records');
+    assert.equal(r.status, 200);
+    // The record saved before the module was switched off is still there.
+    assert.ok(
+      r.body.data.items.length >= 1,
+      'the saved P&L did not survive being switched off',
+    );
+  });
+});

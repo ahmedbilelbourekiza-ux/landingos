@@ -1,4 +1,5 @@
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { refuseIfFinanceOff } from "@/lib/erp/finance-module";
 import { toJson, toDate } from "@/lib/erp/serialize";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,11 @@ export const dynamic = "force-dynamic";
  * question nobody asked with a list that looks authoritative.
  */
 export const GET = tenantRoute("erp:finance:read", async ({ db, searchParams }) => {
+  // LB.18 — a module the company switched off does not accept calls either;
+  // hiding the nav item is not what makes it gone.
+  const off = await refuseIfFinanceOff(db);
+  if (off) return off;
+
   const periodType = searchParams.get("periodType")?.trim();
   const startDate = toDate(searchParams.get("startDate"));
   const endDate = toDate(searchParams.get("endDate"));

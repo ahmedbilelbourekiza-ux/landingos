@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 
 import { getConsoleSession } from "@/lib/console/session";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { FINANCE_NAV_IDS } from "@/lib/erp/settings";
+import { financeEnabledFor } from "@/lib/erp/finance-module";
 
 /* UI.6 — the shell belongs to the SEGMENT, not to each page. With every page
  * rendering its own ConsoleShell, a navigation could show nothing until the
@@ -37,8 +39,20 @@ export default async function ErpConsoleLayout({
   if (!session) return <>{children}</>;
   if (!session.products.some((p) => p.id === "erp")) notFound();
 
+  /* LB.18 — the ERP decides which of its OWN items are switched off, and hands
+   * the shell ids. The shell may not learn that a "finance module" exists; that
+   * is the manifest contract, and it is why this read lives here rather than
+   * three files further in. One extra indexed read per ERP render, on the
+   * segment layout that already loads the session — and it fails open, so a
+   * database blip shows the module rather than 500ing the whole product. */
+  const showFinance = await financeEnabledFor(session.auth!.tenantId);
+
   return (
-    <ConsoleShell session={session} productId="erp">
+    <ConsoleShell
+      session={session}
+      productId="erp"
+      hiddenNavIds={showFinance ? undefined : FINANCE_NAV_IDS}
+    >
       {children}
     </ConsoleShell>
   );

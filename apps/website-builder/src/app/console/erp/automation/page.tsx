@@ -122,6 +122,12 @@ export default async function ErpAutomationScreen() {
       return {
         key,
         label: t(`erp.settings.${key}`),
+        // LB.18 — a hint IF the catalogue carries one, so adding an
+        // explanation to a setting is adding a translation and nothing else.
+        // `t.has` rather than a try/catch: next-intl throws MISSING_MESSAGE on
+        // an absent key, and a settings screen that 500s because somebody has
+        // not written a sentence yet would be a poor trade.
+        hint: t.has(`erp.settings.${key}Hint`) ? t(`erp.settings.${key}Hint`) : undefined,
         kind: "boolean" as const,
         value: String(Boolean(value)),
       };

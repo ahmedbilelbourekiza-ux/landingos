@@ -16,6 +16,7 @@ import {
 } from "@/components/console/erp/finance-write";
 import { PERIOD_TYPES } from "@/app/api/erp/financial-records/route";
 import { seesWholeBook } from "@/lib/erp/scope";
+import { financeEnabledFor } from "@/lib/erp/finance-module";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,11 @@ export default async function ErpFinanceScreen() {
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
 
   if (!seesWholeBook(session)) notFound();
+
+  /* LB.18 — a company that switched the books off does not have this screen,
+     and the nav hiding the link is not what makes that true. Same reasoning as
+     the permission check above it: a nav item is a hint, the URL is typeable. */
+  if (!(await financeEnabledFor(session.auth!.tenantId))) notFound();
 
   const { records, charges } = await withTenant(session.auth!.tenantId, async (db) => ({
     records: await db.financialRecord.findMany({

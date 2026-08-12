@@ -61,17 +61,36 @@ import { pageContainer } from "./ui/styles";
 export async function ConsoleShell({
   session,
   productId,
+  hiddenNavIds,
   children,
 }: {
   session: ConsoleSession;
   /** Which product's navigation to show. Null on platform-level pages. */
   productId: string | null;
+  /**
+   * Nav item ids this tenant has switched off, decided by the PRODUCT.
+   *
+   * LB.18. A product can have optional modules — the ERP's books are the first
+   * — and the shell must not learn which. It is handed ids and hides them; the
+   * knowledge that "finance" and "calculator" are one module, and that a
+   * setting governs it, lives in `lib/erp/settings.ts` and is applied by the
+   * ERP's own segment layout. A `switch (product.id)` here would be exactly
+   * the shape the manifest contract exists to prevent.
+   *
+   * This hides a LINK and nothing more, which is why the screens and the
+   * routes behind them do their own check: a nav item is a hint, the URL is
+   * typeable. Same rule as `permission` on a nav item.
+   */
+  hiddenNavIds?: readonly string[];
   children: React.ReactNode;
 }) {
   const t = await getTranslations();
   const locale = await getLocale();
   const product = productId ? productRegistry.get(productId) : undefined;
-  const nav = product ? productRegistry.navFor(product.id, session.permissions) : [];
+  const hidden = new Set(hiddenNavIds ?? []);
+  const nav = product
+    ? productRegistry.navFor(product.id, session.permissions).filter((i) => !hidden.has(i.id))
+    : [];
 
   /* LP.7. THE BADGE COUNT IS THE SERVER'S, re-read on every render of the shell
      — which since UI.6 is the SEGMENT LAYOUT's render (entering a product,
