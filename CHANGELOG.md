@@ -12,6 +12,41 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.28** The "dead `rtl:` variant" was never dead — the record was (12
+  August 2026, night — **local only, not pushed, not deployed**).
+
+  **The premise, measured false.** The backlog item said `rtl:` emits no CSS
+  app-wide, so the ERP data table and date picker "are likely rendering wrong
+  in Arabic right now". Measured in the running page on Tailwind 4.3.3:
+  **`rtl:` is a real, native variant** — the products screen's expander
+  chevron computes `scale: -1 1` under Arabic and `none` under French, i.e.
+  the data table has been CORRECT in Arabic all along — and `ui/calendar.tsx`
+  is imported by nothing, so there is no reachable date picker to be wrong.
+  How the false record happened: LB.13 verified the absence of
+  `rtl:rotate-180`, a class that existed in NO source file; Tailwind emits
+  utilities on demand, so the absence proved nothing was generated — not
+  that the variant did not exist. The one usage that DID exist
+  (`data-table.tsx`'s `rtl:-scale-x-100`) had been emitted and working.
+
+  **What was actually wrong, and is fixed:** the editor's back arrow
+  deliberately carried no flip — its comment cited the false premise — so it
+  pointed AWAY from "back" in Arabic. It now carries `rtl:-scale-x-100`
+  (verified live: `-1 1` in ar, `none` in fr). The stale comments are
+  corrected, and the zcode-dev-loop memory's claim is retracted.
+
+  **A real limit found on the way, recorded as a rule:** Tailwind's native
+  `rtl:` matches by `:lang()` (the RTL-language list), NOT the `dir`
+  attribute — measured: a probe inside one of this app's `dir="ltr"` islands
+  (money, phone figures) still flips. An `@custom-variant rtl
+  (&:where(:dir(rtl)))` override was tried and is SILENTLY IGNORED by
+  Tailwind 4.3 for this built-in name (the compiled selector stays
+  :lang-based), so the rule lives as a constraint comment in `globals.css`:
+  never put an `rtl:` utility inside a dir island; use logical properties
+  there. No current usage violates it.
+
+  **Suites:** i18n 22/22 · builder-sections 73/73. No route, schema or
+  behavioral change outside the one arrow.
+
 - **LB.27** A deleted tenant actually goes away (12 August 2026, night —
   **local only, not pushed, not deployed**; the finding is from the deploy
   session's cleanup).

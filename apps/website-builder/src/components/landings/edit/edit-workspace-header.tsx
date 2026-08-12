@@ -60,15 +60,11 @@ export function EditWorkspaceHeader({
           aria-label={t("builder.editor.back")}
           onClick={onBack}
         >
-          {/* Deliberately NOT `rtl:rotate-180`. That class emits no CSS here —
-              this build defines no `rtl` variant (globals.css declares only
-              `dark`), and Tailwind v4 does not ship one, so the utility is
-              silently dropped. Verified in the running page: no rule for it
-              exists in the served stylesheet. Two other files already carry
-              dead `rtl:` classes for the same reason; making the variant real
-              is a global CSS change that would alter screens this slice does
-              not verify, so it is recorded rather than done here. */}
-          <ArrowLeft className="size-4" />
+          {/* Mirrored in RTL: "back" points where the reader came from. The
+              variant is real and dir-keyed since LB.28 (globals.css) — the
+              LB.13 comment this replaces believed it dead, having verified a
+              class no source file generated. */}
+          <ArrowLeft className="size-4 rtl:-scale-x-100" />
         </Button>
         <span className="truncate text-sm font-medium">{landingTitle}</span>
         <PublishStatusBadge status={publishStatus} />

@@ -3,6 +3,25 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* `rtl:` — REAL, native, and LANGUAGE-keyed. Measured in the running page,
+ * LB.28, because the record said the opposite:
+ *
+ * LB.13 recorded this variant as "dead — emits no CSS", verified against a
+ * class (`rtl:rotate-180`) that existed in NO source file; Tailwind emits
+ * utilities on demand, so the absence proved nothing was generated, not that
+ * the variant did not exist. The data-table chevron's `rtl:-scale-x-100` had
+ * been emitted and working in Arabic all along. Do not relitigate; walk the
+ * served stylesheet for the CLASS you actually use.
+ *
+ * THE ONE RULE ITS BASIS IMPOSES: Tailwind's `rtl:` matches by `:lang()`
+ * (the RTL-language list), NOT by the `dir` attribute — so an `rtl:` utility
+ * inside one of this app's `dir="ltr"` ISLANDS (money, phone numbers) still
+ * applies, measured live with a probe. Never put an `rtl:` utility inside a
+ * dir island; use logical properties there. An `@custom-variant rtl
+ * (&:where(:dir(rtl)))` override was tried and is SILENTLY IGNORED by
+ * Tailwind 4.3 for this built-in name — the compiled selector stays
+ * :lang-based — which is why this is a comment and not a declaration. */
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

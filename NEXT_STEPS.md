@@ -29,6 +29,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.25**~~ | ~~Merge the Finances screen into the Calculator~~ | S–M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** Measured first: both screens wrote the SAME record through the same route. The expense form + list and the superseded marker moved to `/console/erp/calculator`, now titled Finances; the finance screen and its nav item are deleted; the URL stays. erp/screens 173→172, finance 44, ai 31, access 205 |
 | ~~**LB.26**~~ | ~~The preview/storefront theme-bleed bug~~ | M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** A landing page rendered the VIEWER's dark/light (console toggle in the editor; the visitor's OS on the published page) instead of its own theme — `--theme-background` had a writer and no reader. The ThemeProvider now paints its canvas and redefines the console token names in scope; the mini preview wraps in it; the never-sent `themeId` now reaches the preview state. storefront 33, builder-sections 73 |
 | ~~**LB.27**~~ | ~~Tenant deletion leaves orphaned rows~~ | M | **DONE 12 Aug 2026 (night), local only.** `deleteTenant()` in packages/db — an RLS-scoped sweep chosen over FK cascades on purpose (a cascade makes an accidental delete silently total). Harness + 11 suite hooks swapped; `neondb` bulk-cleaned **73,267 → 0** orphans and still 0 after suite runs. packages/db 33→35 |
+| ~~**LB.28**~~ | ~~The dead `rtl:` Tailwind variant~~ | S | **DONE 12 Aug 2026 (night), local only — and the premise measured FALSE.** `rtl:` is native on Tailwind 4.3.3 (`:lang()`-keyed); the data table was already correct in Arabic, the calendar is unmounted. Real fixes: the editor back arrow now flips (it cited the false premise for not flipping), the stale comments/memory corrected, and the dir-island rule recorded in globals.css. i18n 22, builder-sections 73 |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
@@ -254,6 +255,28 @@ cascade appeared and this design note needs revisiting). The historical
 backlog was bulk-swept owner-side: **73,267 → 0**, and still 0 after
 console-shell 20/20 + hardening 12/12 ran with the new cleanup. packages/db
 33 → **35**. Production untouched.
+
+**LB.28 — DONE. The "dead `rtl:` variant" was never dead; the record was (12
+Aug, night).** The backlog said `rtl:` emits no CSS app-wide and the ERP data
+table and date picker are "likely rendering wrong in Arabic right now".
+Measured in the running page first, per the standing order — and the premise
+is FALSE on Tailwind 4.3.3: `rtl:` is a real native variant (keyed on
+`:lang()`, the RTL-language list), the products screen's expander chevron
+computes `scale: -1 1` in Arabic and `none` in French — correct all along —
+and `ui/calendar.tsx` is imported by NOTHING, so there is no reachable date
+picker to be wrong. The false record came from LB.13 verifying the absence
+of `rtl:rotate-180`, a class in no source file: Tailwind emits utilities on
+demand, so the absence proved nothing was generated, not that the variant
+did not exist. What WAS wrong and is fixed: the editor's back arrow carried
+no flip — its own comment cited the false premise — and now mirrors in
+Arabic (`rtl:-scale-x-100`, verified live both directions); the stale
+comments and the session memory are corrected. One real limit found and
+recorded as a rule in `globals.css`: the `:lang` basis means an `rtl:`
+utility STILL FIRES inside this app's `dir="ltr"` islands (money, phone
+figures — probed live), so `rtl:` must never be used inside an island —
+logical properties there; and an `@custom-variant rtl` override of the
+built-in name is SILENTLY IGNORED by Tailwind 4.3, which is why the rule is
+a comment, not a declaration. i18n 22/22, builder-sections 73/73.
 
 **Phase 5, 6 and 7 are complete. LEGACY PARITY IS REACHED — Tiers 1, 2 and 3 of
 `LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that
