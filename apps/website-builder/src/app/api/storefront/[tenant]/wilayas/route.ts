@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 import { withTenant } from "@landingos/db";
 
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
+import { deliveryPricesFor } from "@/lib/storefront/delivery";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
  * form needs no second request.
  */
 export async function GET(
-  _req: Request,
+  req: NextRequest,
   ctx: { params: Promise<{ tenant: string }> },
 ) {
   const { tenant: slug } = await ctx.params;
@@ -27,8 +28,17 @@ export async function GET(
     );
   }
 
+  /* LB.20 — which product is being quoted for. Optional, so a caller that does
+     not send it gets the company's rates exactly as before; the storefront's
+     purchase form sends it, which is what makes a per-product price visible in
+     the destination dropdown BEFORE checkout rather than as a surprise at the
+     end. */
+  const landingPageId = req.nextUrl.searchParams.get("landingPageId")?.trim() || null;
+
   const items = await withTenant(tenant.id, async (db) => {
-    const prices = await (db as any).tenantDeliveryPrice.findMany();
+    // The same resolver the checkout charges from.
+    const priceMap = await deliveryPricesFor(db as never, landingPageId);
+    const prices = [...priceMap.values()];
     if (prices.length === 0) return [];
 
     const wilayas = await (db as any).wilaya.findMany({

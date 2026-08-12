@@ -5,6 +5,7 @@ import { Prisma, withTenant } from "@landingos/db";
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
 import { allowRequest, clientIp, checkoutLimit } from "@/lib/storefront/rate-limit";
 import { CheckoutBody } from "@/lib/storefront/contract";
+import { deliveryPricesFor, priceForMethod } from "@/lib/storefront/delivery";
 import { triggerOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 import { dispatchTrackingEvent } from "@/lib/tracking/dispatch";
 import { hasErp, fulfilmentFromSale } from "@/lib/erp/from-sale";
@@ -82,17 +83,16 @@ export async function POST(
       });
       if (!wilaya) return { error: fail(422, "UNKNOWN_DESTINATION", "Choose a wilaya.") };
 
-      const price = await (db as any).tenantDeliveryPrice.findUnique({
-        where: { tenantId_wilayaId: { tenantId: tenant.id, wilayaId: input.wilayaId } },
-      });
+      /* LB.20 — the SAME resolver `/wilayas` quotes from, so the price the
+         customer was shown and the price they are charged cannot differ. A
+         per-product override wins; absence means the company's rate. */
+      const prices = await deliveryPricesFor(db as never, page.id);
+      const price = prices.get(input.wilayaId);
       if (!price) {
         return { error: fail(422, "UNDELIVERABLE", "We do not deliver to that wilaya yet.") };
       }
 
-      const shippingPrice =
-        input.shippingMethod === "DESK"
-          ? price.deskPrice ?? price.homePrice
-          : price.homePrice;
+      const shippingPrice = priceForMethod(price, input.shippingMethod);
 
       // Variant extras come from the tenant's own rows, never the request.
       // ALL money stays Decimal end to end (M-06): these columns are Decimal,

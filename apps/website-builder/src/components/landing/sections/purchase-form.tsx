@@ -206,7 +206,11 @@ export function PurchaseForm({
   // envelope `{ data: { items } }`; reading `data` directly is the exact
   // mistake that took the whole page down (B-01).
   React.useEffect(() => {
-    fetch(api("/wilayas"))
+    /* LB.20 — quoted FOR THIS PRODUCT. Without the id the route answers with
+       the company's rates, and a page with its own delivery price would show
+       one number in the dropdown and charge another at checkout. The checkout
+       route resolves from the same function with the same id. */
+    fetch(api(`/wilayas?landingPageId=${encodeURIComponent(landingId)}`))
       .then((r) => r.json())
       .then((json) => {
         if (!json?.success || !Array.isArray(json.data?.items)) return;

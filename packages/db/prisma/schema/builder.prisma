@@ -87,6 +87,9 @@ model LandingPage {
   setting     LandingSetting?
   salesOrders SalesOrder[]
   draftOrders DraftOrder[]
+  // LB.20 — this product's own delivery prices, where they differ from the
+  // company's. Absence means the company's price applies.
+  deliveryPrices LandingDeliveryPrice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -245,8 +248,10 @@ model Wilaya {
   name   String
   nameAr String?
 
-  baladias       Baladia[]
-  deliveryPrices TenantDeliveryPrice[]
+  baladias           Baladia[]
+  deliveryPrices     TenantDeliveryPrice[]
+  // LB.20 — the per-product overrides that name this wilaya.
+  pageDeliveryPrices LandingDeliveryPrice[]
 
   createdAt DateTime @default(now())
 }
@@ -282,6 +287,56 @@ model TenantDeliveryPrice {
 
   @@unique([tenantId, wilayaId])
   @@index([tenantId])
+}
+
+// A delivery price for ONE product, overriding the tenant-wide row above — LB.20.
+//
+// WHY A SECOND TABLE RATHER THAN A NULLABLE landingPageId ON THE FIRST. The
+// existing row is unique on (tenantId, wilayaId) and that uniqueness is what
+// makes "the company's price for Alger" a single fact. Adding a nullable page
+// column would make the key (tenantId, wilayaId, landingPageId) with NULL
+// meaning "the default" — and in Postgres NULLs are not equal to each other, so
+// the constraint would stop preventing duplicate defaults. Two tables keep both
+// keys total.
+//
+// A row here means "this product costs THIS much to deliver to that wilaya".
+// Absence means "use the company's price", which is what makes the feature
+// additive: a tenant who never touches it is unaffected, and a page priced for
+// three wilayas falls back for the other fifty-five.
+//
+// Deliberately NOT a copy of every wilaya per page. A product that ships at the
+// standard rate everywhere except Tamanrasset should be one row, not 58 — and
+// snapshotting all of them would freeze the company's prices at the moment the
+// page was made, so a later change to the standard rate would silently miss it.
+model LandingDeliveryPrice {
+  id            String @id @default(cuid())
+  tenantId      String
+  landingPageId String
+  wilayaId      Int
+
+  homePrice Decimal
+  deskPrice Decimal?
+
+  landingPage LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+  wilaya      Wilaya      @relation(fields: [wilayaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Cascade on the page, so deleting a product takes its overrides with it —
+  // an orphaned price row would be invisible and would apply to nothing.
+  //
+  // LEADS WITH tenantId, which `constraints.test.ts` enforces on every
+  // tenant-scoped model. It is redundant here in the strict sense — a
+  // landingPageId already belongs to exactly one tenant, so (landingPageId,
+  // wilayaId) is transitively per-tenant — and that is precisely why the rule
+  // is mechanical rather than case-by-case: "this one is safe because of a
+  // relation somewhere else" is an argument that has to be re-made correctly
+  // every time somebody adds a constraint, and it only has to be got wrong
+  // once. The index is no weaker for carrying the column.
+  @@unique([tenantId, landingPageId, wilayaId])
+  @@index([tenantId])
+  @@index([tenantId, landingPageId])
 }
 
 // -----------------------------------------------------------------------------

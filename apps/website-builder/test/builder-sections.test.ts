@@ -1129,3 +1129,154 @@ describe('a theme can be built from a product image (LB.22)', () => {
     assert.equal(res.status, 404);
   });
 });
+
+/* =============================================================================
+ * LB.20 — a delivery price that belongs to ONE product.
+ *
+ * THE ASSERTION THAT MATTERS IS THE THIRD ONE. A per-product price is only safe
+ * if the number the customer is SHOWN and the number they are CHARGED come from
+ * the same place. Two endpoints read delivery prices — `/wilayas` fills the
+ * destination dropdown, `/orders` prices the sale — and before this slice each
+ * built its own query. A feature that let them diverge would bill people
+ * something other than what they agreed to, and no suite over either route
+ * alone would notice.
+ *
+ * Absence is the other half of the contract: a wilaya with no override must
+ * fall back to the company's price — not become free, and not become
+ * undeliverable.
+ * ========================================================================== */
+describe('a product can carry its own delivery prices (LB.20)', () => {
+  const COMPANY_HOME = '400';
+  const COMPANY_DESK = '250';
+  const OVERRIDE_HOME = '1500';
+  let slug = '';
+
+  before(async () => {
+    if (skip) return;
+    slug = (await asPlatform().tenant.findUnique({
+      where: { id: tenant }, select: { slug: true },
+    }))!.slug;
+
+    /* The company's own rates, which the override must beat on wilaya 1 and
+       wilaya 16 must keep. Written directly: this suite's tenant is created
+       bare, and the point of the test is the override, not the settings screen. */
+    await withTenant(tenant, async (tx) => {
+      for (const wilayaId of [1, 16]) {
+        await (tx as any).tenantDeliveryPrice.upsert({
+          where: { tenantId_wilayaId: { tenantId: tenant, wilayaId } },
+          update: { homePrice: COMPANY_HOME, deskPrice: COMPANY_DESK },
+          create: { tenantId: tenant, wilayaId, homePrice: COMPANY_HOME, deskPrice: COMPANY_DESK },
+        });
+      }
+    });
+
+    // The page has to be published for the storefront routes to price it.
+    await api(`/api/builder/landings/${pageId}/publish`, tokens.owner, { method: 'POST' });
+  });
+
+  after(async () => {
+    if (skip) return;
+    await api(`/api/builder/landings/${pageId}/delivery-prices`, tokens.owner, {
+      method: 'PUT',
+      body: JSON.stringify({ items: [] }),
+    });
+  });
+
+  test('with no override, the page carries none and the company’s price applies', async () => {
+    const r = await api(`/api/builder/landings/${pageId}/delivery-prices`, tokens.owner);
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body.data.items, []);
+
+    const quoted = await (await fetch(
+      `${BASE}/api/storefront/${slug}/wilayas?landingPageId=${pageId}`,
+    )).json();
+    const w1 = quoted.data.items.find((w: { id: number }) => w.id === 1);
+    assert.equal(w1.homePrice, COMPANY_HOME);
+  });
+
+  test('an override changes what the customer is QUOTED, for that page only', async () => {
+    const put = await api(`/api/builder/landings/${pageId}/delivery-prices`, tokens.owner, {
+      method: 'PUT',
+      body: JSON.stringify({ items: [{ wilayaId: 1, homePrice: OVERRIDE_HOME, deskPrice: '900' }] }),
+    });
+    assert.equal(put.status, 200);
+
+    const quoted = await (await fetch(
+      `${BASE}/api/storefront/${slug}/wilayas?landingPageId=${pageId}`,
+    )).json();
+    assert.equal(quoted.data.items.find((w: { id: number }) => w.id === 1).homePrice, OVERRIDE_HOME);
+
+    // Wilaya 16 has no override and must keep the company's rate — the
+    // override is a layer, not a replacement.
+    assert.equal(quoted.data.items.find((w: { id: number }) => w.id === 16).homePrice, COMPANY_HOME);
+
+    // Without the page id the route still answers the COMPANY's rates, so an
+    // older client is unaffected and the price is genuinely per-product.
+    const plain = await (await fetch(`${BASE}/api/storefront/${slug}/wilayas`)).json();
+    assert.equal(plain.data.items.find((w: { id: number }) => w.id === 1).homePrice, COMPANY_HOME);
+  });
+
+  test('and the customer is CHARGED exactly what they were quoted', async () => {
+    const quoted = await (await fetch(
+      `${BASE}/api/storefront/${slug}/wilayas?landingPageId=${pageId}`,
+    )).json();
+    const w1 = quoted.data.items.find((w: { id: number }) => w.id === 1);
+
+    const res = await fetch(`${BASE}/api/storefront/${slug}/orders`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        landingPageId: pageId,
+        customerName: `LB20 ${stamp}`,
+        phone: '0555010203',
+        wilayaId: 1,
+        baladiaName: w1.baladias[0].name,
+        quantity: 1,
+        variantIds: [],
+        shippingMethod: 'HOME',
+      }),
+    });
+    assert.equal(res.status, 201);
+    const created = await res.json();
+
+    // The stored commercial snapshot, not the response summary: the frozen row
+    // is what the merchant ships against and what the ERP bills.
+    const order = await api(`/api/builder/orders/${created.data.id}`, tokens.owner);
+    assert.equal(
+      order.body.data.shippingPrice,
+      w1.homePrice,
+      'the charged shipping differs from the quoted shipping',
+    );
+    assert.notEqual(
+      order.body.data.shippingPrice,
+      COMPANY_HOME,
+      'the override was ignored and the company rate was charged',
+    );
+  });
+
+  test('one wilaya cannot be priced twice, and an unknown one is refused', async () => {
+    const dup = await api(`/api/builder/landings/${pageId}/delivery-prices`, tokens.owner, {
+      method: 'PUT',
+      body: JSON.stringify({
+        items: [{ wilayaId: 1, homePrice: '100' }, { wilayaId: 1, homePrice: '200' }],
+      }),
+    });
+    assert.equal(dup.status, 422);
+    assert.equal(dup.body.error.code, 'DUPLICATE_WILAYA');
+
+    const unknown = await api(`/api/builder/landings/${pageId}/delivery-prices`, tokens.owner, {
+      method: 'PUT',
+      body: JSON.stringify({ items: [{ wilayaId: 9999, homePrice: '100' }] }),
+    });
+    assert.equal(unknown.status, 422);
+    assert.equal(unknown.body.error.code, 'UNKNOWN_DESTINATION');
+  });
+
+  test('another tenant cannot price this page', async () => {
+    const r = await api(`/api/builder/landings/${pageId}/delivery-prices`, tokens.other, {
+      method: 'PUT',
+      body: JSON.stringify({ items: [{ wilayaId: 1, homePrice: '1' }] }),
+    });
+    assert.equal(r.status, 404);
+  });
+});
