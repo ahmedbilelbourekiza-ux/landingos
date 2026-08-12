@@ -9,6 +9,7 @@ import { requireProduct } from "@/lib/console/product-page";
 import { PageHeader, PageBody, EmptyState } from "@/components/console/ui/primitives";
 import { DataTable, StatusPill } from "@/components/console/data-table";
 import { PageRowActions } from "@/components/console/builder/page-row-actions";
+import { PublishToErpPanel } from "@/components/console/builder/publish-to-erp";
 import { actionErrors } from "@/lib/console/action-errors";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,12 @@ export default async function BuilderPagesScreen() {
   const { session, locale: raw, t } = await requireProduct("website-builder", "/console/builder/pages");
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
   const mayEdit = can(session.auth!, "website-builder:pages:write");
+  /* LB.21 — the control only exists for a tenant that HAS the Manager and may
+     write its catalogue. A builder-only company has nothing to publish into,
+     and offering the button would be a control that always refuses. */
+  const hasErpProduct =
+    session.products.some((p) => p.id === "erp") &&
+    can(session.auth!, "erp:products:write");
   const errors = actionErrors(t);
   const tenantSlug = session.tenant!.slug;
 
@@ -67,6 +74,13 @@ export default async function BuilderPagesScreen() {
           ) : undefined
         }
       />
+
+      {/* LB.21 — the bridge into the Manager, offered only to a tenant that
+          HAS the Manager and may write its catalogue. The route checks both
+          again; this decides whether the control exists at all (D-06.2). */}
+      {mayEdit && hasErpProduct && (
+        <PublishToErpPanel errors={errors} />
+      )}
 
       {pages.length === 0 ? (
         <EmptyState

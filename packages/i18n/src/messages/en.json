@@ -38,7 +38,11 @@
       "colPage": "Page",
       "colPrice": "Price",
       "colCategory": "Category",
-      "colUpdated": "Updated"
+      "colUpdated": "Updated",
+      "publishToErp": "Send to the Manager",
+      "publishAllToErp": "Send all published pages to the Manager",
+      "publishToErpHint": "Creates a catalogue product for each page, so orders count toward it and you can track cost and stock. Running it again updates instead of duplicating.",
+      "publishToErpDone": "{created} created, {adopted} matched to existing products, {updated} updated."
     },
     "categories": {
       "create": "New category",
@@ -1085,7 +1089,8 @@
       "financeDisabled": "The finance module is switched off for this company. Turn it back on in Automation rules.",
       "noColours": "That image has no colour to build a theme from. Try a photograph of the product itself.",
       "duplicateWilaya": "That wilaya is already priced. Change the existing row instead.",
-      "unknownDestination": "That destination is not a wilaya we know."
+      "unknownDestination": "That destination is not a wilaya we know.",
+      "noErp": "This company does not have the Manager, so there is no catalogue to send to."
     },
     "previous": "Previous",
     "next": "Next",

@@ -38,7 +38,11 @@
       "colPage": "Page",
       "colPrice": "Prix",
       "colCategory": "Catégorie",
-      "colUpdated": "Mise à jour"
+      "colUpdated": "Mise à jour",
+      "publishToErp": "Envoyer vers le Manager",
+      "publishAllToErp": "Envoyer toutes les pages publiées vers le Manager",
+      "publishToErpHint": "Crée un produit du catalogue pour chaque page, afin que les commandes lui soient attribuées et que vous puissiez suivre coût et stock. Relancer met à jour au lieu de dupliquer.",
+      "publishToErpDone": "{created} créés, {adopted} associés à des produits existants, {updated} mis à jour."
     },
     "categories": {
       "create": "Nouvelle catégorie",
@@ -1085,7 +1089,8 @@
       "financeDisabled": "Le module Finances est désactivé pour cette société. Réactivez-le dans les règles d'automatisation.",
       "noColours": "Cette image n'a pas de couleur permettant de créer un thème. Essayez une photo du produit lui-même.",
       "duplicateWilaya": "Cette wilaya a déjà un tarif. Modifiez la ligne existante.",
-      "unknownDestination": "Cette destination n'est pas une wilaya connue."
+      "unknownDestination": "Cette destination n'est pas une wilaya connue.",
+      "noErp": "Cette société n'a pas le Manager, il n'y a donc pas de catalogue de destination."
     },
     "previous": "Précédent",
     "next": "Suivant",

@@ -57,6 +57,9 @@ const ERROR_KEYS: Record<string, string> = {
   // LB.20. Both name the row the merchant has to go and change.
   DUPLICATE_WILAYA: "common.error.duplicateWilaya",
   UNKNOWN_DESTINATION: "common.error.unknownDestination",
+  // LB.21. Names the reason rather than reporting a failure: there is no
+  // catalogue because the company has not bought the Manager.
+  NO_ERP: "common.error.noErp",
   // The five ways a carrier can refuse, and they are FIVE because each one has a
   // different fix: change the carrier's integration, correct the address on the
   // order, correct what was sent, wait, or stop asking a carrier that only

@@ -25,6 +25,9 @@ const userIds: string[] = [];
 const tokens: Record<string, string> = {};
 let tenant = '';
 let otherTenant = '';
+/** LB.21 — the tenant that holds both products. */
+let bothTenant = '';
+let bothPageId = '';
 let pageId = '';
 let otherPageId = '';
 let orderId = '';
@@ -56,6 +59,10 @@ before(async () => {
   for (const [slug, ents, key] of [
     [`sec-a-${stamp}`, ['product.website-builder'], 'owner'],
     [`sec-b-${stamp}`, ['product.website-builder'], 'other'],
+    /* LB.21 — a tenant holding BOTH products. Publishing into the catalogue
+       needs the Manager, and the two above deliberately do not have it: the
+       builder-only case is what standalone mode is, and it has its own test. */
+    [`sec-both-${stamp}`, ['product.website-builder', 'product.erp'], 'both'],
   ] as const) {
     const t = await asPlatform().tenant.create({ data: { slug, name: slug } });
     await withTenant(t.id, (tx) =>
@@ -70,7 +77,9 @@ before(async () => {
       (tx as any).membership.create({ data: { tenantId: t.id, userId: u.id, role: 'OWNER' } }),
     );
     tokens[key] = (await createSession(u.id, t.id)).token;
-    if (key === 'owner') tenant = t.id; else otherTenant = t.id;
+    if (key === 'owner') tenant = t.id;
+    else if (key === 'both') bothTenant = t.id;
+    else otherTenant = t.id;
   }
 
   // A tenant that never bought the builder — the only way to prove the
@@ -121,6 +130,17 @@ before(async () => {
     }),
   )).id;
 
+  // LB.21 — a published page in the tenant that owns both products.
+  bothPageId = (await withTenant(bothTenant, (tx) =>
+    (tx as any).landingPage.create({
+      data: {
+        tenantId: bothTenant, title: `Publishable ${stamp}`,
+        slug: `publishable-${stamp}`, price: 7000, published: true,
+      },
+      select: { id: true },
+    }),
+  )).id;
+
   orderId = (await withTenant(tenant, (tx) =>
     (tx as any).salesOrder.create({
       data: {
@@ -137,12 +157,12 @@ after(async () => {
   if (skip) return;
   for (const id of userIds) {
     await destroySessionsForUser(id);
-    for (const t of [tenant, otherTenant, unentitledTenant].filter(Boolean)) {
+    for (const t of [tenant, otherTenant, bothTenant, unentitledTenant].filter(Boolean)) {
       await withTenant(t, (tx) => (tx as any).membership.deleteMany({ where: { userId: id } }));
     }
     await asPlatform().user.delete({ where: { id } }).catch(() => {});
   }
-  await asPlatform().tenant.deleteMany({ where: { id: { in: [tenant, otherTenant, unentitledTenant].filter(Boolean) } } });
+  await asPlatform().tenant.deleteMany({ where: { id: { in: [tenant, otherTenant, bothTenant, unentitledTenant].filter(Boolean) } } });
   await disconnect();
 });
 
@@ -1276,6 +1296,129 @@ describe('a product can carry its own delivery prices (LB.20)', () => {
     const r = await api(`/api/builder/landings/${pageId}/delivery-prices`, tokens.other, {
       method: 'PUT',
       body: JSON.stringify({ items: [{ wilayaId: 1, homePrice: '1' }] }),
+    });
+    assert.equal(r.status, 404);
+  });
+});
+
+/* =============================================================================
+ * LB.21 — a landing page becomes a catalogue product.
+ *
+ * THE TWO ASSERTIONS THAT MATTER ARE IDEMPOTENCY AND ADOPTION, because both are
+ * ways this could quietly corrupt a catalogue rather than fail loudly:
+ *
+ *   - "Send all" is a button somebody presses twice. A second run must UPDATE,
+ *     not insert twins.
+ *   - A merchant who already typed their products in by hand must not end up
+ *     with two rows per product. Two catalogue rows answering to one normalised
+ *     name make every order naming it attributable to NEITHER — the counters
+ *     stop moving and revenue would be counted twice, once per row. That is
+ *     what `duplicateProductNames` exists to detect, and a naive importer
+ *     produces exactly it on the first run for every product they already had.
+ *
+ * These run against the tenant that owns BOTH products, because the two the
+ * suite uses elsewhere are deliberately builder-only.
+ * ========================================================================== */
+describe('landing pages can be published into the catalogue (LB.21)', { skip }, () => {
+  test('a published page becomes a catalogue product, once', async () => {
+    const first = await api('/api/builder/publish-to-erp', tokens.both, {
+      method: 'POST',
+      body: JSON.stringify({ scope: 'one', landingPageId: bothPageId }),
+    });
+    assert.equal(first.status, 200);
+    assert.equal(first.body.data.items.length, 1);
+    assert.equal(first.body.data.created, 1);
+    const productId = first.body.data.items[0].productId;
+
+    // Second run: the SAME row, updated. Not a twin.
+    const second = await api('/api/builder/publish-to-erp', tokens.both, {
+      method: 'POST',
+      body: JSON.stringify({ scope: 'one', landingPageId: bothPageId }),
+    });
+    assert.equal(second.status, 200);
+    assert.equal(second.body.data.created, 0, 'a second run created a duplicate');
+    assert.equal(second.body.data.updated, 1);
+    assert.equal(second.body.data.items[0].productId, productId);
+  });
+
+  test('an existing catalogue product with the same name is adopted, not duplicated', async () => {
+    const name = `Adoptable ${stamp}`;
+    const typed = await api('/api/erp/products', tokens.both, {
+      method: 'POST',
+      body: JSON.stringify({ name, costPrice: '1234' }),
+    });
+    assert.equal(typed.status, 201);
+    const typedId = typed.body.data.id;
+
+    const page = await withTenant(bothTenant, (tx) =>
+      (tx as any).landingPage.create({
+        data: {
+          tenantId: bothTenant, title: name, slug: `adoptable-${stamp}`,
+          price: 9000, published: true,
+        },
+        select: { id: true },
+      }),
+    );
+
+    const res = await api('/api/builder/publish-to-erp', tokens.both, {
+      method: 'POST',
+      body: JSON.stringify({ scope: 'one', landingPageId: page.id }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.adopted, 1, 'the existing product was not adopted');
+    assert.equal(res.body.data.created, 0, 'a duplicate was created alongside it');
+    assert.equal(res.body.data.items[0].productId, typedId);
+
+    /* AND THE MANAGER'S OWN COLUMNS SURVIVE. The landing page is the authority
+       for name, description, price and image — not for the cost basis, which a
+       manager maintains and every profit figure derives from. An import that
+       reset it to zero would corrupt the books silently, which is the failure
+       the create route once had. */
+    const after = await api(`/api/erp/products/${typedId}`, tokens.both);
+    assert.equal(String(after.body.data.costPrice), '1234');
+    // The page IS the authority for price, so that one moved.
+    assert.equal(String(after.body.data.price), '9000');
+  });
+
+  test('“all” takes the published pages and leaves drafts alone', async () => {
+    const draft = await withTenant(bothTenant, (tx) =>
+      (tx as any).landingPage.create({
+        data: {
+          tenantId: bothTenant, title: `Draft ${stamp}`,
+          slug: `draft-${stamp}`, price: 100, published: false,
+        },
+        select: { id: true },
+      }),
+    );
+
+    const r = await api('/api/builder/publish-to-erp', tokens.both, {
+      method: 'POST',
+      body: JSON.stringify({ scope: 'all' }),
+    });
+    assert.equal(r.status, 200);
+    const touched = r.body.data.items.map((i: { landingPageId: string }) => i.landingPageId);
+    assert.ok(touched.includes(bothPageId), 'a published page was skipped');
+    assert.ok(
+      !touched.includes(draft.id),
+      'a draft was published into the catalogue — half-written experiments do not belong there',
+    );
+  });
+
+  test('a builder-only tenant is refused rather than given a catalogue', async () => {
+    const r = await api('/api/builder/publish-to-erp', tokens.owner, {
+      method: 'POST',
+      body: JSON.stringify({ scope: 'all' }),
+    });
+    // 403 from the permission gate or 409 NO_ERP from the entitlement gate —
+    // which fires depends on the role. What must never happen is a 200 that
+    // writes into a catalogue the company does not have.
+    assert.ok(r.status === 403 || r.status === 409, `unexpected ${r.status}`);
+  });
+
+  test('naming another tenant’s page is a 404, not a cross-tenant write', async () => {
+    const r = await api('/api/builder/publish-to-erp', tokens.both, {
+      method: 'POST',
+      body: JSON.stringify({ scope: 'one', landingPageId: otherPageId }),
     });
     assert.equal(r.status, 404);
   });
