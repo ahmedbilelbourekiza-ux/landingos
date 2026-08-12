@@ -317,7 +317,14 @@
       "themeFromImage": "En créer un à partir de l'image du produit",
       "themeFromImageHint": "Reprend les couleurs de votre image principale et les enregistre comme nouveau thème.",
       "themeFromImageNeedsHero": "Ajoutez d'abord une image principale, dans Images et médias.",
-      "themeGenerating": "Lecture des couleurs…"
+      "themeGenerating": "Lecture des couleurs…",
+      "pageDeliveryPrices": "Tarifs de livraison pour ce produit",
+      "pageDeliveryHint": "Uniquement pour les wilayas dont le coût diffère pour ce produit. Toute wilaya omise conserve le tarif de la société, dans Paramètres → Tarifs de livraison.",
+      "addOverride": "Ajouter une wilaya",
+      "noOverrides": "Aucune exception — ce produit est livré aux tarifs de la société partout.",
+      "overrideHome": "Domicile",
+      "overrideDesk": "Bureau",
+      "removeOverride": "Retirer cette wilaya"
     }
   },
   "erp": {
@@ -1076,7 +1083,9 @@
       "carrierNoPolling": "Ce transporteur envoie seulement des mises à jour ; il n'y a rien à lui demander.",
       "tooManyRows": "Cet export est trop volumineux. Affinez le filtre et réessayez.",
       "financeDisabled": "Le module Finances est désactivé pour cette société. Réactivez-le dans les règles d'automatisation.",
-      "noColours": "Cette image n'a pas de couleur permettant de créer un thème. Essayez une photo du produit lui-même."
+      "noColours": "Cette image n'a pas de couleur permettant de créer un thème. Essayez une photo du produit lui-même.",
+      "duplicateWilaya": "Cette wilaya a déjà un tarif. Modifiez la ligne existante.",
+      "unknownDestination": "Cette destination n'est pas une wilaya connue."
     },
     "previous": "Précédent",
     "next": "Suivant",

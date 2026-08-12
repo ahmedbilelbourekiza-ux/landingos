@@ -54,6 +54,9 @@ const ERROR_KEYS: Record<string, string> = {
   // LB.22. Also its own, and for the same reason: it names what to try instead
   // (a photograph of the product) rather than reporting a failure.
   NO_COLOURS: "common.error.noColours",
+  // LB.20. Both name the row the merchant has to go and change.
+  DUPLICATE_WILAYA: "common.error.duplicateWilaya",
+  UNKNOWN_DESTINATION: "common.error.unknownDestination",
   // The five ways a carrier can refuse, and they are FIVE because each one has a
   // different fix: change the carrier's integration, correct the address on the
   // order, correct what was sent, wait, or stop asking a carrier that only

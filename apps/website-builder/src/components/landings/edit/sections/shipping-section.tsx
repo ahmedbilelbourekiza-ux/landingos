@@ -12,6 +12,7 @@ import {
 } from "@/components/landings/edit/section";
 import type { ShippingPreviewValues } from "@/types/preview";
 import { useBuilderApi } from "@/lib/builder/api-base";
+import { PageDeliveryPrices, type DeliveryOverride } from "./page-delivery-prices";
 
 // Which shipping methods this product offers.
 //
@@ -66,6 +67,42 @@ export function ShippingSection({
   const [values, setValues] = React.useState<ShippingPreviewValues>(initialValues);
   const [validationError, setValidationError] = React.useState<string | null>(null);
 
+  /* LB.20 — this product's delivery-price exceptions, loaded once and saved
+     with the methods. One thought ("desk only, and dearer in Adrar"), one
+     save: two buttons would be two chances to do half of it. */
+  const [overrides, setOverrides] = React.useState<DeliveryOverride[]>([]);
+  React.useEffect(() => {
+    fetch(api(`/landings/${landingId}/delivery-prices`))
+      .then((r) => r.json())
+      .then((json) => {
+        if (!json?.success || !Array.isArray(json.data?.items)) return;
+        setOverrides(
+          json.data.items.map((r: { wilayaId: number; homePrice: string; deskPrice: string | null }) => ({
+            wilayaId: r.wilayaId,
+            homePrice: r.homePrice,
+            deskPrice: r.deskPrice ?? "",
+          })),
+        );
+      })
+      .catch(() => {
+        // The section still works for the methods; the list stays empty rather
+        // than taking the whole editor down over a price list.
+      });
+    /* ON MOUNT ONLY, and the empty array is load-bearing rather than lazy.
+     *
+     * `useBuilderApi()` builds a NEW closure on every render (see
+     * lib/builder/api-base.tsx — it returns an arrow, not a memo), so listing
+     * `api` here re-runs this effect on every single render and calls
+     * `setOverrides` with the SERVER's rows. The symptom is that a row the
+     * merchant just added disappears a moment later, and no unit test sees it
+     * because it needs two renders. Found by driving the real control.
+     *
+     * `landingId` cannot change without remounting the editor. Every other
+     * section in this directory loads its data the same way for the same
+     * reason. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const section = useSectionState({
     save: async () => {
       const res = await fetch(api(`/landings/${landingId}/shipping`), {
@@ -73,8 +110,26 @@ export function ShippingSection({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
       });
-      const json = await res.json();
-      refuseIfFailed(json);
+      refuseIfFailed(await res.json());
+
+      /* A row with no home price is INCOMPLETE, not an instruction to charge
+         nothing — so it is dropped rather than sent as zero. The alternative
+         is a product that silently ships free to one wilaya because somebody
+         opened a row and did not finish it. */
+      const items = overrides
+        .filter((r) => r.homePrice.trim() !== "")
+        .map((r) => ({
+          wilayaId: r.wilayaId,
+          homePrice: r.homePrice.trim(),
+          deskPrice: r.deskPrice.trim() === "" ? null : r.deskPrice.trim(),
+        }));
+
+      const priced = await fetch(api(`/landings/${landingId}/delivery-prices`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      refuseIfFailed(await priced.json());
     },
   });
 
@@ -196,6 +251,8 @@ export function ShippingSection({
             </label>
           );
         })}
+
+        <PageDeliveryPrices rows={overrides} onChange={(rows) => { setOverrides(rows); section.markDirty(); }} />
 
         <p className="text-[11px] text-muted-foreground">
           {enabledCount === 1

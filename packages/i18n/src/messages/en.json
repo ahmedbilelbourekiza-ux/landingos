@@ -317,7 +317,14 @@
       "themeFromImage": "Build one from the product image",
       "themeFromImageHint": "Takes the colours from your hero image and saves them as a new theme.",
       "themeFromImageNeedsHero": "Add a hero image first, in Images & media.",
-      "themeGenerating": "Reading the colours…"
+      "themeGenerating": "Reading the colours…",
+      "pageDeliveryPrices": "Delivery prices for this product",
+      "pageDeliveryHint": "Only for wilayas that cost something different for this product. Anywhere you leave out keeps the company's price from Settings → Delivery prices.",
+      "addOverride": "Add a wilaya",
+      "noOverrides": "No exceptions — this product ships at the company's prices everywhere.",
+      "overrideHome": "Home",
+      "overrideDesk": "Desk",
+      "removeOverride": "Remove this wilaya"
     }
   },
   "erp": {
@@ -1076,7 +1083,9 @@
       "carrierNoPolling": "This carrier only pushes updates, so there is nothing to ask it.",
       "tooManyRows": "That export is too large. Narrow the filter and try again.",
       "financeDisabled": "The finance module is switched off for this company. Turn it back on in Automation rules.",
-      "noColours": "That image has no colour to build a theme from. Try a photograph of the product itself."
+      "noColours": "That image has no colour to build a theme from. Try a photograph of the product itself.",
+      "duplicateWilaya": "That wilaya is already priced. Change the existing row instead.",
+      "unknownDestination": "That destination is not a wilaya we know."
     },
     "previous": "Previous",
     "next": "Next",
