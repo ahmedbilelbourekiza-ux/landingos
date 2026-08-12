@@ -12,6 +12,66 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.26** A landing page wears its OWN theme, never the viewer's dark mode
+  (12 August 2026, **local only — not pushed, not deployed**).
+
+  **The reported bug.** The editor preview's background followed the console's
+  dark/light toggle instead of the page's chosen colour template. Measured
+  live before changing anything, it was three defects sharing one mechanism:
+
+  1. **The mechanism.** next-themes (root layout, `defaultTheme="system"`)
+     stamps `.dark` + `color-scheme:dark` on `<html>` for EVERY route — the
+     storefront included, where it follows the VISITOR's OS preference. The
+     root `<body>` paints console `bg-background`; the landing template's
+     structural sections are console Tailwind tokens; and the page theme's
+     `--theme-background` was **written by the ThemeProvider and read by
+     nothing** — the canvas never had a reader. The 45 `--theme-*` usages
+     were accents only.
+  2. **The published page had it too, both ways:** it followed the console's
+     stored preference in the same browser, and an anonymous dark-OS visitor
+     (no stored preference) got `html.dark` and a near-black page against a
+     `#FAF9F6` theme — measured with emulated `prefers-color-scheme: dark`.
+  3. **Found on the way:** `GeneralPreviewValues.themeId` was declared,
+     initialised — and never sent by the section's preview watcher, whose
+     object REPLACES the slice. So both previews only ever rendered the SAVED
+     theme, a merchant trying a theme saw nothing until they saved, and the
+     first keystroke in General wiped even the saved id out of the preview
+     state.
+
+  **The fix, one scope for all three surfaces.** The landing `ThemeProvider`
+  now (a) PAINTS its canvas (`background-color`/`color` from the theme,
+  `color-scheme:light` against next-themes' html-level dark), and (b)
+  REDEFINES the console token names (`--background`, `--card`,
+  `--foreground`, `--muted-foreground` via `color-mix` of the theme's own
+  text and background, …) on its scope element. `@theme inline` makes every
+  Tailwind utility resolve `var(--background)` at the element it styles, so
+  the nearest declaration wins and `.dark` on `:root` cannot reach a landing
+  page — the storefront, the drawer preview and the (newly wrapped)
+  miniature preview all inherit the fix from the one component. The theme
+  fetch became `useSelectedLandingTheme`, shared by both previews (D-LP.3:
+  one vocabulary), and the General watcher now sends every field its type
+  declares. **The scope element is a PLAIN div** — framer-motion routes
+  `style` through its animation pipeline and kept serving the first theme's
+  resolved background after a switch (measured live, inline style already
+  correct); the motion div now only fades content.
+
+  **Verified live** against the rebuilt server, worst case (console
+  preference dark AND emulated dark OS, `html.dark` stamped): published page
+  canvas `#FAF9F6`, nav light, cards white, native inputs
+  `color-scheme:light`; both editor previews stable across the console
+  toggle; selecting a theme in the editor now recolours the miniature
+  without saving. **Suites:** storefront **33** (+1: the served page carries
+  the painted canvas and the redefined tokens) · builder-sections **73**
+  (+1: the editor preview renders inside a theme scope) · builder-api 23 ·
+  tracking 15.
+
+  **Recorded, not built:** the store HOME, category and thank-you pages still
+  follow the visitor's dark/light — they have no per-page theme to wear, and
+  which theme a STORE-level page should wear is a design question, not a
+  regression of this fix. The `/api/builder/themes` items also carry no
+  radius/shadow fields, so editor previews render without the theme's radii
+  (pre-existing, cosmetic, editor-only).
+
 - **LB.25** The Finances screen merges into the Calculator (12 August 2026,
   **local only — not pushed, not deployed**).
 

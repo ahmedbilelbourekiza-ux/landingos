@@ -132,15 +132,26 @@ export function GeneralSection({
   const descriptionValue = useWatch({ control, name: "description" });
   const buttonValue = useWatch({ control, name: "buttonText" });
   const announcementValue = useWatch({ control, name: "announcement" });
+  const themeIdValue = useWatch({ control, name: "themeId" });
+  const categoryIdValue = useWatch({ control, name: "categoryId" });
 
   React.useEffect(() => {
+    // The workspace REPLACES the slice with this object, so every field the
+    // GeneralPreviewValues type declares must be here. Found by the
+    // theme-bleed fix: `themeId` was declared, initialised — and never sent,
+    // so both previews rendered the page's SAVED theme, a merchant trying a
+    // theme saw nothing change until they saved, and the first keystroke in
+    // this section wiped even the saved id out of the preview state. The
+    // picker is a preview control like any other field.
     onPreviewChange({
       title: titleValue ?? "",
       description: descriptionValue ?? "",
       buttonText: buttonValue ?? "",
       announcement: announcementValue ?? "",
+      categoryId: categoryIdValue ?? null,
+      themeId: themeIdValue ?? null,
     });
-  }, [titleValue, descriptionValue, buttonValue, announcementValue, onPreviewChange]);
+  }, [titleValue, descriptionValue, buttonValue, announcementValue, categoryIdValue, themeIdValue, onPreviewChange]);
 
   const handleSave = async () => {
     const valid = await trigger();
@@ -160,8 +171,6 @@ export function GeneralSection({
   };
 
   const slugValue = useWatch({ control, name: "slug" });
-  const categoryIdValue = useWatch({ control, name: "categoryId" });
-  const themeIdValue = useWatch({ control, name: "themeId" });
   const descLength = (descriptionValue ?? "").length;
 
   /* LB.22 — generating a theme from the hero image.

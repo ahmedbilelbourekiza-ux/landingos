@@ -127,6 +127,49 @@ describe('a storefront is reachable at its own slug', { skip }, () => {
   });
 });
 
+describe("a landing page wears its OWN theme, never the viewer's dark mode", { skip }, () => {
+  // The theme-bleed fix. next-themes stamps `.dark` on <html> for EVERY route
+  // — the storefront included, where it follows the VISITOR's OS preference —
+  // and the template's structural sections are written in console Tailwind
+  // tokens. `--theme-background` was written by the ThemeProvider and read by
+  // nothing, so a customer with a dark phone saw a near-black page whatever
+  // the merchant themed. The fix is scoped: the provider PAINTS the canvas
+  // and redefines the console token names inside its own subtree, where the
+  // nearest declaration wins over `.dark`'s values on :root.
+  test('the served page paints the theme canvas and redefines the console tokens in scope', async () => {
+    const r = await get(`/${slugA}/shared-item`);
+    assert.equal(r.status, 200);
+
+    // The scope element (DEFAULT_THEME: the fixture page has no theme row).
+    const tag = r.text.match(/<div[^>]*data-landing-theme="default"[^>]*>/)?.[0] ?? '';
+    assert.notEqual(tag, '', 'the theme scope element is not in the served HTML');
+    const style = tag.match(/style="([^"]*)"/)?.[1] ?? '';
+    assert.notEqual(style, '', 'the theme scope carries no inline style');
+
+    // The canvas is painted from the theme — the reader --theme-background
+    // never had.
+    assert.match(style, /background-color:\s*#FAF9F6/i, 'the canvas is not the theme background');
+
+    // The console token names, redefined in scope. This is what makes `.dark`
+    // on <html> unable to reach a landing page: Tailwind v4 utilities resolve
+    // var(--background) at the element they style, and the nearest
+    // declaration wins.
+    for (const decl of [
+      '--background:#FAF9F6',
+      '--card:#FFFFFF',
+      '--foreground:#111827',
+      '--border:#E5E7EB',
+      '--muted:#F3F4F6',
+    ]) {
+      assert.ok(style.includes(decl), `${decl} missing — the console/visitor theme can leak in`);
+    }
+
+    // next-themes also writes `color-scheme: dark` on <html>; unoverridden,
+    // the purchase form's NATIVE widgets render dark chrome in a light page.
+    assert.match(style, /color-scheme:\s*light/);
+  });
+});
+
 describe('reserved slugs cannot be shadowed by a storefront (R-08)', { skip }, () => {
   test('platform paths still resolve to the platform', async () => {
     // If a tenant slug could shadow these, one company would break the

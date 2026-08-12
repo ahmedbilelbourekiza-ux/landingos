@@ -1,6 +1,8 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { ThemeProvider } from "@/components/landing/theme-provider";
+import type { LandingThemeData } from "@/types/theme";
 import type { PreviewDevice } from "./preview-device-toggle";
 import type { PreviewState } from "@/types/preview";
 import { PreviewAnnouncement } from "./preview/preview-announcement";
@@ -16,11 +18,20 @@ import { PreviewOrderForm } from "./preview/preview-order-form";
 // components in order. No business logic, no price computation, no
 // conditionals beyond what each child component owns internally. Adding a
 // new preview section means one import + one line here — nothing else.
+//
+// The scroll area is a landing ThemeProvider, not a plain div: the sections
+// inside are written in console Tailwind tokens, and without the theme scope
+// the miniature rendered the CONSOLE's dark/light palette instead of the
+// page's own theme — flipping with the console toggle (the theme-bleed fix).
+// The provider repaints those token names from the page's theme, exactly as
+// the drawer preview and the published page do.
 export function PreviewContent({
   device,
+  theme,
   preview,
 }: {
   device: PreviewDevice;
+  theme: LandingThemeData;
   preview: PreviewState;
 }) {
   const isMobile = device === "mobile";
@@ -28,13 +39,13 @@ export function PreviewContent({
   return (
     <div
       className={cn(
-        "flex flex-col overflow-hidden rounded-lg border bg-background",
+        "flex flex-col overflow-hidden rounded-lg border",
         isMobile
           ? "mx-auto aspect-[9/19] max-w-[220px]"
           : "aspect-[16/10]",
       )}
     >
-      <div className="flex-1 overflow-y-auto">
+      <ThemeProvider theme={theme} className="flex-1 overflow-y-auto">
         <PreviewAnnouncement preview={preview} />
         <PreviewHero preview={preview} />
         <PreviewGallery preview={preview} />
@@ -45,7 +56,7 @@ export function PreviewContent({
           <PreviewCTA preview={preview} />
         </div>
         <PreviewOrderForm preview={preview} />
-      </div>
+      </ThemeProvider>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { PreviewDeviceToggle, type PreviewDevice } from "./preview-device-toggle";
 import { PreviewContent } from "./preview-content";
+import { useSelectedLandingTheme } from "@/lib/landing/use-selected-theme";
 import type { PreviewState } from "@/types/preview";
 
 // Sticky right-column preview panel. Owns only the device toggle state.
@@ -29,6 +30,9 @@ export function PreviewPanel({
 }) {
   const t = useTranslations();
   const [device, setDevice] = React.useState<PreviewDevice>("desktop");
+  // The page's own theme, resolved from the editor's (possibly unsaved)
+  // selection — the miniature must never render the console's palette.
+  const theme = useSelectedLandingTheme(preview.general.themeId);
 
   return (
     <aside className="lg:sticky lg:top-32 lg:self-start">
@@ -38,7 +42,7 @@ export function PreviewPanel({
           <PreviewDeviceToggle value={device} onChange={setDevice} />
         </div>
 
-        <PreviewContent device={device} preview={preview} />
+        <PreviewContent device={device} theme={theme} preview={preview} />
 
         {isPublished && (
           <Button variant="outline" size="sm" asChild>

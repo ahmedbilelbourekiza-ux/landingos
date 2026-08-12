@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 import { useTranslations } from "next-intl";
 import {
   Sheet,
@@ -11,9 +10,8 @@ import {
 } from "@/components/ui/sheet";
 import { LandingTemplate } from "@/components/landing/landing-template";
 import { previewToLandingPage } from "@/lib/landing/preview-to-landing";
-import { DEFAULT_THEME, type LandingThemeData } from "@/types/theme";
+import { useSelectedLandingTheme } from "@/lib/landing/use-selected-theme";
 import type { PreviewState } from "@/types/preview";
-import { useBuilderApi } from "@/lib/builder/api-base";
 
 // Full-width drawer that renders the actual LandingTemplate with the current
 // preview state. Loads the selected theme from the API so the preview matches
@@ -27,24 +25,8 @@ export function PreviewDrawer({
   onOpenChange: (open: boolean) => void;
   preview: PreviewState;
 }) {
-  // Bound to the console API by BuilderApiProvider.
-  const api = useBuilderApi();
   const t = useTranslations();
-  const [theme, setTheme] = React.useState<LandingThemeData>(DEFAULT_THEME);
-
-  React.useEffect(() => {
-    const themeId = preview.general.themeId;
-    if (!themeId) { setTheme(DEFAULT_THEME); return; }
-    fetch(api("/themes"))
-      .then((r) => r.json())
-      .then((json) => {
-        // Platform envelope: the list is data.items (LB.2, B-05).
-        if (json.success && Array.isArray(json.data?.items)) {
-          const found = json.data.items.find((t: LandingThemeData) => t.id === themeId);
-          setTheme(found ?? DEFAULT_THEME);
-        }
-      });
-  }, [preview.general.themeId]);
+  const theme = useSelectedLandingTheme(preview.general.themeId);
 
   const landingPage = previewToLandingPage(preview);
 

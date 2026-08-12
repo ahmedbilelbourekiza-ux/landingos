@@ -27,6 +27,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.21**~~ | ~~Landing pages publish into the ERP catalogue~~ | M | **DONE 12 Aug 2026, local only.** All products or one. `CatalogProductLink` is the idempotency key; ADOPTION is what protects a catalogue the merchant already filled in by hand. builder-sections 67→72 |
 | ~~**LB.22**~~ | ~~A theme generated from a product image~~ | M | **DONE 12 Aug 2026, local only.** The hard part is readability, not colour-finding. builder-sections 58→62 |
 | ~~**LB.25**~~ | ~~Merge the Finances screen into the Calculator~~ | S–M | **DONE 12 Aug 2026, local only.** Measured first: both screens wrote the SAME record through the same route. The expense form + list and the superseded marker moved to `/console/erp/calculator`, now titled Finances; the finance screen and its nav item are deleted; the URL stays. erp/screens 173→172, finance 44, ai 31, access 205 |
+| ~~**LB.26**~~ | ~~The preview/storefront theme-bleed bug~~ | M | **DONE 12 Aug 2026, local only.** A landing page rendered the VIEWER's dark/light (console toggle in the editor; the visitor's OS on the published page) instead of its own theme — `--theme-background` had a writer and no reader. The ThemeProvider now paints its canvas and redefines the console token names in scope; the mini preview wraps in it; the never-sent `themeId` now reaches the preview state. storefront 33, builder-sections 73 |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
@@ -186,6 +187,39 @@ toggle removes/restores the single merged screen with analytics untouched.
 erp/screens 173 → **172** (the walkthrough row for the deleted screen),
 erp/finance 44/44, erp/ai 31/31, erp/access 205/205, console-shell 20/20,
 i18n 22/22, product-registry 36/36, calc 20/20.
+
+**LB.26 — DONE. A landing page wears its OWN theme, never the viewer's dark
+mode (a later 12 Aug session).** Reported as the editor preview's background
+following the console's dark/light toggle instead of the page's colour
+template. Measured live, it was one mechanism with three symptoms: next-themes
+in the ROOT layout stamps `.dark` + `color-scheme:dark` on `<html>` for every
+route — the STOREFRONT included, where `defaultTheme="system"` means a real
+customer's OS preference — the root `<body>` paints console `bg-background`,
+the template's structural sections are console Tailwind tokens, and the page
+theme's `--theme-background` was **written by the ThemeProvider and read by
+nothing**. The published page was confirmed dark for an emulated dark-OS
+anonymous visitor against a `#FAF9F6` theme. The fix is ONE scope: the landing
+`ThemeProvider` paints its canvas (`background-color`, `color`,
+`color-scheme:light`) and REDEFINES the console token names on its scope
+element — `@theme inline` makes utilities resolve `var(--background)` at the
+element they style, so the nearest declaration wins and `.dark` on `:root`
+cannot reach a landing page. The storefront and the drawer preview inherit it
+through `LandingTemplate`; the miniature preview now wraps in the same
+provider (theme resolution extracted to `useSelectedLandingTheme`, one
+vocabulary for both previews). **Two findings on the way:**
+`GeneralPreviewValues.themeId` was declared and never sent by the section's
+preview watcher — whose object REPLACES the slice — so both previews only
+ever showed the SAVED theme and the first keystroke in General wiped even
+that; and the scope element must be a PLAIN div, because framer-motion routes
+`style` through its animation pipeline and kept serving the first theme's
+background after an editor theme switch with the inline style already
+correct. Verified live at the worst case (console dark AND emulated dark OS):
+published page, drawer and miniature all hold the theme; switching themes in
+the editor recolours the miniature without saving. **Recorded, not built:**
+the store home/category/thank-you pages still follow the visitor's dark/light
+— no per-page theme exists for them, and which theme a store-level page wears
+is a design question. storefront 32 → **33**, builder-sections 72 → **73**,
+builder-api 23/23, tracking 15/15.
 
 **Phase 5, 6 and 7 are complete. LEGACY PARITY IS REACHED — Tiers 1, 2 and 3 of
 `LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that

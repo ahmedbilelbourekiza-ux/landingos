@@ -712,6 +712,24 @@ describe('the landing editor moved, not rewritten', { skip }, () => {
     assert.match(html, /\/api\/builder/, 'the editor is bound to the platform API base');
   });
 
+  test("the preview renders inside the page's theme scope, not the console's (theme-bleed)", async () => {
+    // The miniature preview used to be plain console Tailwind — `bg-background`
+    // and friends — so its canvas flipped with the console's dark/light toggle
+    // instead of showing the theme chosen for the page. It now renders inside
+    // the same ThemeProvider the published page uses; the scope element paints
+    // the theme's own background and redefines the console token names.
+    const r = await fetch(`${BASE}/console/builder/pages/${pageId}/edit`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    const tag = html.match(/<div[^>]*data-landing-theme="[^"]*"[^>]*>/)?.[0] ?? '';
+    assert.notEqual(tag, '', 'the preview has no theme scope — it will follow the console theme');
+    const style = tag.match(/style="([^"]*)"/)?.[1] ?? '';
+    assert.match(style, /background-color:/, 'the scope paints no canvas of its own');
+    assert.ok(style.includes('--background:'), 'the console tokens are not redefined in scope');
+  });
+
   test("another tenant's page cannot be opened for editing", async () => {
     const r = await fetch(`${BASE}/console/builder/pages/${otherPageId}/edit`, {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },

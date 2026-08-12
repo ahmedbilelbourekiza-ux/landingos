@@ -277,6 +277,14 @@ edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
    two. Record: CHANGELOG §LB.25, PROJECT_STATE and NEXT_STEPS per-slice
    entries.
 
+   **LB.26 (same session, LOCAL ONLY, NOT DEPLOYED):** the theme-bleed fix —
+   a published landing page rendered the VISITOR's OS dark mode instead of
+   its own theme (and the editor previews followed the console toggle). This
+   one is CUSTOMER-FACING in production today: any dark-phone visitor to a
+   live storefront page currently sees the dark-flipped page, so it is worth
+   deploying with the next release. No route/schema change, no migration.
+   Record: CHANGELOG §LB.26.
+
 8. **Decided but NOT started, both waiting on something (12 Aug decisions):**
    - **LB.23 — Facebook Ads linking.** Decided to build REAL ad-spend
      attribution via a Meta app + OAuth, not merely store an account id.
