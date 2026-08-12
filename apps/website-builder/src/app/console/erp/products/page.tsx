@@ -7,6 +7,7 @@ import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { FilterBar } from "@/components/console/filter-bar";
+import { productWhere, productCategories, productClassification } from "@/lib/erp/product-filters";
 import { Pager } from "@/components/console/pager";
 import { actionErrors } from "@/lib/console/action-errors";
 import { DataTable } from "@/components/console/data-table";
@@ -66,23 +67,21 @@ export default async function ErpProductsScreen({
   const archived = params.get("archived") === "true";
   const page = Math.max(1, Number(params.get("page")) || 1);
 
-  // The same shape `GET /api/erp/products` builds, so the screen and the
-  // endpoint cannot disagree about what a search matches.
-  const search = params.get("search")?.trim();
-  const where = {
-    archived,
-    ...(search
-      ? {
-          OR: [
-            { name: { contains: search, mode: "insensitive" as const } },
-            { sku: { contains: search, mode: "insensitive" as const } },
-            { reference: { contains: search, mode: "insensitive" as const } },
-          ],
-        }
-      : {}),
-  };
+  /* LB.19 — the SAME function `GET /api/erp/products` calls, not the same
+     shape written twice. This was a hand-copied `where` under a comment
+     promising the two could not disagree; a copy is a promise nobody enforces,
+     and the moment one side gained a filter the other would answer a different
+     question about the same URL. */
+  const where = productWhere(params);
 
-  const { products, total, ambiguous } = await withTenant(session.auth!.tenantId, async (db) => {
+  /* Whether the list is NARROWED, which decides the empty state's wording:
+     "you have no products" and "nothing matches this filter" are different
+     facts and only one of them suggests clearing something. It reads every
+     narrowing key rather than just `search`, so the category filter added
+     below cannot produce the wrong sentence. */
+  const filtered = ["search", "category", "niche"].some((k) => params.get(k)?.trim());
+
+  const { products, total, ambiguous, categories, niches } = await withTenant(session.auth!.tenantId, async (db) => {
     const total = await db.catalogProduct.count({ where });
     const safePage = Math.min(page, Math.max(1, Math.ceil(total / PAGE_SIZE)));
     return {
@@ -108,6 +107,12 @@ export default async function ErpProductsScreen({
        that makes it fixable: the rows are marked where somebody can rename
        one. */
     ambiguous: await duplicateProductNames(db),
+    /* LB.19 — every category the catalogue uses, for the filter and for the
+       suggestions on the write panels. Read across the whole catalogue, not
+       from `products` above: that is one page, and the categories on page 1
+       are not the categories. */
+    categories: await productCategories(db, { archived }),
+    niches: await productClassification(db, "niche", { archived }),
     };
   });
 
@@ -221,7 +226,12 @@ export default async function ErpProductsScreen({
           {/* Not on the archived view: creating a product from a list of things
               nobody sells any more would put the new row somewhere invisible. */}
           {mayWrite && !archived && (
-            <ProductCreatePanel errors={errors} s={productCreateStrings(t)} />
+            <ProductCreatePanel
+              errors={errors}
+              s={productCreateStrings(t)}
+              categories={categories.map((c) => c.name)}
+              niches={niches.map((n) => n.name)}
+            />
           )}
 
           {/* Offered on BOTH views. Archiving means "stop selling it", not
@@ -249,7 +259,26 @@ export default async function ErpProductsScreen({
           <FilterBar
             basePath="/console/erp/products"
             params={params}
-            fields={[{ name: "search", label: t("erp.filters.search"), kind: "text", wide: true }]}
+            /* LB.19 — the category filter offers only categories that exist,
+               so it can never select nothing. The options come from the same
+               function the write panels suggest from, and `productWhere`
+               matches them EXACTLY: offered as a choice, there is nothing to be
+               lenient about, and a `contains` would make "Skin" also select
+               "Skincare" and report the wrong count. */
+            fields={[
+              { name: "search", label: t("erp.filters.search"), kind: "text", wide: true },
+              ...(categories.length
+                ? [{
+                    name: "category",
+                    label: t("erp.products.category"),
+                    kind: "select" as const,
+                    options: categories.map((c) => ({
+                      value: c.name,
+                      label: `${c.name} (${c.count})`,
+                    })),
+                  }]
+                : []),
+            ]}
             s={filterStrings(t)}
             testId="erp-products-filters"
           />
@@ -267,7 +296,7 @@ export default async function ErpProductsScreen({
       <DataTable
         testId="erp-products-table"
         empty={t("erp.products.none")}
-        emptyCopy={emptyCopy(t, Boolean(search), t("erp.products.none"))}
+        emptyCopy={emptyCopy(t, filtered, t("erp.products.none"))}
         caption={t("erp.products.title")}
         rows={products}
         rowKey={(p) => p.id}

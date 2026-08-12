@@ -90,9 +90,20 @@ const EMPTY = {
 export function ProductCreatePanel({
   errors,
   s,
+  categories = [],
+  niches = [],
 }: {
   readonly errors: ActionErrors;
   readonly s: ProductCreateStrings;
+  /**
+   * LB.19 — the classification values this catalogue already uses.
+   *
+   * Passed in from the server rather than fetched here: the screen has already
+   * read them for its own filter, and a second round trip from the browser for
+   * a list the page is holding would be a second answer to one question.
+   */
+  readonly categories?: readonly string[];
+  readonly niches?: readonly string[];
 }) {
   const { run, pending, error } = useApiAction(errors);
   const [open, setOpen] = useState(false);
@@ -104,6 +115,8 @@ export function ProductCreatePanel({
 
   const text = (id: keyof typeof EMPTY, label: string, opts: {
     required?: boolean; ltr?: boolean; help?: string; className?: string;
+    /** LB.19 — values already in use, offered as suggestions. */
+    suggestions?: readonly string[];
   } = {}) => (
     <Field
       id={`new-${id}`}
@@ -115,10 +128,25 @@ export function ProductCreatePanel({
       <input
         {...fieldAria(`new-${id}`, { required: opts.required, help: Boolean(opts.help) })}
         {...(opts.ltr ? { dir: "ltr" as const } : {})}
+        /* A `datalist`, not a `select`. The column is free text by an explicit
+           schema decision, and the merchant must still be able to name a
+           category that does not exist yet — the FIRST product in a category
+           has to create it. This suggests without forbidding, which is the
+           whole of the fix: the gap was never "no categories", it was that
+           nothing showed which ones were already in use, so "Skincare",
+           "skincare" and "Skin care" became three. */
+        {...(opts.suggestions?.length ? { list: `new-${id}-options` } : {})}
         value={form[id]}
         onChange={(e) => set(id, e.target.value)}
         className="ui-control tap w-full"
       />
+      {opts.suggestions?.length ? (
+        <datalist id={`new-${id}-options`}>
+          {opts.suggestions.map((v) => (
+            <option key={v} value={v} />
+          ))}
+        </datalist>
+      ) : null}
     </Field>
   );
 
@@ -241,8 +269,8 @@ export function ProductCreatePanel({
               it and one analytics breakdown groups by it, so a catalogue built
               without it makes both uncomputable. */}
           <div className="mt-2 grid gap-3 sm:grid-cols-3">
-            {text("niche", s.niche)}
-            {text("category", s.category)}
+            {text("niche", s.niche, { suggestions: niches })}
+            {text("category", s.category, { suggestions: categories })}
             {text("supplier", s.supplier)}
           </div>
         </div>

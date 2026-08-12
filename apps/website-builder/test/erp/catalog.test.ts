@@ -1,10 +1,29 @@
 import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { SESSION_COOKIE } from '@landingos/auth';
+
 import {
-  skip, uid, phone, makeErpTenant, makeMember, cleanup, raw, ONE_PIXEL_PNG,
+  skip, BASE, uid, phone, makeErpTenant, makeMember, cleanup, raw, ONE_PIXEL_PNG,
   contractTest as test,
 } from './helpers.ts';
+
+/* LB.19 — the screen half of the catalogue's contract. Same shape as
+ * finance.test.ts's: a plain fetch carrying the session cookie, so a screen
+ * assertion reads the HTML the server actually sent. */
+const page = (path: string, token?: string, locale = 'en') =>
+  fetch(BASE + path, {
+    redirect: 'manual',
+    headers: {
+      cookie: [token ? `${SESSION_COOKIE}=${token}` : '', `locale=${locale}`]
+        .filter(Boolean).join('; '),
+    },
+  });
+
+const html = async (path: string, token?: string) => {
+  const res = await page(path, token);
+  return { status: res.status, body: await res.text() };
+};
 
 /* =============================================================================
  * test/erp/catalog.test.ts
@@ -1130,5 +1149,85 @@ describe('a product photograph survives the round trip', () => {
     const variants = r.body.data.variants as Array<{ name: string; image?: string }>;
     assert.equal(variants.find((v) => v.name === 'Blue')?.image, '/uploads/tenants/x/blue.png');
     assert.equal(variants.find((v) => v.name === 'Red')?.image ?? '', '');
+  });
+});
+
+/* =============================================================================
+ * LB.19 — the catalogue can be classified, and the screen agrees with the API.
+ *
+ * `CatalogProduct.category` is free text by an explicit schema decision, and
+ * this slice does not overturn it. What it closes is the gap that decision left
+ * open: the field was UNGUIDED, so a merchant typing "Skincare", "skincare" and
+ * "Skin care" produced three categories and nothing showed that they had.
+ *
+ * The second assertion is the one worth having. The screen and the route used
+ * to build the same `where` in two places, under a comment promising they could
+ * not disagree. They now call `productWhere`, and this asserts the promise
+ * rather than restating it.
+ * ========================================================================== */
+describe('the catalogue can be filtered by category (LB.19)', () => {
+  let a: string, b: string, c: string;
+
+  before(async () => {
+    if (skip) return;
+    const mk = async (name: string, category: string) => {
+      const r = await acme.manager.api('POST', '/api/erp/products', { name, category });
+      return r.body.data.id as string;
+    };
+    const tag = uid();
+    a = await mk(`Cat A ${tag}`, `Accessoires ${tag}`);
+    b = await mk(`Cat B ${tag}`, `Accessoires ${tag}`);
+    c = await mk(`Cat C ${tag}`, `Soins ${tag}`);
+    // Deliberately uncategorised: it must appear in neither filtered answer,
+    // and must not show up as an empty-named category.
+    await mk(`Cat D ${tag}`, '');
+    (globalThis as Record<string, unknown>).__lb19tag = tag;
+  });
+
+  test('the categories in use are listed, with counts, and no blank', async () => {
+    const tag = (globalThis as Record<string, unknown>).__lb19tag as string;
+    const r = await acme.manager.api('GET', '/api/erp/products/categories');
+    assert.equal(r.status, 200);
+    const items = r.body.data.items as Array<{ name: string; count: number }>;
+
+    assert.equal(items.find((i) => i.name === `Accessoires ${tag}`)?.count, 2);
+    assert.equal(items.find((i) => i.name === `Soins ${tag}`)?.count, 1);
+    // The product created with `category: ''` must not become a category.
+    assert.ok(!items.some((i) => i.name.trim() === ''), 'a blank category was offered');
+  });
+
+  test('filtering matches EXACTLY, so one category cannot select another', async () => {
+    const tag = (globalThis as Record<string, unknown>).__lb19tag as string;
+    const exact = await acme.manager.api(
+      'GET', `/api/erp/products?category=${encodeURIComponent(`Accessoires ${tag}`)}`,
+    );
+    assert.equal(exact.body.data.total, 2);
+    const ids = exact.body.data.items.map((p: { id: string }) => p.id);
+    assert.ok(ids.includes(a) && ids.includes(b), 'the two matching products are not both there');
+    assert.ok(!ids.includes(c), 'a product from another category came back');
+
+    // A prefix of a real category selects nothing. `contains` would return 2.
+    const prefix = await acme.manager.api(
+      'GET', `/api/erp/products?category=${encodeURIComponent('Accessoire')}`,
+    );
+    assert.equal(prefix.body.data.total, 0);
+  });
+
+  test('the SCREEN answers the same query string the same way', async () => {
+    const tag = (globalThis as Record<string, unknown>).__lb19tag as string;
+    const q = `category=${encodeURIComponent(`Accessoires ${tag}`)}`;
+    const api = await acme.manager.api('GET', `/api/erp/products?${q}`);
+    const page = await html(`/console/erp/products?${q}`, acme.manager.token);
+
+    assert.equal(page.status, 200);
+    // Distinct ids: the screen renders the id on the row AND on its edit panel,
+    // so counting occurrences would count the same product twice.
+    const rendered = new Set([...page.body.matchAll(/data-product-id="([^"]+)"/g)].map((m) => m[1]));
+    assert.equal(
+      rendered.size,
+      api.body.data.total,
+      'the screen and the route disagree about what this filter selects',
+    );
+    assert.ok(!rendered.has(c), 'the screen showed a product the route excluded');
   });
 });

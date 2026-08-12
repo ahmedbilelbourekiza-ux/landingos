@@ -4,6 +4,7 @@ import { tenantRoute, apiOk, apiError, pagination } from "@/lib/api/route";
 import { nextReference } from "@/lib/erp/ids";
 import { rollUp, type Variant } from "@/lib/erp/inventory";
 import { toJson, toDecimal } from "@/lib/erp/serialize";
+import { productWhere } from "@/lib/erp/product-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -28,21 +29,9 @@ export const PRODUCT_SELECT = {
  */
 export const GET = tenantRoute("erp:products:read", async ({ db, searchParams }) => {
   const { skip, take, page, pageSize } = pagination(searchParams);
-  const archived = searchParams.get("archived") === "true";
-  const search = searchParams.get("search")?.trim();
-
-  const where = {
-    archived,
-    ...(search
-      ? {
-          OR: [
-            { name: { contains: search, mode: "insensitive" as const } },
-            { sku: { contains: search, mode: "insensitive" as const } },
-            { reference: { contains: search, mode: "insensitive" as const } },
-          ],
-        }
-      : {}),
-  };
+  // LB.19 — the screen calls this same function, so the two cannot answer a
+  // different question about the same query string.
+  const where = productWhere(searchParams);
 
   const [items, total] = await Promise.all([
     db.catalogProduct.findMany({
