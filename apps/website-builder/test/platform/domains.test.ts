@@ -2,7 +2,7 @@ import { test, describe, before, after } from 'node:test';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 
-import { asPlatform, withTenant, disconnect } from '@landingos/db';
+import { asPlatform, withTenant, disconnect, deleteTenant } from '@landingos/db';
 import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } from '@landingos/auth';
 
 /* =============================================================================
@@ -83,7 +83,9 @@ after(async () => {
     }
     await asPlatform().user.delete({ where: { id } }).catch(() => {});
   }
-  await asPlatform().tenant.deleteMany({ where: { id: { in: [tenantA, tenantB].filter(Boolean) } } });
+  for (const id of [tenantA, tenantB].filter(Boolean)) {
+    await deleteTenant(id).catch(() => {});
+  }
   await disconnect();
 });
 

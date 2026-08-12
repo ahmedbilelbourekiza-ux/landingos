@@ -1,7 +1,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { asPlatform, withTenant, disconnect } from '@landingos/db';
+import { asPlatform, withTenant, disconnect, deleteTenant } from '@landingos/db';
 import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } from '@landingos/auth';
 
 import { allowRequest } from '../src/lib/storefront/rate-limit.ts';
@@ -163,7 +163,7 @@ after(async () => {
   await destroySessionsForUser(ownerId).catch(() => {});
   await withTenant(tenantId, (tx) => (tx as any).membership.deleteMany({ where: { userId: ownerId } })).catch(() => {});
   await asPlatform().user.delete({ where: { id: ownerId } }).catch(() => {});
-  await asPlatform().tenant.deleteMany({ where: { id: tenantId } });
+  await deleteTenant(tenantId).catch(() => {});
   await disconnect();
 });
 

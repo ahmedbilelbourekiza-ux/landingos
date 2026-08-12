@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { after, describe } from 'node:test';
 
-import { asPlatform, withTenant } from '@landingos/db';
+import { asPlatform, withTenant, deleteTenant } from '@landingos/db';
 import { createSession, SESSION_COOKIE } from '@landingos/auth';
 
 import {
@@ -838,9 +838,10 @@ describe('accepting an invitation', () => {
     const { tenantId, admin } = await makeTeam('join-deleted-tenant');
     const created = await invite(admin, newEmail(), 'MEMBER');
 
-    // Hard-delete the tenant (cascade takes its rows; the token binding then
-    // hides the invitation the same way it hides any other miss).
-    await asPlatform().tenant.delete({ where: { id: tenantId } }).catch(() => {});
+    // Hard-delete the tenant — through deleteTenant, which actually removes
+    // its rows (a bare tenant.delete cascades platform tables only; the token
+    // binding then hides the invitation the same way it hides any other miss).
+    await deleteTenant(tenantId).catch(() => {});
 
     const { status, text } = await getJoin(created.body.data.token);
     assert.equal(status, 200);

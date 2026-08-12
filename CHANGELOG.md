@@ -12,6 +12,56 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.27** A deleted tenant actually goes away (12 August 2026, night —
+  **local only, not pushed, not deployed**; the finding is from the deploy
+  session's cleanup).
+
+  **The defect, measured.** `tenant.delete` cascades platform rows and
+  nothing else: product-domain tables carry `tenantId` as an RLS-scoped
+  COLUMN, not an FK, so pages, orders, clients and settings survive as
+  unreachable orphans. `neondb` held **73,267 orphaned rows from 4,149 dead
+  tenants** across 41 tables — left by a test harness whose own comment
+  claimed the cascade existed ("cascades ... all 46 scoped tables").
+
+  **The decision: a `deleteTenant()` helper, NOT foreign-key cascades.**
+  Three reasons, stated in the module: an FK to Tenant on 49 tables is a
+  schema migration on a live shared database that only becomes coherent once
+  production migrates too; a cascade CHANGES THE MEANING of `tenant.delete`
+  everywhere — one accidental platform-row delete would silently destroy
+  every product row, where the column-only design fails SAFE; and this
+  platform's stated posture (LB.18: "nothing is deleted") is that total
+  destruction must be a deliberate, NAMED act — so the named act is
+  `deleteTenant` in `packages/db/src/delete-tenant.ts`.
+
+  **How it sweeps.** The scoped models are enumerated from the Prisma DMMF —
+  a table added later is swept without being listed (AUDIT.8's
+  closing-of-the-class). Each pass runs under `withTenant` and issues an
+  UNFILTERED `deleteMany({})`: rule 2 (never write `where: {tenantId}`)
+  means RLS itself decides what "everything" is, so a bug in the helper is
+  INCAPABLE of touching another tenant. Passes repeat until one deletes
+  nothing (FK ordering resolves itself); the Tenant row goes last, and its
+  absence is tolerated — that is the orphan-cleanup case.
+
+  **The harness stops leaking.** `test/erp/helpers.ts`' `cleanup()` and the
+  eleven suite-level hooks that called `tenant.delete(Many)` directly (
+  hardening, webhooks, tracking, storefront, console-shell, builder-api,
+  builder-sections, platform/workspace, platform/domains, platform/sessions,
+  platform/team's mid-test delete) now call `deleteTenant`;
+  `packages/db/test/isolation.test.ts`' own owner-side cleanup too.
+
+  **Tests:** `packages/db/test/delete-tenant.test.ts` (new) — the zero-rows
+  assertion is DATABASE-derived (every `tenantId`-bearing table from
+  information_schema, counted through the owner connection so RLS cannot
+  hide a leftover), and a second test PINS the defect: a bare
+  `tenant.delete` must still orphan rows, so if an FK cascade is ever added,
+  the test fails and points at this design note. packages/db 33 → **35**.
+
+  **Verified live:** the historical backlog was bulk-swept owner-side
+  (57,222 direct deletes + cascades) — `neondb` measured **73,267 → 0**
+  orphans — and after running console-shell (20/20) and hardening (12/12)
+  with the new cleanup, the orphan count is STILL 0, which the old harness
+  could never have produced. Production was not touched.
+
 - **DEPLOY — LB.13 through LB.26 reach production** (12 August 2026, evening,
   **user-approved, including the LB.20 migration**). This supersedes every
   "local only / not deployed / migration held off" statement in the entries

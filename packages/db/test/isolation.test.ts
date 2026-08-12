@@ -64,7 +64,12 @@ before(async () => {
 
 after(async () => {
   if (!HAS_DB) return;
-  await owner.$executeRawUnsafe(`DELETE FROM "Tenant" WHERE slug LIKE 'test-tenant-%'`);
+  // deleteTenant, not a bare Tenant delete — the scoped rows this suite
+  // seeds carry tenantId as an RLS column, not an FK, and survived every
+  // previous run as orphans (the delete-tenant suite pins that defect).
+  const { deleteTenant } = await import('../src/delete-tenant.ts');
+  await deleteTenant(A).catch(() => {});
+  await deleteTenant(B).catch(() => {});
   await owner.$disconnect();
   await disconnect();
 });

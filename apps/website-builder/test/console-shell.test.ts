@@ -1,7 +1,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { asPlatform, withTenant, withUser, disconnect } from '@landingos/db';
+import { asPlatform, withTenant, withUser, disconnect, deleteTenant } from '@landingos/db';
 import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } from '@landingos/auth';
 import { productRegistry } from '@landingos/product-registry';
 
@@ -98,9 +98,9 @@ after(async () => {
     }
     await asPlatform().user.delete({ where: { id } }).catch(() => {});
   }
-  await asPlatform().tenant.deleteMany({
-    where: { id: { in: [tenantBundle, tenantErp, tenantBare].filter(Boolean) } },
-  });
+  for (const id of [tenantBundle, tenantErp, tenantBare].filter(Boolean)) {
+    await deleteTenant(id).catch(() => {});
+  }
   await disconnect();
 });
 

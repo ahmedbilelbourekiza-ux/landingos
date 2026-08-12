@@ -10,4 +10,6 @@ export {
   type TenantDb,
 } from './tenant-client.ts';
 
+export { deleteTenant, type DeleteTenantResult } from './delete-tenant.ts';
+
 export { PrismaClient, Prisma } from '../prisma/client/index.js';

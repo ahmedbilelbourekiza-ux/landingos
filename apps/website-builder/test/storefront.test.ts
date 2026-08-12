@@ -1,7 +1,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { asPlatform, withTenant, disconnect } from '@landingos/db';
+import { asPlatform, withTenant, disconnect, deleteTenant } from '@landingos/db';
 
 /* =============================================================================
  * The public storefront (M-17, R-08).
@@ -83,7 +83,9 @@ before(async () => {
 
 after(async () => {
   if (skip) return;
-  await asPlatform().tenant.deleteMany({ where: { id: { in: [tenantA, tenantB].filter(Boolean) } } });
+  for (const id of [tenantA, tenantB].filter(Boolean)) {
+    await deleteTenant(id).catch(() => {});
+  }
   await disconnect();
 });
 

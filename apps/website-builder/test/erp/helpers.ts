@@ -1,6 +1,6 @@
 import { test as nodeTest, type TestContext } from 'node:test';
 
-import { asPlatform, withTenant, disconnect } from '@landingos/db';
+import { asPlatform, withTenant, disconnect, deleteTenant } from '@landingos/db';
 import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } from '@landingos/auth';
 
 /* =============================================================================
@@ -306,17 +306,23 @@ export async function makeErpTenant(label: string) {
  * Remove everything this run created.
  *
  * Sessions first: destroying them before the user rows means a token cannot
- * resolve against a half-deleted account if anything is still in flight. The
- * tenant delete then cascades its memberships and all 46 scoped tables, so
- * nothing needs listing here — which matters, because a list would go stale
- * every time the ERP port adds a model.
+ * resolve against a half-deleted account if anything is still in flight.
+ *
+ * `deleteTenant`, NOT `tenant.delete`. This comment used to claim the tenant
+ * delete "cascades ... all 46 scoped tables" — it never did: product-domain
+ * tables reference the tenant by RLS column, not FK, so every fixture's
+ * pages, orders and clients survived as orphans. Measured 12 Aug 2026:
+ * 73,267 orphaned rows from 4,149 dead tenants in `neondb`, all left by this
+ * function believing its own comment. The helper sweeps every scoped model
+ * from the schema itself, so nothing needs listing here — which is the part
+ * of the old comment that was worth keeping.
  */
 export async function cleanup() {
   for (const id of createdUsers) {
     await destroySessionsForUser(id).catch(() => {});
   }
   for (const id of createdTenants) {
-    await asPlatform().tenant.delete({ where: { id } }).catch(() => {});
+    await deleteTenant(id).catch(() => {});
   }
   for (const id of createdUsers) {
     await asPlatform().user.delete({ where: { id } }).catch(() => {});

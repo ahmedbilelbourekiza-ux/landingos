@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http';
 import { createHash } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 
-import { asPlatform, withTenant, disconnect } from '@landingos/db';
+import { asPlatform, withTenant, disconnect, deleteTenant } from '@landingos/db';
 import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } from '@landingos/auth';
 
 import { buildMetaPayload } from '../src/lib/tracking/providers/meta.ts';
@@ -239,7 +239,7 @@ after(async () => {
   await destroySessionsForUser(ownerId).catch(() => {});
   await withTenant(tenantId, (tx) => (tx as any).membership.deleteMany({ where: { userId: ownerId } })).catch(() => {});
   await asPlatform().user.delete({ where: { id: ownerId } }).catch(() => {});
-  await asPlatform().tenant.deleteMany({ where: { id: tenantId } });
+  await deleteTenant(tenantId).catch(() => {});
   await disconnect();
 });
 

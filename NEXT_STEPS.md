@@ -28,6 +28,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.22**~~ | ~~A theme generated from a product image~~ | M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** The hard part is readability, not colour-finding. builder-sections 58→62 |
 | ~~**LB.25**~~ | ~~Merge the Finances screen into the Calculator~~ | S–M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** Measured first: both screens wrote the SAME record through the same route. The expense form + list and the superseded marker moved to `/console/erp/calculator`, now titled Finances; the finance screen and its nav item are deleted; the URL stays. erp/screens 173→172, finance 44, ai 31, access 205 |
 | ~~**LB.26**~~ | ~~The preview/storefront theme-bleed bug~~ | M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** A landing page rendered the VIEWER's dark/light (console toggle in the editor; the visitor's OS on the published page) instead of its own theme — `--theme-background` had a writer and no reader. The ThemeProvider now paints its canvas and redefines the console token names in scope; the mini preview wraps in it; the never-sent `themeId` now reaches the preview state. storefront 33, builder-sections 73 |
+| ~~**LB.27**~~ | ~~Tenant deletion leaves orphaned rows~~ | M | **DONE 12 Aug 2026 (night), local only.** `deleteTenant()` in packages/db — an RLS-scoped sweep chosen over FK cascades on purpose (a cascade makes an accidental delete silently total). Harness + 11 suite hooks swapped; `neondb` bulk-cleaned **73,267 → 0** orphans and still 0 after suite runs. packages/db 33→35 |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
@@ -225,6 +226,34 @@ the store home/category/thank-you pages still follow the visitor's dark/light
 — no per-page theme exists for them, and which theme a store-level page wears
 is a design question. storefront 32 → **33**, builder-sections 72 → **73**,
 builder-api 23/23, tracking 15/15.
+
+**LB.27 — DONE. A deleted tenant actually goes away (12 Aug, night — the
+finding from the deploy session's cleanup).** `tenant.delete` cascades
+platform rows and NOTHING else: product-domain tables carry `tenantId` as an
+RLS-scoped column, not a foreign key, so pages, orders, clients and settings
+survive as unreachable orphans. Measured first: `neondb` held **73,267
+orphaned rows from 4,149 dead tenants** across 41 tables, left by a harness
+whose own comment claimed the cascade existed. The fix is
+**`deleteTenant()` in `packages/db`, deliberately NOT foreign-key cascades**:
+an FK to Tenant on 49 tables is a live-database migration that only becomes
+coherent once production migrates too, and — the load-bearing reason — a
+cascade changes what `tenant.delete` MEANS everywhere, turning one accidental
+platform-row delete into silent total destruction, where the column-only
+design fails SAFE. Destruction stays a named act. The helper enumerates the
+scoped models from the Prisma DMMF (a new table is swept without being
+listed) and sweeps under `withTenant` with UNFILTERED `deleteMany({})` —
+rule 2 means RLS itself decides what "everything" is, so the helper CANNOT
+touch another tenant even if buggy. Passes repeat until clean; the Tenant row
+goes last and may already be gone (the orphan-cleanup case). The harness
+(`cleanup()`) and eleven suite-level hooks were swapped;
+`isolation.test.ts`'s own owner-side cleanup too. New suite
+`packages/db/test/delete-tenant.test.ts` asserts zero rows via
+information_schema through the OWNER connection, and pins the defect itself
+(a bare `tenant.delete` must still orphan — if that ever fails, an FK
+cascade appeared and this design note needs revisiting). The historical
+backlog was bulk-swept owner-side: **73,267 → 0**, and still 0 after
+console-shell 20/20 + hardening 12/12 ran with the new cleanup. packages/db
+33 → **35**. Production untouched.
 
 **Phase 5, 6 and 7 are complete. LEGACY PARITY IS REACHED — Tiers 1, 2 and 3 of
 `LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that
