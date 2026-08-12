@@ -5,6 +5,8 @@ import { withTenant } from "@landingos/db";
 import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { resolveStorefrontTenant, storefrontHref } from "@/lib/storefront/resolve-tenant";
+import { ThemeProvider } from "@/components/landing/theme-provider";
+import { DEFAULT_THEME } from "@/types/theme";
 
 export const dynamic = "force-dynamic";
 
@@ -51,55 +53,61 @@ export default async function StorefrontHome({
   ]);
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10" data-tenant={tenant.slug}>
-      <h1 className="text-2xl font-semibold">{tenant.name}</h1>
+    // Scoped to DEFAULT_THEME: a storefront is the merchant's surface, so it
+    // must never follow the visitor's OS dark mode (next-themes stamps `.dark`
+    // on <html> for every route). There is no store-level theme row yet —
+    // when StoreSettings grows one, it slots in here in place of the default.
+    <ThemeProvider theme={DEFAULT_THEME}>
+      <main className="mx-auto max-w-6xl px-4 py-10" data-tenant={tenant.slug}>
+        <h1 className="text-2xl font-semibold">{tenant.name}</h1>
 
-      {categories.length ? (
-        <nav className="mt-4 flex flex-wrap gap-2" aria-label="Categories">
-          {categories.map((c: any) => (
-            <Link
-              key={c.id}
-              href={storefrontHref(tenant, `/category/${c.slug}`)}
-              className="rounded-full border border-border px-3 py-1 text-sm"
-            >
-              {c.name}
-            </Link>
-          ))}
-        </nav>
-      ) : null}
-
-      {pages.length === 0 ? (
-        <p className="mt-10 text-sm text-muted-foreground">No products are published yet.</p>
-      ) : (
-        <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="storefront-products">
-          {pages.map((p: any) => (
-            <li key={p.id}>
+        {categories.length ? (
+          <nav className="mt-4 flex flex-wrap gap-2" aria-label="Categories">
+            {categories.map((c: any) => (
               <Link
-                href={storefrontHref(tenant, `/${p.slug}`)}
-                data-product-slug={p.slug}
-                className="block overflow-hidden rounded-lg border border-border transition-colors hover:border-primary"
+                key={c.id}
+                href={storefrontHref(tenant, `/category/${c.slug}`)}
+                className="rounded-full border border-border px-3 py-1 text-sm"
               >
-                {p.media[0] ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={p.media[0].url}
-                    alt={p.media[0].altText ?? p.title}
-                    className="aspect-square w-full object-cover"
-                  />
-                ) : (
-                  <div className="aspect-square w-full bg-muted" />
-                )}
-                <div className="p-3">
-                  <span className="block font-medium">{p.title}</span>
-                  <span className="mt-1 block tabular-nums">
-                    {formatMoney(String(p.price), locale, p.currency)}
-                  </span>
-                </div>
+                {c.name}
               </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </main>
+            ))}
+          </nav>
+        ) : null}
+
+        {pages.length === 0 ? (
+          <p className="mt-10 text-sm text-muted-foreground">No products are published yet.</p>
+        ) : (
+          <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="storefront-products">
+            {pages.map((p: any) => (
+              <li key={p.id}>
+                <Link
+                  href={storefrontHref(tenant, `/${p.slug}`)}
+                  data-product-slug={p.slug}
+                  className="block overflow-hidden rounded-lg border border-border transition-colors hover:border-primary"
+                >
+                  {p.media[0] ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.media[0].url}
+                      alt={p.media[0].altText ?? p.title}
+                      className="aspect-square w-full object-cover"
+                    />
+                  ) : (
+                    <div className="aspect-square w-full bg-muted" />
+                  )}
+                  <div className="p-3">
+                    <span className="block font-medium">{p.title}</span>
+                    <span className="mt-1 block tabular-nums">
+                      {formatMoney(String(p.price), locale, p.currency)}
+                    </span>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </main>
+    </ThemeProvider>
   );
 }

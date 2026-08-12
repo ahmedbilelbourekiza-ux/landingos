@@ -31,6 +31,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.27**~~ | ~~Tenant deletion leaves orphaned rows~~ | M | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (and used there for the deploy's own fixture cleanup — 9 rows, zero behind). `deleteTenant()` in packages/db — an RLS-scoped sweep chosen over FK cascades on purpose (a cascade makes an accidental delete silently total). Harness + 11 suite hooks swapped; `neondb` bulk-cleaned **73,267 → 0** orphans and still 0 after suite runs. packages/db 33→35 |
 | ~~**LB.28**~~ | ~~The dead `rtl:` Tailwind variant~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug — and the premise measured FALSE.** `rtl:` is native on Tailwind 4.3.3 (`:lang()`-keyed); the data table was already correct in Arabic, the calendar is unmounted. Real fixes: the editor back arrow now flips (it cited the false premise for not flipping), the stale comments/memory corrected, and the dir-island rule recorded in globals.css. i18n 22, builder-sections 73 |
 | ~~**LB.29**~~ | ~~`ui/sheet.tsx` closes on a physical edge~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (verified in production Arabic: close at x 17–33). `right-4` → `end-4`; scope corrected by measurement — the mobile nav drawer is a custom logical-first component and was never affected; the editor preview drawer is the only live Sheet. ar close x 343→17 at 375px emulation, fr unchanged. No physical device reachable — caveat recorded. builder-sections 73 |
+| ~~**LB.30**~~ | ~~Home/category/thank-you follow the visitor's dark mode~~ | S | **DONE 13 Aug 2026, local only.** LB.26's recorded remainder. The thank-you inherits the ORDER's landing-page theme (the checkout journey's last step looks like the page the customer bought on); home/category wear `DEFAULT_THEME` — a store-level theme field on `StoreSettings` is a schema migration + merchant UI, deliberately left as a decision, with the two call sites marked. Verified live under emulated dark OS both ways (bound theme + default). storefront 33→36 |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
@@ -304,6 +305,28 @@ class swap with no layout arithmetic to disagree on. builder-sections 73/73
 ran against the build carrying the change. **DEPLOYED 13 Aug 2026** and
 re-verified on the real domain in Arabic at 375 px: the close button reports
 `top-4 end-4` and sits at x 17–33.
+
+**LB.30 — DONE. The rest of the storefront wears the store's theme, not the
+visitor's dark mode (13 Aug).** The remainder LB.26 recorded: the store home,
+the category page and the thank-you page rendered console tokens with no
+theme scope, so all three followed the visitor's OS — measured live first,
+near-black (lab L≈2.5) under an emulated dark OS, and the thank-you sits at
+the END of the checkout journey, so a dark-phone customer bought on a light
+themed page and landed on a near-black confirmation. **The design decision,
+in two halves:** the thank-you INHERITS the theme of the landing page its
+order came from (`order.landingPage.theme` → `toThemeData`, default fallback
+like any unthemed landing page) — the confirmation should look like the page
+the customer just bought on; home and category wear `DEFAULT_THEME`, because
+`StoreSettings` has no theme field and growing one is a schema migration
+plus a merchant-facing control — a product decision deliberately left OPEN,
+with the two provider call sites carrying the note for where it slots in.
+The mechanism is LB.26's existing plain-div `ThemeProvider` scope, no new
+machinery. Verified live against the build carrying the change: all three
+hold `#FAF9F6` + `color-scheme:light` with `html.dark` stamped and ignored;
+a theme temporarily bound to the order's page flips the thank-you to that
+theme's id and background, then unbound and re-verified; a light-OS visitor
+with a stale `.dark` in localStorage gets the same stable canvas.
+storefront 33 → **36**.
 
 **Phase 5, 6 and 7 are complete. LEGACY PARITY IS REACHED — Tiers 1, 2 and 3 of
 `LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that

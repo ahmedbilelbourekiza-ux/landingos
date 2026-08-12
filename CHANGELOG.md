@@ -58,6 +58,53 @@ touched, any **migration**, and any **risk**.
   the **thank-you page has no theme scope and renders a near-black canvas**
   (`lab(2.48 …)`) — the last step of a real checkout journey.
 
+- **LB.30** The rest of the storefront wears the store's theme, not the
+  visitor's dark mode (13 August 2026 — **local only, not pushed, not
+  deployed**).
+
+  **The remainder LB.26 recorded and did not build.** The theme-bleed fix
+  scoped only pages rendered through `LandingTemplate`; the store home,
+  the category page and the thank-you page still rendered console Tailwind
+  tokens with no scope. Measured live first (emulated dark OS, mobile
+  viewport): all three painted the console `.dark` canvas — body
+  near-black (lab L≈2.5) with near-white text — and the thank-you sits
+  directly in the checkout journey, so a dark-phone customer bought on a
+  light themed page and landed on a near-black confirmation.
+
+  **The design decision, taken in two halves.** The THANK-YOU inherits the
+  theme of the landing page its order came from (`order.landingPage.theme`
+  → `toThemeData`, the same mapper the landing route uses): the
+  confirmation is the last step of the checkout journey and should look
+  like the page the customer just bought on, falling back to
+  `DEFAULT_THEME` exactly as an unthemed landing page does. HOME and
+  CATEGORY wear `DEFAULT_THEME`: `StoreSettings` has no theme field, and
+  growing one is a platform schema migration plus a merchant-facing
+  control — a product decision deliberately NOT smuggled into this slice.
+  The provider call sites carry the note, so a store-level theme slots in
+  at exactly two places when it is decided.
+
+  **The mechanism is the existing one** — each page wraps its `<main>` in
+  the landing `ThemeProvider` (the plain-div scope from LB.26), which
+  paints the canvas and redefines the console token names inside the
+  subtree, so `.dark` on `<html>` cannot reach in. No new machinery.
+
+  **Files:** the three storefront pages (`[tenant]/page.tsx`,
+  `[tenant]/category/[slug]/page.tsx`,
+  `[tenant]/thank-you/[orderId]/page.tsx` — the last also selects
+  `theme` through the order's `landingPage`), `test/storefront.test.ts`.
+
+  **Verified live against the build carrying the change** (emulated dark
+  OS): all three pages hold `#FAF9F6` with `color-scheme: light` and the
+  theme's own border/muted tokens while `html.dark` stays stamped; a
+  theme temporarily bound to the order's page flips the thank-you scope
+  to that theme's id and background (`#fbfbfc`), unbound and re-verified
+  after; the landing page control still carries exactly one scope. A
+  light-OS visitor with a STALE `.dark` in localStorage gets the same
+  stable canvas — the worst case both ways. **Suites:** storefront 33 →
+  **36** (home scope, category scope, thank-you inheritance — the last on
+  an order whose fixture theme is deliberately nothing like the default).
+  No schema, route or API change.
+
 - **LB.29** The Sheet's close button moves to the logical edge (12 August
   2026, night — **deployed to production 13 August**, see the deploy entry
   above).

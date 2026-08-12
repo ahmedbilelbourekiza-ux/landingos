@@ -29,6 +29,8 @@ let publishedA = '';
 let draftA = '';
 let publishedB = '';
 let wilayaId = 0;
+let themeIdA = '';
+let orderOnThemedA = '';
 
 async function get(path: string, init?: RequestInit) {
   const res = await fetch(BASE + path, { redirect: 'manual', ...init });
@@ -76,6 +78,47 @@ before(async () => {
         await (db as any).tenantDeliveryPrice.create({
           data: { tenantId: t.id, wilayaId: w.id, homePrice: 500, deskPrice: 300 },
         });
+
+        // Theme-scope fixtures for the chrome pages: a category holding the
+        // published page, and an order on a page that HAS a theme row — the
+        // thank-you must wear the MERCHANT's theme, not the default, so the
+        // fixture theme's colors are deliberately nothing like DEFAULT_THEME.
+        const cat = await (db as any).category.create({
+          data: { tenantId: t.id, name: 'Fixture Category', slug: 'fixture-category' },
+          select: { id: true },
+        });
+        await (db as any).landingPage.update({
+          where: { id: publishedA },
+          data: { categoryId: cat.id },
+        });
+
+        const theme = await (db as any).landingTheme.create({
+          data: {
+            tenantId: t.id, name: 'Merchant Night',
+            primary: '#7C3AED', primaryForeground: '#FFFFFF', accent: '#F59E0B',
+            background: '#141414', card: '#1F1F1F', text: '#FAFAFA',
+            muted: '#262626', border: '#333333',
+          },
+          select: { id: true },
+        });
+        themeIdA = theme.id;
+        const themed = await (db as any).landingPage.create({
+          data: {
+            tenantId: t.id, title: 'Themed Product', slug: 'themed-item',
+            price: 4500, published: true, status: 'PUBLISHED', themeId: theme.id,
+          },
+          select: { id: true },
+        });
+        const ord = await (db as any).salesOrder.create({
+          data: {
+            tenantId: t.id, landingPageId: themed.id,
+            customerName: 'Theme Buyer', phone: '0555000222',
+            wilaya: 'Alger', baladia: 'Centre', address: '',
+            quantity: 1, productPrice: 4500, shippingPrice: 500, totalPrice: 5000,
+          },
+          select: { id: true },
+        });
+        orderOnThemedA = ord.id;
       }
     });
   }
@@ -169,6 +212,47 @@ describe("a landing page wears its OWN theme, never the viewer's dark mode", { s
     // next-themes also writes `color-scheme: dark` on <html>; unoverridden,
     // the purchase form's NATIVE widgets render dark chrome in a light page.
     assert.match(style, /color-scheme:\s*light/);
+  });
+});
+
+describe("the storefront's chrome pages wear a stable theme, never the viewer's", { skip }, () => {
+  // Same bleed, different pages: the LB.26 fix covered only pages rendered
+  // through LandingTemplate. Home, category and thank-you rendered console
+  // tokens with no scope, so a dark-phone customer bought on a light page and
+  // landed on a near-black confirmation. Home and category wear DEFAULT_THEME
+  // (no store-level theme row exists yet); the thank-you inherits the theme
+  // of the landing page its order came from.
+  const scopeStyle = (html: string, themeId: string) => {
+    const tag = html.match(new RegExp(`<div[^>]*data-landing-theme="${themeId}"[^>]*>`))?.[0] ?? '';
+    return tag.match(/style="([^"]*)"/)?.[1] ?? '';
+  };
+
+  test('the store home is scoped to the default theme', async () => {
+    const r = await get(`/${slugA}`);
+    assert.equal(r.status, 200);
+    const style = scopeStyle(r.text, 'default');
+    assert.notEqual(style, '', 'the home page has no theme scope');
+    assert.match(style, /background-color:\s*#FAF9F6/i, 'the canvas is not the theme background');
+    assert.ok(style.includes('--background:#FAF9F6'), 'the console token is not redefined in scope');
+    assert.match(style, /color-scheme:\s*light/);
+  });
+
+  test('a category page is scoped to the default theme', async () => {
+    const r = await get(`/${slugA}/category/fixture-category`);
+    assert.equal(r.status, 200);
+    assert.match(r.text, /data-testid="category-products"/);
+    const style = scopeStyle(r.text, 'default');
+    assert.notEqual(style, '', 'the category page has no theme scope');
+    assert.match(style, /background-color:\s*#FAF9F6/i, 'the canvas is not the theme background');
+  });
+
+  test("the thank-you wears the theme of the page its order came from", async () => {
+    const r = await get(`/${slugA}/thank-you/${orderOnThemedA}`);
+    assert.equal(r.status, 200);
+    const style = scopeStyle(r.text, themeIdA);
+    assert.notEqual(style, '', "the thank-you is not scoped to the ORDER's landing-page theme");
+    assert.match(style, /background-color:\s*#141414/i, "the canvas is not the merchant's background");
+    assert.ok(style.includes('--background:#141414'), 'the console token is not redefined in scope');
   });
 });
 
