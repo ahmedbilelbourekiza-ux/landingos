@@ -999,3 +999,133 @@ describe('categories are manageable from the screen (B3)', { skip }, () => {
     assert.equal(row.categoryId, null);
   });
 });
+
+/* =============================================================================
+ * LB.22 — a storefront theme taken from the product's own photograph.
+ *
+ * THE FEATURE IS NOT "FIND THE COLOURS". Averaging pixels is four lines. What
+ * decides whether this is worth shipping is that the result must be READABLE:
+ * an automatically generated theme that puts white text on a pale yellow buy
+ * button ships a broken storefront to a real customer, and the merchant finds
+ * out from their conversion rate rather than from the editor.
+ *
+ * So the assertions here are about CONTRAST, not about which blue came back.
+ * The exact hue is allowed to change if the quantiser is ever tuned; the
+ * promise that the buy button can be read is not.
+ *
+ * The refusals matter as much. An image with no subject colour — a white
+ * cutout — must produce a refusal, because inventing a plausible theme from no
+ * evidence is the worst outcome: it looks like it worked.
+ * ========================================================================== */
+describe('a theme can be built from a product image (LB.22)', () => {
+  /** 32×32 solid deep blue. Generated with sharp, embedded so the test needs
+   *  no image pipeline of its own. */
+  const BLUE_PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAO0lEQVR4nGMQsVlAU8QwaoHNaBAtGE1FIqMZbcFoUSEyWprajFY4IqNVps1oq2LBaMPLZrTpuGBQt64BMRXALgQ15h8AAAAASUVORK5CYII=',
+    'base64',
+  );
+  /** 32×32 pure white — a product cutout, the case that must refuse. */
+  const WHITE_PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAHUlEQVR4nO3BAQ0AAADCoPdPbQ8HFAAAAAAAAAAOBhQAAAHqp8dLAAAAAElFTkSuQmCC',
+    'base64',
+  );
+
+  const upload = async (png: Buffer, name: string) => {
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(png)], { type: 'image/png' }), name);
+    const res = await fetch(BASE + '/api/builder/upload', {
+      method: 'POST',
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+      body: form,
+    });
+    return { status: res.status, body: await res.json() };
+  };
+
+  /** WCAG relative luminance and contrast, computed independently of the
+   *  implementation so this asserts the RESULT rather than restating the code. */
+  const contrast = (a: string, b: string) => {
+    const lum = (hex: string) => {
+      const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+      const f = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+      const [r, g, bl] = ch.map(f);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+    };
+    const la = lum(a), lb = lum(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  };
+
+  test('a coloured photograph becomes a theme whose text can be read', async () => {
+    const up = await upload(BLUE_PNG, 'hero.png');
+    assert.equal(up.status, 200);
+
+    const res = await api('/api/builder/themes/from-image', tokens.owner, {
+      method: 'POST',
+      body: JSON.stringify({ imageUrl: up.body.data.url, name: `Extracted ${stamp}` }),
+    });
+    assert.equal(res.status, 201);
+    const theme = res.body.data;
+
+    // Every colour is a hex triple — a malformed one would reach the storefront
+    // as an invalid CSS value and simply not apply.
+    for (const key of ['primary', 'primaryForeground', 'accent', 'background', 'card', 'text', 'muted', 'border']) {
+      assert.match(theme[key], /^#[0-9a-f]{6}$/, `${key} is not a hex colour: ${theme[key]}`);
+    }
+
+    // THE TWO THAT CARRY TEXT. 4.5 is WCAG AA for body text; the buy button's
+    // label is large and bold, so 3.0 would pass — this holds it to the
+    // stricter bar because the label is the one thing on the page that must
+    // never be hard to read.
+    assert.ok(
+      contrast(theme.primary, theme.primaryForeground) >= 4.5,
+      `buy button contrast ${contrast(theme.primary, theme.primaryForeground).toFixed(2)} is too low`,
+    );
+    assert.ok(
+      contrast(theme.background, theme.text) >= 4.5,
+      `page text contrast ${contrast(theme.background, theme.text).toFixed(2)} is too low`,
+    );
+
+    // It is the tenant's own theme, so it can be renamed or deleted like the
+    // copies they already have — not a built-in masquerading as one.
+    assert.equal(theme.isBuiltIn, false);
+
+    // And it is a real row, so the General section's picker can offer it.
+    const list = await api('/api/builder/themes', tokens.owner);
+    assert.ok(list.body.data.items.some((x: { id: string }) => x.id === theme.id));
+  });
+
+  test('an image with no colour is refused, not guessed at', async () => {
+    const up = await upload(WHITE_PNG, 'cutout.png');
+    assert.equal(up.status, 200);
+
+    const res = await api('/api/builder/themes/from-image', tokens.owner, {
+      method: 'POST',
+      body: JSON.stringify({ imageUrl: up.body.data.url, name: 'Should not exist' }),
+    });
+    assert.equal(res.status, 422);
+    assert.equal(res.body.error.code, 'NO_COLOURS');
+  });
+
+  test('another tenant’s image cannot be read through this route', async () => {
+    const up = await upload(BLUE_PNG, 'mine.png');
+    assert.equal(up.status, 200);
+
+    // The URL carries a tenant id, and the storage layer has no idea who is
+    // asking — so the route checks the owner segment against the caller. Without
+    // that check this would hand back a competitor's product photograph.
+    const res = await api('/api/builder/themes/from-image', tokens.other, {
+      method: 'POST',
+      body: JSON.stringify({ imageUrl: up.body.data.url, name: 'Stolen' }),
+    });
+    assert.equal(res.status, 404);
+  });
+
+  test('an absolute URL is refused, so this is not a fetcher', async () => {
+    // Without the `/uploads/` prefix check the route would fetch anything the
+    // server can reach, which is an SSRF primitive with a colour picker on it.
+    const res = await api('/api/builder/themes/from-image', tokens.owner, {
+      method: 'POST',
+      body: JSON.stringify({ imageUrl: 'http://169.254.169.254/latest/meta-data/', name: 'x' }),
+    });
+    assert.equal(res.status, 404);
+  });
+});

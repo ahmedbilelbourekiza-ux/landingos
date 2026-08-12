@@ -51,6 +51,9 @@ const ERROR_KEYS: Record<string, string> = {
   // "your company switched this module off", and the message says where to
   // switch it back on.
   FINANCE_DISABLED: "common.error.financeDisabled",
+  // LB.22. Also its own, and for the same reason: it names what to try instead
+  // (a photograph of the product) rather than reporting a failure.
+  NO_COLOURS: "common.error.noColours",
   // The five ways a carrier can refuse, and they are FIVE because each one has a
   // different fix: change the carrier's integration, correct the address on the
   // order, correct what was sent, wait, or stop asking a carrier that only

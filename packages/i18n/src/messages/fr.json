@@ -313,7 +313,11 @@
       "previewNoHero": "Aucune image principale",
       "previewNoHeroHint": "Ajoutez-en une dans Images et médias — elle devient le haut de la page et l'image de partage.",
       "previewUntitled": "Page sans titre",
-      "previewUnnamedGroup": "Groupe sans nom"
+      "previewUnnamedGroup": "Groupe sans nom",
+      "themeFromImage": "En créer un à partir de l'image du produit",
+      "themeFromImageHint": "Reprend les couleurs de votre image principale et les enregistre comme nouveau thème.",
+      "themeFromImageNeedsHero": "Ajoutez d'abord une image principale, dans Images et médias.",
+      "themeGenerating": "Lecture des couleurs…"
     }
   },
   "erp": {
@@ -1071,7 +1075,8 @@
       "carrierUnreachable": "Transporteur injoignable. Aucun colis n'a été créé.",
       "carrierNoPolling": "Ce transporteur envoie seulement des mises à jour ; il n'y a rien à lui demander.",
       "tooManyRows": "Cet export est trop volumineux. Affinez le filtre et réessayez.",
-      "financeDisabled": "Le module Finances est désactivé pour cette société. Réactivez-le dans les règles d'automatisation."
+      "financeDisabled": "Le module Finances est désactivé pour cette société. Réactivez-le dans les règles d'automatisation.",
+      "noColours": "Cette image n'a pas de couleur permettant de créer un thème. Essayez une photo du produit lui-même."
     },
     "previous": "Précédent",
     "next": "Suivant",

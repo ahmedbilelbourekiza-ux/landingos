@@ -313,7 +313,11 @@
       "previewNoHero": "No hero image yet",
       "previewNoHeroHint": "Add one in Images & media — it becomes the top of the page and the social share image.",
       "previewUntitled": "Untitled page",
-      "previewUnnamedGroup": "Unnamed group"
+      "previewUnnamedGroup": "Unnamed group",
+      "themeFromImage": "Build one from the product image",
+      "themeFromImageHint": "Takes the colours from your hero image and saves them as a new theme.",
+      "themeFromImageNeedsHero": "Add a hero image first, in Images & media.",
+      "themeGenerating": "Reading the colours…"
     }
   },
   "erp": {
@@ -1071,7 +1075,8 @@
       "carrierUnreachable": "The carrier could not be reached. Nothing was booked.",
       "carrierNoPolling": "This carrier only pushes updates, so there is nothing to ask it.",
       "tooManyRows": "That export is too large. Narrow the filter and try again.",
-      "financeDisabled": "The finance module is switched off for this company. Turn it back on in Automation rules."
+      "financeDisabled": "The finance module is switched off for this company. Turn it back on in Automation rules.",
+      "noColours": "That image has no colour to build a theme from. Try a photograph of the product itself."
     },
     "previous": "Previous",
     "next": "Next",

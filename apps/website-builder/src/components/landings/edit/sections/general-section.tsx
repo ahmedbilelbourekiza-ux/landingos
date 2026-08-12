@@ -4,7 +4,7 @@ import * as React from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Settings2, Check } from "lucide-react";
+import { Settings2, Check, Wand2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import {
 } from "@/components/landings/edit/section";
 import { Field } from "./field";
 import { useBuilderApi } from "@/lib/builder/api-base";
+import { actionErrors, FALLBACK } from "@/lib/console/action-errors";
 
 export interface GeneralPreviewValues {
   title: string;
@@ -65,10 +66,21 @@ export function GeneralSection({
   landingId,
   initialValues,
   onPreviewChange,
+  heroUrl,
 }: {
   landingId: string;
   initialValues: GeneralPreviewValues;
   onPreviewChange: (values: GeneralPreviewValues) => void;
+  /**
+   * LB.22 — the page's hero image, to build a theme from.
+   *
+   * Passed down rather than read here: the hero belongs to the Images
+   * section's slice of the preview, and the workspace already holds all of
+   * them. A second fetch for something the page is holding would be a second
+   * answer to one question — and it would go stale the moment the merchant
+   * changed the image without saving.
+   */
+  heroUrl?: string | null;
 }) {
   // Where this editor sends its requests. The legacy dashboard and the
   // console mount the same components against different bases.
@@ -151,6 +163,48 @@ export function GeneralSection({
   const categoryIdValue = useWatch({ control, name: "categoryId" });
   const themeIdValue = useWatch({ control, name: "themeId" });
   const descLength = (descriptionValue ?? "").length;
+
+  /* LB.22 — generating a theme from the hero image.
+   *
+   * Its own small state rather than `useApiAction`: this is not a section
+   * save, it creates a sibling resource, and it must NOT mark the section
+   * dirty — a merchant who generates a theme and navigates away has not
+   * edited the page. On success the new theme is prepended and selected, so
+   * the result is visible without a reload; `router.refresh()` would rebuild
+   * the whole workspace and lose every other section's unsaved state. */
+  const [generating, setGenerating] = React.useState(false);
+  const [themeError, setThemeError] = React.useState<string | null>(null);
+  const errorMessages = React.useMemo(() => actionErrors(t), [t]);
+
+  const generateTheme = async () => {
+    if (!heroUrl) return;
+    setGenerating(true);
+    setThemeError(null);
+    try {
+      const res = await fetch(api("/themes/from-image"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageUrl: heroUrl,
+          // The page's own title, so the theme is findable later by the thing
+          // it was built from. Falls back rather than sending an empty name,
+          // which the route would refuse.
+          name: (titleValue ?? "").trim() || t("builder.editor.previewUntitled"),
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        setThemeError(errorMessages[String(json.error?.code ?? "")] ?? errorMessages[FALLBACK]);
+        return;
+      }
+      setThemes((prev) => [json.data, ...prev]);
+      setValue("themeId", json.data.id, { shouldValidate: true });
+    } catch {
+      setThemeError(errorMessages.NETWORK ?? errorMessages[FALLBACK]);
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const [categories, setCategories] = React.useState<{ id: string; name: string }[]>([]);
   const [themes, setThemes] = React.useState<{ id: string; name: string; primary: string; accent: string; background: string }[]>([]);
@@ -256,6 +310,42 @@ export function GeneralSection({
                 </button>
               );
             })}
+          </div>
+
+          {/* LB.22 — a theme taken from the product's own photograph.
+           *
+           * Here rather than on the Templates screen because this is where a
+           * theme is CHOSEN, and the thing it is built from — the hero image —
+           * belongs to this page. It saves a real `LandingTheme` row, so the
+           * result appears in the grid above like any other and can be picked,
+           * renamed or deleted afterwards.
+           *
+           * Disabled, with the reason said, when there is no hero yet: a
+           * control that fails on press and explains afterwards is the shape
+           * PM.6 exists to prevent. */}
+          <div className="mt-3 flex flex-col gap-1">
+            <button
+              type="button"
+              disabled={!heroUrl || generating}
+              onClick={generateTheme}
+              className="ui-btn ui-btn-default tap self-start"
+              data-testid="theme-from-image"
+            >
+              <Wand2 className="size-4" aria-hidden />
+              {generating
+                ? t("builder.editor.themeGenerating")
+                : t("builder.editor.themeFromImage")}
+            </button>
+            <span className="text-xs text-muted-foreground">
+              {heroUrl
+                ? t("builder.editor.themeFromImageHint")
+                : t("builder.editor.themeFromImageNeedsHero")}
+            </span>
+            {themeError && (
+              <p className="text-xs text-destructive" role="alert">
+                {themeError}
+              </p>
+            )}
           </div>
         </Field>
 

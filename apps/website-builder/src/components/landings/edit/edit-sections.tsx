@@ -104,6 +104,10 @@ export function EditSections({
               landingId={landingId}
               initialValues={preview.general}
               onPreviewChange={callbacks.general}
+              /* LB.22 — the hero the theme generator reads. Held here because
+                 the workspace owns every slice; the General section would
+                 otherwise have to fetch something this component has. */
+              heroUrl={preview.images.heroUrl}
             />
           );
         }
