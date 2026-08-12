@@ -1,8 +1,9 @@
 # HANDOFF_PRODUCTION — deployment and production state
 
-**Written:** 9 August 2026, ~19:00 UTC · **Updated:** 12 August 2026 (the
-LB.13–LB.26 deploy + the LB.20 production migration — see §1) · **For:** the
-next conversation/agent picking this project up. Read this FIRST for anything
+**Written:** 9 August 2026, ~19:00 UTC · **Updated:** 13 August 2026 (the
+LB.27–LB.29 deploy — see §1; the LB.13–LB.26 deploy + LB.20 migration are the
+12 August record below) · **For:** the next conversation/agent picking this
+project up. Read this FIRST for anything
 touching production; `PROJECT_STATE.md` (platform history),
 `BUILDER_HANDOFF.md` (product) and `UIUX_PASS.md` (the UI/UX + mobile passes)
 remain the deep references.
@@ -11,7 +12,40 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-- **Deployed commit:** `e3939e9` (12 Aug 2026, evening — the full local range
+- **Deployed commit: `08e386d`** (13 Aug 2026, user-approved — the range
+  `e3939e9..08e386d`: the 12-Aug deploy record commit plus **LB.27** the
+  tenant-deletion sweep, **LB.28** the `rtl:` correction, **LB.29** the Sheet
+  logical close edge). **Rollback point:
+  `e3939e98e6de58ebfada4a9bb38f9764fe1a4031`.** **No migration** — verified
+  before pushing that nothing in the batch touches `packages/db/prisma`.
+- **How this deploy was confirmed, and the trap it re-taught.** An unauthed
+  chunk-fingerprint marker was USELESS here and briefly gave a false
+  positive (two different hashing methods compared against each other).
+  Recomputed consistently it never changed — correctly, because none of
+  these commits touch code reachable from the login page, so its
+  content-hashed chunks are byte-identical. Same shape as `90f3d43` in §5.
+  **Build identity was proven by CONTENT on an authed page instead:** the
+  editor's back arrow carries `rtl:-scale-x-100` and the Sheet close button
+  `top-4 end-4`, classes no earlier build emits. *Rule: one method per
+  marker, and pick a page that contains the changed code.*
+- **Live verification (13 Aug), throwaway tenant on the real domain:** Arabic
+  back arrow computes `scale: -1 1`; drawer close button at x 17–33 (inline
+  end) at 375 px; checkout end-to-end **3,400** = 2,900 + 500 quoted and
+  charged; merged Finances screen (المالية) carries calculator + history +
+  charge list + add panel with `/console/erp/finance` 404; orders, products,
+  clients 200; health green. **Fixture removed with `deleteTenant` itself** —
+  9 product-domain rows swept in 2 passes, zero rows behind, its first real
+  production use.
+- **⚠ NOT deployed: LB.30** (`e940f06` on `claude/interesting-herschel-ceeb8f`,
+  a worktree branch — never merged to `master`, so the 13-Aug push could not
+  carry it). It themes the store home, category and thank-you pages. The gap
+  is OPEN in production and was measured there on 13 Aug: under a dark-OS
+  visitor a landing page holds `#FAF9F6` (LB.26) while the **thank-you page
+  has no theme scope and renders near-black** — the last step of a real
+  checkout. Merging that branch is a decision the user has not yet taken with
+  the branch situation in view.
+- *(historical — the 12 Aug state this deploy replaced)* **Deployed commit:**
+  `e3939e9` (12 Aug 2026, evening — the full local range
   `b767928..e3939e9`, 20 commits: LB.13 editor i18n, LB.16–LB.22 the feature
   pass incl. per-product delivery pricing, LB.25 the Finances/Calculator
   merge, LB.26 the storefront theme-bleed fix). **The commit REPLACED was
@@ -76,6 +110,7 @@ remain the deep references.
 
 | Commit | What it is |
 |---|---|
+| `e3939e9..08e386d` | **13 Aug 2026: LB.27–LB.29** — the `deleteTenant` sweep (a tenant delete used to orphan every product-domain row; 73,267 of them had accumulated in dev), the `rtl:` record correction + editor back-arrow flip, and the Sheet's logical close edge. No migration. Verified by authed content markers + a full throwaway-tenant journey |
 | `b767928..e3939e9` | **12 Aug 2026 (evening): the LB.13–LB.26 range** — editor i18n (LB.13), dead-component deletion (LB.16), ERP detail back-nav (LB.17), the finance module switch (LB.18), product categories (LB.19), **per-product delivery pricing (LB.20, with its production migration applied first)**, catalogue publishing (LB.21), image-derived themes (LB.22), the Finances/Calculator merge (LB.25), the storefront theme-bleed fix (LB.26) |
 | `5ac85b0` | The UI/UX pass: builder overview rebuilt, table headers, editor variant-label + unsaved-state fixes, ERP order summary strip, notification timestamps, locale switcher auto-submit (~60 i18n keys) |
 | `4470c50` | Mobile UX fixes (filter-bar mobile collapse, orders-table mobile columns, strip static on phones, tap targets, storefront select sizing) + the **RLS boot/health guard** |
@@ -389,11 +424,10 @@ The exact first steps, in order:
    `uploads: r2`. If `isolation` is missing, an old build is serving; if
    `BYPASSED`, stop everything and tell the user to fix Render's
    `DATABASE_URL` (see §3).
-3. **Confirm `origin/main` still equals `e3939e9`** (`git fetch && git log
+3. **Confirm `origin/main` still equals `08e386d`** (`git fetch && git log
    --oneline origin/main -1`) — if it moved, someone else deployed; re-read
-   the situation before assuming this document's state. (One local docs
-   commit recording this deploy sits on `master` ahead of `main`,
-   deliberately unpushed.)
+   the situation before assuming this document's state. Note that
+   **`claude/interesting-herschel-ceeb8f` carries LB.30, unmerged** (§1).
 4. **Know the open decision owned by the user:** the `erp-serveur`
    decommission. (The separate-database decision was resolved and executed
    10 Aug — §4.) It may not be started unprompted.

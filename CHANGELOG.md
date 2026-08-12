@@ -12,8 +12,55 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **DEPLOY — LB.27, LB.28, LB.29 reach production** (13 August 2026,
+  user-approved). Supersedes the "local only" notes on those three entries.
+
+  **What.** `e3939e9..08e386d` (4 commits: the 12-Aug deploy record plus the
+  three slices) pushed to `origin/main`; Render auto-deployed. **Rollback
+  point: `e3939e98e6de58ebfada4a9bb38f9764fe1a4031`.** No migration — verified
+  before pushing that neither this batch nor the pending LB.30 touches
+  `packages/db/prisma`; the only `packages/db` changes are the new helper
+  source and its tests.
+
+  **The marker lesson, recorded because it nearly produced a false
+  confirmation.** The first check compared a PowerShell-computed chunk-hash
+  fingerprint against a bash-computed one built from a different string, and
+  "flipped" instantly — an artifact of my own two methods, not a deploy.
+  Recomputed consistently, the fingerprint was **unchanged**, and correctly
+  so: none of these commits touch code reachable from the login page, so its
+  content-hashed chunks are byte-identical. This is the `90f3d43` situation
+  from §5 again — **a build whose changes are all server-side or auth-gated
+  cannot be confirmed by an unauthed probe.** The rule this adds: *compute a
+  marker with ONE method, and pick a marker on a page that actually contains
+  the changed code.*
+
+  **Build identity was then proven by content**, on the authed editor: the
+  back arrow carries `rtl:-scale-x-100` (LB.28) and the Sheet close button
+  carries `top-4 end-4` (LB.29) — classes that exist in no earlier build.
+
+  **Verified live** with a throwaway tenant on the real domain: in Arabic the
+  back arrow computes `scale: -1 1` and the drawer's close button sits at
+  x 17–33 (inline end) at 375 px; checkout end-to-end **3,400** = 2,900 + 500
+  quoted and charged; the merged Finances screen (titled المالية) carries the
+  calculator, history, charge list and add panel, with `/console/erp/finance`
+  still 404; orders/products/clients all 200; health green throughout.
+
+  **LB.27 proved itself in production** doing the cleanup: `deleteTenant` swept
+  the fixture's 9 product-domain rows (Membership/Subscription/AuditEvent
+  cascaded with the Tenant row) across 2 passes, leaving **zero rows** — the
+  first real use of the helper, on the defect it was written for.
+
+  **Not in this deploy: LB.30.** It is committed on
+  `claude/interesting-herschel-ceeb8f` (worktree), not on `master`, so it was
+  not deployable as part of this push. Measured on production afterwards, the
+  gap it closes is still open and now precisely documented: under an emulated
+  dark-OS visitor the landing page holds its theme (`#FAF9F6`, LB.26) while
+  the **thank-you page has no theme scope and renders a near-black canvas**
+  (`lab(2.48 …)`) — the last step of a real checkout journey.
+
 - **LB.29** The Sheet's close button moves to the logical edge (12 August
-  2026, night — **local only, not pushed, not deployed**).
+  2026, night — **deployed to production 13 August**, see the deploy entry
+  above).
 
   **The fix.** `ui/sheet.tsx`'s close button was `absolute top-4 right-4` — a
   PHYSICAL edge, with an LB.13 note recorded beside it. It is `end-4` now: in
@@ -39,7 +86,8 @@ touched, any **migration**, and any **risk**.
   physical→logical class swap with no layout arithmetic to disagree on.
 
 - **LB.28** The "dead `rtl:` variant" was never dead — the record was (12
-  August 2026, night — **local only, not pushed, not deployed**).
+  August 2026, night — **deployed to production 13 August**, see the deploy
+  entry above).
 
   **The premise, measured false.** The backlog item said `rtl:` emits no CSS
   app-wide, so the ERP data table and date picker "are likely rendering wrong
@@ -74,8 +122,8 @@ touched, any **migration**, and any **risk**.
   behavioral change outside the one arrow.
 
 - **LB.27** A deleted tenant actually goes away (12 August 2026, night —
-  **local only, not pushed, not deployed**; the finding is from the deploy
-  session's cleanup).
+  **deployed to production 13 August** and used there for the deploy's own
+  fixture cleanup; the finding is from the previous deploy session's cleanup).
 
   **The defect, measured.** `tenant.delete` cascades platform rows and
   nothing else: product-domain tables carry `tenantId` as an RLS-scoped

@@ -83,6 +83,13 @@ throwaway tenant on the real domain. See `HANDOFF_PRODUCTION.md` §1.
 | **LB.28** | The "dead `rtl:` variant" was never dead — the RECORD was. Measured on Tailwind 4.3.3: `rtl:` is native and `:lang()`-keyed; the data-table chevron had been mirroring correctly in Arabic all along, and `ui/calendar.tsx` is imported by nothing. What was wrong: the editor back arrow carried no flip (its comment cited the false premise) — fixed with `rtl:-scale-x-100`, verified ar/fr. Rule recorded in globals.css: the variant matches by LANGUAGE, so it still fires inside `dir="ltr"` islands — never use `rtl:` there; an `@custom-variant` override of the built-in name is silently ignored by Tailwind 4.3. i18n 22/22, builder-sections 73/73 |
 | **LB.29** | The Sheet close button moves to the logical edge (`right-4` → `end-4`), closing LB.13's recorded note. Scope corrected by measurement: the mobile nav drawer was NEVER affected (it is custom and logical-first), and `ui/sidebar.tsx` is unmounted — the editor's preview drawer is the only live Sheet. Verified at 375×812 emulation: ar close moved x 343→17 (inline end), fr unchanged at the right. Caveat recorded: no physical device reachable from this environment. builder-sections 73/73 |
 
+**LB.27, LB.28 and LB.29 are DEPLOYED** — `e3939e9..08e386d` pushed 13 Aug
+2026 with the user's approval, no migration, verified live by authed content
+markers plus a full throwaway-tenant journey (`HANDOFF_PRODUCTION.md` §1).
+**LB.30 is NOT deployed**: it lives on `claude/interesting-herschel-ceeb8f`,
+never merged to `master`, so the store home / category / thank-you pages
+still follow the visitor's dark mode in production.
+
 **Suite totals after LB.27:** builder-sections **73** · storefront **33** ·
 builder-api **23** · console-shell **20** · hardening **12** · webhooks **10** ·
 tracking **15** · erp/screens **172** · erp/finance **44** · erp/catalog **75** ·

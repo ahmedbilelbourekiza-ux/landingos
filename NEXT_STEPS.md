@@ -28,9 +28,9 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.22**~~ | ~~A theme generated from a product image~~ | M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** The hard part is readability, not colour-finding. builder-sections 58→62 |
 | ~~**LB.25**~~ | ~~Merge the Finances screen into the Calculator~~ | S–M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** Measured first: both screens wrote the SAME record through the same route. The expense form + list and the superseded marker moved to `/console/erp/calculator`, now titled Finances; the finance screen and its nav item are deleted; the URL stays. erp/screens 173→172, finance 44, ai 31, access 205 |
 | ~~**LB.26**~~ | ~~The preview/storefront theme-bleed bug~~ | M | **DONE 12 Aug 2026; DEPLOYED to production the same evening.** A landing page rendered the VIEWER's dark/light (console toggle in the editor; the visitor's OS on the published page) instead of its own theme — `--theme-background` had a writer and no reader. The ThemeProvider now paints its canvas and redefines the console token names in scope; the mini preview wraps in it; the never-sent `themeId` now reaches the preview state. storefront 33, builder-sections 73 |
-| ~~**LB.27**~~ | ~~Tenant deletion leaves orphaned rows~~ | M | **DONE 12 Aug 2026 (night), local only.** `deleteTenant()` in packages/db — an RLS-scoped sweep chosen over FK cascades on purpose (a cascade makes an accidental delete silently total). Harness + 11 suite hooks swapped; `neondb` bulk-cleaned **73,267 → 0** orphans and still 0 after suite runs. packages/db 33→35 |
-| ~~**LB.28**~~ | ~~The dead `rtl:` Tailwind variant~~ | S | **DONE 12 Aug 2026 (night), local only — and the premise measured FALSE.** `rtl:` is native on Tailwind 4.3.3 (`:lang()`-keyed); the data table was already correct in Arabic, the calendar is unmounted. Real fixes: the editor back arrow now flips (it cited the false premise for not flipping), the stale comments/memory corrected, and the dir-island rule recorded in globals.css. i18n 22, builder-sections 73 |
-| ~~**LB.29**~~ | ~~`ui/sheet.tsx` closes on a physical edge~~ | S | **DONE 12 Aug 2026 (night), local only.** `right-4` → `end-4`; scope corrected by measurement — the mobile nav drawer is a custom logical-first component and was never affected; the editor preview drawer is the only live Sheet. ar close x 343→17 at 375px emulation, fr unchanged. No physical device reachable — caveat recorded. builder-sections 73 |
+| ~~**LB.27**~~ | ~~Tenant deletion leaves orphaned rows~~ | M | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (and used there for the deploy's own fixture cleanup — 9 rows, zero behind). `deleteTenant()` in packages/db — an RLS-scoped sweep chosen over FK cascades on purpose (a cascade makes an accidental delete silently total). Harness + 11 suite hooks swapped; `neondb` bulk-cleaned **73,267 → 0** orphans and still 0 after suite runs. packages/db 33→35 |
+| ~~**LB.28**~~ | ~~The dead `rtl:` Tailwind variant~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug — and the premise measured FALSE.** `rtl:` is native on Tailwind 4.3.3 (`:lang()`-keyed); the data table was already correct in Arabic, the calendar is unmounted. Real fixes: the editor back arrow now flips (it cited the false premise for not flipping), the stale comments/memory corrected, and the dir-island rule recorded in globals.css. i18n 22, builder-sections 73 |
+| ~~**LB.29**~~ | ~~`ui/sheet.tsx` closes on a physical edge~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (verified in production Arabic: close at x 17–33). `right-4` → `end-4`; scope corrected by measurement — the mobile nav drawer is a custom logical-first component and was never affected; the editor preview drawer is the only live Sheet. ar close x 343→17 at 375px emulation, fr unchanged. No physical device reachable — caveat recorded. builder-sections 73 |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
@@ -255,7 +255,11 @@ information_schema through the OWNER connection, and pins the defect itself
 cascade appeared and this design note needs revisiting). The historical
 backlog was bulk-swept owner-side: **73,267 → 0**, and still 0 after
 console-shell 20/20 + hardening 12/12 ran with the new cleanup. packages/db
-33 → **35**. Production untouched.
+33 → **35**. **DEPLOYED 13 Aug 2026**, and it did the deploy's own fixture
+cleanup in production: 12 tables held the throwaway tenant's rows, the helper
+swept the 9 product-domain ones in 2 passes (Membership/Subscription/
+AuditEvent cascaded with the Tenant row), zero rows behind — the first real
+use of the helper, on the defect it was written for.
 
 **LB.28 — DONE. The "dead `rtl:` variant" was never dead; the record was (12
 Aug, night).** The backlog said `rtl:` emits no CSS app-wide and the ERP data
@@ -277,7 +281,9 @@ utility STILL FIRES inside this app's `dir="ltr"` islands (money, phone
 figures — probed live), so `rtl:` must never be used inside an island —
 logical properties there; and an `@custom-variant rtl` override of the
 built-in name is SILENTLY IGNORED by Tailwind 4.3, which is why the rule is
-a comment, not a declaration. i18n 22/22, builder-sections 73/73.
+a comment, not a declaration. i18n 22/22, builder-sections 73/73. **DEPLOYED
+13 Aug 2026** — the back arrow's `rtl:-scale-x-100` computing `scale: -1 1`
+in production Arabic doubled as this deploy's build-identity marker.
 
 **LB.29 — DONE. The Sheet's close button moves to the logical edge (12 Aug,
 night).** `ui/sheet.tsx` positioned its close button `right-4` — a physical
@@ -295,7 +301,9 @@ mobile emulation the Arabic close button moved from x 343–359 to **x 17–33**
 is reachable from this environment** — verification is Chrome viewport
 emulation with touch emulation, and the change is a single physical→logical
 class swap with no layout arithmetic to disagree on. builder-sections 73/73
-ran against the build carrying the change.
+ran against the build carrying the change. **DEPLOYED 13 Aug 2026** and
+re-verified on the real domain in Arabic at 375 px: the close button reports
+`top-4 end-4` and sits at x 17–33.
 
 **Phase 5, 6 and 7 are complete. LEGACY PARITY IS REACHED — Tiers 1, 2 and 3 of
 `LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that
