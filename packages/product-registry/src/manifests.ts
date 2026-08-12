@@ -110,13 +110,14 @@ export const erp: ProductManifest = {
     // and is withheld inside the screen, because a league table of colleagues is
     // supervision data — the same rule LP.6 applies to its `agents` export.
     { id: 'analytics', titleKey: 'erp.nav.analytics', path: 'analytics', icon: 'bar-chart-3', permission: 'erp:orders:read', group: 'erp.navGroup.insight' },
-    { id: 'finance', titleKey: 'erp.nav.finance', path: 'finance', icon: 'line-chart', permission: 'erp:finance:read', group: 'erp.navGroup.insight' },
-    // LP.16d. The legacy served this as a standalone HTML file with no
-    // authorization on the page at all; here it is its own screen behind the
-    // same SENSITIVE permission the books are behind. It is beside Finance
-    // rather than inside it because it is a working tool, not a report — the
-    // thing a manager opens to decide whether a product line survives.
-    { id: 'calculator', titleKey: 'erp.nav.calculator', path: 'calculator', icon: 'calculator', permission: 'erp:finance:read', group: 'erp.navGroup.insight' },
+    // LP.16d, merged in LB.25. The calculator (a working sheet syncing from
+    // real orders) and the finance screen (the same record restated by hand)
+    // both wrote `POST /financial-records`, so the module has ONE screen now,
+    // titled Finances. The id and PATH stay `calculator` on purpose: the URL
+    // is an address, not a name — the Automation screen set that precedent —
+    // and moving it would break links to buy nothing. The one-off expense
+    // list and the version history moved onto this screen with the merge.
+    { id: 'calculator', titleKey: 'erp.nav.finance', path: 'calculator', icon: 'line-chart', permission: 'erp:finance:read', group: 'erp.navGroup.insight' },
     { id: 'agents', titleKey: 'erp.nav.agents', path: 'agents', icon: 'user-cog', permission: 'erp:agents:manage', group: 'erp.navGroup.admin' },
     { id: 'ai', titleKey: 'erp.nav.ai', path: 'ai', icon: 'sparkles', permission: 'erp:ai:use', group: 'erp.navGroup.admin' },
     // Phase 6.3d. NOT called "settings", and the registry's own test is why:

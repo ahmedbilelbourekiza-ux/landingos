@@ -3,18 +3,20 @@ import { notFound } from "next/navigation";
 
 import { withTenant, Prisma } from "@landingos/db";
 import { can } from "@landingos/auth";
-import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
+import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import {
   calculatorStrings,
+  financeStrings,
   structuredStrings,
   readFixedCostRows,
 } from "@/lib/console/erp-strings";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { ProfitCalculator } from "@/components/console/erp/profit-calculator";
+import { ChargeAddPanel, ChargeRemove } from "@/components/console/erp/finance-write";
 import { FixedCostsEditor } from "@/components/console/erp/settings-structured";
 import { readSettings } from "@/lib/erp/settings";
 import { prorateMonthlyAmount, alignedRange, monthlyFixedTotal } from "@/lib/erp/prorate";
@@ -25,11 +27,25 @@ import { PERIOD_TYPES } from "@/app/api/erp/financial-records/route";
 export const dynamic = "force-dynamic";
 
 /* =============================================================================
- * The profit/loss calculator — LP.16d, restoring R9 / LEGACY_PARITY §7.
+ * The Finances screen — the profit/loss calculator (LP.16d, restoring R9 /
+ * LEGACY_PARITY §7) and, since LB.25, THE WHOLE FINANCE MODULE'S ONE SCREEN.
+ *
+ * LB.25 merged `/console/erp/finance` into this page and deleted it. The two
+ * screens wrote the SAME record through the same route (`POST
+ * /api/erp/financial-records`) — the finance screen was a shorter, hand-typed
+ * duplicate of what this sheet derives and partly syncs from real orders. What
+ * the finance screen alone had moved here: the one-off expense add form and
+ * list (deletable, never editable — a van repair typed in wrong is data entry,
+ * a saved P&L is a statement somebody made), and the current/superseded marker
+ * on the saved history, which was an audit finding and must not be lost. The
+ * URL deliberately stays `/calculator` while the title says Finances: a
+ * directory move would buy nothing but broken links and a redirect page that
+ * needs its own module-off semantics — the Automation screen set the precedent
+ * that the label, not the path, carries the name.
  *
  * The legacy served this as a standalone HTML file with NO AUTHORIZATION ON THE
  * PAGE AT ALL — the whole company's margins, break-even points and carrier
- * shortfalls, behind a URL. Here it is gated exactly as the finance screen is:
+ * shortfalls, behind a URL. Here it is gated exactly as the finance screen was:
  * `erp:finance:read` is SENSITIVE (D-05.1), so no role grants it implicitly,
  * and the page checks rather than trusting the nav to have hidden the link.
  *
@@ -100,7 +116,7 @@ export default async function ErpCalculatorScreen({
   const startDate = aligned ? aligned.start : Number(one("startDate")) || fallback.start;
   const endDate = aligned ? aligned.end : Number(one("endDate")) || fallback.end;
 
-  const { products, charges, settings, records } = await withTenant(
+  const { products, charges, chargesAll, settings, records } = await withTenant(
     session.auth!.tenantId,
     async (db) => ({
       // The catalogue, so every product starts as a block pre-filled with its
@@ -114,6 +130,16 @@ export default async function ErpCalculatorScreen({
       charges: await db.unexpectedCharge.findMany({
         where: { date: { gte: new Date(startDate), lte: new Date(endDate) } },
         orderBy: { date: "desc" },
+        select: { id: true, label: true, amount: true, date: true },
+      }),
+      /* Two charge queries, deliberately. THIS one is the management list the
+         finance screen had — the latest entries whatever their date, so a
+         mistyped repair can be found and deleted without hunting for the period
+         it fell in. The window-scoped one above is what feeds the total in the
+         roll-up; the hint above the list says which charges count. */
+      chargesAll: await db.unexpectedCharge.findMany({
+        orderBy: { date: "desc" },
+        take: 25,
         select: { id: true, label: true, amount: true, date: true },
       }),
       settings: await readSettings(db),
@@ -141,6 +167,25 @@ export default async function ErpCalculatorScreen({
   const maySettings = can(session.auth!, "erp:settings:write");
   const errors = actionErrors(t);
   const s = calculatorStrings(t);
+  const fs = financeStrings(t);
+
+  const currency = session.tenant!.currency;
+  const money = (v: { toString(): string }) => formatMoney(v.toString(), locale, currency);
+
+  /* THE AUDIT'S FINDING, carried over from the deleted finance screen.
+   * `FinancialRecord` is append-only, so saving a period twice keeps BOTH rows
+   * — and a history that lists them as two equally authoritative lines never
+   * says which one the business runs on. The rows arrive ordered
+   * `startDate desc, createdAt desc` and are already filtered to one
+   * periodType, so the FIRST row for a window is the current one and every
+   * later row for the same window is superseded. */
+  const seenPeriods = new Set<string>();
+  const versioned = records.map((r) => {
+    const key = `${r.startDate.getTime()}:${r.endDate.getTime()}`;
+    const current = !seenPeriods.has(key);
+    seenPeriods.add(key);
+    return { ...r, current };
+  });
 
   const href = (next: Record<string, string>) => {
     const q = new URLSearchParams({ periodType, ...next });
@@ -150,7 +195,9 @@ export default async function ErpCalculatorScreen({
   return (
     <>
       <PageBody>
-      <PageHeader title={t("erp.calculator.title")} description={t("erp.calculator.subtitle")} />
+      {/* Titled Finances since LB.25 — this is the finance module's one screen
+          now, and the nav item that opens it says the same. */}
+      <PageHeader title={t("erp.finance.title")} description={t("erp.calculator.subtitle")} />
 
       {/* The period. Links, not buttons — a calculation somebody is about to
           save should be linkable, survive a refresh and work before JavaScript,
@@ -232,8 +279,63 @@ export default async function ErpCalculatorScreen({
         />
       )}
 
+      {/* One-off expenses — moved here from the deleted finance screen (LB.25).
+          The recurring costs above and these are the two cost inputs a manager
+          maintains; the roll-up two panels up reads both. The LIST is the
+          latest entries whatever their date; the hint says which of them feed
+          the selected period's total, because a list scoped to the window would
+          make a charge dated outside it silently unfindable and undeletable. */}
+      <h2 className="mt-8 text-sm font-semibold tracking-tight">{t("erp.finance.charges")}</h2>
+      <p className="mt-1 text-xs text-muted-foreground">{t("erp.finance.chargesHint")}</p>
+
+      {mayWrite && <ChargeAddPanel errors={errors} s={fs} />}
+
+      <DataTable
+        testId="erp-charges-table"
+        empty={t("common.empty")}
+        rows={chargesAll}
+        rowKey={(c) => String(c.id)}
+        columns={[
+          { id: "label", header: t("erp.finance.charges"), cell: (c) => c.label },
+          {
+            id: "amount",
+            header: t("erp.orders.total"),
+            numeric: true,
+            align: "end",
+            cell: (c) => money(c.amount),
+          },
+          {
+            id: "date",
+            header: t("erp.orders.placed"),
+            // The day it HAPPENED, not the day it was typed in — a repair
+            // entered a week late belongs in the week it happened.
+            cell: (c) => (
+              <span className="text-muted-foreground">{formatDate(c.date, locale)}</span>
+            ),
+          },
+          // Deletable, unlike the saved records below, and the asymmetry is the
+          // schema's: a saved P&L is a statement somebody made, a van repair
+          // typed in wrong is data entry.
+          ...(mayWrite
+            ? [
+                {
+                  id: "actions",
+                  header: "",
+                  align: "end" as const,
+                  cell: (c: (typeof chargesAll)[number]) => (
+                    <ChargeRemove chargeId={String(c.id)} errors={errors} s={fs} />
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
+
       <h2 className="mt-8 text-sm font-semibold tracking-tight">{t("erp.calculator.history")}</h2>
       <p className="mt-1 text-xs text-muted-foreground">{t("erp.calculator.historyHint")}</p>
+      <p className="mt-1 text-xs text-muted-foreground" data-testid="finance-versions-hint">
+        {t("erp.finance.versionsHint")}
+      </p>
 
       <div className="mt-2">
         <a
@@ -248,21 +350,40 @@ export default async function ErpCalculatorScreen({
       <DataTable
         testId="erp-calculator-history"
         empty={t("erp.finance.none")}
-        rows={records}
+        rows={versioned}
         rowKey={(r) => r.id}
+        rowAttrs={(r) => ({
+          "data-record-id": r.id,
+          "data-current": r.current ? "true" : "false",
+        })}
         columns={[
           {
             id: "period",
             header: t("erp.finance.period"),
-            cell: (r) => `${formatDate(r.startDate, locale)} → ${formatDate(r.endDate, locale)}`,
+            cell: (r) => (
+              <>
+                {formatDate(r.startDate, locale)} → {formatDate(r.endDate, locale)}
+                {/* Said on the row. A superseded record is not wrong — it is
+                    what the period USED to say — but a manager reading two
+                    lines for one week needs to know which is which. */}
+                {!r.current && (
+                  <span
+                    data-badge="superseded"
+                    className="ms-2 rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                  >
+                    {t("erp.finance.superseded")}
+                  </span>
+                )}
+              </>
+            ),
           },
           {
             id: "revenue", header: t("erp.finance.revenue"), numeric: true, align: "end",
-            cell: (r) => <span dir="ltr">{r.revenue.toString()}</span>,
+            cell: (r) => <span dir="ltr">{money(r.revenue)}</span>,
           },
           {
             id: "net", header: t("erp.finance.netProfit"), numeric: true, align: "end",
-            cell: (r) => <span dir="ltr" className="font-medium">{r.netProfit.toString()}</span>,
+            cell: (r) => <span dir="ltr" className="font-medium">{money(r.netProfit)}</span>,
           },
           {
             id: "margin", header: t("erp.finance.margin"), numeric: true, align: "end",

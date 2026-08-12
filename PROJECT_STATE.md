@@ -75,11 +75,13 @@ only. See `HANDOFF_PRODUCTION.md` §5.
 | **LB.20** | Per-product delivery pricing. **Schema change:** `LandingDeliveryPrice`, a second table rather than a nullable column (Postgres NULLs are not equal, so a nullable key would stop preventing duplicate defaults). The load-bearing part is that ONE function answers both the quote (`/wilayas`) and the charge (`/orders`) — divergence would bill customers something other than what they saw. builder-sections 62→67, storefront 32/32, packages/db 33/33. **⚠ The table exists in `neondb` (dev) ONLY — the production migration is deliberately HELD OFF, and this code must not be deployed until it is released. Do not touch production.** See `HANDOFF_PRODUCTION.md` §5 |
 | **LB.21** | Landing pages publish into the ERP catalogue, all or one. `CatalogProductLink` is the idempotency key; **adoption** protects an existing catalogue, because two rows answering to one normalised name make every order naming it attributable to neither. The Manager's own columns (`costPrice`, stock, supplier) survive an import. builder-sections 67→72 |
 | **LB.22** | A storefront theme extracted from a product photograph. The hard part is readability, not colour-finding: the two colours that carry text are chosen by WCAG contrast and the test asserts ≥ 4.5 independently of the implementation. An image with nothing to take is refused rather than guessed at. builder-sections 58→62 |
+| **LB.25** | The Finances screen merges into the Calculator. Measured first: both save buttons POST the same `/api/erp/financial-records` into the same append-only record, both nav items sit behind `erp:finance:read`, LB.18's toggle hid both as one unit — so the hand-typed duplicate went. The one-off expense form + list and the current/superseded marker moved onto `/console/erp/calculator`, now titled **Finances**; the URL deliberately stays (the Automation precedent). No route or schema change. erp/screens 173→172 (a removed walkthrough row), erp/finance 44/44, erp/ai 31/31, access 205/205 |
 
-**Suite totals after LB.22:** builder-sections **72** · storefront **32** ·
+**Suite totals after LB.25:** builder-sections **72** · storefront **32** ·
 builder-api **23** · console-shell **20** · hardening **12** · webhooks **10** ·
-tracking **15** · erp/screens **173** · erp/finance **44** · erp/catalog **75** ·
-i18n **22** · packages/db **33** · product-registry **36**.
+tracking **15** · erp/screens **172** · erp/finance **44** · erp/catalog **75** ·
+erp/access **205** · erp/ai **31** · i18n **22** · packages/db **33** ·
+product-registry **36** · calc **20**.
 
 **The rule this pass adds to the method:** *a feature that reads a number and a
 feature that charges it must call the same function.* LB.20's quote and charge

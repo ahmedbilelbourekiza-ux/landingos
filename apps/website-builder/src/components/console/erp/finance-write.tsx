@@ -4,10 +4,16 @@ import { useState } from "react";
 
 import { useApiAction, ActionError, ActionButton } from "@/components/console/api-action";
 import type { ActionErrors } from "@/lib/console/action-errors";
-import type { WriteOption } from "@/components/console/edit-field";
 
 /* =============================================================================
- * The books — Phase 6.3d.
+ * The one-off charge write surface — Phase 6.3d, narrowed by LB.25.
+ *
+ * This file used to also hold `RecordSavePanel`, the finance screen's manual
+ * six-totals form. LB.25 deleted that screen: the calculator's working sheet
+ * posts the same route (`POST /api/erp/financial-records`) with the lines
+ * DERIVED rather than retyped, so the hand form was a second, blinder way to
+ * state the same record. The route is unchanged — nothing stopped accepting
+ * manual posts; only the duplicate control went.
  *
  * The asymmetry this file exists to render correctly, and which the schema
  * already encodes:
@@ -22,12 +28,6 @@ import type { WriteOption } from "@/components/console/edit-field";
  *   A ONE-OFF CHARGE IS DELETABLE. A saved P&L is a statement somebody made; a
  *   van repair typed in with the wrong amount is data entry, and refusing to let
  *   it be corrected would only produce a compensating negative charge.
- *
- * NET PROFIT IS NOT AN INPUT. The route derives it from revenue minus the five
- * cost lines and ignores whatever the request claims — a contract test posts
- * `netProfit: 999999` and expects 37000 back. A box for it would be a field
- * whose value the server throws away, which is a lie about what the person is
- * doing. Same for margin.
  * ========================================================================== */
 
 const FIELD = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
@@ -40,18 +40,6 @@ export interface FinanceStrings {
   readonly date: string;
   readonly add: string;
   readonly remove: string;
-  readonly savePanel: string;
-  readonly periodType: string;
-  readonly from: string;
-  readonly to: string;
-  readonly revenue: string;
-  readonly productCosts: string;
-  readonly shippingCosts: string;
-  readonly advertisingCosts: string;
-  readonly fixedExpenses: string;
-  readonly unexpectedExpenses: string;
-  readonly derivedHint: string;
-  readonly saveRecord: string;
 }
 
 /** A date input gives `YYYY-MM-DD`; the route takes epoch ms. Local midnight. */
@@ -167,121 +155,3 @@ export function ChargeRemove({
   );
 }
 
-/* -----------------------------------------------------------------------------
- * Saving a period
- * -------------------------------------------------------------------------- */
-
-export function RecordSavePanel({
-  errors,
-  s,
-  periodTypes,
-}: {
-  readonly errors: ActionErrors;
-  readonly s: FinanceStrings;
-  readonly periodTypes: readonly WriteOption[];
-}) {
-  const { run, pending, error } = useApiAction(errors);
-  const blank = {
-    periodType: periodTypes[0]?.value ?? "custom",
-    startDate: "", endDate: "",
-    revenue: "", productCosts: "", shippingCosts: "",
-    advertisingCosts: "", fixedExpenses: "", unexpectedExpenses: "",
-  };
-  const [f, setF] = useState(blank);
-  const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
-
-  const money = (k: keyof typeof f, label: string) => (
-    <div>
-      <label htmlFor={`fin-${k}`} className="ui-label block">{label}</label>
-      <input
-        id={`fin-${k}`} inputMode="decimal" dir="ltr"
-        value={f[k]} onChange={(e) => set(k, e.target.value)} className={`mt-1 ${FIELD}`}
-      />
-    </div>
-  );
-
-  const dated = Boolean(f.startDate && f.endDate);
-  // The route refuses a period that ends before it starts, so the control does
-  // too rather than offering a button that 422s.
-  const ordered = dated && dayToEpoch(f.endDate) >= dayToEpoch(f.startDate);
-
-  return (
-    <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-record-panel">
-      <h2 className="text-sm font-semibold tracking-tight">{s.savePanel}</h2>
-      {/* Said on the page: the total is the server's arithmetic, so two people
-          reading the same period cannot see two answers. */}
-      <p className="mt-1 text-xs text-muted-foreground">{s.derivedHint}</p>
-
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <div>
-          <label htmlFor="fin-periodType" className="ui-label block">
-            {s.periodType}
-          </label>
-          <select
-            id="fin-periodType" value={f.periodType}
-            onChange={(e) => set("periodType", e.target.value)} className={`mt-1 ${FIELD}`}
-          >
-            {periodTypes.map((p) => (
-              <option key={p.value} value={p.value}>{p.label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="fin-startDate" className="ui-label block">
-            {s.from}
-          </label>
-          <input
-            id="fin-startDate" type="date" dir="ltr"
-            value={f.startDate} onChange={(e) => set("startDate", e.target.value)}
-            className={`mt-1 ${FIELD}`}
-          />
-        </div>
-        <div>
-          <label htmlFor="fin-endDate" className="ui-label block">{s.to}</label>
-          <input
-            id="fin-endDate" type="date" dir="ltr"
-            value={f.endDate} onChange={(e) => set("endDate", e.target.value)}
-            className={`mt-1 ${FIELD}`}
-          />
-        </div>
-        {money("revenue", s.revenue)}
-        {money("productCosts", s.productCosts)}
-        {money("shippingCosts", s.shippingCosts)}
-        {money("advertisingCosts", s.advertisingCosts)}
-        {money("fixedExpenses", s.fixedExpenses)}
-        {money("unexpectedExpenses", s.unexpectedExpenses)}
-      </div>
-
-      <div className="mt-4">
-        <ActionButton
-          data-testid="record-save"
-          pending={pending}
-          pendingLabel={s.saving}
-          variant="primary"
-          disabled={!ordered}
-          onClick={async () => {
-            const { ok } = await run("POST", "/api/erp/financial-records", {
-              periodType: f.periodType,
-              startDate: dayToEpoch(f.startDate),
-              endDate: dayToEpoch(f.endDate),
-              // Empty means zero, not absent: a cost line left blank is a real
-              // claim that it was nothing, and the server would default it
-              // anyway. Sending it explicitly keeps the two readings identical.
-              revenue: f.revenue || "0",
-              productCosts: f.productCosts || "0",
-              shippingCosts: f.shippingCosts || "0",
-              advertisingCosts: f.advertisingCosts || "0",
-              fixedExpenses: f.fixedExpenses || "0",
-              unexpectedExpenses: f.unexpectedExpenses || "0",
-            });
-            if (ok) setF(blank);
-          }}
-        >
-          {s.saveRecord}
-        </ActionButton>
-      </div>
-
-      <ActionError message={error} />
-    </section>
-  );
-}

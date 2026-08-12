@@ -135,7 +135,8 @@ describe('navigation is filtered by permission', () => {
   test('granting the permission reveals exactly that item', () => {
     const nav = productRegistry.navFor('erp', ['erp:agents:manage']);
     assert.ok(nav.some((i) => i.id === 'agents'));
-    assert.ok(!nav.some((i) => i.id === 'finance'), 'unrelated grants stay hidden');
+    // The finances screen (id `calculator` since LB.25) needs erp:finance:read.
+    assert.ok(!nav.some((i) => i.id === 'calculator'), 'unrelated grants stay hidden');
   });
 
   test('an unknown product yields no navigation rather than throwing', () => {

@@ -26,6 +26,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.20**~~ | ~~Per-product delivery pricing~~ | M–L | **DONE 12 Aug 2026, local only. ⚠ ADDS A TABLE — production migration deliberately HELD OFF, see the narrative.** The schema did not support it: `TenantDeliveryPrice` is unique on `(tenantId, wilayaId)`. builder-sections 62→67, storefront 32/32, packages/db 33/33 |
 | ~~**LB.21**~~ | ~~Landing pages publish into the ERP catalogue~~ | M | **DONE 12 Aug 2026, local only.** All products or one. `CatalogProductLink` is the idempotency key; ADOPTION is what protects a catalogue the merchant already filled in by hand. builder-sections 67→72 |
 | ~~**LB.22**~~ | ~~A theme generated from a product image~~ | M | **DONE 12 Aug 2026, local only.** The hard part is readability, not colour-finding. builder-sections 58→62 |
+| ~~**LB.25**~~ | ~~Merge the Finances screen into the Calculator~~ | S–M | **DONE 12 Aug 2026, local only.** Measured first: both screens wrote the SAME record through the same route. The expense form + list and the superseded marker moved to `/console/erp/calculator`, now titled Finances; the finance screen and its nav item are deleted; the URL stays. erp/screens 173→172, finance 44, ai 31, access 205 |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
@@ -160,6 +161,31 @@ outcome because it looks like it worked. `readTenantImage` checks the URL's
 owner segment against the caller and accepts only `/uploads/` paths, so the
 route is not a fetcher. No new dependency: `sharp` was already here.
 builder-sections 58 → **62**.
+
+**LB.25 — DONE. The Finances screen merged into the Calculator (a later 12 Aug
+session).** The measurement came first, live, and decided the shape: both
+screens' save buttons POST the same `/api/erp/financial-records` into the same
+append-only `FinancialRecord` (the same demo record rendered on both tables),
+both nav items sit behind SENSITIVE `erp:finance:read` in the same `insight`
+group, both pages apply identical `seesWholeBook` + `financeEnabledFor` gates,
+and LB.18's toggle already hid the pair as one unit. So the finance screen was
+a shorter, hand-typed duplicate of what the calculator derives and partly
+syncs from real orders — and it went. What moved rather than died: the one-off
+expense add form AND its list (delete only, never edit — the schema's
+deliberate asymmetry), and the **current/superseded version marker** with its
+hint, which was an audit finding and would otherwise have been lost; the
+history's money columns picked up `formatMoney` on the way, as the deleted
+table had. Two decisions to know: **the URL stays `/console/erp/calculator`**
+(the label carries the name — the Automation precedent; a move breaks links to
+buy nothing) and **the manual six-totals form was dropped, not moved** — the
+route is untouched and still accepts manual posts; only the duplicate control
+went. No route, schema or permission change; `FINANCE_NAV_IDS` is
+`["calculator"]`. Verified live in fr AND ar (RTL): a charge added through the
+moved form lands in the roll-up exactly once, deletes cleanly, and the module
+toggle removes/restores the single merged screen with analytics untouched.
+erp/screens 173 → **172** (the walkthrough row for the deleted screen),
+erp/finance 44/44, erp/ai 31/31, erp/access 205/205, console-shell 20/20,
+i18n 22/22, product-registry 36/36, calc 20/20.
 
 **Phase 5, 6 and 7 are complete. LEGACY PARITY IS REACHED — Tiers 1, 2 and 3 of
 `LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that

@@ -346,7 +346,6 @@
       "agents": "Agents",
       "automation": "Automatisation",
       "ai": "Assistant IA",
-      "calculator": "Calculateur",
       "analytics": "Analyses",
       "channels": "Canaux de vente"
     },
@@ -598,7 +597,7 @@
       "saved": "Enregistré le",
       "none": "Aucun enregistrement",
       "charges": "Dépenses ponctuelles",
-      "appendOnly": "Les enregistrements sont conservés, jamais modifiés",
+      "chargesHint": "Une dépense compte dans la période où elle a eu lieu. Le total ci-dessus n'inclut que les dépenses datées dans la période sélectionnée.",
       "superseded": "Remplacée",
       "current": "Actuelle",
       "versionsHint": "Une période enregistrée plusieurs fois conserve chaque version. La plus récente fait foi ; celles en dessous sont ce qu'elle disait avant — presque toujours un colis revenu après le premier calcul.",
@@ -696,15 +695,10 @@
       "addCharge": "Ajouter une dépense ponctuelle",
       "amount": "Montant",
       "add": "Ajouter",
-      "savePanel": "Enregistrer une période",
       "from": "Du",
       "to": "Au",
-      "productCosts": "Coûts produits",
       "shippingCosts": "Coûts de livraison",
-      "advertisingCosts": "Publicité",
-      "fixedExpenses": "Charges fixes",
       "unexpectedExpenses": "Dépenses ponctuelles",
-      "derivedHint": "Le bénéfice net et la marge sont calculés par le serveur, afin que deux personnes lisant la même période ne voient pas deux résultats.",
       "saveRecord": "Enregistrer",
       "suspend": "Suspendre",
       "reactivate": "Réactiver",
@@ -776,7 +770,7 @@
       "channelCarrierHint": "Utilisé quand une commande de ce canal ne désigne aucun livreur. Le choix de la commande l’emporte toujours.",
       "noChannels": "Aucun canal de vente pour le moment.",
       "financeEnabled": "Afficher le module Finances",
-      "financeEnabledHint": "Désactiver cette option retire Finances et le Calculateur de la navigation pour toute la société. Rien n'est supprimé — les enregistrements sont conservés et réapparaissent si vous la réactivez."
+      "financeEnabledHint": "Désactiver cette option retire l'écran Finances de la navigation pour toute la société. Rien n'est supprimé — les enregistrements sont conservés et réapparaissent si vous la réactivez."
     },
     "queue": {
       "title": "Mes appels",
@@ -846,7 +840,6 @@
       "reportAgents": "Rapport — agents"
     },
     "calculator": {
-      "title": "Calculateur profit / perte",
       "subtitle": "Ce que le livreur a réellement payé, face à ce qu’il aurait dû. Tout ici explique cet écart.",
       "addProduct": "Ajouter un produit",
       "sync": "Synchroniser depuis les commandes",

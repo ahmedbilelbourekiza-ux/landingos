@@ -268,6 +268,15 @@ edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
    > Expect 49/49 on all four RLS checks (it was 48/48). **Neither has been run
    > against production.**
 
+   **LB.25 (a later 12 Aug session, LOCAL ONLY, NOT DEPLOYED):** the Finances
+   screen merged into the Calculator — `/console/erp/finance` deleted,
+   `/console/erp/calculator` is the finance module's one screen, titled
+   Finances, now carrying the one-off expense form + list and the
+   current/superseded marker. No route/schema change, no migration. A deployer
+   should know the old finance URL 404s and the nav has one finance item, not
+   two. Record: CHANGELOG §LB.25, PROJECT_STATE and NEXT_STEPS per-slice
+   entries.
+
 8. **Decided but NOT started, both waiting on something (12 Aug decisions):**
    - **LB.23 — Facebook Ads linking.** Decided to build REAL ad-spend
      attribution via a Meta app + OAuth, not merely store an account id.

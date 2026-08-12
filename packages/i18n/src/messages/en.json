@@ -346,7 +346,6 @@
       "agents": "Agents",
       "automation": "Automation",
       "ai": "AI assistant",
-      "calculator": "Calculator",
       "analytics": "Analytics",
       "channels": "Sales channels"
     },
@@ -598,7 +597,7 @@
       "saved": "Saved",
       "none": "No records saved yet",
       "charges": "One-off expenses",
-      "appendOnly": "Records are kept forever, never edited",
+      "chargesHint": "A charge counts in the period its date falls in. The roll-up above includes only charges dated inside the selected period.",
       "superseded": "Superseded",
       "current": "Current",
       "versionsHint": "A period saved more than once keeps every version. The newest is what the business runs on; the ones under it are what it used to say — almost always a parcel that came back after the first calculation.",
@@ -696,15 +695,10 @@
       "addCharge": "Add a one-off expense",
       "amount": "Amount",
       "add": "Add",
-      "savePanel": "Save a period",
       "from": "From",
       "to": "To",
-      "productCosts": "Product costs",
       "shippingCosts": "Shipping costs",
-      "advertisingCosts": "Advertising",
-      "fixedExpenses": "Fixed expenses",
       "unexpectedExpenses": "One-off expenses",
-      "derivedHint": "Net profit and margin are calculated by the server, so two people reading the same period cannot see two answers.",
       "saveRecord": "Save the record",
       "suspend": "Suspend",
       "reactivate": "Reactivate",
@@ -776,7 +770,7 @@
       "channelCarrierHint": "Used when an order from that channel names no carrier of its own. The order’s own choice always wins.",
       "noChannels": "No sales channels yet.",
       "financeEnabled": "Show the finance module",
-      "financeEnabledHint": "Turning this off removes Finance and the Calculator from the navigation for everyone in this company. Nothing is deleted — saved records are kept and reappear if you turn it back on."
+      "financeEnabledHint": "Turning this off removes the Finances screen from the navigation for everyone in this company. Nothing is deleted — saved records are kept and reappear if you turn it back on."
     },
     "queue": {
       "title": "My calls",
@@ -846,7 +840,6 @@
       "reportAgents": "Report — agents"
     },
     "calculator": {
-      "title": "Profit / loss calculator",
       "subtitle": "What the carrier actually paid, against what it should have. Everything here explains that difference.",
       "addProduct": "Add a product",
       "sync": "Sync from orders",

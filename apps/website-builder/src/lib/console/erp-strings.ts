@@ -111,6 +111,8 @@ export function carrierStrings(t: (key: string) => string): CarrierStrings {
 }
 
 export function financeStrings(t: (key: string) => string): FinanceStrings {
+  // Only the one-off charge vocabulary since LB.25 — the manual period form
+  // these strings also fed went with the finance screen.
   return {
     saving: t("common.saving"),
     addCharge: t("erp.write.addCharge"),
@@ -119,18 +121,6 @@ export function financeStrings(t: (key: string) => string): FinanceStrings {
     date: t("erp.orders.placed"),
     add: t("erp.write.add"),
     remove: t("common.delete"),
-    savePanel: t("erp.write.savePanel"),
-    periodType: t("erp.finance.period"),
-    from: t("erp.write.from"),
-    to: t("erp.write.to"),
-    revenue: t("erp.finance.revenue"),
-    productCosts: t("erp.write.productCosts"),
-    shippingCosts: t("erp.write.shippingCosts"),
-    advertisingCosts: t("erp.write.advertisingCosts"),
-    fixedExpenses: t("erp.write.fixedExpenses"),
-    unexpectedExpenses: t("erp.write.unexpectedExpenses"),
-    derivedHint: t("erp.write.derivedHint"),
-    saveRecord: t("erp.write.saveRecord"),
   };
 }
 

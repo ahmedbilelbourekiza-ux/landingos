@@ -530,11 +530,15 @@ describe('the two structured settings finally have controls', () => {
   });
 });
 
-describe('the finance screen still works, and links nothing it cannot serve', () => {
-  test('it renders for a manager', async () => {
-    const r = await html('/console/erp/finance', acme.manager.token);
+describe('the finances screen still works, and links nothing it cannot serve', () => {
+  test('it renders for a manager, with the history and the charge list (LB.25)', async () => {
+    // The finance screen merged into the calculator: one screen, titled
+    // Finances, carrying the saved history AND the one-off expense list.
+    const r = await html('/console/erp/calculator', acme.manager.token);
     assert.equal(r.status, 200);
-    assert.match(r.body, /data-testid="erp-finance-table"/);
+    assert.match(r.body, /data-testid="erp-calculator-history"/);
+    assert.match(r.body, /data-testid="erp-charges-table"/);
+    assert.match(r.body, /data-testid="product-switcher"/, 'inside the console shell');
   });
 
   test('a fresh tenant’s calculator does not crash on an empty catalogue', async () => {
@@ -584,21 +588,20 @@ describe('the finance module can be switched off (LB.18)', () => {
     assert.equal(r.body.data.financeEnabled, true);
   });
 
-  test('switching it off removes both nav items, and only those', async () => {
+  test('switching it off removes the module’s nav item, and only that', async () => {
+    // ONE item since LB.25 — the finance screen merged into the calculator,
+    // so hiding the module means hiding the one screen it consists of.
     await off.manager.api('PUT', '/api/erp/settings', { financeEnabled: false });
     const r = await html('/console/erp/orders', off.manager.token);
     assert.equal(r.status, 200);
-    assert.ok(!r.body.includes('/console/erp/finance"'), 'finance is still in the nav');
-    assert.ok(!r.body.includes('/console/erp/calculator"'), 'calculator is still in the nav');
+    assert.ok(!r.body.includes('/console/erp/calculator"'), 'the finances screen is still in the nav');
     // The neighbour in the same group stays, so this is a module and not a group.
-    assert.ok(r.body.includes('/console/erp/analytics"'), 'analytics went with them');
+    assert.ok(r.body.includes('/console/erp/analytics"'), 'analytics went with it');
   });
 
-  test('and the screens 404 when the URL is typed', async () => {
-    for (const path of ['/console/erp/finance', '/console/erp/calculator']) {
-      const r = await html(path, off.manager.token);
-      assert.equal(r.status, 404, `${path} still rendered`);
-    }
+  test('and the screen 404s when the URL is typed', async () => {
+    const r = await html('/console/erp/calculator', off.manager.token);
+    assert.equal(r.status, 404, '/console/erp/calculator still rendered');
   });
 
   test('and every finance route refuses, reads and writes alike', async () => {
@@ -629,7 +632,7 @@ describe('the finance module can be switched off (LB.18)', () => {
   test('switching it back on returns the module AND its history', async () => {
     await off.manager.api('PUT', '/api/erp/settings', { financeEnabled: true });
 
-    const screen = await html('/console/erp/finance', off.manager.token);
+    const screen = await html('/console/erp/calculator', off.manager.token);
     assert.equal(screen.status, 200);
 
     const r = await off.manager.api('GET', '/api/erp/financial-records');

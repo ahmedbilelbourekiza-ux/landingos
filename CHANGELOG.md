@@ -12,6 +12,55 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.25** The Finances screen merges into the Calculator (12 August 2026,
+  **local only — not pushed, not deployed**).
+
+  **What changed.** `/console/erp/finance` is deleted, along with its nav item
+  and its manual six-totals form (`RecordSavePanel`); the calculator screen at
+  `/console/erp/calculator` is now the finance module's ONE screen, titled
+  **Finances** in all three locales (`erp.nav.finance` / `erp.finance.title` on
+  the existing keys — no new label text). What the finance screen alone had
+  moved onto it: the one-off expense add form and list (delete only, never
+  edit — the schema's deliberate asymmetry), and the **current/superseded
+  version marker** on the saved history (an audit finding, not lost in the
+  merge; `data-record-id`/`data-current` and the versions hint moved with it).
+  The history's revenue and net-profit columns now render `formatMoney` output,
+  as the deleted screen's table did. The settings toggle hint no longer names
+  two screens. `FINANCE_NAV_IDS` shrinks to `["calculator"]`.
+
+  **Why.** Measured live before changing anything: both screens' save buttons
+  POST the same `/api/erp/financial-records` into the same append-only
+  `FinancialRecord` (the same demo record rendered on both tables), both nav
+  items sit behind SENSITIVE `erp:finance:read` in the same group, both pages
+  apply the identical `seesWholeBook` + `financeEnabledFor` gates, and LB.18's
+  toggle hid both as one unit. The finance screen was a shorter, hand-typed
+  duplicate of what the calculator derives and partly syncs from real orders.
+
+  **Two decisions.** The URL stays `/calculator` (label carries the name — the
+  Automation precedent; a directory move buys broken links plus a redirect page
+  needing its own module-off semantics). The manual form is dropped, not moved:
+  the route still accepts manual posts — only the duplicate control went.
+
+  **No route change, no schema change, no migration.** The charge list is two
+  queries on purpose: a window-scoped one feeds the roll-up total, a
+  latest-25-any-date one is the management list, and a new `chargesHint` line
+  states which charges count.
+
+  **Files:** `console/erp/calculator/page.tsx` (merged screen),
+  `console/erp/finance/` (deleted), `erp/finance-write.tsx` (charge components
+  only), `erp-strings.ts`, `product-registry/src/manifests.ts`,
+  `lib/erp/settings.ts`, the three catalogues, and the four test files that
+  pinned the old screen.
+
+  **Verified live** (fr LTR and ar RTL, against the rebuilt server): one nav
+  item; old URL 404 for a manager; a charge added through the moved form lands
+  in the roll-up **exactly once** (2500 → net −2500), deletes cleanly in RTL,
+  totals return to zero; toggle off → nav item gone + screen 404 + routes
+  refuse, on → all back, analytics untouched throughout. **Suites, per file:**
+  erp/screens **172** (173 − the removed nav-walkthrough row) · erp/finance
+  **44** · erp/ai **31** · erp/access **205** · console-shell **20** · i18n
+  **22** · product-registry **36** · calc **20**.
+
 - **LB.16–LB.22** The dead-code deletion and the feature pass (12 August 2026).
   Seven slices, commits `93c4f00..e49ba19`, **local only — nothing pushed,
   nothing deployed**. Per-slice narrative in `NEXT_STEPS.md`; tracking rows in

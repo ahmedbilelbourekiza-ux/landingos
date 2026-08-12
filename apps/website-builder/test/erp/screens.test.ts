@@ -221,8 +221,11 @@ describe("every screen in the ERP's navigation renders", () => {
     ['inventory', '/console/erp/inventory', 'erp-low-stock-table'],
     ['shipments', '/console/erp/shipments', 'erp-shipments-table'],
     ['carriers', '/console/erp/carriers', 'erp-carriers-table'],
+    // No finances row — LB.25 merged that screen into the calculator, which
+    // cannot join this list: its period tabs legitimately carry a second
+    // aria-current="page", so the exactly-one loop below would miscount it.
+    // The merged screen's render is asserted in finance.test.ts instead.
     ['follow-up', '/console/erp/follow-up', 'erp-followup-table'],
-    ['finance', '/console/erp/finance', 'erp-finance-table'],
     ['agents', '/console/erp/agents', 'erp-agents-table'],
   ] as const;
 
@@ -252,7 +255,7 @@ describe('the sensitive screens are gated, not merely unlinked', () => {
   // itself refuses, rather than trusting the menu to have hidden the link.
   const SENSITIVE = [
     ['clients', '/console/erp/clients'],
-    ['finance', '/console/erp/finance'],
+    ['finances', '/console/erp/calculator'],
     ['agents', '/console/erp/agents'],
   ] as const;
 
@@ -272,7 +275,7 @@ describe('the sensitive screens are gated, not merely unlinked', () => {
   test('the ERP nav hides what the caller cannot open', async () => {
     const r = await html('/console/erp', acme.agent.token);
     assert.ok(!/data-nav="clients"/.test(r.body), 'no link to a screen that would 404');
-    assert.ok(!/data-nav="finance"/.test(r.body));
+    assert.ok(!/data-nav="calculator"/.test(r.body));
     assert.ok(!/data-nav="agents"/.test(r.body));
     assert.match(r.body, /data-nav="orders"/, 'but their own work is there');
   });
@@ -313,12 +316,17 @@ describe('money and figures render correctly', () => {
     assert.match(r.body, /tabular-nums/, 'figures line up down the column');
   });
 
-  test('the finance screen states that records are never edited', async () => {
+  test('the finances screen states that records are never edited', async () => {
     // The append-only rule, said on the screen rather than only in the schema —
     // a manager looking for an edit button should learn why there is not one.
-    const r = await html('/console/erp/finance', acme.manager.token);
-    assert.match(r.body, /data-testid="erp-finance-table"/);
-    assert.ok(!/>\s*Delete\s*</.test(r.body), 'no delete control for a saved record');
+    // Attribute-based since LB.25: the merged screen legitimately has Delete
+    // buttons (product blocks, one-off charges), so the label match would lie.
+    const r = await html('/console/erp/calculator', acme.manager.token);
+    assert.match(r.body, /data-testid="erp-calculator-history"/);
+    assert.ok(
+      !/data-record-delete|data-record-edit/.test(r.body),
+      'no delete or edit control for a saved record',
+    );
   });
 });
 
@@ -1483,31 +1491,25 @@ describe('carriers can be configured without their keys reaching the page', () =
 });
 
 describe('the books can be written, and a saved record still cannot be', () => {
-  test('a manager gets the record and charge panels', async () => {
-    const r = await html('/console/erp/finance', acme.manager.token);
+  // LB.25 — the finance screen merged into the calculator. The one-off charge
+  // panel and list moved here; the manual six-totals form did NOT survive,
+  // because the calculator's sheet posts the same route with the lines derived
+  // rather than retyped. The route still accepts a manual post — only the
+  // duplicate control went.
+  test('a manager gets the charge panel on the merged screen, and no manual record form', async () => {
+    const r = await html('/console/erp/calculator', acme.manager.token);
     assert.equal(r.status, 200);
-    assert.match(r.body, /data-testid="erp-record-panel"/);
     assert.match(r.body, /data-testid="erp-charge-panel"/);
-  });
-
-  test('net profit and margin have no input, because the server derives them', async () => {
-    // A contract test posts `netProfit: 999999` and expects 37000 back. A box
-    // for it would be a field whose value the server throws away.
-    const r = await html('/console/erp/finance', acme.manager.token);
-    assert.match(r.body, /id="fin-revenue"/);
-    assert.match(r.body, /id="fin-productCosts"/);
-    assert.ok(!/id="fin-netProfit"/.test(r.body), 'net profit is not an input');
-    assert.ok(!/id="fin-margin"/.test(r.body), 'nor is margin');
+    assert.ok(!/data-testid="erp-record-panel"/.test(r.body), 'the manual period form is gone');
+    assert.ok(!/id="fin-/.test(r.body), 'and none of its inputs survived elsewhere');
   });
 
   test('money is never a number input on this screen either', async () => {
-    const r = await html('/console/erp/finance', acme.manager.token);
-    for (const id of ['fin-revenue', 'charge-amount']) {
-      const tag = r.body.match(new RegExp(`<input[^>]*id="${id}"[^>]*>`))?.[0] ?? '';
-      assert.notEqual(tag, '', `no control found for ${id}`);
-      assert.ok(!/type="number"/.test(tag), `${id} rendered as ${tag}`);
-      assert.match(tag, /inputmode="decimal"/i);
-    }
+    const r = await html('/console/erp/calculator', acme.manager.token);
+    const tag = r.body.match(/<input[^>]*id="charge-amount"[^>]*>/)?.[0] ?? '';
+    assert.notEqual(tag, '', 'no control found for charge-amount');
+    assert.ok(!/type="number"/.test(tag), `charge-amount rendered as ${tag}`);
+    assert.match(tag, /inputmode="decimal"/i);
   });
 
   test('a saved record offers no edit and no delete; a charge offers a delete', async () => {
@@ -1523,8 +1525,10 @@ describe('the books can be written, and a saved record still cannot be', () => {
     });
     assert.equal(charge.status, 201);
 
-    const r = await html('/console/erp/finance', acme.manager.token);
-    assert.match(r.body, /data-testid="erp-finance-table"/);
+    // month view, so the record just saved is IN the history being asserted on.
+    const r = await html('/console/erp/calculator?periodType=month', acme.manager.token);
+    assert.match(r.body, /data-testid="erp-calculator-history"/);
+    assert.match(r.body, new RegExp(`data-record-id="${saved.body.data.id}"`));
     // The asymmetry the schema encodes: a P&L is a statement somebody made, a
     // van repair typed in wrong is data entry.
     assert.match(r.body, /data-testid="charge-remove"/);
@@ -1533,13 +1537,18 @@ describe('the books can be written, and a saved record still cannot be', () => {
 
   test('an agent reaches neither the screen nor the routes', async () => {
     // erp:finance:read is SENSITIVE (D-05.1) — the company's P&L.
-    assert.equal((await page('/console/erp/finance', acme.agent.token)).status, 404);
+    assert.equal((await page('/console/erp/calculator', acme.agent.token)).status, 404);
     assert.equal(
       (await acme.agent.api('POST', '/api/erp/unexpected-charges', {
         label: 'nope', amount: 1,
       })).status,
       403,
     );
+  });
+
+  test('the old finance URL is gone for everybody, not gated', async () => {
+    // Deleted in LB.25, not hidden: there is no page behind it for any caller.
+    assert.equal((await page('/console/erp/finance', acme.manager.token)).status, 404);
   });
 });
 
@@ -2596,7 +2605,9 @@ describe('a period saved twice says which version is current (audit)', () => {
     });
     assert.equal(second.status, 201);
 
-    const r = await html('/console/erp/finance', staged.manager.token);
+    // The merged screen (LB.25) — the records are periodType `week`, which is
+    // also the calculator's default history filter.
+    const r = await html('/console/erp/calculator', staged.manager.token);
     assert.equal(r.status, 200);
     assert.match(r.body, /data-badge="superseded"/, 'the older save is not marked');
     assert.match(

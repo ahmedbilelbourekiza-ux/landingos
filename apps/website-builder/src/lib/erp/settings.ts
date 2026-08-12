@@ -69,17 +69,15 @@ export const DEFAULT_SETTINGS = {
 
 /* The nav items that ARE the finance module.
  *
- * The calculator is in the list because it is part of the same module rather
- * than a neighbour of it: the manifest already puts it behind the same
- * `erp:finance:read` permission and in the same `insight` group, and a company
- * that has switched off its books has no use for a profit calculator that
- * writes into them.
+ * One id since LB.25: the finance screen merged into the calculator (both
+ * wrote the same record through the same route) and its nav item was deleted,
+ * so the module IS the calculator screen now, titled Finances.
  *
  * This list lives in the ERP because only the ERP knows what its own finance
  * module consists of. The registry and the shell filter ids they are HANDED —
  * neither may learn that "finance" is a thing, which is the contract
  * `ProductManifest` exists to enforce. */
-export const FINANCE_NAV_IDS = ["finance", "calculator"] as const;
+export const FINANCE_NAV_IDS = ["calculator"] as const;
 
 /**
  * Which of this product's nav items the tenant has switched off.
