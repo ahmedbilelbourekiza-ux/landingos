@@ -8,7 +8,7 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
-import { PageBody } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable, StatusPill } from "@/components/console/data-table";
 import { ClientEditPanel } from "@/components/console/erp/client-write";
 import { clientEditStrings } from "@/lib/console/erp-strings";
@@ -87,31 +87,45 @@ export default async function ErpClientDetailScreen({
   return (
     <>
       <PageBody>
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold" data-flash-id={client.id}>
-          {client.name || client.phoneDisplay || client.phone}
-        </h1>
-        <a
-          // The same tap-to-dial control the queue screen uses: this screen
-          // exists to be read immediately before somebody rings the number.
-          href={`tel:${client.phoneDisplay || client.phone}`}
-          data-testid="client-dial"
-          dir="ltr"
-          className="ui-btn ui-btn-default tap font-mono"
-        >
-          {client.phoneDisplay || client.phone}
-        </a>
-        <Link
-          href="/console/erp/clients"
-          className="text-sm text-muted-foreground underline-offset-2 hover:underline"
-        >
-          {t("erp.clients.title")}
-        </Link>
-      </div>
-
-      <p className="mt-2 text-sm text-muted-foreground">
-        {[client.wilaya, client.commune, client.address].filter(Boolean).join(" · ") || "—"}
-      </p>
+      {/* LB.17 — the way back, where a reader looks for it.
+       *
+       * There WAS a link here, and that is why the gap survived UI.22: it sat
+       * AFTER the title and after the dial button, 44×20px of muted text with
+       * no arrow and no "back", so it read as a tag on the record rather than
+       * as navigation off it. Measured in the running page at x=294 beside an
+       * `h1` at x=16. `PageHeader`'s own comment says its breadcrumb exists to
+       * replace this exact link and the product detail's; UI.22 built the
+       * primitive and migrated only the order detail.
+       *
+       * The dial control keeps its prominence as `actions` — this screen is
+       * opened immediately before somebody rings the number, and demoting it
+       * to fix navigation would trade one problem for another. */}
+      <PageHeader
+        breadcrumb={[
+          { label: t("erp.clients.title"), href: "/console/erp/clients" },
+          { label: client.name || client.phoneDisplay || client.phone },
+        ]}
+        title={
+          <span data-flash-id={client.id}>
+            {client.name || client.phoneDisplay || client.phone}
+          </span>
+        }
+        description={
+          [client.wilaya, client.commune, client.address].filter(Boolean).join(" · ") || "—"
+        }
+        actions={
+          <a
+            // The same tap-to-dial control the queue screen uses: this screen
+            // exists to be read immediately before somebody rings the number.
+            href={`tel:${client.phoneDisplay || client.phone}`}
+            data-testid="client-dial"
+            dir="ltr"
+            className="ui-btn ui-btn-default tap font-mono"
+          >
+            {client.phoneDisplay || client.phone}
+          </a>
+        }
+      />
 
       {/* Lifetime EVENT counts, and the label says so. Rendering them as live
           figures invites somebody to "fix" the arithmetic that produces them. */}

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { withTenant } from "@landingos/db";
@@ -6,7 +5,7 @@ import { can } from "@landingos/auth";
 import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
-import { PageBody } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { inventoryView } from "@/lib/erp/inventory";
 
@@ -110,26 +109,29 @@ export default async function ErpProductDetailScreen({
   return (
     <>
       <PageBody>
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold">{product.name || product.reference || product.id}</h1>
-        {product.archived && (
-          <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
-            {t("erp.products.archived")}
-          </span>
-        )}
-        <Link
-          href="/console/erp/products"
-          className="text-sm text-muted-foreground underline-offset-2 hover:underline"
-        >
-          {t("erp.products.title")}
-        </Link>
-      </div>
-
-      <p className="mt-2 text-sm text-muted-foreground">
-        {[product.sku, product.brand, product.niche, product.category, product.supplier]
-          .filter(Boolean)
-          .join(" · ") || "—"}
-      </p>
+      {/* LB.17 — the same gap the client detail had, for the same reason: a
+          muted word after the title where navigation does not read as
+          navigation. The archived chip becomes `meta`, which is what `meta` is
+          for — something that qualifies the title itself. */}
+      <PageHeader
+        breadcrumb={[
+          { label: t("erp.products.title"), href: "/console/erp/products" },
+          { label: product.name || product.reference || product.id },
+        ]}
+        title={product.name || product.reference || product.id}
+        meta={
+          product.archived ? (
+            <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+              {t("erp.products.archived")}
+            </span>
+          ) : undefined
+        }
+        description={
+          [product.sku, product.brand, product.niche, product.category, product.supplier]
+            .filter(Boolean)
+            .join(" · ") || "—"
+        }
+      />
 
       {/* LIFETIME EVENT counts, and the label says so. Rendering them as live
           figures invites somebody to "fix" the arithmetic that produces them. */}
