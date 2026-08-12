@@ -19,10 +19,147 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | **LB.11** | Real-credential smoke test: Meta/TikTok/GA4 with test pixels + `testCode` | S | No request has crossed the REAL endpoints — the ZR/Ecom precedent; **the one remaining gate before real ad spend**, and untestable locally by construction |
 | ~~**LB.12**~~ | ~~Benefits + FAQ end to end~~ | M | **DONE 10 Aug 2026** (`CAPABILITY_AUDIT.md` B1, CHANGELOG §LB.12). The audit found it was deeper than recorded: the storefront FAQ/Reviews renderers were **mounted by nothing** (saved reviews travelled in the payload and rendered nowhere) and BenefitsList hardcoded four badges. Now: `features`/`faqs` PUT routes, Benefits+FAQ editor sections replace the stubs, mappers unhardcoded, sections mounted with `show*` gating (default true), benefits data-driven with the four badges as fallback. builder-sections 54/54, live-verified through the real editor + public page |
 | ~~**LB.13**~~ | ~~Editor i18n~~ | M | **DONE 11 Aug 2026, local only — `EDITOR_I18N.md` is the full record.** Seven slices, 213 `builder.editor.*` keys in en/fr/ar, 31 live components plus four shared modules. Suites: i18n 22/22 (two new guard tests), builder-sections 58/58, console-shell 20/20, storefront 32/32; verified live in `ar` (RTL) and `fr` (LTR) with the forms driven, not read. The measurement corrected M-04 twice — the create screen was already translated, and 10 of the "54 components" are dead legacy code reachable from nothing. It also closed a class the audit never named: the save path rendered the API's ENGLISH developer message in every locale. **Three decisions remain yours: `EDITOR_I18N.md` §3.** |
-| ~~**LB.16-LB.22**~~ | ~~Dead-code deletion + the 12 Aug feature pass~~ | — | **DONE 12 Aug 2026, local only — see `FEATURE_PASS_AUG12.md`.** Ten dead components deleted; ERP detail back-navigation; the finance module made optional per tenant; product categories; per-product delivery pricing (NEW TABLE — production needs db push + rls); landing pages publish into the ERP catalogue; themes generated from a product image. Nine incidental defects fixed. **LB.23 (Facebook Ads linking) and LB.24 (AI page generator) are measured but NOT built — the reasons and the scoping are in that document, and LB.23 needs your decision.** |
+| ~~**LB.16**~~ | ~~The ten dead components, deleted~~ | S | **DONE 12 Aug 2026, local only.** Re-confirmed unreachable three ways — filenames, exported SYMBOLS, a fresh import-graph walk — before `git rm`. The i18n guard's exemption for `media-picker-dialog.tsx` went WITH the file rather than into an empty set, because a list that exists is an invitation to add to it. `components/landings/` now holds only `edit/`. All eight builder suites green; every builder screen re-verified at 200. See the narrative below |
+| ~~**LB.17**~~ | ~~Back-navigation on ERP detail screens~~ | S | **DONE 12 Aug 2026, local only.** A reported defect, and the measurement was sharper than the report: a back link EXISTED but sat after the title as a 44×20px muted word with no arrow. `PageHeader`'s own comment says its breadcrumb was built to replace this link and the product detail's — UI.22 built the primitive and migrated only the order detail. erp/screens 173/173 |
+| ~~**LB.18**~~ | ~~The finance module becomes optional~~ | M | **DONE 12 Aug 2026, local only.** Four things make "removed" mean something: the nav loses Finance AND the Calculator, both screens 404 on a typed URL, all nine finance handlers refuse with `FINANCE_DISABLED`, and NOTHING IS DELETED. erp/finance 38→44 |
+| ~~**LB.19**~~ | ~~Product categories in the catalogue~~ | M | **DONE 12 Aug 2026, local only.** Pages already had categories since B3; products had unguided free text. Closed WITHOUT converting to a relation — the schema states a reasoned decision against that. erp/catalog 72→75 |
+| ~~**LB.20**~~ | ~~Per-product delivery pricing~~ | M–L | **DONE 12 Aug 2026, local only. ⚠ ADDS A TABLE — production migration deliberately HELD OFF, see the narrative.** The schema did not support it: `TenantDeliveryPrice` is unique on `(tenantId, wilayaId)`. builder-sections 62→67, storefront 32/32, packages/db 33/33 |
+| ~~**LB.21**~~ | ~~Landing pages publish into the ERP catalogue~~ | M | **DONE 12 Aug 2026, local only.** All products or one. `CatalogProductLink` is the idempotency key; ADOPTION is what protects a catalogue the merchant already filled in by hand. builder-sections 67→72 |
+| ~~**LB.22**~~ | ~~A theme generated from a product image~~ | M | **DONE 12 Aug 2026, local only.** The hard part is readability, not colour-finding. builder-sections 58→62 |
+| **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
+| **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
 | **LB.15** | Editor money inputs off `type="number"` (pricing section) | S | D-06 style residue; single values round-trip exactly, arithmetic is Decimal server-side since LB.10 |
 | ~~LB.10~~ | ~~`website-builder:orders:write`~~ | — | **DONE in the LB.10 commit** (B-08 closed, console writes rerouted through the API, webhooks fire from console changes) |
+
+### The 12 August pass — LB.16 to LB.22, slice by slice
+
+**All local, none deployed.** `origin/main` is at `b767928`; these are commits
+`93c4f00..e49ba19` on `master`. `FEATURE_PASS_AUG12.md` carries the session-level
+record (the defect list, the database state, the decisions); what follows is the
+per-slice narrative in the shape LP.16 and its neighbours use.
+
+**LB.16 — DONE. The ten dead components, deleted.** LB.13's measurement found
+that ten of `BUILDER_AUDIT` M-04's "54 editor components" were unreachable from
+`app/` — the legacy dashboard's page list, superseded by the server-rendered
+console screen and imported only by each other. Re-confirmed three ways before
+deleting: the filenames, their exported SYMBOLS (a file can be imported under a
+name that does not match its path), and a fresh import-graph walk. The i18n
+guard's named exemption went with the file rather than into an empty set,
+because a list that exists is an invitation to add to it. Two exports are now
+orphaned and deliberately left — `toListItem` in `mappers.ts` (**already dead
+before this deletion**; nothing imported it) and the `LandingListItem` type;
+`VariantGroup`/`VariantOption` in the same module stay live, so
+`mock-landings.ts` must not be deleted wholesale.
+
+**LB.17 — DONE. Back-navigation on the ERP client and product detail screens.**
+Reported as "opening a client has no way back to the list". The measurement was
+sharper: a link existed, 44×20px of muted text reading "Clients", no arrow, no
+"back", sitting AFTER the title and after the tap-to-dial button — measured in
+the running page at x=294 beside an `h1` at x=16. It reads as a tag ON the
+record rather than navigation OFF it, which is why it was experienced as
+absent. **The check the user asked for found the cause:** `PageHeader`'s own
+doc comment says its breadcrumb exists "to replace three different hand-written
+back links (the order detail's, the client detail's, and the product detail's
+absence)" — UI.22 built the primitive and migrated only the order detail. Both
+screens use it now, so all four list-then-detail pairs in the console navigate
+the same way. Nothing was demoted to make room: the dial control keeps its
+prominence as `actions`, the archived chip becomes `meta`. erp/screens 173/173.
+
+**LB.18 — DONE. The finance module can be switched off, per tenant.** The
+mechanism already existed — `ProductSetting` keyed (tenant, product, key), a
+route validating against `SETTINGS_SCHEMA`, and a settings screen that builds
+its controls FROM that table — so declaring `financeEnabled` made the switch
+appear, labelled and translated, with no edit to the page. Four things make
+"removed" mean something and only the first is visible: the nav loses Finance
+AND the Calculator (it writes the records the books are made of), both screens
+404 on a typed URL, all nine finance handlers refuse with `FINANCE_DISABLED`,
+and **nothing is deleted** — `FinancialRecord` is append-only by design, so a
+control that shredded it would be the one irreversible action on this platform.
+The shell is handed IDS, never knowledge: `hiddenNavIds` is product-agnostic,
+and that "finance" and "calculator" are one module lives in `lib/erp/settings.ts`
+and is applied by the ERP's own segment layout — a `switch (product.id)` in the
+shell is exactly what the manifest contract exists to prevent. Settings gained a
+generic hint slot on the way, derived from the catalogue via `t.has()` rather
+than a maintained list. erp/finance 38 → **44**.
+
+**LB.19 — DONE. Product categories in the ERP catalogue.** Half the request was
+already done: `LandingPage` has had a `Category` relation, a management screen
+and a picker since B3. Products had `CatalogProduct.category` as free text with
+nothing around it. **The free text was NOT converted to a relation**, and that
+is a decision — the schema states a reasoned one against it ("a niche list is a
+handful of words per tenant, and a Supplier table would be a migration plus RLS
+plus a management screen for something no route needs to join on"). What was
+closed is the gap that decision left open: the field was unguided, so a merchant
+typing "Skincare", "skincare" and "Skin care" got three categories and no way to
+notice. Values in use are now offered wherever the field appears — a datalist on
+create (suggesting, never forbidding, because the first product in a category
+must be able to create it), a select on the list filter, and
+`GET /api/erp/products/categories` with counts. **D-LB.19.1** closed a real
+duplication on the way: the screen and `GET /api/erp/products` each built their
+`where` by hand under a comment promising they could not disagree; both call
+`productWhere` now, and a test asserts they return the same set for the same
+query string rather than restating the promise. erp/catalog 72 → **75**.
+
+**LB.20 — DONE (code); MIGRATION HELD OFF. Per-product delivery pricing.** The
+schema did not support it: `TenantDeliveryPrice` is unique on
+`(tenantId, wilayaId)`, so a company had exactly one price per destination and a
+heavy or fragile product had to be absorbed into it. `LandingDeliveryPrice` is a
+SECOND table rather than a nullable `landingPageId` on the first, because the
+existing uniqueness is what makes "the company's price for Alger" a single fact
+and a nullable column would make NULL mean "default" — and Postgres NULLs are
+not equal to each other, so the constraint would stop preventing duplicate
+defaults. **D-LB.20.1 is the property that makes this safe:** two endpoints read
+delivery prices — `/wilayas` quotes into the destination dropdown, `/orders`
+charges — and each built its own query. A per-product price reaching one and not
+the other bills a customer something other than what they were shown, and no
+suite over either route alone would notice. Both call `deliveryPricesFor()`, and
+the test asserts the charged `shippingPrice` on the stored snapshot equals the
+quoted price AND differs from the company rate. Driven live: a 1500 override on
+a 2900 product produced an order totalling **4400**, not the 3300 the company
+rate would have given. builder-sections 62 → **67**, storefront 32/32,
+packages/db 33/33.
+
+> **⚠ The production migration is deliberately held off (decided after the
+> session).** `LandingDeliveryPrice` exists in `neondb` (dev) only. Do not touch
+> production; the dev-only state stands until further notice. When it is
+> released, `HANDOFF_PRODUCTION.md` §5 carries the two commands.
+
+**LB.21 — DONE. Landing pages publish into the ERP catalogue.** The gap was
+quiet rather than loud: a merchant builds a product in the builder and it exists
+nowhere in the Manager until somebody retypes it, so `fulfilmentFromSale` writes
+the product's NAME onto the order, `productOrderMatcher` looks it up, finds no
+row, and the lifetime counters never move while no cost basis exists.
+Idempotency is the design because "send all" is a button somebody presses twice:
+`CatalogProductLink` already models "this catalogue row IS that external
+product", so it is the key. **D-LB.21.1 — adoption is what protects an existing
+catalogue:** a naive importer gives a merchant who already typed their products
+in TWO rows per product, and two rows answering to one normalised name make
+every order naming it attributable to NEITHER — which is exactly what
+`duplicateProductNames` exists to detect. An unlinked row with a matching
+normalised name is adopted; two already-ambiguous rows are left alone, because
+adopting one would pick a winner arbitrarily and make the ambiguity permanent.
+The Manager's own columns survive an import — `costPrice`, `packagingCost`,
+`stock`, `threshold`, `supplier` are facts a manager maintains, and resetting a
+cost basis to zero would corrupt every profit figure derived from it. "All"
+takes published pages only. builder-sections 67 → **72**.
+
+**LB.22 — DONE. A storefront theme taken from the product's own photograph.**
+The hard part is not finding the colours — averaging pixels is four lines — it
+is that the result must be READABLE: a generated theme that puts white text on a
+pale yellow buy button ships a broken storefront and the merchant finds out from
+their conversion rate. The two colours that carry text are CHOSEN by WCAG
+contrast; the extracted hue survives where being wrong is cosmetic and yields
+where being wrong is a lost sale. The contract test asserts ≥ 4.5 on both pairs,
+computing the ratio independently of the implementation so it checks the result
+rather than restating the code. Near-white and near-black are excluded from the
+vote (product photography is shot on a white sweep, so the honest dominant
+colour of most of these images is the backdrop), and an image with nothing to
+take is REFUSED — inventing a plausible theme from no evidence is the worst
+outcome because it looks like it worked. `readTenantImage` checks the URL's
+owner segment against the caller and accepts only `/uploads/` paths, so the
+route is not a fetcher. No new dependency: `sharp` was already here.
+builder-sections 58 → **62**.
 
 **Phase 5, 6 and 7 are complete. LEGACY PARITY IS REACHED — Tiers 1, 2 and 3 of
 `LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that

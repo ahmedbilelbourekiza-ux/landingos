@@ -12,6 +12,10 @@ plus **LB.16** (§4) which deleted the ten dead components §0 found.
 > **Read §3 first if you are the user.** Four things were left as your decision
 > rather than guessed at; the first is now resolved (§4), three remain open.
 
+**A later pass followed this one.** LB.17–LB.22 (12 August) are recorded in
+`FEATURE_PASS_AUG12.md`, with per-slice history in `NEXT_STEPS.md` and
+`PROJECT_STATE.md`. Nothing in it revisited §3's three open items.
+
 ---
 
 ## §0 THE MEASUREMENT, TAKEN FIRST — and it corrects the audit

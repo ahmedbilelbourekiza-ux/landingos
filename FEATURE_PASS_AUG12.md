@@ -1,13 +1,23 @@
 # FEATURE_PASS — 12 August 2026, the dead-code deletion and the feature queue
 
-**Status: LOCAL ONLY, NOTHING PUSHED, NOTHING DEPLOYED.** Nine commits,
-`93c4f00..16ab5fa`, on `master`, which is 17 commits ahead of `origin/main`.
+**Status: LOCAL ONLY, NOTHING PUSHED, NOTHING DEPLOYED.** Feature commits
+`93c4f00..e49ba19` on `master`, followed by a documentation backfill on the same
+day. `origin/main` is at `b767928`.
 
 **Method:** the standing order, per slice — measure → fix → test → verify live
 in the running app → commit → document, before starting the next.
 
-> **Read §5 first.** Two of the nine requested items are NOT built, and the
-> decisions I made on your behalf are listed there.
+> **Read §5 first.** It carries three decisions taken AFTER this session:
+> LB.20's production migration is **held off** (do not touch production),
+> LB.23 is **decided but blocked** on a Meta Developer App, and LB.24 is
+> **on hold**.
+
+**Where else this pass is recorded.** This file is the session-level record —
+the defect list, the database state, the decisions. The per-slice history lives
+where the project's other slices live, and was backfilled on 12 Aug:
+`PROJECT_STATE.md` (tracking table, *After the phase was declared complete*)
+and `NEXT_STEPS.md` (queue rows plus a narrative section per slice, in the shape
+LP.16 uses). `CHANGELOG.md` carries the entry with the migration and risk.
 
 ---
 
@@ -167,17 +177,29 @@ Nine, none of which was the feature I was building:
 run; `packages/db/.env` does not name `landingos_prod`), followed by
 `npm run rls` — **48 → 49 tenant-scoped tables**, all four checks 49/49.
 
-> ### ⚠ PRODUCTION NEEDS TWO STEPS BEFORE THIS DEPLOYS
-> `LandingDeliveryPrice` is a new table. Deploying LB.20's code without it
-> gives a runtime error on the checkout path — the money path. At deploy time,
-> against production, in this order:
+> ### ⚠ THE PRODUCTION MIGRATION IS ON HOLD — DECIDED AFTER THIS SESSION
+>
+> **Do not touch production. The dev-only state stands until further notice.**
+>
+> `LandingDeliveryPrice` is a new table and it exists in **`neondb` (dev) only**.
+> The migration is *deliberately* being held off — this is a decision, not an
+> oversight, and not a step anybody should "finish" on their own initiative.
+>
+> The consequence to understand while it is held: **LB.20's code must not reach
+> production either.** Deploying it without the table is a runtime error on the
+> checkout path — the money path. Since nothing in this pass is deployed and
+> `origin/main` is untouched, holding the migration and holding the deploy are
+> the same act today.
+>
+> When the hold is lifted, the two steps, against production, in this order:
 >
 > ```bash
 > npm run push --workspace @landingos/db
 > npm run rls  --workspace @landingos/db
 > ```
 >
-> Expect `49/49` on all four RLS checks. **I have deliberately not run either.**
+> Expect `49/49` on all four RLS checks (it was 48/48). **Neither has been run
+> against production.**
 
 **Demo-tenant state I changed and did not fully restore**, all in `neondb`:
 
@@ -196,50 +218,81 @@ discarded.
 
 ---
 
-## §5 WHAT I DID **NOT** BUILD, AND THE CALLS I MADE
+## §5 WHAT IS NOT BUILT, AND THE CALLS THAT WERE MADE
 
-### Not built: LB.23 — Facebook Ads account linking
+> **The three items below were decided AFTER this session, in a separate
+> conversation.** The decisions are recorded here because this file is the
+> record a fresh session reads; the measurement under each one is from the
+> session itself and still stands.
 
-**Measured, not started.** `TrackingIntegration` already carries Meta pixel +
-CAPI token (encrypted, `provider: 'meta'`), and there is a `google-ads` provider
-slot. **Nothing anywhere stores an ad ACCOUNT id** (`grep` for
-`adAccount|act_` returns nothing).
+### On hold: LB.20's production migration — DO NOT TOUCH PRODUCTION
 
-The scoping question I could not answer for you: *what should linking DO?*
+**Decision: the production database migration is deliberately held off for
+now. The dev-only state stands until further notice.**
 
-- **If it means "attribute ad spend into the P&L"** — that is the valuable
-  reading, and it connects to `FinancialRecord.advertisingCosts`, which a
-  manager currently types by hand. It needs a real Meta app, OAuth, and the
-  Marketing API. None of that can be built or verified on this machine, and it
-  is the same honest gate LB.11 records for tracking credentials.
-- **If it means "store the account id"** — that is an afternoon, and it is a
-  container with no contents: a field nothing reads. This codebase repeatedly
-  catalogues that exact shape as a defect ("a column with a writer and no
-  reader is not done; it is a feature nobody can use").
+`LandingDeliveryPrice` exists in `neondb` (dev) only. This is not an oversight
+and not a step to "finish" on your own initiative — the code is written, tested
+and verified locally, and the migration is being withheld on purpose.
 
-I was not willing to ship the second and call it the first. **This one needs
-your decision**, and it is the only requested item that does.
+Because LB.20's code cannot run without the table, **holding the migration and
+holding the deploy are the same act**: nothing from this pass is deployed and
+`origin/main` is untouched, so there is nothing to reconcile. When the hold is
+lifted, §4 carries the two commands and the expected `49/49`.
 
-### Not built: LB.24 — AI landing page generator
+### Blocked on credentials: LB.23 — Facebook Ads linking
 
-**Measured, not started.** The infrastructure exists and is better than I
-expected: `AiProvider` (type, baseUrl, encrypted apiKey, model, temperature,
-maxTokens, timeout), `AiAgent`, `AiConversationMessage`, provider CRUD routes,
-and a console screen. `POST /api/erp/ai/chat` is a **deliberate 501** —
+**Decision: build REAL ad-spend attribution via a Meta app + OAuth — not merely
+store an account id.** The scoping question the session could not answer has
+been answered, and it went to the valuable reading.
+
+**Status: not started. Waiting on the user.** The work cannot begin until a
+Meta Developer App exists, because none of it can be built or verified without
+one. What is needed:
+
+- a Meta Developer App with the **Marketing API** product added;
+- **App ID and App Secret**;
+- a **redirect URI** registered for the OAuth flow;
+- the **`ads_read`** permission;
+- possibly **App Review and Business verification**, depending on how the app
+  is used and who it is used by.
+
+What the session measured, still current: `TrackingIntegration` already carries
+the Meta pixel + CAPI token (encrypted, `provider: 'meta'`) and has a
+`google-ads` provider slot, but **nothing anywhere stores an ad ACCOUNT id** —
+`grep` for `adAccount|act_` returns nothing. The destination for the spend is
+`FinancialRecord.advertisingCosts`, which a manager currently types by hand.
+
+This is the same honest gate LB.11 records for tracking credentials: it is
+untestable on this machine by construction, and that is a property of the
+integration rather than a gap in the plan.
+
+**The rejected alternative, recorded so it is not revisited by accident:**
+storing the account id alone is an afternoon's work and produces a field
+nothing reads — the shape this codebase repeatedly catalogues as a defect ("a
+column with a writer and no reader is not done; it is a feature nobody can
+use"). It was not shipped as a stand-in for the real thing.
+
+### On hold: LB.24 — AI landing page generator
+
+**Decision: deliberately on hold. Not started.**
+
+The measurement stands and is worth keeping, because it is most of the head
+start. The infrastructure already exists and is better than expected:
+`AiProvider` (type, baseUrl, encrypted apiKey, model, temperature, maxTokens,
+timeout), `AiAgent`, `AiConversationMessage`, provider CRUD routes, and a
+console screen. `POST /api/erp/ai/chat` is a **deliberate 501** —
 `NO_AI_PROVIDER` when none is configured, `NOT_IMPLEMENTED` otherwise — with a
 comment explaining that a box which always fails is worse than a stated gap.
 
-So the generator is roughly: a provider-agnostic call built on `AiProvider`, a
-prompt that produces the editor's own `PreviewState` shape, validation of the
-model's output against the same zod schemas the sections use, and a control on
-the create screen. That is a genuine slice, not an afternoon, and it is the
-largest of the nine.
+The shape, when it is picked up: a provider-agnostic call built on
+`AiProvider`, a prompt that produces the editor's own `PreviewState` shape,
+validation of the model's output against the same zod schemas the sections
+already use, and a control on the create screen. A genuine slice, and the
+largest of the nine originally requested.
 
-**Why I stopped instead:** by this point in the session I had introduced two
-defects in one slice (§3, rows 2 and 3) and caught both only by driving the app.
+**Why the session stopped rather than starting it:** two defects had been
+introduced in one slice (§3, rows 2 and 3) and caught only by driving the app.
 That is the signal to stop adding surface, not to add the biggest piece of it.
-Shipping seven verified features and a scoped plan is worth more than nine of
-which two are unverified.
 
 ### Decisions I made on your behalf
 

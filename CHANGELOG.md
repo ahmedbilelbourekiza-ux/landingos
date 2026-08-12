@@ -12,6 +12,62 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.16–LB.22** The dead-code deletion and the feature pass (12 August 2026).
+  Seven slices, commits `93c4f00..e49ba19`, **local only — nothing pushed,
+  nothing deployed**. Per-slice narrative in `NEXT_STEPS.md`; tracking rows in
+  `PROJECT_STATE.md`; the session-level record (defect list, database state,
+  decisions) in **`FEATURE_PASS_AUG12.md`**.
+
+  **What changed.** LB.16 deleted the ten unreachable legacy components LB.13's
+  measurement found. LB.17 gave the ERP client and product detail screens the
+  breadcrumb UI.22 had built for them and never wired up. LB.18 made the ERP's
+  finance module switchable off per tenant — nav, screens and all nine routes,
+  with nothing deleted. LB.19 made `CatalogProduct.category` guided (values in
+  use offered on create and as a list filter) without converting free text to a
+  relation, because the schema states a reasoned decision against that.
+  **LB.20 added per-product delivery pricing.** LB.21 publishes landing pages
+  into the ERP catalogue, all or one. LB.22 extracts a storefront theme from a
+  product photograph.
+
+  **MIGRATION — and it is ON HOLD.** LB.20 adds one table,
+  `LandingDeliveryPrice` (`@@unique([tenantId, landingPageId, wilayaId])`,
+  cascade on the page). It was pushed to **`neondb` (dev) only**, followed by
+  `npm run rls` — 48 → **49** tenant-scoped tables, 49/49 on all four checks.
+  **The production migration is deliberately held off (decided after the
+  session). Do not touch production.** Nobody should "finish" it on their own
+  initiative.
+
+  **RISK, stated plainly.** LB.20's code cannot run without that table: a
+  deploy without it is a runtime error on the CHECKOUT path — the money path.
+  Holding the migration therefore means holding the deploy of this whole range,
+  which is the state today (`origin/main` is at `b767928` and untouched).
+
+  **The rule this pass adds to the method:** *a feature that quotes a number and
+  a feature that charges it must call the same function.* LB.20's two paths each
+  built their own query under a comment promising they could not disagree; a
+  copy is a promise nobody enforces, and no suite over either route alone would
+  have caught the divergence. The same shape appeared twice more in one session
+  (LB.19's product `where`; LB.13's registry-versus-section titles).
+
+  **Nine incidental defects** were found and fixed on the way — including a
+  schema `@@unique` that omitted `tenantId` (caught by the repo's own
+  `constraints.test.ts`), a formatting function passed Server→Client that 500'd
+  a screen, and a `useEffect` keyed on `useBuilderApi()` (a new closure per
+  render) that silently discarded unsaved rows. Full list: `FEATURE_PASS_AUG12.md`
+  §3.
+
+  **Suites, per file against the running server:** builder-sections **72** ·
+  storefront **32** · builder-api **23** · console-shell **20** · hardening
+  **12** · webhooks **10** · tracking **15** · erp/screens **173** ·
+  erp/finance **44** · erp/catalog **75** · i18n **22** · packages/db **33** ·
+  product-registry **36**.
+
+  **Not built, decided after the session:** LB.23 (Facebook Ads) — build real
+  ad-spend attribution via a Meta app + OAuth, **blocked** on the user creating
+  the Meta Developer App (Marketing API, App ID/Secret, redirect URI,
+  `ads_read`, possibly App Review/Business verification). LB.24 (AI landing
+  page generator) — **on hold, not started**.
+
 - **LB.13** The landing editor learns Arabic and French (11 August 2026,
   closing `BUILDER_AUDIT.md` M-04). Seven slices, each measure → fix → test →
   verify live in `ar` (RTL) **and** `fr` (LTR) → commit: the editor shell and

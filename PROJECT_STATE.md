@@ -54,6 +54,41 @@ builder-sections 50 · builder-api 23 · webhooks 10 · tracking 15 ·
 hardening 11 · console-shell 14 — per file, against the running server, with
 the delivery suites driving real HTTP receivers. ERP suites untouched.
 
+### After the phase was declared complete — LB.12 onward
+
+The table above is the phase as planned. Everything below was done AFTER Phase
+LB was closed, under the same numbering because the queue in `NEXT_STEPS.md`
+continued from it. Three of these slices (LB.17–LB.19) touch the ERP rather
+than the builder: the numbering follows the queue, not the product.
+
+**None of it is deployed.** `origin/main` is at `b767928`; this work is local
+only. See `HANDOFF_PRODUCTION.md` §5.
+
+| Slice | What it closed |
+|---|---|
+| **LB.12** | Benefits + FAQ end to end (`CAPABILITY_AUDIT.md` B1). Deeper than recorded: the storefront FAQ **and Reviews** renderers were mounted by nothing — saved reviews reached the browser in the payload and produced no markup — and `BenefitsList` hardcoded four badges. `features`/`faqs` PUT routes, both editor sections replacing "Coming Soon", mappers unhardcoded, sections mounted with `show*` gating, benefits data-driven with the four COD badges as the empty-state fallback. builder-sections 50→54 |
+| **LB.13** | Editor i18n — 213 `builder.editor.*` keys in en/fr/ar across 31 live components plus four shared modules. Closed `BUILDER_AUDIT.md` M-04 and **corrected it twice**: the create screen was already translated, and 10 of the "54 components" were unreachable dead code. Also closed a class the audit never named — every section's save rendered the API's ENGLISH developer message. i18n 20→22 (a new guard that fails on any hardcoded editor string), builder-sections 54→58. Full record: `EDITOR_I18N.md` |
+| **LB.16** | The ten dead legacy components deleted, after re-confirming unreachability three ways (filenames, exported SYMBOLS, a fresh import-graph walk). The i18n guard's exemption went with the file rather than into an empty set. `components/landings/` now holds exactly one thing: `edit/` |
+| **LB.17** | Back-navigation on the ERP client and product detail screens. `PageHeader`'s breadcrumb was built by UI.22 **to replace these two links** and only the order detail was migrated; both screens rendered a raw `<h1>` with a 44×20px muted word after the title where navigation does not read as navigation. erp/screens 173/173 |
+| **LB.18** | The finance module becomes optional per tenant. Nav loses Finance **and** the Calculator, both screens 404 on a typed URL, all nine finance handlers refuse with `FINANCE_DISABLED`, and **nothing is deleted** — `FinancialRecord` is append-only by design. The shell is handed ids, never knowledge. erp/finance 38→44 |
+| **LB.19** | Product categories in the ERP catalogue, WITHOUT converting free text to a relation — the schema states a reasoned decision against that. Closed the gap it left: the field was unguided, so values already in use are now offered wherever it appears. Also closed a real duplication — the screen and `GET /api/erp/products` each built their `where` by hand. erp/catalog 72→75 |
+| **LB.20** | Per-product delivery pricing. **Schema change:** `LandingDeliveryPrice`, a second table rather than a nullable column (Postgres NULLs are not equal, so a nullable key would stop preventing duplicate defaults). The load-bearing part is that ONE function answers both the quote (`/wilayas`) and the charge (`/orders`) — divergence would bill customers something other than what they saw. builder-sections 62→67, storefront 32/32, packages/db 33/33. **⚠ The table exists in `neondb` (dev) ONLY — the production migration is deliberately HELD OFF, and this code must not be deployed until it is released. Do not touch production.** See `HANDOFF_PRODUCTION.md` §5 |
+| **LB.21** | Landing pages publish into the ERP catalogue, all or one. `CatalogProductLink` is the idempotency key; **adoption** protects an existing catalogue, because two rows answering to one normalised name make every order naming it attributable to neither. The Manager's own columns (`costPrice`, stock, supplier) survive an import. builder-sections 67→72 |
+| **LB.22** | A storefront theme extracted from a product photograph. The hard part is readability, not colour-finding: the two colours that carry text are chosen by WCAG contrast and the test asserts ≥ 4.5 independently of the implementation. An image with nothing to take is refused rather than guessed at. builder-sections 58→62 |
+
+**Suite totals after LB.22:** builder-sections **72** · storefront **32** ·
+builder-api **23** · console-shell **20** · hardening **12** · webhooks **10** ·
+tracking **15** · erp/screens **173** · erp/finance **44** · erp/catalog **75** ·
+i18n **22** · packages/db **33** · product-registry **36**.
+
+**The rule this pass adds to the method:** *a feature that reads a number and a
+feature that charges it must call the same function.* LB.20's quote and charge
+paths each built their own query under a comment promising they could not
+disagree — a copy is a promise nobody enforces, and no suite over either route
+alone would have caught the divergence. The same shape appeared twice more in
+one session (LB.19's product `where`, and LB.13's registry/section titles), which
+is why it is written down as a rule rather than three fixes.
+
 ---
 
 ## PHASE PM — PRODUCT MATURITY: COMPLETE

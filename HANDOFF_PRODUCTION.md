@@ -244,24 +244,51 @@ edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
    defects found and fixed on the way, and the two requested features I
    deliberately did NOT build, with the reasons.
 
-   > ### ⚠ LB.20 ADDS A TABLE — READ BEFORE DEPLOYING THIS CODE
-   > `LandingDeliveryPrice` exists in `neondb` (dev) ONLY. Deploying this code
-   > to production without creating it gives a **runtime error on the checkout
-   > path** — the money path. Against production, in this order:
+   > ### ⚠ LB.20's MIGRATION IS ON HOLD — DO NOT TOUCH PRODUCTION
+   >
+   > **Decided after the 12 Aug session: the production database migration is
+   > deliberately held off. The dev-only state stands until further notice.**
+   >
+   > `LandingDeliveryPrice` exists in `neondb` (dev) ONLY. This is a decision,
+   > not an unfinished step — nobody should complete it on their own
+   > initiative.
+   >
+   > **Consequence: LB.20's code must not reach production either.** Without
+   > the table it is a runtime error on the CHECKOUT path — the money path.
+   > Since nothing in this pass is deployed and `origin/main` is untouched,
+   > holding the migration and holding the deploy are the same act today.
+   >
+   > When the hold is lifted, against production, in this order:
    >
    > ```
    > npm run push --workspace @landingos/db
    > npm run rls  --workspace @landingos/db
    > ```
    >
-   > Expect 49/49 on all four RLS checks (it was 48/48). **I have deliberately
-   > run neither against production.**
-8. From the audits, still open: Benefits/
-   FAQ (LB.12), notification write-time i18n, analytics comparisons (PM.10),
-   builder list pagination, LB.11 real-credential tracking smoke test (still
-   gates real ad spend), UI.7 settings i18n residue, calculator step
-   structure (UI.8), bulk-bar mobile collapse (it scrolls away now but is
-   still a tall card when reached).
+   > Expect 49/49 on all four RLS checks (it was 48/48). **Neither has been run
+   > against production.**
+
+8. **Decided but NOT started, both waiting on something (12 Aug decisions):**
+   - **LB.23 — Facebook Ads linking.** Decided to build REAL ad-spend
+     attribution via a Meta app + OAuth, not merely store an account id.
+     **Blocked on the user creating a Meta Developer App:** Marketing API
+     product, App ID/Secret, redirect URI, `ads_read`, possibly App Review /
+     Business verification. Untestable here by construction — the same gate
+     LB.11 records. Full scoping: `FEATURE_PASS_AUG12.md` §5.
+   - **LB.24 — AI landing page generator.** Deliberately on hold, not started.
+     The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a
+     deliberate 501; the shape it would take is recorded in
+     `FEATURE_PASS_AUG12.md` §5.
+
+9. From the audits, still open: notification write-time i18n, analytics
+   comparisons (PM.10), builder list pagination, LB.11 real-credential
+   tracking smoke test (still gates real ad spend), UI.7 settings i18n
+   residue, calculator step structure (UI.8), bulk-bar mobile collapse (it
+   scrolls away now but is still a tall card when reached), and the three
+   decisions in `EDITOR_I18N.md` §3 (the dead `rtl:` Tailwind variant,
+   `ui/sheet.tsx`'s physical close-button edge, the redundant French shipping
+   gloss). **Benefits/FAQ (LB.12) is DONE** — it was left on this list in
+   error and is removed here.
 
 ## 6. TESTING STATUS (as of 9 Aug 2026, evening)
 
