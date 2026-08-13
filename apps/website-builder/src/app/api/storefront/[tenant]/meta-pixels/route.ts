@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { withTenant } from "@landingos/db";
 
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
+import { NEVER_CACHE, withCachePolicy } from "@/lib/storefront/cache-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export async function GET(
   const tenant = await tenantBySlug(slug);
   // An empty list rather than a 404: a missing pixel must never stop a
   // storefront rendering.
-  if (!tenant) return NextResponse.json({ success: true, data: { pixelIds: [] } });
+  if (!tenant) return withCachePolicy(NextResponse.json({ success: true, data: { pixelIds: [] } }), NEVER_CACHE);
 
   const [configs, settings] = await withTenant(tenant.id, async (db) => [
     await (db as any).metaPixelConfig.findMany({
@@ -40,5 +41,6 @@ export async function GET(
   const ids = new Set<string>(configs.map((c: any) => c.pixelId));
   if (settings?.metaBrowserPixelId) ids.add(settings.metaBrowserPixelId);
 
-  return NextResponse.json({ success: true, data: { pixelIds: [...ids] } });
+  // NEVER_CACHE, for the reason the tracking route records.
+  return withCachePolicy(NextResponse.json({ success: true, data: { pixelIds: [...ids] } }), NEVER_CACHE);
 }

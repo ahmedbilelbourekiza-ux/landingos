@@ -777,3 +777,104 @@ describe("the storefront wears the tenant's identity, not the platform's (B4)", 
     assert.match(r.text, /data-testid="storefront-footer"/);
   });
 });
+
+/* =============================================================================
+ * LB.14a — the storefront caching story, asserted on the SERVED header.
+ *
+ * The argument is in `src/lib/storefront/cache-policy.ts`; these tests exist
+ * because two halves of it live in `next.config.ts`, where a rule can be
+ * declared and lose silently. One of them did: the thank-you page's `no-store`
+ * was written first on the assumption that the first matching rule wins, and
+ * the broader tenant rule overrode it — the order confirmation was answering
+ * `max-age=60` while the config said otherwise. Reading the config would have
+ * agreed with itself. Reading the response is what caught it.
+ * ========================================================================== */
+
+describe('LB.14a — nothing that costs money may be served stale', { skip }, () => {
+  const cacheControl = async (path: string) => {
+    const res = await fetch(BASE + path, { redirect: 'manual' });
+    return (res.headers.get('cache-control') ?? '').toLowerCase();
+  };
+
+  test('THE DELIVERY QUOTE is never stored, by anyone', async () => {
+    // D-LB.20.1: the quote and the charge come from one function so they
+    // cannot disagree. A cache in the middle re-opens that gap from outside
+    // the code — the customer is shown one shipping price and charged another.
+    // Before LB.14a this response carried NO Cache-Control at all, and RFC
+    // 9111 lets a shared cache invent its own freshness for exactly that.
+    const cc = await cacheControl(`/api/storefront/${slugA}/wilayas`);
+    assert.match(cc, /no-store/, `the delivery quote is cacheable: "${cc}"`);
+    assert.ok(!/(^|[\s,])public/.test(cc), `the delivery quote is public: "${cc}"`);
+    assert.ok(!/s-maxage/.test(cc), `the delivery quote grants shared freshness: "${cc}"`);
+  });
+
+  test('and so is the 404 it gives for a store that does not exist', async () => {
+    // A store created a minute from now must not inherit a cached refusal.
+    const cc = await cacheControl(`/api/storefront/nope-${stamp}/wilayas`);
+    assert.match(cc, /no-store/, cc);
+  });
+
+  test('THE PIXEL CONFIGURATION is never stored either', async () => {
+    // A pixel the merchant removed must stop firing; one they added must
+    // start. It also names a tenant's advertising setup.
+    for (const route of ['tracking', 'meta-pixels']) {
+      const cc = await cacheControl(`/api/storefront/${slugA}/${route}`);
+      assert.match(cc, /no-store/, `${route}: "${cc}"`);
+    }
+  });
+
+  test('THE ORDER CONFIRMATION is never stored — the rule that was silently inert', async () => {
+    const cc = await cacheControl(`/${slugA}/thank-you/${orderOnThemedA}`);
+    assert.match(cc, /no-store/, `a customer's order is cacheable: "${cc}"`);
+    assert.ok(!/max-age=60/.test(cc), `the broad tenant rule is winning again: "${cc}"`);
+  });
+
+  test('a published page may be redisplayed by ITS OWN browser, and shared with nothing', async () => {
+    // Every storefront page renders a price, and the checkout recomputes that
+    // price server-side — so a shared copy takes an order at a number the
+    // customer never agreed to. `private` is what makes the short window safe;
+    // it is not decoration.
+    for (const path of [`/${slugA}`, `/${slugA}/shared-item`]) {
+      const cc = await cacheControl(path);
+      assert.match(cc, /private/, `${path} may be shared: "${cc}"`);
+      assert.ok(!/(^|[\s,])public/.test(cc), `${path} is public: "${cc}"`);
+      assert.ok(!/s-maxage/.test(cc), `${path} grants shared freshness: "${cc}"`);
+      // And it is no longer `no-store`, which forbade even a back-button
+      // redisplay — the one real win available without ISR.
+      assert.ok(!/no-store/.test(cc), `${path} still forbids reuse entirely: "${cc}"`);
+      assert.match(cc, /max-age=\d+/, `${path} states no freshness: "${cc}"`);
+    }
+  });
+
+  test('the freshness window stays short enough to be a rounding error on a price change', async () => {
+    const cc = await cacheControl(`/${slugA}/shared-item`);
+    const maxAge = Number(/max-age=(\d+)/.exec(cc)?.[1] ?? -1);
+    assert.ok(maxAge > 0, `no usable max-age: "${cc}"`);
+    assert.ok(maxAge <= 300, `${maxAge}s is long enough for a merchant's price edit to matter`);
+  });
+
+  test('the console is NOT inside the storefront rule', async () => {
+    // The tenant pattern is a catch-all with exclusions carved out of it. If
+    // one of them breaks, a console screen starts handing a browser a minute
+    // of freshness on somebody's order book.
+    for (const path of ['/console/login', '/console/builder/pages']) {
+      const cc = await cacheControl(path);
+      assert.match(cc, /no-store/, `${path} picked up the storefront policy: "${cc}"`);
+    }
+  });
+});
+
+describe('LB.14a — the bare root keeps the framework default', { skip }, () => {
+  test('/ is not caught by the tenant catch-all', async () => {
+    // `.*` in the tenant segment also matches the EMPTY string, so `/` fell
+    // into the storefront rule and its 307 to /console was cached for a
+    // minute. The root is the one path whose meaning depends on the Host —
+    // platform root to the console, a verified custom domain's root to that
+    // tenant's storefront — and a header chosen by PATH cannot tell them
+    // apart, so it must keep the framework's own answer.
+    const res = await fetch(BASE + '/', { redirect: 'manual' });
+    const cc = (res.headers.get('cache-control') ?? '').toLowerCase();
+    assert.ok(!/max-age=60/.test(cc), `the root picked up the storefront policy: "${cc}"`);
+    assert.match(cc, /no-store/, cc);
+  });
+});

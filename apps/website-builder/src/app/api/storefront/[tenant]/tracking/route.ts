@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { withTenant } from "@landingos/db";
 
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
+import { NEVER_CACHE, withCachePolicy } from "@/lib/storefront/cache-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export async function GET(
 ) {
   const { tenant: slug } = await ctx.params;
   const tenant = await tenantBySlug(slug);
-  if (!tenant) return NextResponse.json({ success: true, data: { items: [] } });
+  if (!tenant) return withCachePolicy(NextResponse.json({ success: true, data: { items: [] } }), NEVER_CACHE);
 
   const items = await withTenant(tenant.id, (db) =>
     (db as any).trackingIntegration.findMany({
@@ -33,5 +34,8 @@ export async function GET(
     }),
   );
 
-  return NextResponse.json({ success: true, data: { items } });
+  /* NEVER_CACHE — a pixel the merchant removed must stop firing, a pixel
+     they added must start, and a shared copy of this answer would name the
+     tenant's advertising setup to whoever can read that cache. */
+  return withCachePolicy(NextResponse.json({ success: true, data: { items } }), NEVER_CACHE);
 }

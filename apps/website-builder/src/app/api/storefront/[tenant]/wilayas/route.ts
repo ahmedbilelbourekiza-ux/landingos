@@ -4,6 +4,7 @@ import { withTenant } from "@landingos/db";
 
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
 import { deliveryPricesFor } from "@/lib/storefront/delivery";
+import { NEVER_CACHE, withCachePolicy } from "@/lib/storefront/cache-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +23,12 @@ export async function GET(
   const { tenant: slug } = await ctx.params;
   const tenant = await tenantBySlug(slug);
   if (!tenant) {
-    return NextResponse.json(
-      { success: false, error: { code: "NOT_FOUND", message: "That store does not exist." } },
-      { status: 404 },
+    return withCachePolicy(
+      NextResponse.json(
+        { success: false, error: { code: "NOT_FOUND", message: "That store does not exist." } },
+        { status: 404 },
+      ),
+      NEVER_CACHE,
     );
   }
 
@@ -66,5 +70,12 @@ export async function GET(
     });
   });
 
-  return NextResponse.json({ success: true, data: { items } });
+  /* NEVER_CACHE, and this is the response the whole policy was written for:
+   * `homePrice`/`deskPrice` here are the numbers the destination dropdown
+   * shows, produced by the SAME `deliveryPricesFor` the checkout charges from
+   * (D-LB.20.1). A cache holding this answer makes the quote and the charge
+   * disagree from outside the code, which is the one divergence that rule
+   * exists to prevent. Until now this route sent no `Cache-Control` at all,
+   * which lets a shared cache pick its own freshness (RFC 9111 §4.2.2). */
+  return withCachePolicy(NextResponse.json({ success: true, data: { items } }), NEVER_CACHE);
 }
