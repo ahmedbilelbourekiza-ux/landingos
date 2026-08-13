@@ -22,14 +22,19 @@ remain the deep references.
 > the details are in the deploy record below and in CHANGELOG's top entry.
 > **No migration pending**, RLS **49/49**.
 >
-> **Local `master` sits a commit or two above it: this deploy's own record.**
-> Documentation only, and the way to confirm that is
-> `git diff origin/main master -- apps packages` returning **empty** — not a
-> hash written here, because a record commit cannot know its own hash and
-> every attempt to pin one in this file has gone stale immediately (twice
-> while writing this very entry). Left unpushed on purpose: pushing docs
-> rebuilds an already-verified build for nothing. Push it with the next real
-> change.
+> **`d6a56b1` is the APPLICATION TREE production serves.** This deploy's own
+> record commits were pushed on top of it afterwards, so `origin/main`'s head
+> is a documentation commit, not the app tree — the two are different things
+> and this file has now been wrong about it three times by trying to pin a
+> hash. **The invariant, which does not go stale:**
+> `git diff origin/main master -- apps packages` returns **empty**, and the
+> last commit that changed anything under `apps/` or `packages/` is the
+> deployed app tree. Derive both; do not trust a hash typed here.
+>
+> Pushing docs does trigger a Render rebuild. It was done deliberately and
+> watched: 18 checks over 6 minutes, **zero blips** — health green and every
+> cache marker intact throughout, which is what a byte-identical app tree
+> should look like.
 >
 > ### ✔ LB.35's MIGRATION WAS APPLIED FIRST — 13 Aug 2026 (night)
 >
