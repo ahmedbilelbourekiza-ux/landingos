@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 
 import { withTenant } from "@landingos/db";
 import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
@@ -19,6 +20,25 @@ export const dynamic = "force-dynamic";
  * PUBLICATION as well as the tenant binding, because binding to a tenant must
  * never be the same thing as being allowed to see their drafts.
  * ========================================================================== */
+
+/**
+ * Title and `robots` come from the storefront layout — the shop's own name and
+ * `index: true`, where this page used to inherit the platform's internal
+ * tagline and `noindex`. What only this route can state is its canonical, and
+ * it deliberately sets no `title`: the layout's DEFAULT is already the store
+ * name, and setting one here would run it through the layout's own template
+ * and render "Shop · Shop".
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ tenant: string }>;
+}): Promise<Metadata> {
+  const { tenant: slug } = await params;
+  const tenant = await resolveStorefrontTenant(slug);
+  if (!tenant) return {};
+  return { alternates: { canonical: storefrontHref(tenant) } };
+}
 
 export default async function StorefrontHome({
   params,

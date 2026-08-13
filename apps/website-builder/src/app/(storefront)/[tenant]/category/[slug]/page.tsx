@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 
 import { withTenant } from "@landingos/db";
 import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
@@ -19,6 +20,40 @@ export const dynamic = "force-dynamic";
  * prefers the static match. That is also why "category" is on the reserved
  * tenant-slug list: at the root it would collide with a company of that name.
  * ========================================================================== */
+
+/**
+ * The category's own name as the title, which the layout's template turns into
+ * "Montres · Boutique Nour". Before this, every category on every shop served
+ * the platform's default title and `noindex` — so a merchant's whole catalogue
+ * structure was both anonymous and invisible to search.
+ *
+ * An invisible or missing category returns bare metadata rather than a name:
+ * the page 404s below, and a 404 must fall back to the root's noindex instead
+ * of advertising a category that is not on sale.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ tenant: string; slug: string }>;
+}): Promise<Metadata> {
+  const { tenant: tenantSlug, slug } = await params;
+  const tenant = await resolveStorefrontTenant(tenantSlug);
+  if (!tenant) return {};
+
+  const category = (await withTenant(tenant.id, (db) =>
+    (db as any).category.findFirst({
+      where: { slug, isVisible: true },
+      select: { name: true, description: true },
+    }),
+  )) as { name: string; description: string | null } | null;
+  if (!category) return { robots: { index: false, follow: false } };
+
+  return {
+    title: category.name,
+    ...(category.description ? { description: category.description } : {}),
+    alternates: { canonical: storefrontHref(tenant, `/category/${slug}`) },
+  };
+}
 
 export default async function StorefrontCategoryPage({
   params,

@@ -878,3 +878,102 @@ describe('LB.14a — the bare root keeps the framework default', { skip }, () =>
     assert.match(cc, /no-store/, cc);
   });
 });
+
+/* =============================================================================
+ * The <head> half of "a storefront never wears the platform's identity".
+ *
+ * LB.31 closed the BODY and left the head, where the same leak is harder to
+ * see and reaches further: a merchant's shop served the platform's name in the
+ * browser tab, the platform's internal tagline as its description, and — on
+ * the home and category pages — `noindex, nofollow`, which does not merely
+ * look wrong but keeps the shop out of search entirely.
+ *
+ * Asserted against the SERVED HTML rather than the metadata objects, for
+ * LB.14a's reason: a declaration that loses to a parent is exactly the
+ * "configured and inert" shape this project keeps catching, and only the
+ * response can prove which one won.
+ * ========================================================================== */
+
+const metaRobots = (html: string): string =>
+  (/<meta name="robots" content="([^"]*)"/i.exec(html)?.[1] ?? '').toLowerCase();
+
+const titleOf = (html: string): string =>
+  (/<title[^>]*>([^<]*)<\/title>/i.exec(html)?.[1] ?? '').trim();
+
+const canonicalOf = (html: string): string =>
+  (/<link rel="canonical" href="([^"]*)"/i.exec(html)?.[1] ?? '');
+
+/* The shop's name is READ from the home page rather than written down here.
+ * Whether a StoreSettings row exists yet depends on which describe block ran
+ * first, and the point being asserted is that every storefront page agrees on
+ * ONE merchant identity — which a hardcoded copy would stop testing. */
+async function storeNameFromHome(): Promise<string> {
+  const home = await get(`/${slugA}`);
+  return titleOf(home.text);
+}
+
+describe("a storefront's <head> wears the merchant, and is allowed to be found", { skip }, () => {
+  test('the store home is titled for the shop and is indexable', async () => {
+    const r = await get(`/${slugA}`);
+    assert.equal(r.status, 200);
+    const title = titleOf(r.text);
+    assert.ok(title.length > 0, 'the home served no title at all');
+    assert.ok(
+      !/LandingOS/i.test(title),
+      `the platform's name reached a shop's browser tab: "${title}"`,
+    );
+    assert.match(metaRobots(r.text), /(^|[\s,])index/, 'a shop must be findable');
+    assert.ok(!/noindex/.test(metaRobots(r.text)), 'the home inherited the console noindex');
+    assert.equal(canonicalOf(r.text), `/${slugA}`);
+  });
+
+  test("a product's title carries the MERCHANT's name, not the platform's", async () => {
+    const storeName = await storeNameFromHome();
+    const r = await get(`/${slugA}/shared-item`);
+    assert.equal(r.status, 200);
+    // The product page always set its own title correctly; what it could not
+    // control was the root layout's `%s · LandingOS` template appended to it.
+    assert.equal(titleOf(r.text), `Product A · ${storeName}`);
+    assert.ok(!/noindex/.test(metaRobots(r.text)));
+    assert.equal(canonicalOf(r.text), `/${slugA}/shared-item`);
+  });
+
+  test('a category is titled for itself and is indexable', async () => {
+    const storeName = await storeNameFromHome();
+    const r = await get(`/${slugA}/category/fixture-category`);
+    assert.equal(r.status, 200);
+    assert.equal(titleOf(r.text), `Fixture Category · ${storeName}`);
+    assert.ok(!/noindex/.test(metaRobots(r.text)), 'the category inherited the console noindex');
+    assert.equal(canonicalOf(r.text), `/${slugA}/category/fixture-category`);
+  });
+
+  test("the thank-you page is NOT indexable — it is a customer's order", async () => {
+    // The one page the layout's blanket opt-in must not reach. It carries a
+    // name, a wilaya and a total; an unguessable id is what makes it safe to
+    // serve without a session, not what keeps it out of an index.
+    const r = await get(`/${slugA}/thank-you/${orderOnThemedA}`);
+    assert.equal(r.status, 200);
+    assert.match(
+      metaRobots(r.text),
+      /noindex/,
+      "a customer's order page became indexable when the storefront opted in",
+    );
+  });
+
+  test('the console is still noindex — the root default must not have moved', async () => {
+    // The storefront opts IN; the root stays fail-closed. The console declares
+    // no robots of its own and relies entirely on that inheritance, so this is
+    // the test that fails if somebody "fixes" the root instead.
+    const r = await get('/console/login');
+    assert.match(metaRobots(r.text), /noindex/, 'the console became indexable');
+  });
+
+  test('a storefront path with no tenant behind it is not indexable', async () => {
+    const r = await get(`/no-such-shop-${stamp}`);
+    assert.equal(r.status, 404);
+    assert.ok(
+      !/(^|[\s,])index/.test(metaRobots(r.text)) || /noindex/.test(metaRobots(r.text)),
+      'a 404 advertised itself as indexable',
+    );
+  });
+});

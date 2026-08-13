@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import type { Metadata } from "next";
 
 import { withTenant } from "@landingos/db";
 import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
@@ -23,6 +24,25 @@ export const dynamic = "force-dynamic";
  * guessable. It deliberately does NOT echo the phone number or the full street
  * address back onto a page that might be left open or shared.
  * ========================================================================== */
+
+/**
+ * NOINDEX, EXPLICITLY — this is the one storefront page that must never be
+ * found, and it now has to say so itself.
+ *
+ * The storefront layout opts this whole subtree INTO indexing, which is right
+ * for a shop and wrong for a customer's order: this page carries a name, a
+ * wilaya and a total. "Unguessable id" is what makes it safe to serve without
+ * a session; it is NOT what keeps it out of an index, because a crawler does
+ * not have to guess a URL that was linked, pasted into a chat, or handed over
+ * in a `Referer` header.
+ *
+ * `LB.14a` already refuses to let any shared cache hold this response. This is
+ * the same decision one layer out, and the two belong together: a page nobody
+ * may cache is a page nobody may index.
+ */
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function ThankYouPage({
   params,

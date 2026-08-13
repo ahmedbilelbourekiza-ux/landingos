@@ -91,22 +91,32 @@ export async function generateMetadata({
   // For a product sold through ads, the link preview IS the ad creative half
   // the time (LB.6).
   const hero = found.page.media.find((m: any) => m.placement === "GALLERY");
-  const path = `/${found.tenant.slug}/${found.page.slug}`;
+  /* `storefrontHref`, not a hand-built `/${slug}/${page}`. The path this page
+   * lives at depends on how the tenant was REACHED — LB.31's helper already
+   * knows that, and every link the storefront emits goes through it. The
+   * hand-built version claimed in a comment to be "correct relative to
+   * whichever host served it"; being relative was true, being the right PATH
+   * was not, since a custom domain drops the tenant prefix. A canonical is the
+   * one link that must agree with the others. */
+  const path = storefrontHref(found.tenant, `/${found.page.slug}`);
 
   return {
     title,
     description,
     // A storefront IS meant to be indexed, unlike the console, which sets
-    // noindex in the root layout.
+    // noindex in the root layout. The storefront layout now states this for
+    // the whole subtree; kept here because this page's own answer should not
+    // depend on a parent for something this consequential.
     robots: { index: true, follow: true },
-    // Path-only canonical: correct relative to whichever host served it, so a
-    // custom domain canonicalises to itself rather than to the platform.
     alternates: { canonical: path },
     openGraph: {
       title,
       description,
       type: "website",
       locale: "ar_DZ",
+      // Re-stated because a page's `openGraph` REPLACES the layout's rather
+      // than merging into it, so the layout's siteName would be dropped here.
+      siteName: found.store.name,
       ...(hero ? { images: [{ url: hero.url, alt: hero.altText ?? title }] } : {}),
     },
     twitter: {
