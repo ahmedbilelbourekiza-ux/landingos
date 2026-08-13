@@ -12,6 +12,67 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.40 — `robots.txt` said `Allow: /` to everyone, including the console**
+  (14 August 2026 — `f1e38bf`, **local; NOT deployed**).
+
+  **It is a replacement, not the addition it was asked for.**
+  `public/robots.txt` already existed and had been serving in production the
+  whole time: five blocks — Googlebot, Bingbot, Twitterbot,
+  facebookexternalhit and `*` — every one of them `Allow: /`. **The note in
+  `NEXT_STEPS.md` §LB.39 saying "neither route exists" was wrong**; it came
+  from grepping `src/` and never looking in `public/`, and one `curl` would
+  have found it. Recorded rather than quietly corrected, because it is the
+  same failure LB.37 produced: reasoning about the code instead of reading the
+  response.
+
+  **Not a live incident, and the distinction matters.** robots.txt governs
+  CRAWLING; the meta governs INDEXING. LB.37's `noindex` meant the console was
+  fetched and then correctly kept out of the index. What it cost was crawl
+  budget on auth-gated redirects and, less comfortably, on `/api` — where the
+  checkout route keeps a per-IP rate limit a crawler has no business
+  consuming.
+
+  **Why it had to become a route.** A static file is the same on every
+  hostname, and this app answers on two KINDS of hostname whose correct answer
+  differs. The **platform host** serves many shops and names **no** sitemap:
+  the only file it could name is one listing every tenant, published at a
+  guessable URL — the same objection that kept the sitemap out of the root in
+  LB.39. A **verified custom domain** is one shop, so the ambiguity does not
+  exist and it names that merchant's sitemap and nobody else's. That is
+  exactly the case §LB.39 flagged as the one where a root `robots.txt` is
+  unambiguously worth having.
+
+  **THE STATIC FILE WON WHILE BOTH EXISTED — measured, not reasoned about.**
+  With `public/robots.txt` and `app/robots.ts` both present, the served body
+  was still the old five blocks and the new route was completely inert.
+  Deleting the static file is what made this work at all, and shipping without
+  that check would have looked exactly like a working feature — the
+  "declared and inert" shape LB.14a caught. The tests therefore assert the
+  SERVED body and name the four old user-agents as the thing that must never
+  come back.
+
+  **`Disallow` and `noindex` are kept together on purpose.** They are
+  different instructions and neither replaces the other: a disallowed page can
+  still be indexed URL-only if something links to it (so LB.37's `noindex`
+  stays), and a `noindex` page still costs a fetch (so the disallow is here).
+
+  **Tests use `node:http`, not `fetch`**, for the host-dependent half —
+  `host` is a forbidden header name in fetch and is silently dropped, measured
+  after a `headers: { host }` request returned the platform answer and would
+  have asserted nothing. Both gates are pinned: a forged `X-Forwarded-Host`
+  arriving at a platform address adds no sitemap, and an **unverified** domain
+  gets the platform answer rather than a shop's.
+
+  **Files.** `src/app/robots.ts` (new), `public/robots.txt` (deleted),
+  `test/storefront.test.ts`.
+
+  **Migration.** None. **Risk.** The disclosure direction is the one that
+  matters, and it is why the platform branch names no sitemap and why the
+  unverified-domain gate has its own test.
+
+  storefront **60 → 66**; builder-api 41, builder-sections 74, console-shell
+  20, hardening 13, tracking 15, webhooks 10, i18n 22 unaffected.
+
 - **LB.35b — the per-page pixel choice finally has somewhere to be made**
   (13 August 2026, late night — `dd4edac`, **DEPLOYED the same night** in `2c75c3c..407854a`). Confirmed on production against a pre-push baseline (`tracking-mode-all` 0 → 1), then driven for real in the production editor: unticking one of two active pixels and saving stored the subset in `landingos_prod` and changed which pixel the production storefront serves.
 

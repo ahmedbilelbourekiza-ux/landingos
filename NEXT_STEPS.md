@@ -810,6 +810,56 @@ copy, and tests. It also needs one product decision: whether the default
 NULL should be shown as "all" or as "not configured", since they look
 identical and mean the same thing today.
 
+### LB.40 — DONE, NOT DEPLOYED. robots.txt stops inviting crawlers in (14 Aug)
+
+**`f1e38bf`, local only.** Asked for as "add the robots.txt". It is a
+**replacement**.
+
+**The finding, and it corrects my own note.** `public/robots.txt` already
+existed and had been serving in production: five blocks — Googlebot, Bingbot,
+Twitterbot, facebookexternalhit, `*` — every one `Allow: /`. §LB.39's proposal
+said "both are reserved slugs and neither route exists", which came from
+grepping `src/` and never looking in `public/`. One `curl` to the live host
+would have found it. **Same failure LB.37 produced: reasoning about code
+instead of reading the response.**
+
+**Not a live incident, and the distinction is the point.** robots.txt governs
+CRAWLING, the meta governs INDEXING — LB.37's `noindex` meant the console was
+fetched and correctly never indexed. The cost was crawl budget on auth-gated
+redirects and on `/api`, where the checkout route keeps a per-IP rate limit a
+crawler has no business consuming.
+
+**Why a route.** A static file is identical on every hostname, and this app
+answers on two KINDS of hostname whose right answer differs:
+
+- **Platform host** — many shops, so it names **no** sitemap. The only file it
+  could name lists every tenant at a guessable URL: LB.39's roster objection.
+- **Verified custom domain** — one shop, no ambiguity, so it names that
+  merchant's sitemap and nobody else's. Exactly the case §LB.39 flagged.
+
+**The static file WON while both existed** — measured, not reasoned about: the
+served body was still the old five blocks and `app/robots.ts` was completely
+inert until `public/robots.txt` was deleted. Shipping without that check would
+have looked like a working feature. The tests assert the SERVED body and name
+the four old user-agents as what must never come back.
+
+**`Disallow` and `noindex` stay together.** Different instructions, neither
+replacing the other: a disallowed page can still be indexed URL-only if
+something links to it (so `noindex` stays), and a `noindex` page still costs a
+fetch (so the disallow is here).
+
+**Tests use `node:http`, not `fetch`** — `host` is a forbidden header name in
+fetch and is silently dropped, measured after a `headers: { host }` request
+returned the platform answer and would have asserted nothing. Both gates
+pinned: a forged `X-Forwarded-Host` at a platform address adds no sitemap, and
+an **unverified** domain gets the platform answer rather than a shop's.
+
+storefront **60 → 66**. **No migration.**
+
+**Still open, deliberately:** the platform host names no sitemap, so a crawler
+finds each shop only by following a link into it. Handing crawlers the full
+list is the disclosure decision that stays the user's — §LB.39 option 3.
+
 ### LB.39 — DONE + DEPLOYED. Each shop gets a sitemap (13 Aug, late night)
 
 **`dbe1cf0`, DEPLOYED 13 Aug 2026 (late night).** Confirmed on production
@@ -874,7 +924,17 @@ kinds of row correctly absent (hidden category, draft, archived, the
 **404** rather than an empty shop, `/console/sitemap.xml` still 404. storefront
 **54 → 60**. **No migration.**
 
-#### robots.txt — PROPOSED, deliberately NOT built
+#### robots.txt — BUILT as LB.40 (14 Aug), and this proposal was wrong on a fact
+
+**Read the correction in §LB.40 below before this section.** The analysis of
+the three options held up and option 2 (plus the custom-domain case) is what
+shipped — but the premise that "neither route exists" was **false**:
+`public/robots.txt` existed and had been serving in production the whole time,
+saying `Allow: /` to every crawler. The proposal below reasoned about a file it
+never fetched. Kept as written, because the options are still the right ones
+and the error is worth seeing next to them.
+
+#### robots.txt — the original proposal (superseded by LB.40)
 
 The natural pairing, and it was weighed rather than skipped. It is **not** the
 small addition it looks like, for one reason: `/robots.txt` can only exist at a

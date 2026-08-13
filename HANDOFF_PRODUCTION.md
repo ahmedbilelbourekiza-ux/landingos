@@ -778,7 +778,17 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **Nothing is queued to deploy.** **LB.35b** (`dd4edac`) shipped on 13 Aug
+4. **ONE slice is queued to deploy: LB.40 (`f1e38bf`)** — `robots.txt`.
+   **No migration.** It REPLACES `public/robots.txt`, which had been serving
+   `Allow: /` to every crawler including `/console` and `/api`; the platform
+   host now disallows those and names no sitemap, while a verified custom
+   domain names that one shop's. Suites green (storefront 66, builder-api 41,
+   builder-sections 74, console-shell 20, hardening 13, tracking 15, webhooks
+   10, i18n 22). **Not deployed — the user asked to be asked first.** Marker
+   for when it goes: `curl https://landingos.onrender.com/robots.txt` stops
+   containing `Googlebot` and starts containing `Disallow: /console/`.
+
+   **LB.35b** (`dd4edac`) shipped on 13 Aug
    (late night) as `2c75c3c..407854a`, no migration, verified live — §1 has
    the record.
 
