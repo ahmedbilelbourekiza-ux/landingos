@@ -50,7 +50,17 @@ export function EditWorkspaceHeader({
       : t("builder.editor.publish");
 
   return (
-    <header className="sticky top-16 z-20 flex h-14 items-center justify-between gap-3 border-b bg-background/80 px-4 backdrop-blur-md sm:px-6">
+    /* `top-0`, not `top-16`. The 64px offset compensated for a console shell
+       header that is NOT above this screen: the editor is deliberately mounted
+       OUTSIDE ConsoleShell (its page comment says so, and the shell lives in
+       the `(shell)` route group this route is not in), so the workspace header
+       is the first child of the page and its natural flow position is 0.
+       Offsetting it to 64 while the content below flowed from 56 left a
+       permanent 64px band in which the header painted over content, plus dead
+       space above it that belonged to nobody — measured before the fix at
+       every scroll position. `scroll-mt-24` on the section cards corroborates
+       it: 96px clears a header ending at 56, never one ending at 120. */
+    <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b bg-background/80 px-4 backdrop-blur-md sm:px-6">
       {/* Left: back + title + status */}
       <div className="flex min-w-0 items-center gap-3">
         <Button

@@ -12,6 +12,38 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.32** The editor's sticky header stops covering the content below it
+  (13 August 2026 — **local only, not pushed, not deployed**).
+
+  **The root cause is a stale offset, not a z-index or a padding.** The
+  workspace header carried `sticky top-16` — a 64px offset that exists to
+  clear a console shell header ABOVE it. There is no such header on this
+  screen: the editor is deliberately mounted OUTSIDE `ConsoleShell` (its
+  page comment says so, and the shell lives in the `(shell)` route group
+  this route is not in), so the header is the first child of the page and
+  its natural flow position is 0.
+
+  **What that produced, measured before the change.** Sticky elements do
+  not reserve space for their offset, so the content flowed from y=56
+  (immediately after the header's 56px flow box) while the header PAINTED
+  at 64→120. The result was a permanent 64px band in which the header sat
+  on top of the content at every scroll position, plus dead space above
+  it that belonged to nothing. At scroll 0 the first section card's own
+  header was already 21px underneath it.
+
+  **A second reading agreed with the diagnosis before anything changed:**
+  the section cards carry `scroll-mt-24` (96px), which clears a header
+  ending at 56 with 40px to spare and lands content 24px UNDERNEATH one
+  ending at 120. The scroll margin had been authored for `top-0` all
+  along.
+
+  **The fix is `top-0`** — one class, the only `sticky top-16` in the
+  source. Verified live at four scroll positions: the header band is now
+  [0, 56] with content starting at 56 and no permanent overlap, and an
+  anchored scroll lands a section card at 96px with **40px clearance**
+  (previously −24px, i.e. beneath the header). No layout arithmetic
+  elsewhere depends on the old value.
+
 - **LB.31** A storefront never wears the platform's identity (13 August
   2026 — **local only, not pushed, not deployed**).
 

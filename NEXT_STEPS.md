@@ -32,6 +32,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.28**~~ | ~~The dead `rtl:` Tailwind variant~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug — and the premise measured FALSE.** `rtl:` is native on Tailwind 4.3.3 (`:lang()`-keyed); the data table was already correct in Arabic, the calendar is unmounted. Real fixes: the editor back arrow now flips (it cited the false premise for not flipping), the stale comments/memory corrected, and the dir-island rule recorded in globals.css. i18n 22, builder-sections 73 |
 | ~~**LB.29**~~ | ~~`ui/sheet.tsx` closes on a physical edge~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (verified in production Arabic: close at x 17–33). `right-4` → `end-4`; scope corrected by measurement — the mobile nav drawer is a custom logical-first component and was never affected; the editor preview drawer is the only live Sheet. ar close x 343→17 at 375px emulation, fr unchanged. No physical device reachable — caveat recorded. builder-sections 73 |
 | ~~**LB.30**~~ | ~~Home/category/thank-you follow the visitor's dark mode~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production: the themed order's thank-you wears the merchant theme under emulated dark; fixture swept with `deleteTenant`). LB.26's recorded remainder. The thank-you inherits the ORDER's landing-page theme (the checkout journey's last step looks like the page the customer bought on); home/category wear `DEFAULT_THEME` — a store-level theme field on `StoreSettings` is a schema migration + merchant UI, deliberately left as a decision, with the two call sites marked. Verified live under emulated dark OS both ways (bound theme + default). storefront 33→36 |
+| ~~**LB.32**~~ | ~~The editor's sticky header overlaps the content~~ | S | **DONE 13 Aug 2026, local only.** Not z-index, not padding: `sticky top-16` cleared a shell header that is not above this screen (the editor mounts outside `ConsoleShell`). Sticky reserves no space for its offset, so content flowed from 56 while the header painted 64→120 — a permanent 64px overlap. `scroll-mt-24` corroborated the diagnosis. `top-0`; anchored-scroll clearance −24px→+40px |
 | ~~**LB.31**~~ | ~~The storefront header shows "LandingOS" and links to the platform~~ | S | **DONE 13 Aug 2026, local only.** Not preview-only: with no `StoreSettings` row the published page rendered the platform wordmark linking to `/` (307 → console), plus the platform's internal description and copyright. Both production tenants have exactly that null row — 0 published pages, so unseen, one publish away. `resolveStoreName` + deleted fallbacks; brand is a span in the preview drawer. storefront 36→38 |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
@@ -334,6 +335,24 @@ tenant and two real API orders: the themed order's thank-you wears the
 merchant's `#141414` theme under an emulated dark OS, home/category hold
 the default, the unthemed order falls back cleanly; fixture swept with
 `deleteTenant`, zero rows behind.
+
+**LB.32 — DONE. The editor's sticky header stops covering the content below
+it (13 Aug).** Reported as the header overlapping content when scrolling. The
+cause was neither a z-index nor a missing padding but a STALE OFFSET:
+`sticky top-16` reserves 64px for a console shell header that is not above
+this screen, because the editor is deliberately mounted OUTSIDE `ConsoleShell`
+(its own page comment says so, and the shell lives in the `(shell)` route
+group this route is not in). A sticky element reserves no space for its
+offset, so the content flowed from y=56 — right after the header's 56px flow
+box — while the header PAINTED at 64→120: a permanent 64px band where it sat
+on top of the content at every scroll position, with dead space above it
+belonging to nothing. At scroll 0 the first section card was already 21px
+underneath. **A second reading agreed before anything was changed:** the
+section cards' `scroll-mt-24` (96px) clears a header ending at 56 with 40px
+spare and lands content 24px UNDER one ending at 120 — the scroll margin had
+been authored for `top-0` all along. One class changed (the only
+`sticky top-16` in the source); verified live at four scroll positions with
+the band now [0,56] and anchored-scroll clearance −24px → **+40px**.
 
 **LB.31 — DONE. A storefront never wears the platform's identity (13 Aug).**
 Reported as "the live preview shows LandingOS and clicking it goes back to the
