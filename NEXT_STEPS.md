@@ -32,10 +32,12 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.28**~~ | ~~The dead `rtl:` Tailwind variant~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug — and the premise measured FALSE.** `rtl:` is native on Tailwind 4.3.3 (`:lang()`-keyed); the data table was already correct in Arabic, the calendar is unmounted. Real fixes: the editor back arrow now flips (it cited the false premise for not flipping), the stale comments/memory corrected, and the dir-island rule recorded in globals.css. i18n 22, builder-sections 73 |
 | ~~**LB.29**~~ | ~~`ui/sheet.tsx` closes on a physical edge~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (verified in production Arabic: close at x 17–33). `right-4` → `end-4`; scope corrected by measurement — the mobile nav drawer is a custom logical-first component and was never affected; the editor preview drawer is the only live Sheet. ar close x 343→17 at 375px emulation, fr unchanged. No physical device reachable — caveat recorded. builder-sections 73 |
 | ~~**LB.30**~~ | ~~Home/category/thank-you follow the visitor's dark mode~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production: the themed order's thank-you wears the merchant theme under emulated dark; fixture swept with `deleteTenant`). LB.26's recorded remainder. The thank-you inherits the ORDER's landing-page theme (the checkout journey's last step looks like the page the customer bought on); home/category wear `DEFAULT_THEME` — a store-level theme field on `StoreSettings` is a schema migration + merchant UI, deliberately left as a decision, with the two call sites marked. Verified live under emulated dark OS both ways (bound theme + default). storefront 33→36 |
+| ~~**LB.35**~~ | ~~A landing page can link only one Meta pixel~~ | M | **DONE 13 Aug 2026, local only — ⚠ CARRIES A MIGRATION** (one nullable JSONB column; apply to `landingos_prod` before deploying). Premise half-false: multiple pixels per TENANT already fired (Meta fetched a signals/config for both ids). The gap was per-PAGE selection, blocked because an App Router layout cannot see its child's params — the loader mount moved from the layout to the four storefront routes, with LB.5's "no page forgets" guarantee moved into a test. builder-api 29→35 |
 | ~~**LB.34**~~ | ~~No way to delete a landing page~~ | M | **DONE 13 Aug 2026, local only.** A hard-DELETE route already existed and cascades into `SalesOrder` (+ status history, drafts; fulfilment SetNull) — wiring a button to it would have shredded revenue history. Archive instead, using the never-written `ARCHIVED` enum value: **no migration**. Sets status AND unpublishes; restore lands on DRAFT. Hard delete kept for orderless pages, `409 HAS_ORDERS` otherwise. builder-api 23→29 |
 | ~~**LB.33**~~ | ~~"Full name" looks invalid on a fresh form~~ | S | **DONE 13 Aug 2026, local only — premise measured FALSE.** Fresh field is `aria-invalid="false"`, neutral border, no `required`, form `noValidate`, and the compiled variant is `[aria-invalid=true]`; the red state is genuine but post-submit only. The real defect found in the same component: `Field` derived `htmlFor` from label TEXT, so **no checkout field had a working label**. Fixed explicitly. storefront 38→40 |
 | ~~**LB.32**~~ | ~~The editor's sticky header overlaps the content~~ | S | **DONE 13 Aug 2026, local only.** Not z-index, not padding: `sticky top-16` cleared a shell header that is not above this screen (the editor mounts outside `ConsoleShell`). Sticky reserves no space for its offset, so content flowed from 56 while the header painted 64→120 — a permanent 64px overlap. `scroll-mt-24` corroborated the diagnosis. `top-0`; anchored-scroll clearance −24px→+40px |
 | ~~**LB.31**~~ | ~~The storefront header shows "LandingOS" and links to the platform~~ | S | **DONE 13 Aug 2026, local only.** Not preview-only: with no `StoreSettings` row the published page rendered the platform wordmark linking to `/` (307 → console), plus the platform's internal description and copyright. Both production tenants have exactly that null row — 0 published pages, so unseen, one publish away. `resolveStoreName` + deleted fallbacks; brand is a span in the preview drawer. storefront 36→38 |
+| **LB.36** | Brands — a store organised around brands instead of one flat shop | M–L | **SCOPED, NOT BUILT (13 Aug 2026)** — a measurement + proposal pass only, like the store-theme question. Full write-up below; the decision is yours |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
@@ -337,6 +339,130 @@ tenant and two real API orders: the themed order's thank-you wears the
 merchant's `#141414` theme under an emulated dark OS, home/category hold
 the default, the unthemed order falls back cleanly; fixture swept with
 `deleteTenant`, zero rows behind.
+
+**LB.35 — DONE. A landing page links to its own Meta pixels (13 Aug).
+⚠ CARRIES A MIGRATION.** Half the premise measured false before anything was
+touched: "only the first pixel fires" was never true — with two active Meta
+integrations, Meta's own `fbevents.js` fetched a `signals/config` for BOTH
+ids in a real browser, so the loader's `for (const id of ids) fbq("init",id)`
+and `fbq("track")` fan-out were already correct. Multiple pixels per TENANT
+worked. The real gap was that the selection could not be made PER PAGE, and
+the obstacle was structural: LB.5 mounted the loader in `[tenant]/layout.tsx`
+so no page could forget it, but **an App Router layout cannot see its child
+segment's params** — it can name the tenant and never the page. While the
+mount lived there, "this pixel belongs to this product" was unexpressible.
+The mount therefore moved down to the four storefront routes, and **LB.5's
+guarantee moved from placement into a test** asserting home, category,
+product and thank-you all still emit the loader — the invariant is stated now
+rather than implied by a file's position. The link is
+`LandingPage.trackingIntegrationIds Json?`: NULL (the default, and every
+existing row) means "the tenant's whole active set", an array is an explicit
+subset, and an empty array is honoured as "none" — three different states, so
+nullable rather than defaulted. Json rather than a join table because the
+list is small, bounded by the tenant's own integrations, read whole with the
+page and never queried from the other side; unresolvable ids are ignored at
+read time so deleting an integration cannot break a page, and the PATCH
+refuses another tenant's ids with a visible 422 instead of a silent no-op.
+The thank-you page keeps the tenant's WHOLE set deliberately — its Purchase
+is the conversion every one of the merchant's ad accounts is waiting for.
+**The migration is one additive nullable column** (`ADD COLUMN
+"trackingIntegrationIds" JSONB`, previewed with `migrate diff`), applied to
+`neondb` only after asserting the target was not `landingos_prod`; **it must
+be applied to production before this slice deploys**, LB.20 order. No
+`apply-rls` re-run — no new table, still 49. Verified live: unlinked serves
+both ids, linked-to-one serves that one and NOT the other, linked-to-both
+serves both with a real browser initialising both, cleared restores both.
+builder-api 29 → **35**, storefront 40/40, tracking 15/15.
+
+**LB.36 — SCOPED, NOT BUILT. Brands (13 Aug).** A measurement and a proposal,
+in the shape the store-theme question was left. **Nothing was implemented.**
+
+**The idea, as given:** a store may optionally organise around brands. A brand
+has a name and the category of products it sells; a landing page (or product)
+can be tied to one; if a page has a brand, the storefront header shows the
+BRAND's name instead of the store's; if no brand is used the store keeps
+working as a general multi-niche shop exactly as today.
+
+**What the model already has, measured.**
+1. `CatalogProduct.brand String?` **already exists** — free text, ERP-side,
+   part of the `niche`/`category`/`supplier` classification trio. It is not
+   surfaced on the storefront and nothing joins on it.
+2. `LandingPage` has a real `Category` RELATION (since B3) with a management
+   screen, a picker and a public `/[tenant]/category/[slug]` listing. So
+   "the category of products it sells" is a concept that already exists as a
+   first-class row — a brand pointing at one would be pointing at a real
+   thing, not at a string.
+3. `StoreSettings` has the store's public identity (name, logo, description,
+   socials) and, since LB.31, one resolver — `resolveStoreName` — behind
+   **exactly two call sites** (the storefront product page and the editor's
+   preview mount). That is the seam a brand would slot into.
+4. `LandingPage` has no brand column of any kind.
+
+**The precedent this has to engage with.** LB.19 faced the same fork for
+product categories and did NOT convert free text to a relation, citing the
+schema's own reasoning: a classification list is a handful of words per
+tenant, and a table means "a migration plus RLS plus a management screen for
+something no route needs to join on". A brand as proposed is different on
+exactly one axis, and it is the deciding one: **a brand has to be RENDERED
+and would own a public surface** (the header, and plausibly a
+`/[tenant]/brand/[slug]` listing). A thing customers see needs a stable slug,
+a logo and an identity that survives a merchant retyping its name — which is
+what free text cannot give. The categories precedent argues for text; the
+public-surface requirement argues for a row. **Recommendation: a row.**
+
+**Proposed shape (not built).**
+```
+model Brand {
+  id       String  @id @default(cuid())
+  tenantId String
+  name     String
+  slug     String            // public: /[tenant]/brand/<slug>
+  logo     String?           // falls back to the store's logo
+  description String?
+  categoryId String?         // "the category it sells" — the EXISTING relation
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  isVisible  Boolean @default(true)
+  landingPages LandingPage[]
+  @@unique([tenantId, slug])
+}
+// on LandingPage:
+brandId String?
+brand   Brand? @relation(fields: [brandId], references: [id], onDelete: SetNull)
+```
+`onDelete: SetNull` on both, deliberately: deleting a brand must never
+cascade into pages, and LB.34 is the argument — a page cascades into its
+orders, so anything that can reach a page must be prevented from deleting
+one.
+
+**Where it lands in the header (item 3's seam).** `SiteNav` already takes a
+resolved `store.name`/`logo`/`homePath` and nothing else, so a brand needs no
+component change at all: the two call sites resolve the identity, and a brand
+would add one step before `resolveStoreName` — brand name if the page has a
+brand, else the store name, else the tenant name. `homePath` becomes the
+brand's listing when a brand is set. **The fallback chain stays exactly one
+function**, which is the property LB.31 bought and should not be given back.
+
+**Size: M–L.** Migration + RLS policy for one table (the `apply-rls` run
+takes it from 49 to 50 checks) · a console CRUD screen (the Categories screen
+is the template) · a brand picker in the editor's General section beside the
+category picker · the header resolution above · a public brand listing page
+if wanted (optional — the header works without it) · i18n for three locales.
+The migration is the only part needing a production step, and it is additive.
+
+**Open questions that are yours, not the schema's.**
+- Does a brand REPLACE the store name everywhere (footer, `<title>`, favicon,
+  order confirmations) or only in the product header? Replacing it everywhere
+  makes a brand a storefront-within-a-storefront and raises the question of
+  whether the thank-you page should wear it too (it already inherits the
+  page's THEME since LB.30, so there is a precedent for "the checkout looks
+  like the product").
+- Is a brand one category, or many? The proposal says "the category it
+  sells", which the shape above takes literally; many-to-many is a join table
+  and a different feature.
+- Should `CatalogProduct.brand` (free text, ERP) be reconciled with this, or
+  left alone? Leaving it is defensible — it is an internal classification and
+  this is a public identity — but two things called "brand" in one product
+  will eventually be asked to agree.
 
 **LB.34 — DONE. A landing page can be archived, and the delete that was
 already there stops being able to shred a sales history (13 Aug).** Asked for

@@ -12,6 +12,65 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.35** A landing page links to its own Meta pixels (13 August 2026 —
+  **local only, not pushed, not deployed**; **CARRIES A MIGRATION** — see
+  below).
+
+  **The premise, measured first — and half of it was already false.**
+  "Only the first pixel fires" is not true and never was: with two active
+  Meta integrations on a tenant, Meta's own `fbevents.js` fetched a
+  `signals/config` for **both** ids in a real browser, so `bootMeta`'s
+  `for (const id of ids) fbq("init", id)` and `fbq("track", …)`'s fan-out
+  were already doing their job. Multiple pixels per TENANT worked.
+
+  **The real gap, and the structural reason for it.** The selection could
+  not be made PER PAGE — every storefront page fired every pixel the
+  tenant owned. The obstacle was architectural: LB.5 mounted the loader in
+  `[tenant]/layout.tsx` so no page could forget it, but a layout in the App
+  Router **cannot see its child segment's params**, so it can name the
+  tenant and never the page. While the mount lived there, "this pixel
+  belongs to this product" was unexpressible. (`LandingPage.facebookPixel`,
+  the vestigial single-pixel column, has been dead since the port — M-06 —
+  and is now superseded rather than revived.)
+
+  **So the mount moved down to the four storefront routes, and LB.5's
+  guarantee moved from placement into a TEST** that asserts home, category,
+  product and thank-you all still emit the loader. The invariant is stated
+  out loud now instead of being implied by a file's position.
+
+  **The link itself:** `LandingPage.trackingIntegrationIds Json?`. NULL —
+  the default and every existing row — means "all of the tenant's active
+  integrations", so nothing changes for any page that has not been
+  configured. An array is an explicit subset; an EMPTY array is honoured as
+  "no tracking here", because a merchant who unticks everything means it.
+  Three genuinely different states, hence nullable rather than defaulted.
+  A Json array rather than a join table: the list is small, bounded by the
+  tenant's own integrations, always read whole with the page, and never
+  queried from the other side. Ids that no longer resolve are ignored at
+  read time, so deleting an integration degrades a page to fewer pixels
+  rather than breaking it. The PATCH refuses ids that are not this
+  tenant's, turning "that pixel silently never fires" into a visible 422.
+
+  **The thank-you page deliberately keeps the tenant's whole set**, not the
+  ordered page's selection: the Purchase there is the conversion every one
+  of the merchant's ad accounts is waiting for, and scoping it would
+  silently stop reporting sales to the others.
+
+  **⚠ MIGRATION.** One additive nullable column —
+  `ALTER TABLE "LandingPage" ADD COLUMN "trackingIntegrationIds" JSONB;`
+  (previewed with `prisma migrate diff`; that is the whole DDL). Applied to
+  **`neondb` only** via `db push`, after asserting the target was not
+  `landingos_prod`. **It must be applied to production BEFORE this slice is
+  deployed**, in the LB.20 order. No `apply-rls` re-run is needed: policies
+  are per-table and no table was added, so the count stays 49.
+
+  **Verified live** against the build carrying it: with two pixels
+  configured and no link, both ids are served; linked to one, that id is
+  served and the other is **absent**; linked to both, both are served and a
+  real browser shows Meta initialising **both** (`signals/config` fetched
+  for each); cleared, both return. builder-api 29 → **35**, storefront
+  40/40, tracking 15/15.
+
 - **LB.34** A landing page can be archived — and the hard delete that was
   already there stops being able to destroy a sales history (13 August
   2026 — **local only, not pushed, not deployed**).

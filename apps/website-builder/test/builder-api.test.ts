@@ -527,3 +527,140 @@ describe('a page is ARCHIVED, not deleted, once it has sold anything (LB.34)', {
     assert.equal(r.status, 403, 'a viewer took a page off the storefront');
   });
 });
+
+describe('a landing page links to its own Meta pixels (LB.35)', { skip }, () => {
+  /* Measured first: multiple pixels per TENANT already fired — Meta's own
+     fbevents.js fetched a signals/config for BOTH configured ids, so "only the
+     first one fires" was never true. The real gap was that the selection could
+     not be made PER PAGE, because the loader was mounted in a layout and a
+     layout cannot see its child segment's params. */
+  let pixelOne = '';
+  let pixelTwo = '';
+  let trackedPage = '';
+  let tenantSlug = '';
+
+  before(async () => {
+    if (skip) return;
+    tenantSlug = `api-a-${stamp}`;
+    const made = await withTenant(tenantA, async (tx) => {
+      const rows = [];
+      for (const [label, pid] of [['One', '311111111111111'], ['Two', '322222222222222']]) {
+        rows.push(await (tx as any).trackingIntegration.create({
+          data: { tenantId: tenantA, provider: 'meta', label, publicId: pid, isActive: true },
+          select: { id: true, publicId: true },
+        }));
+      }
+      const page = await (tx as any).landingPage.create({
+        data: {
+          tenantId: tenantA, title: 'Pixel Page', slug: `pixel-page-${stamp}`,
+          price: 1500, published: true, status: 'PUBLISHED',
+        },
+        select: { id: true },
+      });
+      return { rows, page };
+    });
+    pixelOne = made.rows[0].id;
+    pixelTwo = made.rows[1].id;
+    trackedPage = made.page.id;
+  });
+
+  const pageHtml = async () => {
+    const r = await fetch(`${BASE}/${tenantSlug}/pixel-page-${stamp}`);
+    return r.text();
+  };
+
+  test('with no selection a page inherits every active tenant pixel', async () => {
+    const html = await pageHtml();
+    // Both ids reach the browser, which is what "fires to all of them" means
+    // at the boundary this test can observe.
+    assert.match(html, /311111111111111/, 'the first pixel is missing');
+    assert.match(html, /322222222222222/, 'the SECOND pixel is missing — only the first fires');
+  });
+
+  test('a page linked to one pixel stops firing the other', async () => {
+    const r = await api(`/api/builder/landings/${trackedPage}/general`, tokens.ownerA, {
+      method: 'PATCH',
+      body: JSON.stringify({ trackingIntegrationIds: [pixelTwo] }),
+    });
+    assert.equal(r.status, 200);
+
+    const html = await pageHtml();
+    assert.match(html, /322222222222222/, 'the linked pixel is missing');
+    assert.ok(!html.includes('311111111111111'), 'an unlinked pixel still fires on this page');
+  });
+
+  test('linking BOTH fires both — the point of the slice', async () => {
+    await api(`/api/builder/landings/${trackedPage}/general`, tokens.ownerA, {
+      method: 'PATCH',
+      body: JSON.stringify({ trackingIntegrationIds: [pixelOne, pixelTwo] }),
+    });
+    const html = await pageHtml();
+    assert.match(html, /311111111111111/);
+    assert.match(html, /322222222222222/);
+  });
+
+  test('clearing the selection restores "all of them"', async () => {
+    await api(`/api/builder/landings/${trackedPage}/general`, tokens.ownerA, {
+      method: 'PATCH',
+      body: JSON.stringify({ trackingIntegrationIds: null }),
+    });
+    const html = await pageHtml();
+    assert.match(html, /311111111111111/);
+    assert.match(html, /322222222222222/);
+  });
+
+  test('a pixel belonging to another tenant is refused, not silently ignored', async () => {
+    const foreign = await withTenant(tenantB, (tx) =>
+      (tx as any).trackingIntegration.create({
+        data: { tenantId: tenantB, provider: 'meta', label: 'Theirs', publicId: '399999999999999', isActive: true },
+        select: { id: true },
+      }),
+    );
+    const r = await api(`/api/builder/landings/${trackedPage}/general`, tokens.ownerA, {
+      method: 'PATCH',
+      body: JSON.stringify({ trackingIntegrationIds: [foreign.id] }),
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.body?.error?.code, 'INVALID_REFERENCE');
+  });
+
+  test('ALL FOUR storefront routes still mount the loader (LB.5 as a test)', async () => {
+    // LB.5 put the loader in the layout so no page could forget it. The mount
+    // moved down to the routes, so the guarantee lives here now instead.
+    const cat = await withTenant(tenantA, (tx) =>
+      (tx as any).category.create({
+        data: { tenantId: tenantA, name: 'Pixel Cat', slug: `pixel-cat-${stamp}` },
+        select: { id: true },
+      }),
+    );
+    await withTenant(tenantA, (tx) =>
+      (tx as any).landingPage.updateMany({ where: { id: trackedPage }, data: { categoryId: cat.id } }),
+    );
+    const order = await withTenant(tenantA, (tx) =>
+      (tx as any).salesOrder.create({
+        data: {
+          tenantId: tenantA, landingPageId: trackedPage,
+          customerName: 'Pixel Buyer', phone: '0555333444',
+          wilaya: 'Alger', baladia: 'Centre', address: '',
+          quantity: 1, productPrice: 1500, shippingPrice: 300, totalPrice: 1800,
+        },
+        select: { id: true },
+      }),
+    );
+
+    for (const [name, path] of [
+      ['home', `/${tenantSlug}`],
+      ['category', `/${tenantSlug}/category/pixel-cat-${stamp}`],
+      ['product', `/${tenantSlug}/pixel-page-${stamp}`],
+      ['thank-you', `/${tenantSlug}/thank-you/${order.id}`],
+    ] as const) {
+      const r = await fetch(BASE + path);
+      assert.equal(r.status, 200, `${name} did not render`);
+      const html = await r.text();
+      assert.ok(
+        html.includes('311111111111111') || html.includes('322222222222222'),
+        `${name} mounts no tracking loader — LB.5's guarantee is broken`,
+      );
+    }
+  });
+});

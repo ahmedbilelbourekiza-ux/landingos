@@ -9,6 +9,7 @@ import { toLandingPageData, toThemeData } from "@/lib/landing/mappers";
 import { LandingTemplate } from "@/components/landing/landing-template";
 import { StorefrontApiProvider } from "@/lib/storefront/api-base";
 import { ViewContentTracker } from "@/components/landing/tracking-scripts";
+import { StorefrontTracking } from "@/components/landing/storefront-tracking";
 
 export const dynamic = "force-dynamic";
 
@@ -147,6 +148,10 @@ export default async function StorefrontLandingPage({
 
   return (
     <div data-tenant={found.tenant.slug} data-page-slug={found.page.slug}>
+      {/* LB.35 — the pixels linked to THIS product, which is the selection the
+          layout could not express. A page with no selection inherits the
+          tenant's active set, exactly as before. */}
+      <StorefrontTracking tenantId={found.tenant.id} landingPageId={found.page.id} />
       <script
         type="application/ld+json"
         // Serialized server-side from our own row; the replace hardens against

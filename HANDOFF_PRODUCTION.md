@@ -12,6 +12,35 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ⚠ THE NEXT DEPLOY CARRIES A MIGRATION — read before pushing
+>
+> **LB.35 adds one column** and it is NOT yet in `landingos_prod`:
+>
+> ```sql
+> ALTER TABLE "LandingPage" ADD COLUMN "trackingIntegrationIds" JSONB;
+> ```
+>
+> That is the entire DDL, previewed with `prisma migrate diff` and applied so
+> far to **`neondb` only** (the push asserted the target was not
+> `landingos_prod` before running). It is additive and nullable, so existing
+> rows keep their meaning — NULL means "this page fires all of the tenant's
+> active integrations", which is what every page did before the column
+> existed.
+>
+> **Apply it to production BEFORE the app deploy, in the LB.20 order:** diff
+> against `landingos_prod` → push with the owner role on the direct endpoint,
+> confirming `Datasource … "landingos_prod"` in the output → verify the column
+> is present → then push the app. Env overrides shell-only; never edit
+> `packages/db/.env`.
+>
+> **No `apply-rls` re-run is needed.** Policies are per-table and no table was
+> added, so the count stays **49/49**. (This is the one thing that differs
+> from LB.20, which added a table and moved 48→49.)
+>
+> The other local slices — LB.31, LB.32, LB.33, LB.34, LB.36 — carry **no**
+> schema change. LB.34 in particular needed none: it writes the
+> `LandingPageStatus.ARCHIVED` value that has existed since the port.
+
 - **Deployed commit: `4f1b599`** (13 Aug 2026, night, user-approved —
   **LB.30**: the store home, category and thank-you pages wear the store's
   theme instead of the visitor's dark mode; the thank-you inherits the theme

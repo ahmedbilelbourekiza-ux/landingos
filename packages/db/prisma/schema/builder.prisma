@@ -70,9 +70,31 @@ model LandingPage {
   announcement   String?
   seoTitle       String?
   seoDescription String?
+  // DEAD since the port (M-06/R1): no reader, no writer. Superseded by
+  // `trackingIntegrationIds` below, which is what "this page's pixels" means
+  // now — plural, and pointing at TrackingIntegration rows rather than
+  // holding a bare id this platform has no other use for. Dropped in the
+  // coordinated column-drop migration CAPABILITY_AUDIT §2 records.
   facebookPixel  String?
   webhookUrl     String?
   published      Boolean @default(false)
+
+  /* LB.35 — which of the tenant's tracking integrations fire on THIS page.
+   *
+   * NULL means "all of the tenant's active integrations", which is what every
+   * page did before this column existed and therefore what every existing row
+   * keeps doing. A non-null array is an explicit subset, so a merchant running
+   * two ad accounts can point each product at its own pixel(s) instead of
+   * reporting every sale to both.
+   *
+   * A Json array of ids rather than a join table: the list is small, bounded
+   * by the tenant's own integrations, always read whole with the page, and
+   * never queried FROM the other side. A join table would add a migration, a
+   * relation and an index to answer a question nobody asks. Ids that no longer
+   * resolve are ignored at read time, so deleting an integration cannot break
+   * a page.
+   */
+  trackingIntegrationIds Json?
 
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)

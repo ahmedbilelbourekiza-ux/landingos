@@ -7,6 +7,7 @@ import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 import { resolveStorefrontTenant, storefrontHref } from "@/lib/storefront/resolve-tenant";
 import { PurchaseTracker } from "@/components/landing/tracking-scripts";
 import { ThemeProvider } from "@/components/landing/theme-provider";
+import { StorefrontTracking } from "@/components/landing/storefront-tracking";
 import { toThemeData } from "@/lib/landing/mappers";
 
 export const dynamic = "force-dynamic";
@@ -69,6 +70,12 @@ export default async function ThankYouPage({
     // buys on a light page and lands on a near-black confirmation (the same
     // bleed LB.26 fixed for the landing pages themselves).
     <ThemeProvider theme={toThemeData(order.landingPage?.theme ?? null)}>
+      {/* LB.35 — the tenant's whole active set, deliberately NOT the ordered
+          page's selection. The Purchase below is the conversion every one of
+          the merchant's ad accounts is waiting for; scoping it to the pixels
+          that happened to be linked to the product page would silently stop
+          reporting sales to the others. */}
+      <StorefrontTracking tenantId={tenant.id} />
       {/* Arabic like the rest of the storefront (the purchase form's strings
           are Arabic literals): this page was the one English screen a customer
           saw, on every single sale (M-04, storefront half). */}

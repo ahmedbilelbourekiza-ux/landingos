@@ -19,6 +19,12 @@ const Body = z.object({
   // editor advises on display budgets.
   seoTitle: z.string().trim().max(200).optional().nullable(),
   seoDescription: z.string().trim().max(500).optional().nullable(),
+  /* LB.35 — which of the tenant's tracking integrations fire on this page.
+   * NULL restores "all of them", which is what a page with no selection has
+   * always done; an array is an explicit subset, and an EMPTY array means the
+   * merchant unticked everything and wants none. The three states are
+   * genuinely different, so the column is nullable rather than defaulted. */
+  trackingIntegrationIds: z.array(z.string()).max(50).optional().nullable(),
 });
 
 export const PATCH = tenantRoute<Params>("website-builder:pages:write", async ({ db, req, params, session, afterCommit }) => {
@@ -43,6 +49,21 @@ export const PATCH = tenantRoute<Params>("website-builder:pages:write", async ({
     if (value) {
       const found = await (db as any)[model].findUnique({ where: { id: value }, select: { id: true } });
       if (!found) return apiError(422, "INVALID_REFERENCE", `That ${model === "category" ? "category" : "theme"} does not exist.`);
+    }
+  }
+
+  /* Every linked integration must be this tenant's own and active. The binding
+     already makes another tenant's row unresolvable, so this loop turns a
+     silent "that pixel simply never fires" into a refusal the merchant can
+     see — the same argument as the category/theme check above. */
+  const linked = parsed.data.trackingIntegrationIds;
+  if (linked && linked.length > 0) {
+    const found = await (db as any).trackingIntegration.findMany({
+      where: { id: { in: linked } },
+      select: { id: true },
+    });
+    if (found.length !== new Set(linked).size) {
+      return apiError(422, "INVALID_REFERENCE", "One of those tracking integrations does not exist.");
     }
   }
 
