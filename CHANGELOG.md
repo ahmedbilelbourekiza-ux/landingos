@@ -12,6 +12,73 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.39 — a shop can be crawled on purpose now, and only where LB.37 allows**
+  (13 August 2026, late night — `dbe1cf0`, **local; NOT deployed**).
+
+  **What.** `/{tenant}/sitemap.xml`. Included: the store home, every visible
+  category, every published page. Excluded: thank-you (LB.37 marks it
+  `noindex` — it carries a name, a wilaya and a total), drafts, archived
+  pages, and the console, which is not under this layout at all.
+
+  **The exclusions are the page's own predicate, not a filter beside it** —
+  `published: true AND status: PUBLISHED`, `isVisible: true` — so a URL that
+  404s cannot be advertised. The fixture proves the case a filter written from
+  memory would miss: a row with `published: true` and `status: DRAFT` is
+  absent, alongside the hidden category and the archived page. A sitemap that
+  disagrees with the `<head>` means one of them is lying.
+
+  **A route handler rather than `sitemap.ts`, and that was MEASURED.** Next's
+  metadata convention passes no route params: at `[tenant]/sitemap.ts` the
+  function is invoked with `undefined` and dies destructuring it — a real 500,
+  reproduced before the approach changed. The documented way to vary one is
+  `generateSitemaps`, which enumerates ids up front; here that means listing
+  every tenant, publishing the customer roster to anyone who asks. A handler
+  takes `params` exactly as the four storefront routes already do.
+
+  **Under `[tenant]`, not at the root,** for the same reason: a platform-host
+  `/sitemap.xml` could only be every tenant's pages in one file or nothing,
+  and neither is a shop's sitemap. Each merchant's is read through the same
+  `withTenant` binding as every other storefront query — asserted both ways
+  round, since a list of URLs is exactly the shape a tenant leak takes.
+
+  **`currentOrigin()` is new in `resolve-tenant.ts`** because a sitemap is the
+  one thing this app emits that cannot be path-relative. It reuses
+  `currentHost()` rather than reading a header itself, so the rule about which
+  header may be believed stays stated once and a spoofed `X-Forwarded-Host`
+  cannot put another hostname into a merchant's sitemap. The scheme comes from
+  the host, not `X-Forwarded-Proto` — also client input, and worth nothing.
+
+  **`lastModified` is real** — `updatedAt` off the row listed, the home
+  borrowing the newest thing it links to. A static date is worse than omitting
+  the field: it teaches a crawler to stop believing the ones that are true. A
+  test asserts every value parses and none sits in the future.
+
+  **No `Cache-Control` set by the route:** `next.config.ts`'s storefront rule
+  already gives this path `private, max-age=60, must-revalidate` (LB.14a),
+  correct for a document carrying no price and no order — and a second value
+  here is how the two would drift.
+
+  **Files.** `app/(storefront)/[tenant]/sitemap.xml/route.ts` (new),
+  `lib/storefront/resolve-tenant.ts` (`currentOrigin`),
+  `test/storefront.test.ts`.
+
+  **Migration.** None. **Risk.** Read-only and public by construction; the one
+  real risk is disclosure, which is why the tenant-scoping is asserted in both
+  directions and why the root sitemap was rejected rather than written.
+
+  **robots.txt is deliberately NOT built** — weighed, not skipped. It can only
+  live at a host root, and this host is both the platform and every shop, so
+  the version that would actually help discovery is the one that enumerates
+  every tenant's sitemap at a guessable URL: the same roster leak. Three
+  options and a recommendation are in `NEXT_STEPS.md` §LB.39; the answer
+  changes once a verified custom domain makes a host mean one shop.
+
+  Verified live on a fixture holding one of every case: four URLs out, five
+  kinds of row absent, unknown tenant **404** rather than an empty shop,
+  `/console/sitemap.xml` still 404. storefront **54 → 60**; builder-api 37,
+  builder-sections 74, console-shell 20, hardening 13, webhooks 10, tracking
+  15 (with the stub bases its own header documents), i18n 22.
+
 - **LB.38 — a page that never sold anything could only ever be archived**
   (13 August 2026, late night — `a70f588`, **local; NOT deployed**). Reported
   as "the archive control works, but there is still no way to DELETE a page."
@@ -150,9 +217,10 @@ touched, any **migration**, and any **risk**.
   running build on all four storefront pages plus the console as a control,
   fixture swept with `deleteTenant` (4 rows, 2 passes).
 
-  **Left open, deliberately:** the platform serves no `robots.txt` and no
-  `sitemap.xml` — both are reserved slugs and neither route exists. A sitemap
-  is the next real SEO step and a product decision, not a cleanup.
+  **Left open at the time, half closed since:** the sitemap became **LB.39**
+  above, per tenant rather than at the root. `robots.txt` remains unbuilt on
+  purpose — `NEXT_STEPS.md` §LB.39 has the three options and the reason the
+  useful one is a disclosure decision.
 
 - **DEPLOY — LB.31–LB.36, LB.15 and LB.14a/b/c reach production** (13 August
   2026, late night, user-approved). **This SUPERSEDES every "local only / not

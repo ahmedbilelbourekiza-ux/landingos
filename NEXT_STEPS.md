@@ -32,7 +32,8 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.28**~~ | ~~The dead `rtl:` Tailwind variant~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug — and the premise measured FALSE.** `rtl:` is native on Tailwind 4.3.3 (`:lang()`-keyed); the data table was already correct in Arabic, the calendar is unmounted. Real fixes: the editor back arrow now flips (it cited the false premise for not flipping), the stale comments/memory corrected, and the dir-island rule recorded in globals.css. i18n 22, builder-sections 73 |
 | ~~**LB.29**~~ | ~~`ui/sheet.tsx` closes on a physical edge~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (verified in production Arabic: close at x 17–33). `right-4` → `end-4`; scope corrected by measurement — the mobile nav drawer is a custom logical-first component and was never affected; the editor preview drawer is the only live Sheet. ar close x 343→17 at 375px emulation, fr unchanged. No physical device reachable — caveat recorded. builder-sections 73 |
 | ~~**LB.30**~~ | ~~Home/category/thank-you follow the visitor's dark mode~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production: the themed order's thank-you wears the merchant theme under emulated dark; fixture swept with `deleteTenant`). LB.26's recorded remainder. The thank-you inherits the ORDER's landing-page theme (the checkout journey's last step looks like the page the customer bought on); home/category wear `DEFAULT_THEME` — a store-level theme field on `StoreSettings` is a schema migration + merchant UI, deliberately left as a decision, with the two call sites marked. Verified live under emulated dark OS both ways (bound theme + default). storefront 33→36 |
-| ~~**LB.35**~~ | ~~A landing page can link only one Meta pixel~~ | M | **DONE 13 Aug 2026; DEPLOYED the same night** (its migration was applied to `landingos_prod` first, as its own approved action; the app code followed in `bd6d664..d6a56b1`). Verified live: a page's explicit one-integration subset survived a duplicate through the real route. Premise half-false: multiple pixels per TENANT already fired (Meta fetched a signals/config for both ids). The gap was per-PAGE selection, blocked because an App Router layout cannot see its child's params — the loader mount moved from the layout to the four storefront routes, with LB.5's "no page forgets" guarantee moved into a test. builder-api 29→35 |
+| **LB.35b** | **The per-page pixel control has no UI.** Reported as "not visible on my real account" — measured 13 Aug: LB.35 built the column, the PATCH, the storefront read path and the tests, and **touched no editor file**; `trackingIntegrationIds` appears in no `.tsx` in the repo. The editor's Integrations section still renders LB.5's signpost ("configured once per company"), which LB.35 made out of date. The mechanism is live and correct in production; only the door is missing. Needs the tenant's integrations loaded into the editor, a control for THREE states (NULL = all, `[]` = none, `[ids]` = subset), the save path, ×3 locales, tests — plus one product call: whether NULL reads as "all" or "not configured". **Not started.** §LB.35b below |
+| ~~**LB.35**~~ | ~~A landing page can link only one Meta pixel~~ | M | **DONE 13 Aug 2026; DEPLOYED the same night — but see LB.35b: the console control was never built.** (its migration was applied to `landingos_prod` first, as its own approved action; the app code followed in `bd6d664..d6a56b1`). Verified live: a page's explicit one-integration subset survived a duplicate through the real route. Premise half-false: multiple pixels per TENANT already fired (Meta fetched a signals/config for both ids). The gap was per-PAGE selection, blocked because an App Router layout cannot see its child's params — the loader mount moved from the layout to the four storefront routes, with LB.5's "no page forgets" guarantee moved into a test. builder-api 29→35 |
 | ~~**LB.38**~~ | ~~No way to permanently delete a page, even an order-free one~~ | S | **DONE 13 Aug 2026 (late night); NOT deployed.** LB.34's hardened `DELETE` was wired to NOTHING — `method: "DELETE"` in no component — so a mistyped draft could only be archived. Delete row-action added beside Archive, **offered only at zero orders** (the route refuses regardless; the absence is so nobody is invited to press a button that always 409s). `HAS_ORDERS` was also unmapped in `action-errors.ts` — the LB.14c pattern a third time — and now names Archive ×3 locales. Shown for archived rows too when order-free. No migration. builder-api 35→37 |
 | ~~**LB.34**~~ | ~~No way to delete a landing page~~ | M | **DONE 13 Aug 2026; DEPLOYED the same night.** Verified in production: archiving 404s the storefront and the checkout refuses the page, **while the order it had already sold survived intact**; restore landed on DRAFT. **The hard delete it kept had no UI until LB.38.** A hard-DELETE route already existed and cascades into `SalesOrder` (+ status history, drafts; fulfilment SetNull) — wiring a button to it would have shredded revenue history. Archive instead, using the never-written `ARCHIVED` enum value: **no migration**. Sets status AND unpublishes; restore lands on DRAFT. Hard delete kept for orderless pages, `409 HAS_ORDERS` otherwise. builder-api 23→29 |
 | ~~**LB.33**~~ | ~~"Full name" looks invalid on a fresh form~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night — premise measured FALSE.** Fresh field is `aria-invalid="false"`, neutral border, no `required`, form `noValidate`, and the compiled variant is `[aria-invalid=true]`; the red state is genuine but post-submit only. The real defect found in the same component: `Field` derived `htmlFor` from label TEXT, so **no checkout field had a working label**. Fixed explicitly. storefront 38→40 |
@@ -727,6 +728,128 @@ and `/_next/static/*` (still `public, max-age=31536000, immutable`) are outside
 the rule. storefront 40 → **48**; console-shell 20, hardening 12, tracking 15,
 builder-sections 74 unaffected.
 
+### LB.35's CONSOLE CONTROL WAS NEVER BUILT — measured 13 Aug, NOT fixed
+
+**Reported by the user as "the per-page Meta pixel control is not visible on my
+real account". It is not visible because it does not exist.**
+
+**The code IS live** — LB.35 shipped in the `bd6d664..d6a56b1` range and is
+verified in production: the column is on `landingos_prod`, the storefront
+honours it, and a duplicate carried an explicit one-integration subset through
+the real route. The mechanism works end to end.
+
+**What LB.35 actually built.** Its commit (`a234d48`) touched: the four
+storefront routes, `api/builder/landings/[id]/general/route.ts` (the PATCH
+accepts `trackingIntegrationIds`), `storefront-tracking.tsx`,
+`lib/storefront/tracking.ts`, the schema, tests and docs. **Zero editor
+files.** `trackingIntegrationIds` appears in no `.tsx` anywhere in the repo.
+Its own "verified live" note describes linking a page to a pixel — that linking
+was done through the API, and the commit never claims a console control.
+
+**What the user is looking at.** The editor HAS an "Integrations" section, and
+it renders a signpost: one sentence plus a link to
+`/console/settings/integrations`. Its comment says a per-page panel "would be a
+second place for the same settings" — written before LB.35, and now out of
+date, because per-page selection is exactly what LB.35 made meaningful. So the
+merchant opens the section named Integrations, is told integrations live at the
+workspace level, and has no way to choose pixels for one page.
+
+**Not fixed here, because it is not small.** It needs a real slice: load the
+tenant's `TrackingIntegration` rows into the editor, a control expressing
+**three** states (NULL = all active integrations, `[]` = none, `[ids]` = an
+explicit subset — the column's own semantics, and an empty array is honoured
+as "no tracking here"), the save path through the general route, ~3 locales of
+copy, and tests. It also needs one product decision: whether the default
+NULL should be shown as "all" or as "not configured", since they look
+identical and mean the same thing today.
+
+### LB.39 — DONE, NOT DEPLOYED. Each shop gets a sitemap (13 Aug, late night)
+
+**`dbe1cf0`, local only.** LB.37 settled which storefront pages may be indexed
+and left nothing telling a crawler where to look. This is the same decision
+written where it will be read.
+
+**The set, and why it cannot drift from LB.37.** Included: the store home,
+every visible category, every published page. Excluded: thank-you (LB.37 marks
+it `noindex` — it carries a name, a wilaya and a total), drafts, archived
+pages, and the console, which is not under this layout at all. The exclusions
+are not filters added afterwards — each is the **same predicate the page
+itself uses** (`published: true AND status: PUBLISHED`, `isVisible: true`), so
+a page that 404s cannot be advertised. A sitemap listing a 404 is worse than
+none: it spends a crawler's budget and teaches it the host is unreliable.
+
+**A route handler, not `sitemap.ts` — measured, not preferred.** Next's
+metadata convention does not pass route params. At `[tenant]/sitemap.ts` the
+exported function is invoked with `undefined` and dies destructuring it (a real
+500, reproduced before the approach changed). The documented way to vary one is
+`generateSitemaps`, which enumerates ids up front — for this app that means
+listing every tenant, i.e. publishing the customer roster to anyone who asks. A
+route handler takes `params` exactly as the four storefront routes already do.
+
+**Under `[tenant]`, not at the root, for the same reason.** `/sitemap.xml` on
+the platform host could only be every tenant's pages in one file (the same
+roster leak) or nothing at all, and neither is a shop's sitemap. Each merchant
+gets `/{tenant}/sitemap.xml`, read through the same `withTenant` binding as
+every other storefront query — asserted both ways round, since a sitemap is
+precisely the shape a tenant leak would take.
+
+**`currentOrigin()` is new in `resolve-tenant.ts`** because a sitemap is the
+one thing this app emits that cannot be path-relative. It reuses
+`currentHost()` rather than reading a header itself: the rule about which
+header may be believed stays stated once, so a spoofed `X-Forwarded-Host`
+cannot put another hostname into a merchant's sitemap. The scheme is derived
+from the host rather than `X-Forwarded-Proto` — also client input, and trusting
+it would add a second spoofable input for nothing.
+
+**Custom domains are not special-cased,** deliberately. `currentOrigin()` is
+whatever host the request arrived at, and the tenant prefix is correct there
+because `app/page.tsx` REDIRECTS a custom domain to `/{slug}` rather than
+serving at `/`. Whether that prefix should exist is LB.14a.2, scoped and
+unbuilt; a sitemap must describe the URLs that answer today.
+
+**`lastModified` is real** — `updatedAt` off the row listed; the home borrows
+the newest thing it links to, which is what "this shop changed" means. A test
+asserts every value parses and none sits in the future, because a static date
+teaches a crawler to stop believing the ones that are true.
+
+**No `Cache-Control` is set by the route:** `next.config.ts`'s storefront rule
+already gives this path `private, max-age=60, must-revalidate` (LB.14a), which
+is right for a document carrying no price and no order — and a second value
+here is how the two would drift apart.
+
+Verified live on a fixture holding one of every case: four URLs emitted, five
+kinds of row correctly absent (hidden category, draft, archived, the
+`published: true` + `status: DRAFT` half-state, thank-you), unknown tenant
+**404** rather than an empty shop, `/console/sitemap.xml` still 404. storefront
+**54 → 60**. **No migration.**
+
+#### robots.txt — PROPOSED, deliberately NOT built
+
+The natural pairing, and it was weighed rather than skipped. It is **not** the
+small addition it looks like, for one reason: `/robots.txt` can only exist at a
+HOST root, and this host is both the platform and every shop. A single file
+would have to `Disallow: /console` while allowing `/{tenant}/…`, and it would
+have to name a sitemap — but there is no single sitemap to name, because each
+tenant has their own. That leaves three options, all product decisions:
+
+1. **Per-tenant `robots.txt` at `/{tenant}/robots.txt`.** Consistent with the
+   sitemap, and **useless**: crawlers only read the host root. Rejected.
+2. **One platform `robots.txt`** disallowing `/console` and `/api`, listing no
+   sitemap. Honest and cheap, but adds nothing the per-page `noindex` LB.37
+   already emits — the console is already excluded by meta.
+3. **One platform `robots.txt` that enumerates every tenant's sitemap.** The
+   only version that actually helps discovery, and it publishes the full
+   customer list at a guessable URL — the same objection that kept the sitemap
+   out of the root.
+
+**Recommendation: option 2, and only alongside a decision about (3).** It
+costs a few lines and is strictly correct, but the discovery win people expect
+from robots.txt is entirely in (3), which is a disclosure question for the
+user, not a cleanup. **A verified custom domain changes the answer** — there
+the host IS one shop, so a root `robots.txt` naming that shop's sitemap is
+unambiguous and valuable. That makes this worth revisiting exactly when
+LB.14c's hostnames actually reach Render, and not before.
+
 ### LB.38 — DONE, NOT DEPLOYED. The hard delete finally gets a door (13 Aug, late night)
 
 **`a70f588`, local only.** Reported by the user as: the archive control IS
@@ -835,10 +958,12 @@ the console as a control; fixture swept with `deleteTenant` (4 rows, 2
 passes). builder-sections 74, builder-api 35, console-shell 20, hardening 13,
 calc 28, i18n 22 unaffected.
 
-**Still open, deliberately:** the platform serves **no `robots.txt` and no
-`sitemap.xml`** — both are on the reserved-slug list and neither route exists.
-Per-page `robots` meta is what governs indexing today; a sitemap would be the
-next real SEO step and is a product decision, not a cleanup.
+*(this section's "still open" note is now half closed)* **The sitemap was
+built as LB.39** — per tenant, at `/{tenant}/sitemap.xml`, listing exactly the
+set this slice made indexable. **`robots.txt` is still deliberately unbuilt**,
+and §LB.39 records the three options and the recommendation; the short version
+is that a host root serving both the platform and every shop cannot name one
+sitemap without either helping nobody or publishing the tenant roster.
 
 ### LB.15 — DONE. A price spinner was rounding the centimes away (13 Aug, night)
 

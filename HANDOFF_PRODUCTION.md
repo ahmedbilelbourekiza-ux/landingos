@@ -710,10 +710,25 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **Nothing is queued to deploy.** LB.31–LB.36 + LB.15 + LB.14a/b/c
-   (`bd6d664..d6a56b1`) and then LB.37 (`fcbd1e5`) both shipped on 13 Aug
-   (late night) and are verified live — §1 has the records, the markers and
-   the corrections they produced. No migration is pending; RLS is 49/49.
+4. **TWO slices are queued to deploy, both local, neither carrying a
+   migration:**
+   - **LB.38** (`a70f588`) — a Delete row-action for order-free pages. LB.34's
+     hardened `DELETE` had been wired to nothing since it was written.
+   - **LB.39** (`dbe1cf0`) — a per-tenant `/{tenant}/sitemap.xml` listing
+     exactly LB.37's indexable set.
+
+   Suites green (storefront 60, builder-api 37, builder-sections 74,
+   console-shell 20, hardening 13, webhooks 10, tracking 15, i18n 22), both
+   verified live against the running local build, **not deployed — the user
+   asked to be asked first.** Markers for when they go: a page with zero
+   orders shows a Delete control and one with orders does not; and
+   `curl /{tenant}/sitemap.xml` returns XML listing the home, visible
+   categories and published pages only.
+
+   Everything before them shipped on 13 Aug (late night) and is verified live
+   — LB.31–LB.36 + LB.15 + LB.14a/b/c (`bd6d664..d6a56b1`) and LB.37
+   (`fcbd1e5`). §1 has the records, the markers and the corrections they
+   produced. No migration is pending; RLS is 49/49.
 5. **Know the decisions owned by the user**, none of which may be started
    unprompted:
    - the `erp-serveur` decommission (dashboard action);
