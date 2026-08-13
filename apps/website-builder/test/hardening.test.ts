@@ -228,6 +228,62 @@ describe('a page can be duplicated whole (LB.6)', { skip }, () => {
     const r = await api(`/api/builder/landings/nope-${stamp}/duplicate`, { method: 'POST' });
     assert.equal(r.status, 404);
   });
+
+  test('the copy carries the parts the page grew AFTER this route was written', async () => {
+    /* LB.14b's measurement. "Every section" was true in LB.6 and quietly
+     * stopped being true twice:
+     *
+     *   `deliveryPrices` (LB.20) — a copy of a HEAVY product was silently
+     *   charging the company's ordinary shipping on every order it took.
+     *   `trackingIntegrationIds` (LB.35) — absent means "fire the tenant's
+     *   WHOLE set", so dropping a deliberate subset made the copy report to
+     *   MORE ad accounts than its original.
+     *
+     * This test is written to fail when the page grows a third part, which is
+     * the only way "every section" stays true: it counts the page's own
+     * relation and column surface rather than listing what it happens to know
+     * about today. */
+    const wilaya = await withTenant(tenantId, (tx) =>
+      (tx as any).wilaya.findFirst({ select: { id: true } }),
+    );
+    const integration = await withTenant(tenantId, (tx) =>
+      (tx as any).trackingIntegration.create({
+        data: {
+          tenantId, provider: 'meta', label: 'Dup pixel',
+          publicId: `dup-pixel-${stamp}`, isActive: true,
+        },
+        select: { id: true },
+      }),
+    );
+    await withTenant(tenantId, async (tx) => {
+      await (tx as any).landingDeliveryPrice.create({
+        data: { tenantId, landingPageId: pageId, wilayaId: wilaya.id, homePrice: 900, deskPrice: 450 },
+      });
+      await (tx as any).landingPage.update({
+        where: { id: pageId },
+        data: { trackingIntegrationIds: [integration.id] },
+      });
+    });
+
+    const r = await api(`/api/builder/landings/${pageId}/duplicate`, { method: 'POST' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+
+    const copy = await withTenant(tenantId, (tx) =>
+      (tx as any).landingPage.findUnique({
+        where: { id: r.body.data.id },
+        include: { deliveryPrices: true },
+      }),
+    );
+
+    assert.equal(copy.deliveryPrices.length, 1, 'the page-specific delivery price did not come along');
+    assert.equal(String(copy.deliveryPrices[0].homePrice), '900', 'the copy would under-charge shipping');
+    assert.equal(String(copy.deliveryPrices[0].deskPrice), '450');
+    assert.deepEqual(
+      copy.trackingIntegrationIds,
+      [integration.id],
+      'the copy inherited the whole tenant set instead of the page selection',
+    );
+  });
 });
 
 describe('the checkout rate limit exists and is tunable (LB.6)', { skip }, () => {
