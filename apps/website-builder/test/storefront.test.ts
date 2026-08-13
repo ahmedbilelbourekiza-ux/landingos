@@ -1,5 +1,6 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { request as httpRequest } from 'node:http';
 
 import { asPlatform, withTenant, disconnect, deleteTenant } from '@landingos/db';
 
@@ -1048,5 +1049,133 @@ describe('LB.39 — a shop lists what it sells, and nothing else', { skip }, () 
   test('a slug with no tenant behind it is a 404, not an empty shop', async () => {
     const s = await sitemap(`no-such-shop-${stamp}`);
     assert.equal(s.status, 404, 'an unknown shop reported itself as real but empty');
+  });
+});
+
+/* =============================================================================
+ * LB.40 — /robots.txt, and the two hostnames whose answer differs.
+ *
+ * It REPLACED a static `public/robots.txt` whose every block was `Allow: /` —
+ * so the platform invited crawlers into `/console` and `/api` while LB.37's
+ * root layout told each page `noindex`. And a static file cannot say the one
+ * thing worth saying: the platform host serves many shops and may name no
+ * sitemap without publishing the tenant roster, while a verified custom domain
+ * is one shop and may name exactly that shop's.
+ *
+ * The static file WON while both existed — `public/` is served before app
+ * routes, so the new route was completely inert until the old file was
+ * deleted. These assert the served body for that reason: which one answers is
+ * invisible from the module.
+ * ========================================================================== */
+describe('LB.40 — robots.txt answers for the host it was asked on', { skip }, () => {
+  /* `node:http`, not `fetch`, and only because fetch CANNOT do this: `host` is
+   * a forbidden header name there and is silently dropped, so every request
+   * would arrive as the platform host and the custom-domain branch — the half
+   * that carries the disclosure decision — would be untestable. Measured
+   * rather than assumed: a fetch with `headers: { host }` returned the
+   * platform answer. */
+  const rawGet = (path: string, host?: string): Promise<{ status: number; body: string }> =>
+    new Promise((resolve, reject) => {
+      const url = new URL(BASE);
+      const req = httpRequest(
+        {
+          hostname: url.hostname,
+          port: url.port || 80,
+          path,
+          method: 'GET',
+          headers: host ? { host } : {},
+        },
+        (res) => {
+          let body = '';
+          res.on('data', (c) => (body += c));
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+
+  const robots = (host?: string) => rawGet('/robots.txt', host);
+
+  test('the platform host keeps crawlers out of the console and the API', async () => {
+    const r = await robots();
+    assert.equal(r.status, 200);
+    assert.match(r.body, /Disallow:\s*\/console\//i, 'the console is crawlable');
+    assert.match(r.body, /Disallow:\s*\/api\//i, 'the API is crawlable');
+    assert.match(r.body, /Allow:\s*\//i, 'storefronts must stay crawlable');
+  });
+
+  test('the static file it replaced is really gone', async () => {
+    // `public/robots.txt` listed Googlebot, Bingbot, Twitterbot and
+    // facebookexternalhit, each `Allow: /`. If any of those names comes back,
+    // the static file is being served again and this route is inert.
+    const r = await robots();
+    for (const agent of ['Googlebot', 'Bingbot', 'Twitterbot', 'facebookexternalhit']) {
+      assert.ok(!r.body.includes(agent), `the old static robots.txt is back (${agent})`);
+    }
+  });
+
+  test('the platform host names NO sitemap — that would be the tenant roster', async () => {
+    // The same objection that kept the sitemap out of the root in LB.39: the
+    // only file this host could name is one listing every shop.
+    const r = await robots();
+    assert.ok(!/^\s*Sitemap:/im.test(r.body), 'the platform host published a sitemap index');
+  });
+
+  test('a request arriving at the platform address ignores a forged X-Forwarded-Host', async () => {
+    // The header is client input. `currentHost()` believes it only when the
+    // request did NOT arrive at a platform address, and this one did — so a
+    // forged value must not be able to put a tenant's sitemap here.
+    const res = await fetch(`${BASE}/robots.txt`, {
+      headers: { 'x-forwarded-host': 'someone-elses-shop.test' },
+    });
+    const body = await res.text();
+    assert.ok(
+      !/^\s*Sitemap:/im.test(body),
+      'a forged forwarded host put a sitemap on the platform robots.txt',
+    );
+  });
+
+  test('a VERIFIED custom domain names that one shop\'s sitemap', async () => {
+    // The case where the ambiguity disappears: this host belongs to one
+    // merchant, so naming their sitemap tells a crawler something true and
+    // discloses nobody else.
+    const host = `verified-${stamp}.test`;
+    await withTenant(tenantA, (db) =>
+      (db as any).tenantDomain.create({
+        data: {
+          tenantId: tenantA, domain: host,
+          verificationToken: `tok-${stamp}`, verifiedAt: new Date(),
+        },
+      }),
+    );
+    const r = await robots(host);
+    assert.equal(r.status, 200);
+    assert.match(
+      r.body,
+      new RegExp(`^\\s*Sitemap:\\s*https://${host}/${slugA}/sitemap\\.xml\\s*$`, 'im'),
+      `custom domain named the wrong sitemap:\n${r.body}`,
+    );
+    // And it does not stop being a console-protecting file.
+    assert.match(r.body, /Disallow:\s*\/console\//i);
+  });
+
+  test('an UNVERIFIED domain gets the platform answer, not a shop\'s', async () => {
+    // Verification is the second gate in `resolve-tenant`, and it is what
+    // stops anyone pointing a hostname at the platform and claiming a shop.
+    const host = `unverified-${stamp}.test`;
+    await withTenant(tenantA, (db) =>
+      (db as any).tenantDomain.create({
+        data: {
+          tenantId: tenantA, domain: host,
+          verificationToken: `tok2-${stamp}`, verifiedAt: null,
+        },
+      }),
+    );
+    const r = await robots(host);
+    assert.ok(
+      !/^\s*Sitemap:/im.test(r.body),
+      'an unverified domain was treated as a shop',
+    );
   });
 });
