@@ -12,6 +12,97 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **DEPLOY — LB.31–LB.36, LB.15 and LB.14a/b/c reach production** (13 August
+  2026, late night, user-approved). **This SUPERSEDES every "local only / not
+  pushed / not deployed" note on the entries below down to and including the
+  LB.30 deploy record** — the whole range is live.
+
+  **What.** `bd6d664..d6a56b1` pushed to `origin/main` as a fast-forward —
+  **eighteen commits**, not the sixteen the handoff predicted: two
+  documentation commits (`202ccf3`, `d6a56b1`) landed after that count was
+  written. **Rollback point: `bd6d6643eab892ad0619fe861eb0a86a48dbdbfb`.**
+
+  **NO MIGRATION, and that was verified rather than trusted.** The range DOES
+  touch `packages/db/prisma` — one file, `schema/builder.prisma`, carrying
+  LB.35's `trackingIntegrationIds Json?` and its comments. That column was
+  already applied to `landingos_prod` in the entry below, so the check that
+  matters is drift, not file paths: `prisma migrate diff --from-url <prod>
+  --to-schema-datamodel` answered **"This is an empty migration."** The column
+  was independently read back as `jsonb`/`is_nullable = YES` on a connection
+  that reported `current_database() = landingos_prod`, and RLS was **49/49**
+  on both counts before and after. **Recorded because the previous handoff
+  said the range touches nothing under `packages/db/prisma` — it does; the
+  claim that holds is that production needs no DDL.**
+
+  **Confirmed by a definitive PUBLIC marker, chosen so it needs no production
+  data.** LB.14a's `wilayas` route sets `NEVER_CACHE` on its **404** branch,
+  so an unauthenticated request for a store that does not exist is a complete
+  test of the new code. Baseline captured BEFORE the push: **no
+  `Cache-Control` header at all**. After: `private, no-store, max-age=0,
+  must-revalidate`. No older build can send it. Live 2m38s after the push.
+
+  Four more header paths moved exactly as the config intends, including two
+  that pin the subtle bugs LB.14a fixed: `/<tenant>/thank-you` answers
+  `no-store` rather than inheriting the broad rule's `max-age=60` (the
+  later-rule-overrides-earlier trap), and the bare root `/` keeps the
+  framework default (the `.+` vs `.*` empty-segment trap). `/console/*` and
+  `/_next/static` are untouched, as designed.
+
+  **Live verification on the real domain, throwaway tenant
+  `lb-dep-check-msrk9u03`** (store "Boutique Nour Élégance", a published page
+  at **2990.50 DZD**, an Adrar page-level delivery override 500/300, and an
+  explicit ONE-integration tracking subset against two active integrations):
+
+  - **LB.14a** — the real published page answers `private, max-age=60,
+    must-revalidate`; its `wilayas` endpoint `private, no-store`. The quote
+    (home 500 / desk 300) is the page-level override, from the same resolver
+    the checkout charges from.
+  - **LB.15** — in the live editor: **zero `type="number"` across all 34
+    inputs**, price `type="text"` + `inputMode="decimal"` + `dir="ltr"` + no
+    `step`. **Two ArrowUp presses on 2990.50 left it at 2990.50** — the
+    defect this fixes stored 2992 — with `stepMismatch` now false. A French
+    `2990,75` typed into the box previewed as `DA 2,990.75`, recomputed the
+    discount to −15%, saved, and read back from the database as Decimal
+    **2990.75**. A mistyped ambiguous value was REFUSED, not guessed.
+  - **LB.14b** — the page duplicated through the real route; the copy carries
+    **both** `deliveryPrices` (w1 home=500 desk=300) **and**
+    `trackingIntegrationIds` (the one-id subset), and lands as DRAFT.
+  - **LB.31** — header and footer both name "Boutique Nour Élégance" and link
+    to the tenant's own storefront root; zero platform strings in the body.
+  - **LB.32** — the editor header band is `[0, 56]` at every scroll position,
+    and an anchored scroll lands a section card at **96px with 40px
+    clearance** (it was −24px before). No overlap.
+  - **LB.33** — checkout labels wire to stable ids (`for`/`id` = `fullName`,
+    `phone`, `wilaya`, `notes`), not ids derived from Arabic label text.
+  - **LB.34** — archiving the published page 404s the storefront and makes
+    the checkout refuse it ("That product is not available."), **while the
+    order it had already sold survived intact** (`productPrice 2990.5`,
+    `shipping 500`, `total 3490.5`). Restore returned it to DRAFT, never
+    straight to PUBLISHED.
+  - **Checkout end-to-end** — a REAL order through the production API totalled
+    **3490.5** = 2990.50 + 500, priced server-side, centimes intact.
+
+  **Cleanup.** `deleteTenant()` removed **12 scoped rows in 2 passes**, tenant
+  row deleted, the fixture user removed separately (the function does not
+  delete users, by design), and every scoped count read back **0**. It ran as
+  `landingos_app`, the RLS-scoped role, which is what makes the unfiltered
+  `deleteMany` safe. The two real production tenants are untouched. The
+  fixture storefront now 404s. Health green throughout.
+
+  **One PRE-EXISTING issue found and deliberately NOT touched.** A storefront
+  page's `<title>` is `<page> · LandingOS`, and it inherits
+  `robots: { index: false, follow: false }` — both from the ROOT layout's
+  metadata, which this range does not modify (byte-identical in `bd6d664` and
+  `d6a56b1`). So it is neither a regression nor inside LB.31, whose scope was
+  SiteNav/SiteFooter. But a merchant's shop currently carries the platform's
+  name in its browser tab and tells search engines not to index itself. Left
+  for a decision rather than patched live; see `NEXT_STEPS.md`.
+
+  **Risk.** Low. No DDL, no RLS change, and the one behavioural change with
+  blast radius — caching — was measured on five paths plus two controls. The
+  `max-age=60` on public pages is browser-private and `must-revalidate`; no
+  shared cache may hold a price.
+
 - **MIGRATION — LB.35's column reaches production** (13 August 2026, night,
   **user-approved as a database action on its own; no code was pushed**).
   This CLOSES the "⚠ deploy blocker" note on the merge entry below.

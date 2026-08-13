@@ -32,19 +32,19 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.28**~~ | ~~The dead `rtl:` Tailwind variant~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug — and the premise measured FALSE.** `rtl:` is native on Tailwind 4.3.3 (`:lang()`-keyed); the data table was already correct in Arabic, the calendar is unmounted. Real fixes: the editor back arrow now flips (it cited the false premise for not flipping), the stale comments/memory corrected, and the dir-island rule recorded in globals.css. i18n 22, builder-sections 73 |
 | ~~**LB.29**~~ | ~~`ui/sheet.tsx` closes on a physical edge~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (verified in production Arabic: close at x 17–33). `right-4` → `end-4`; scope corrected by measurement — the mobile nav drawer is a custom logical-first component and was never affected; the editor preview drawer is the only live Sheet. ar close x 343→17 at 375px emulation, fr unchanged. No physical device reachable — caveat recorded. builder-sections 73 |
 | ~~**LB.30**~~ | ~~Home/category/thank-you follow the visitor's dark mode~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production: the themed order's thank-you wears the merchant theme under emulated dark; fixture swept with `deleteTenant`). LB.26's recorded remainder. The thank-you inherits the ORDER's landing-page theme (the checkout journey's last step looks like the page the customer bought on); home/category wear `DEFAULT_THEME` — a store-level theme field on `StoreSettings` is a schema migration + merchant UI, deliberately left as a decision, with the two call sites marked. Verified live under emulated dark OS both ways (bound theme + default). storefront 33→36 |
-| ~~**LB.35**~~ | ~~A landing page can link only one Meta pixel~~ | M | **DONE 13 Aug 2026; MERGED to local `master`, NOT deployed — ⚠ ITS MIGRATION IS THE DEPLOY BLOCKER** (one nullable JSONB column; apply to `landingos_prod` before deploying). Premise half-false: multiple pixels per TENANT already fired (Meta fetched a signals/config for both ids). The gap was per-PAGE selection, blocked because an App Router layout cannot see its child's params — the loader mount moved from the layout to the four storefront routes, with LB.5's "no page forgets" guarantee moved into a test. builder-api 29→35 |
-| ~~**LB.34**~~ | ~~No way to delete a landing page~~ | M | **DONE 13 Aug 2026; merged to local `master`, not deployed.** A hard-DELETE route already existed and cascades into `SalesOrder` (+ status history, drafts; fulfilment SetNull) — wiring a button to it would have shredded revenue history. Archive instead, using the never-written `ARCHIVED` enum value: **no migration**. Sets status AND unpublishes; restore lands on DRAFT. Hard delete kept for orderless pages, `409 HAS_ORDERS` otherwise. builder-api 23→29 |
-| ~~**LB.33**~~ | ~~"Full name" looks invalid on a fresh form~~ | S | **DONE 13 Aug 2026; merged to local `master`, not deployed — premise measured FALSE.** Fresh field is `aria-invalid="false"`, neutral border, no `required`, form `noValidate`, and the compiled variant is `[aria-invalid=true]`; the red state is genuine but post-submit only. The real defect found in the same component: `Field` derived `htmlFor` from label TEXT, so **no checkout field had a working label**. Fixed explicitly. storefront 38→40 |
-| ~~**LB.32**~~ | ~~The editor's sticky header overlaps the content~~ | S | **DONE 13 Aug 2026; merged to local `master`, not deployed.** Not z-index, not padding: `sticky top-16` cleared a shell header that is not above this screen (the editor mounts outside `ConsoleShell`). Sticky reserves no space for its offset, so content flowed from 56 while the header painted 64→120 — a permanent 64px overlap. `scroll-mt-24` corroborated the diagnosis. `top-0`; anchored-scroll clearance −24px→+40px |
-| ~~**LB.31**~~ | ~~The storefront header shows "LandingOS" and links to the platform~~ | S | **DONE 13 Aug 2026; merged to local `master`, not deployed.** Not preview-only: with no `StoreSettings` row the published page rendered the platform wordmark linking to `/` (307 → console), plus the platform's internal description and copyright. Both production tenants have exactly that null row — 0 published pages, so unseen, one publish away. `resolveStoreName` + deleted fallbacks; brand is a span in the preview drawer. storefront 36→38 |
+| ~~**LB.35**~~ | ~~A landing page can link only one Meta pixel~~ | M | **DONE 13 Aug 2026; DEPLOYED the same night** (its migration was applied to `landingos_prod` first, as its own approved action; the app code followed in `bd6d664..d6a56b1`). Verified live: a page's explicit one-integration subset survived a duplicate through the real route. Premise half-false: multiple pixels per TENANT already fired (Meta fetched a signals/config for both ids). The gap was per-PAGE selection, blocked because an App Router layout cannot see its child's params — the loader mount moved from the layout to the four storefront routes, with LB.5's "no page forgets" guarantee moved into a test. builder-api 29→35 |
+| ~~**LB.34**~~ | ~~No way to delete a landing page~~ | M | **DONE 13 Aug 2026; DEPLOYED the same night.** Verified in production: archiving 404s the storefront and the checkout refuses the page, **while the order it had already sold survived intact**; restore landed on DRAFT. A hard-DELETE route already existed and cascades into `SalesOrder` (+ status history, drafts; fulfilment SetNull) — wiring a button to it would have shredded revenue history. Archive instead, using the never-written `ARCHIVED` enum value: **no migration**. Sets status AND unpublishes; restore lands on DRAFT. Hard delete kept for orderless pages, `409 HAS_ORDERS` otherwise. builder-api 23→29 |
+| ~~**LB.33**~~ | ~~"Full name" looks invalid on a fresh form~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night — premise measured FALSE.** Fresh field is `aria-invalid="false"`, neutral border, no `required`, form `noValidate`, and the compiled variant is `[aria-invalid=true]`; the red state is genuine but post-submit only. The real defect found in the same component: `Field` derived `htmlFor` from label TEXT, so **no checkout field had a working label**. Fixed explicitly. storefront 38→40 |
+| ~~**LB.32**~~ | ~~The editor's sticky header overlaps the content~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (measured in production: header band `[0,56]` at every scroll position, anchored scroll landing a card at 96px with 40px clearance). Not z-index, not padding: `sticky top-16` cleared a shell header that is not above this screen (the editor mounts outside `ConsoleShell`). Sticky reserves no space for its offset, so content flowed from 56 while the header painted 64→120 — a permanent 64px overlap. `scroll-mt-24` corroborated the diagnosis. `top-0`; anchored-scroll clearance −24px→+40px |
+| ~~**LB.31**~~ | ~~The storefront header shows "LandingOS" and links to the platform~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production on a real published page: header and footer name the merchant and link to its own root, zero platform strings in the body). Not preview-only: with no `StoreSettings` row the published page rendered the platform wordmark linking to `/` (307 → console), plus the platform's internal description and copyright. Both production tenants have exactly that null row — 0 published pages, so unseen, one publish away. `resolveStoreName` + deleted fallbacks; brand is a span in the preview drawer. storefront 36→38 |
 | **LB.36** | Brands — a store organised around brands instead of one flat shop | M–L | **SCOPED, NOT BUILT (13 Aug 2026; the scoping doc is merged to local `master`)** — a measurement + proposal pass only, like the store-theme question. Full write-up below; the decision is yours |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
-| **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | **SPLIT INTO THREE, because they are three different risks.** LB.14a caching — **DONE 13 Aug 2026 (night), local commit only**; LB.14b version history and LB.14c custom domains — see their own rows below. Original scoping: handoff §13 |
-| ~~**LB.14c**~~ | ~~Custom-domain console flow~~ | S | **PREMISE FALSE — the flow already exists** (B5, 10 Aug, deployed): claim, per-row token, **real DNS TXT verification**, primary, unlink, screen, tests. Driven live to confirm. **What was wrong and is now fixed (13 Aug, night, local commit):** the verify route distinguishes "no TXT record yet" from "wrong value" on purpose — the opposite instruction to a merchant mid-setup — and both arrived as "that didn't work", because one code carried both meanings and B5 mapped **none** of its five refusal codes in `action-errors.ts`. Split + six messages ×3 locales. platform/domains 13→14. **⚠ SCOPED, NOT BUILT — the part that needs infrastructure:** a verified domain still 403s until the OPERATOR adds the hostname to Render and it issues a certificate (proven: `x-render-routing` 403; no Render credential exists here). **Custom domains are therefore complete in the app and inert in production.** Three options + the `isPrimary`-has-no-reader finding written up below; the decision is yours |
+| **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | **SPLIT INTO THREE, because they are three different risks.** LB.14a caching — **DONE 13 Aug 2026 (night), DEPLOYED the same night**; LB.14b version history and LB.14c custom domains — see their own rows below. Original scoping: handoff §13 |
+| ~~**LB.14c**~~ | ~~Custom-domain console flow~~ | S | **PREMISE FALSE — the flow already exists** (B5, 10 Aug, deployed): claim, per-row token, **real DNS TXT verification**, primary, unlink, screen, tests. Driven live to confirm. **What was wrong and is now fixed (13 Aug, night; DEPLOYED the same night):** the verify route distinguishes "no TXT record yet" from "wrong value" on purpose — the opposite instruction to a merchant mid-setup — and both arrived as "that didn't work", because one code carried both meanings and B5 mapped **none** of its five refusal codes in `action-errors.ts`. Split + six messages ×3 locales. platform/domains 13→14. **⚠ SCOPED, NOT BUILT — the part that needs infrastructure:** a verified domain still 403s until the OPERATOR adds the hostname to Render and it issues a certificate (proven: `x-render-routing` 403; no Render credential exists here). **Custom domains are therefore complete in the app and inert in production.** Three options + the `isPrimary`-has-no-reader finding written up below; the decision is yours |
 | **LB.14b** | Page version history / undo (M-02, = CAPABILITY_AUDIT B7) | M–L | **SCOPED, NOT BUILT (13 Aug 2026) — it needs a new table, therefore a production migration, and that was out of scope for the session that measured it.** Confirmed nothing exists: the whole schema has ONE history table and it is `SalesOrderStatusHistory`. Eleven separate section-save routes and no single write path to hook. A snapshot measured at 0.6–3.6 KB on real pages, so storage is not the argument — the three open questions are all product decisions (when a version is taken, what restore does to a page that has SOLD, whether restore may republish). Proposed shape + costs written up below; **RLS would move 49 → 50.** **Built instead, needing no migration: the `duplicate` completeness fix**, because until this exists a duplicate is the only way back a merchant has |
-| ~~**LB.14a**~~ | ~~Storefront caching (P-01)~~ | S–M | **DONE 13 Aug 2026 (night); local commit only, not deployed — and the finding inverted the premise.** The pages were sending `no-store` (the strictest header there is); the **delivery quote was sending no `Cache-Control` at all**, and RFC 9111 lets a shared cache invent freshness for exactly that. The rule settled on: *a response may be reused by a shared cache only if a stale copy cannot cost somebody money or expose somebody's order* — stricter than "changes rarely", because a storefront is reachable through a MERCHANT's own hostname and this platform cannot purge their CDN. Public pages → `private, max-age=60, must-revalidate` (the one real win: `no-store` forbade even a back-button redisplay); quote, pixel configs and thank-you → `private, no-store`. **ISR measured UNAVAILABLE, not declined** — `revalidate = 60` still built as `ƒ (Dynamic)` with no warning, because a custom domain wins over a path prefix and so every render reads the Host header. storefront 40→48 |
-| ~~**LB.15**~~ | ~~Editor money inputs off `type="number"` (pricing section)~~ | S | **DONE 13 Aug 2026 (night); local commit only, not deployed — and the measurement found data loss, not style residue.** Three boxes: `price`, `oldPrice`, and every variant option's supplement. `step="1"` made any sub-unit price `stepMismatch` (the browser calling it invalid while `aria-invalid` said fine) and **two ArrowUp presses on 2990.50 stored 2992** — the control discarding the centimes. All three are now text + `inputMode="decimal"` + `dir="ltr"`, and ONE reader (`lib/landing/money-field.ts`) serves the schema, the preview strip and the save body. A comma is a decimal separator; `1,000` is REFUSED rather than guessed (a 1000× error either way), while a dot with three places is deliberately allowed because that is what a stored `Decimal` returns. New key `builder.editor.priceUnreadable` ×3 locales. calc 20→28, builder-sections 73→74 |
+| ~~**LB.14a**~~ | ~~Storefront caching (P-01)~~ | S–M | **DONE 13 Aug 2026 (night); DEPLOYED the same night — and the finding inverted the premise.** Confirmed in production across five header paths plus two controls; the wilayas 404's flip from *no header at all* was the deploy's own marker. The pages were sending `no-store` (the strictest header there is); the **delivery quote was sending no `Cache-Control` at all**, and RFC 9111 lets a shared cache invent freshness for exactly that. The rule settled on: *a response may be reused by a shared cache only if a stale copy cannot cost somebody money or expose somebody's order* — stricter than "changes rarely", because a storefront is reachable through a MERCHANT's own hostname and this platform cannot purge their CDN. Public pages → `private, max-age=60, must-revalidate` (the one real win: `no-store` forbade even a back-button redisplay); quote, pixel configs and thank-you → `private, no-store`. **ISR measured UNAVAILABLE, not declined** — `revalidate = 60` still built as `ƒ (Dynamic)` with no warning, because a custom domain wins over a path prefix and so every render reads the Host header. storefront 40→48 |
+| ~~**LB.15**~~ | ~~Editor money inputs off `type="number"` (pricing section)~~ | S | **DONE 13 Aug 2026 (night); DEPLOYED the same night — and the measurement found data loss, not style residue.** Re-measured live in production after the deploy: two ArrowUp presses left 2990.50 unchanged, and a French `2990,75` saved and read back as Decimal 2990.75. Three boxes: `price`, `oldPrice`, and every variant option's supplement. `step="1"` made any sub-unit price `stepMismatch` (the browser calling it invalid while `aria-invalid` said fine) and **two ArrowUp presses on 2990.50 stored 2992** — the control discarding the centimes. All three are now text + `inputMode="decimal"` + `dir="ltr"`, and ONE reader (`lib/landing/money-field.ts`) serves the schema, the preview strip and the save body. A comma is a decimal separator; `1,000` is REFUSED rather than guessed (a 1000× error either way), while a dot with three places is deliberately allowed because that is what a stored `Decimal` returns. New key `builder.editor.priceUnreadable` ×3 locales. calc 20→28, builder-sections 73→74 |
 | ~~LB.10~~ | ~~`website-builder:orders:write`~~ | — | **DONE in the LB.10 commit** (B-08 closed, console writes rerouted through the API, webhooks fire from console changes) |
 
 ### The 12 August pass — LB.16 to LB.22, slice by slice
@@ -343,7 +343,7 @@ merchant's `#141414` theme under an emulated dark OS, home/category hold
 the default, the unthemed order falls back cleanly; fixture swept with
 `deleteTenant`, zero rows behind.
 
-### LB.31–LB.36: MERGED INTO LOCAL `master`, NOT DEPLOYED (13 Aug 2026)
+### LB.31–LB.36: DEPLOYED (13 Aug 2026, late night)
 
 The six slices below (LB.31 the branding leak, LB.32 the editor's sticky
 header, LB.33 the checkout labels, LB.34 the landing-page archive, LB.35 the
@@ -356,8 +356,12 @@ tested and verified live — `git diff fecc4ff master -- apps packages` is
 empty. The suites were re-run against the merged state rather than inherited
 from the branch.
 
-**`origin/main` is still `bd6d664`; production still runs the LB.30 app tree
-(`4f1b599`). Nothing here is pushed or deployed.**
+**DEPLOYED 13 Aug 2026 (late night), user-approved.** `origin/main` is
+`d6a56b1` — these six went out together with LB.15 and LB.14a/b/c as
+`bd6d664..d6a56b1`, a fast-forward of eighteen commits. Rollback point
+`bd6d664`. Every slice was verified live on the real domain with a throwaway
+tenant that `deleteTenant()` then removed completely; see
+`HANDOFF_PRODUCTION.md` §1 for the per-slice evidence.
 
 **✔ LB.35's MIGRATION IS APPLIED — 13 Aug 2026 (night), user-approved, as a
 database action ON ITS OWN.** `LandingPage.trackingIntegrationIds JSONB` now
@@ -371,11 +375,11 @@ existed. A second `migrate diff` then returned *an empty migration*. **No
 (no new table). Shell-env overrides only; `packages/db/.env` still names
 `neondb`.
 
-**That was a migration, NOT a deploy.** `origin/main` is still `bd6d664` and
-the LB.31–LB.36 application code remains local. Production now runs the LB.30
-app tree against a schema that carries one extra nullable column no deployed
-code reads — the additive, forward-compatible direction, and the reason the
-column had to land first. The other five slices carry no schema change; LB.34
+**That was a migration, NOT a deploy — and the code caught up the same night.**
+For the few hours between them, production ran the LB.30 app tree against a
+schema carrying one extra nullable column no deployed code read: the additive,
+forward-compatible direction, and the reason the column had to land first.
+That gap is now closed. The other five slices carry no schema change; LB.34
 in particular needed none, writing the `ARCHIVED` enum value that has existed
 since the port.
 
@@ -445,7 +449,7 @@ platform/domains repeatedly. Every one of those suites cleaned up after itself.
 
 ### LB.14c — the console flow ALREADY EXISTS; one gap closed, one scoped (13 Aug, night)
 
-**Local commit only, not deployed.** Asked for as "a UI for a tenant to
+**DEPLOYED 13 Aug 2026 (late night).** Asked for as "a UI for a tenant to
 configure their own custom domain from inside the console", with the sensible
 worry that it might need DNS/SSL nobody here can test. **The premise measured
 false: the whole flow was built as `CAPABILITY_AUDIT` B5 on 10 August and is
@@ -614,7 +618,8 @@ copy because it looks like a backup. See the commit and the CHANGELOG entry.
 
 ### LB.14a — DONE. The storefront caching story, and what it refuses (13 Aug, night)
 
-**Local commit only, not deployed.** `BUILDER_AUDIT.md` P-01 asked for a
+**DEPLOYED 13 Aug 2026 (late night)** — and it supplied the deploy's own
+marker; see `HANDOFF_PRODUCTION.md` §1. `BUILDER_AUDIT.md` P-01 asked for a
 decision rather than a change. Measuring produced the opposite of the expected
 finding.
 
@@ -721,9 +726,37 @@ and `/_next/static/*` (still `public, max-age=31536000, immutable`) are outside
 the rule. storefront 40 → **48**; console-shell 20, hardening 12, tracking 15,
 builder-sections 74 unaffected.
 
+### FOUND DURING THE 13 Aug DEPLOY, NOT FIXED — the storefront's `<title>` and `robots` are the platform's
+
+**Measured on a real published page in production, deliberately left alone.**
+A storefront page serves `<title>Montre en cuir · LandingOS</title>` and
+inherits `robots: { index: false, follow: false }`. Both come from the ROOT
+layout's `metadata` export, whose comment reads "Internal admin tool — never
+indexed" — written when this app was only a console.
+
+**It is not a regression and it is not LB.31's.** `app/layout.tsx` is
+byte-identical between `bd6d664` and `d6a56b1`, and LB.31's scope was SiteNav
+and SiteFooter — which are correct: the body of a storefront page carries the
+merchant's name and links to the merchant's own root, with zero platform
+strings. This is the metadata layer, which nobody has claimed yet.
+
+**Why it matters more than it looks.** A merchant's shop shows the platform's
+name in the browser tab and in any link preview, and tells every search engine
+not to index the shop at all. For a console that is correct; for a
+customer-facing storefront reachable on the merchant's own hostname it is
+close to the opposite of what they want.
+
+**Why it was not fixed here.** It needs a `generateMetadata` on the storefront
+route group that overrides both `title` and `robots`, and `robots` is a
+product decision, not a cleanup: whether a merchant's page SHOULD be indexed
+depends on whether the platform wants to host public SEO surface, and it
+interacts with the D2 front-door question in LB.14a.2 (a page reachable at two
+hostnames needs a canonical). Two lines in the wrong place would publish every
+draft-quality page to Google.
+
 ### LB.15 — DONE. A price spinner was rounding the centimes away (13 Aug, night)
 
-**Local commit only, not deployed.** Asked for as style residue — "the
+**DEPLOYED 13 Aug 2026 (late night).** Asked for as style residue — "the
 editor's money inputs are still `type="number"`, the M-05/D-06 finding" — and
 the measurement found silent data loss sitting behind the rule.
 

@@ -1,9 +1,11 @@
 # LandingOS — Project State
 
-**Last updated:** 13 August 2026, late night — LB.15, LB.14a, LB.14b, LB.14c
-**Branch:** `master` (`ca1e9b3`) · **`origin/main` is `bd6d664`; sixteen commits
-are local and unpushed, and none of them needs a migration** — LB.35's column is
-already in `landingos_prod`. See `HANDOFF_PRODUCTION.md` §1 first.
+**Last updated:** 13 August 2026, late night — the LB.31–LB.36 / LB.15 /
+LB.14a–c range **DEPLOYED**
+**Branch:** `master` (`d6a56b1`) · **`origin/main` is `d6a56b1` too — nothing
+is unpushed and no migration is pending.** LB.35's column was applied to
+`landingos_prod` earlier the same night; the app code followed as
+`bd6d664..d6a56b1`. See `HANDOFF_PRODUCTION.md` §1 first.
 
 ---
 
@@ -117,22 +119,27 @@ category hold the default, unthemed falls back; swept with `deleteTenant`.
 > confirmed `jsonb`/nullable with the one existing row NULL, a second diff
 > returning empty, and **RLS unchanged at 49** because no table was added.
 >
-> **`origin/main` is `bd6d664` and production runs the LB.30 app tree
-> (`4f1b599`). Sixteen local commits are ahead: `bd6d664..ca1e9b3`** —
-> LB.31–LB.36 and its merge record, then **LB.15** (money inputs), **LB.14a**
-> (storefront caching), **LB.14b** (the duplicate-completeness fix + version
-> history scoped), **LB.14c** (the domain-refusal messages + custom domains
-> scoped), the dev-tenant sweep, and the records for all of it.
+> **✔ AND THEN THE CODE FOLLOWED, the same night.** `origin/main` is now
+> `d6a56b1`: the range shipped as `bd6d664..d6a56b1` — **eighteen** commits
+> (LB.31–LB.36 and its merge record, then **LB.15** money inputs, **LB.14a**
+> storefront caching, **LB.14b** the duplicate-completeness fix, **LB.14c**
+> the domain-refusal messages, the dev-tenant sweep, and the records for all
+> of it, plus two later doc commits). Rollback point `bd6d664`.
 >
-> **NO MIGRATION REMAINS.** Verified: nothing in `790e4ae..ca1e9b3` touches
-> `packages/db/prisma`. The whole range is a plain app deploy, RLS stays 49/49.
-> Production is one nullable column AHEAD of the code it serves — the
-> additive, forward-compatible direction, which is why the column went first.
+> **NO MIGRATION REMAINED, and the check that proved it was drift, not file
+> paths.** The earlier claim here — "nothing in `790e4ae..ca1e9b3` touches
+> `packages/db/prisma`" — was true of that sub-range but false of the full
+> range, which carries LB.35's schema edit. What settled it was
+> `prisma migrate diff --from-url <prod>` answering **"This is an empty
+> migration."** RLS stayed 49/49. **Use the diff, not `git diff --name-only`.**
 >
 > *(the paragraph below was the state before that migration ran, kept for the
 > record)*
 >
-> ### LB.31–LB.36 are MERGED INTO LOCAL `master`, and NOT DEPLOYED
+> ### *(historical)* LB.31–LB.36 are MERGED INTO LOCAL `master`, and NOT DEPLOYED
+>
+> **Superseded — this range deployed the same night as `bd6d664..d6a56b1`;
+> see above.** Kept for the record of how the merge itself was done.
 >
 > `bd6d664..fecc4ff`, merged 13 Aug 2026 as a **clean fast-forward** — master
 > was an ancestor of the branch (it had been synced onto master's tip at the
@@ -140,8 +147,9 @@ category hold the default, unthemed falls back; swept with `deleteTenant`.
 > hash is **identical** to the branch tip that was tested and verified live.
 > Not one byte of application code changed in the merge.
 >
-> **`origin/main` is still at `bd6d664`. Nothing is pushed and nothing is
-> deployed.** Production continues to run the LB.30 app tree (`4f1b599`).
+> *(as written at the time)* **`origin/main` is still at `bd6d664`. Nothing is
+> pushed and nothing is deployed.** Production continues to run the LB.30 app
+> tree (`4f1b599`). — **No longer true: shipped 13 Aug, late night.**
 >
 > **THE BLOCKER IS LB.35's MIGRATION.** It adds
 > `LandingPage.trackingIntegrationIds JSONB` and that column exists only in

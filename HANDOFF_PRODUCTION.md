@@ -1,10 +1,11 @@
 # HANDOFF_PRODUCTION — deployment and production state
 
 **Written:** 9 August 2026, ~19:00 UTC · **Updated:** 13 August 2026, late
-night — **LB.35's migration applied to `landingos_prod` as a database action on
-its own, with no code deployed** (see §1; the LB.30 deploy is the earlier-night
-record, LB.27–LB.29 the morning one, and the LB.13–LB.26 deploy + LB.20
-migration the 12 August record below) · **For:**
+night — **the LB.31–LB.36 / LB.15 / LB.14a–c range IS DEPLOYED** (`d6a56b1`;
+see §1. LB.35's migration had been applied earlier the same night as a database
+action on its own; the LB.30 deploy is the earlier-night record, LB.27–LB.29
+the morning one, and the LB.13–LB.26 deploy + LB.20 migration the 12 August
+record below) · **For:**
 the next conversation/agent picking this project up. Read this FIRST for anything
 touching production; `PROJECT_STATE.md` (platform history),
 `BUILDER_HANDOFF.md` (product) and `UIUX_PASS.md` (the UI/UX + mobile passes)
@@ -14,11 +15,19 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### ✔ LB.35's MIGRATION IS APPLIED — 13 Aug 2026 (night). The app code is still NOT deployed.
+> ### ✔ NOTHING IS WAITING TO DEPLOY — 13 Aug 2026 (late night)
 >
-> **The database and the code moved separately, on purpose, and only the
-> database moved.** The user approved the migration as an action on its own;
-> nothing was pushed.
+> **`origin/main` and local `master` are both `d6a56b1`.** The range that had
+> been held back, `bd6d664..d6a56b1`, was pushed and verified live; the
+> details are in the deploy record below and in CHANGELOG's top entry. There
+> is **no migration pending**, RLS is **49/49**, and no code is sitting
+> unpushed.
+>
+> ### ✔ LB.35's MIGRATION WAS APPLIED FIRST — 13 Aug 2026 (night)
+>
+> **The database and the code moved separately, on purpose** — the column went
+> first, alone, and the app code followed in the deploy below. The user
+> approved each as its own action.
 >
 > **Applied to `landingos_prod`:**
 >
@@ -46,38 +55,41 @@ remain the deep references.
 > read-only verification script was deleted after use. Health stayed green
 > throughout.
 >
-> ### ⚠ WHAT IS STILL NOT DEPLOYED
+> ### ✔ THAT RANGE IS NOW DEPLOYED — and two things the old note got wrong
 >
-> **`origin/main` is `bd6d664`; production runs the LB.30 app tree
-> (`4f1b599`). Sixteen local commits are ahead of it, `bd6d664..ca1e9b3`:**
+> **`origin/main` is `d6a56b1`.** The range was `bd6d664..d6a56b1`:
 >
 > | Range | What |
 > |---|---|
 > | `bd6d664..790e4ae` | **LB.31–LB.36** (the six-slice range) + its merge record |
 > | `790e4ae..ca1e9b3` | **LB.15** money inputs, **LB.14a** storefront caching, **LB.14b** the duplicate-completeness fix, **LB.14c** the domain-refusal messages, the dev-tenant sweep record, and the deploy/migration records for all of it |
+> | `ca1e9b3..d6a56b1` | two documentation commits written after the count below was made |
 >
-> **NO MIGRATION REMAINS.** LB.35's column is applied (above). **Nothing in
-> `790e4ae..ca1e9b3` touches `packages/db/prisma` at all** — verified — so
-> the whole range is a plain app deploy. RLS stays **49/49**.
+> **CORRECTION 1 — it was EIGHTEEN commits, not sixteen.** This document said
+> sixteen and named `ca1e9b3` as master's head; two more doc commits landed
+> afterwards. A count written into a handoff goes stale the moment the next
+> commit lands — **verify `git rev-parse master` against `origin/main`, never
+> trust a number written here.**
 >
-> Production is currently a schema ONE nullable column ahead of the code it
-> serves. That is the additive, forward-compatible direction and the reason
-> the column went first; no deployed query names it.
+> **CORRECTION 2 — the range DOES touch `packages/db/prisma`.** This document
+> said "nothing in `790e4ae..ca1e9b3` touches `packages/db/prisma` at all",
+> which is true of that sub-range but NOT of the full range: `a234d48` (LB.35)
+> changes `schema/builder.prisma`. The conclusion still held, but only because
+> the column was already applied — and **file paths are the wrong check
+> anyway.** The check that settles it is drift:
+> `prisma migrate diff --from-url <prod> --to-schema-datamodel` → **"This is
+> an empty migration."** Run that, not a `git diff --name-only`.
 >
-> **Nothing blocks the app deploy except the user's approval to push.**
+> **NO MIGRATION REMAINS.** RLS **49/49**, verified before and after.
 >
-> **Deploy markers available for the next deploy, in order of strength** —
-> apply the rule the last two deploys taught (one method, on a page that
-> contains the changed code):
-> 1. **Public, strongest: a `Cache-Control` flip.** A real tenant's published
->    storefront page goes from `private, no-cache, no-store, max-age=0,
->    must-revalidate` to `private, max-age=60, must-revalidate`, and
->    `/api/storefront/<t>/wilayas` from **no header at all** to
->    `private, no-store, max-age=0, must-revalidate`. Unauthed, one `curl -D -`,
->    and no build older than this range can serve either.
-> 2. Authed content: the editor's price box carries `inputmode="decimal"` and
->    no `type="number"` (LB.15); the domains screen answers a failed verify
->    with the DNS-specific message rather than the generic one (LB.14c).
+> **The marker that confirmed this deploy, kept because it needs no fixture.**
+> LB.14a sets `NEVER_CACHE` on the wilayas route's **404** branch, so
+> `curl -D - https://landingos.onrender.com/api/storefront/<anything>/wilayas`
+> is a complete unauthenticated test of the new code with no tenant, no login
+> and no production data: **no header at all** before, `private, no-store,
+> max-age=0, must-revalidate` after. It went live 2m38s after the push.
+> *Rule reinforced: the best marker is one whose baseline you captured BEFORE
+> pushing — take it first, every time.*
 >
 > ### One local trap this uncovered
 >
@@ -89,7 +101,53 @@ remain the deep references.
 > **After any schema change run `npm run generate --workspace @landingos/db`
 > as well.**
 
-- **Deployed commit: `4f1b599`** (13 Aug 2026, night, user-approved —
+- **Deployed commit: `d6a56b1`** (13 Aug 2026, late night, user-approved —
+  the range `bd6d664..d6a56b1`, eighteen commits: **LB.31** storefront
+  branding, **LB.32** the editor's sticky-header offset, **LB.33** checkout
+  field labels, **LB.34** archive/restore, **LB.35** per-page pixel selection,
+  **LB.36** the brand scoping note, **LB.15** money inputs, **LB.14a**
+  storefront caching, **LB.14b** duplicate completeness, **LB.14c** the
+  domain-refusal messages, plus the sweep and record commits).
+  **Rollback point: `bd6d6643eab892ad0619fe861eb0a86a48dbdbfb`.**
+  **No migration** — proven by `migrate diff` returning an empty migration
+  against `landingos_prod`, not by inspecting changed paths (see the
+  correction above). Fast-forward, no rebase, no conflicts.
+- **Confirmed by a definitive PUBLIC marker that needs no production data:**
+  the wilayas 404 `Cache-Control` flip described above, baseline captured
+  before the push. Four further header paths moved exactly as
+  `next.config.ts` intends — including `/<tenant>/thank-you` answering
+  `no-store` rather than the broad rule's `max-age=60`, and the bare root `/`
+  keeping the framework default, which are the two traps LB.14a's own commit
+  message says it fixed. `/console/*` and `/_next/static` unchanged.
+- **Live verification (13 Aug, late night), throwaway tenant
+  `lb-dep-check-msrk9u03` on the real domain** — store "Boutique Nour
+  Élégance", published page at **2990.50 DZD**, Adrar page-level override
+  500/300, an explicit ONE-integration subset against two active
+  integrations. **LB.15:** zero `type="number"` across all 34 editor inputs;
+  **two ArrowUp presses left 2990.50 unchanged** (the defect stored 2992);
+  French `2990,75` previewed `DA 2,990.75`, saved, read back as Decimal
+  **2990.75**; an ambiguous value refused, not guessed. **LB.14b:** the copy
+  made through the real route carries BOTH `deliveryPrices` and the
+  `trackingIntegrationIds` subset. **LB.31:** header and footer name the
+  merchant and link to its own root; zero platform strings in the body.
+  **LB.32:** header band `[0,56]` at every scroll position, anchored scroll
+  lands a card at **96px, 40px clearance** (was −24px). **LB.33:** labels
+  wire to stable ids, not ids derived from Arabic text. **LB.34:** archiving
+  404s the storefront and the checkout refuses it, **while the order already
+  sold survived** (2990.5 + 500 = 3490.5); restore lands on DRAFT.
+  **Checkout end-to-end:** a REAL production order totalled **3490.5**,
+  priced server-side. **Cleanup with `deleteTenant`:** 12 rows in 2 passes as
+  the RLS-scoped `landingos_app` role, fixture user removed separately, every
+  scoped count read back **0**, both real tenants untouched, health green.
+- **A PRE-EXISTING issue found during this deploy and deliberately NOT
+  touched:** a storefront page's `<title>` reads `<page> · LandingOS` and it
+  inherits `robots: { index: false, follow: false }`, both from the ROOT
+  layout — byte-identical in `bd6d664` and `d6a56b1`, so not a regression and
+  outside LB.31's SiteNav/SiteFooter scope. A merchant's shop nonetheless
+  carries the platform's name in the browser tab and tells search engines not
+  to index it. **User decision, not a silent patch** — see `NEXT_STEPS.md`.
+- *(historical — the state this deploy replaced)* **Deployed commit:
+  `4f1b599`** (13 Aug 2026, night, user-approved —
   **LB.30**: the store home, category and thank-you pages wear the store's
   theme instead of the visitor's dark mode; the thank-you inherits the theme
   of the landing page its order came from). **Rollback point: `0f6d743`**
@@ -219,12 +277,12 @@ remain the deep references.
 
 ## 2. RECENT COMMITS / DEPLOYMENTS (all on `main`, all deployed, oldest first)
 
-> **Everything in this table IS deployed. The sixteen commits in
-> `bd6d664..ca1e9b3` are NOT** — they are listed in §1, they carry no
-> migration, and they are waiting only on approval to push.
+> **Everything in this table IS deployed, and as of 13 Aug 2026 (late night)
+> nothing is waiting.** `origin/main` = local `master` = `d6a56b1`.
 
 | Commit | What it is |
 |---|---|
+| `bd6d664..d6a56b1` | **13 Aug 2026 (late night): LB.31–LB.36 + LB.15 + LB.14a/b/c** — storefront branding, the editor's sticky-header offset, checkout field labels, archive/restore, per-page pixel selection, the brand scoping note, money inputs, storefront caching, duplicate completeness, the domain-refusal messages. Eighteen commits, fast-forward, no migration (proven by an empty `migrate diff` against `landingos_prod`). Confirmed by a public `Cache-Control` flip on the wilayas 404 — a marker needing no fixture — plus a throwaway tenant driven through the editor, a duplicate, an archive/restore and a real checkout |
 | `0f6d743..4f1b599` | **13 Aug 2026 (night): LB.30** — the store home, category and thank-you pages wear the store's theme (thank-you inherits its order's landing-page theme; home/category wear the default — a store-level theme field stays an open product decision). `e940f06` rebased onto the deploy-record commit; docs-only conflicts. No migration. Verified by a public content marker (the theme scope appearing on a real tenant's store home) + a throwaway tenant with two real API orders, themed and unthemed, under an emulated dark OS |
 | `e3939e9..08e386d` | **13 Aug 2026: LB.27–LB.29** — the `deleteTenant` sweep (a tenant delete used to orphan every product-domain row; 73,267 of them had accumulated in dev), the `rtl:` record correction + editor back-arrow flip, and the Sheet's logical close edge. No migration. Verified by authed content markers + a full throwaway-tenant journey |
 | `b767928..e3939e9` | **12 Aug 2026 (evening): the LB.13–LB.26 range** — editor i18n (LB.13), dead-component deletion (LB.16), ERP detail back-nav (LB.17), the finance module switch (LB.18), product categories (LB.19), **per-product delivery pricing (LB.20, with its production migration applied first)**, catalogue publishing (LB.21), image-derived themes (LB.22), the Finances/Calculator merge (LB.25), the storefront theme-bleed fix (LB.26) |
@@ -527,6 +585,19 @@ erp/notifications **48/48** · builder-sections **50/50** · builder-api
 several documented Neon P1001 transients — judge suites per file, rerun
 before believing a red.)
 
+**Verified in production, 13 Aug (late night), on the `d6a56b1` build:**
+the wilayas-404 `Cache-Control` flip (baseline captured pre-push) · four more
+header paths incl. thank-you `no-store` and the bare root keeping the framework
+default · a real published page at `private, max-age=60` · **zero
+`type="number"` across 34 editor inputs; two ArrowUp presses leaving 2990.50
+intact; `2990,75` saved and read back as Decimal 2990.75** · a duplicate
+carrying both `deliveryPrices` and `trackingIntegrationIds` · storefront brand
+naming the merchant with zero platform strings in the body · editor header band
+`[0,56]` with 40px anchored-scroll clearance · checkout labels wired to stable
+ids · archive 404ing the storefront and refusing checkout while its existing
+order survived · a REAL order at **3490.5** priced server-side · `deleteTenant`
+sweeping 12 rows in 2 passes to zero, both real tenants untouched.
+
 **Verified in production (from outside, with evidence):**
 health shape incl. `isolation: rls` · deployed-commit identity via authed
 `locale-mobile` marker · bulk-bar `md:sticky` class in served HTML · Arabic
@@ -584,17 +655,19 @@ The exact first steps, in order:
    `uploads: r2`. If `isolation` is missing, an old build is serving; if
    `BYPASSED`, stop everything and tell the user to fix Render's
    `DATABASE_URL` (see §3).
-3. **Confirm `origin/main` still equals `bd6d664`** (`git fetch && git log
+3. **Confirm `origin/main` still equals `d6a56b1`** (`git fetch && git log
    --oneline origin/main -1`) — if it moved, someone else deployed; re-read
    the situation before assuming this document's state. **Local `master` is
-   `ca1e9b3`, sixteen commits ahead, and none of them is pushed.** The stale
-   worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits at
-   `fecc4ff`, an ancestor of master — it is fully merged and can be removed.
-4. **The one thing waiting on nothing but approval: deploy
-   `bd6d664..ca1e9b3`.** It carries NO migration (LB.35's column is already
-   applied — §1), RLS stays 49/49, and §1 lists the markers to confirm it
-   with, strongest first (a public `Cache-Control` flip; one unauthed
-   `curl -D -`).
+   `d6a56b1` too: nothing is unpushed.** Do not trust the commit COUNT any
+   handoff quotes — this one said "sixteen" and the real answer was eighteen
+   by the time it was read. Derive it: `git rev-list --count origin/main..master`.
+   The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
+   at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
+   own stale copies of these docs saying "not deployed". It can be removed.
+4. **Nothing is queued to deploy.** The range that was waiting here
+   (`bd6d664..d6a56b1`) shipped on 13 Aug (late night) and is verified live —
+   §1 has the record, the markers and the two corrections it produced. No
+   migration is pending and RLS is 49/49.
 5. **Know the decisions owned by the user**, none of which may be started
    unprompted:
    - the `erp-serveur` decommission (dashboard action);
