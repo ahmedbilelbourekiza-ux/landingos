@@ -34,6 +34,11 @@ import { DescriptionImagesSection } from "./sections/description-images-section"
 import { ShippingSection } from "./sections/shipping-section";
 import { DisplaySection } from "./sections/display-section";
 import { SeoSection, type SeoValues } from "./sections/seo-section";
+import {
+  TrackingSection,
+  type TrackingIntegrationOption,
+  type TrackingValues,
+} from "./sections/tracking-section";
 /* LB.13 — the registry names KEYS, not English.
  *
  * Each entry's title/description also appear on the section component's own
@@ -66,6 +71,8 @@ export function EditSections({
   onPreviewChange,
   landingId,
   initialSeo,
+  trackingIntegrations,
+  initialTracking,
 }: {
   preview: PreviewState;
   onPreviewChange: <K extends keyof PreviewState>(
@@ -74,6 +81,8 @@ export function EditSections({
   ) => void;
   landingId: string;
   initialSeo: SeoValues;
+  trackingIntegrations: readonly TrackingIntegrationOption[];
+  initialTracking: TrackingValues;
 }) {
   const t = useTranslations();
   const callbacks = React.useMemo(
@@ -222,34 +231,21 @@ export function EditSections({
           );
         }
         if (section.id === "integrations") {
-          // Not "coming soon" — it EXISTS, at the workspace level. Tracking
-          // pixels and webhooks are configured once per company (LB.5), and a
-          // per-page panel would be a second place for the same settings. The
-          // signpost is the fix A13 prescribes: state where a thing lives
-          // rather than leaving a reader guessing.
+          /* LB.35b. This was a SIGNPOST — a sentence saying tracking is
+             "configured once per company" and a link to workspace settings.
+             That was true when it was written and stopped being the whole
+             truth the moment LB.35 made per-page selection real: the column,
+             its PATCH and the storefront read path all shipped, and this
+             section still said the choice did not exist here. The signpost
+             survives inside the section for the case it was right about — a
+             company that has connected nothing yet. */
           return (
-            <EditSectionCard
+            <TrackingSection
               key={section.id}
-              id={section.id}
-              title={t(section.titleKey)}
-              description={t(section.descriptionKey)}
-              icon={section.icon}
-            >
-              {/* The sentence and the link are separate keys rather than one
-                  interpolated string: nothing else in this console composes
-                  rich text through the catalogue, and a translator handed a
-                  sentence with markup in it is the usual way a locale ends up
-                  with a broken tag. */}
-              <p className="text-sm text-muted-foreground">
-                {t("builder.editor.integrationsBody")}
-              </p>
-              <a
-                href="/console/settings/integrations"
-                className="mt-2 inline-block text-sm underline"
-              >
-                {t("builder.editor.integrationsLink")}
-              </a>
-            </EditSectionCard>
+              landingId={landingId}
+              integrations={trackingIntegrations}
+              initialValues={initialTracking}
+            />
           );
         }
         return (

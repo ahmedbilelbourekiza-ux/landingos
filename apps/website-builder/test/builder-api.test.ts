@@ -711,4 +711,82 @@ describe('a landing page links to its own Meta pixels (LB.35)', { skip }, () => 
       );
     }
   });
+
+  /* LB.35b — the DOOR, which LB.35 never built. Everything above asserts the
+   * mechanism: the column, its refusals, and what the storefront serves. All
+   * of it shipped and was verified in production while `trackingIntegrationIds`
+   * appeared in no component anywhere, so the only way to make the selection
+   * was a hand-written API call. These assert that a merchant can reach it. */
+
+  const editorHtml = async () => {
+    const res = await fetch(`${BASE}/console/builder/pages/${trackedPage}/edit`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.ownerA}` },
+      redirect: 'follow',
+    });
+    assert.equal(res.status, 200);
+    return res.text();
+  };
+
+  const setSelection = (ids: string[] | null) =>
+    api(`/api/builder/landings/${trackedPage}/general`, tokens.ownerA, {
+      method: 'PATCH',
+      body: JSON.stringify({ trackingIntegrationIds: ids }),
+    });
+
+  test('the editor offers every one of the tenant\'s integrations as a choice', async () => {
+    // A subset, because that is when the list is meant to be on screen: under
+    // "all" it is deliberately collapsed, since there is nothing to pick
+    // between. Asserting it while "all" is selected would be asserting the
+    // wrong design and it failed exactly that way first.
+    await setSelection([pixelOne]);
+    const html = await editorHtml();
+    assert.match(html, new RegExp(`tracking-option-${pixelOne}`), 'the first pixel is not offerable');
+    assert.match(html, new RegExp(`tracking-option-${pixelTwo}`), 'the second pixel is not offerable');
+    // And the signpost it replaced is gone — that sentence said tracking
+    // "applies to every page automatically", which LB.35 made untrue.
+    assert.ok(
+      !/applies? to every page automatically/i.test(html),
+      'the stale workspace-only signpost is still being served',
+    );
+    await setSelection(null);
+  });
+
+  test('no selection shows as "all", not as an empty list of ticks', async () => {
+    // The distinction the whole column exists for. NULL must not render the
+    // same as `[]`, or the merchant cannot tell "everything" from "nothing".
+    await setSelection(null);
+    const html = await editorHtml();
+    const all = /data-testid="tracking-mode-all"[^>]*checked/.test(html)
+      || /checked[^>]*data-testid="tracking-mode-all"/.test(html);
+    assert.ok(all, 'a page with no selection did not show as "all"');
+  });
+
+  test('an explicit subset shows as "choose", with only that pixel ticked', async () => {
+    await setSelection([pixelTwo]);
+    const html = await editorHtml();
+    const choosing = /data-testid="tracking-mode-choose"[^>]*checked/.test(html)
+      || /checked[^>]*data-testid="tracking-mode-choose"/.test(html);
+    assert.ok(choosing, 'an explicit subset did not show as "choose"');
+    assert.match(html, /data-testid="tracking-choices"/, 'the pixel list is not rendered');
+
+    // Which one is ticked, read off the served markup rather than assumed.
+    const ticked = (id: string) => {
+      const at = html.indexOf(`tracking-option-${id}`);
+      assert.ok(at > -1, `option ${id} missing`);
+      return /\bchecked\b/.test(html.slice(Math.max(0, at - 200), at + 200));
+    };
+    assert.ok(ticked(pixelTwo), 'the selected pixel is not ticked');
+    assert.ok(!ticked(pixelOne), 'a pixel that was NOT selected is ticked');
+
+    await setSelection(null);
+  });
+
+  test('an empty selection is offered as a real state, and says what it means', async () => {
+    // `[]` is legal and honoured as "no tracking here". It is the one choice
+    // that silently stops a merchant's reporting, so the editor says so.
+    await setSelection([]);
+    const html = await editorHtml();
+    assert.match(html, /data-testid="tracking-none-warning"/, 'an empty selection gave no warning');
+    await setSelection(null);
+  });
 });

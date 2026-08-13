@@ -7,6 +7,10 @@ import type { PreviewState } from "@/types/preview";
 import type { StorefrontStoreData } from "@/types/landing";
 import { EditWorkspaceHeader, type PublishStatus } from "./edit-workspace-header";
 import { EditSections } from "./edit-sections";
+import type {
+  TrackingIntegrationOption,
+  TrackingValues,
+} from "./sections/tracking-section";
 import { PreviewPanel } from "./preview-panel";
 import { PreviewDrawer } from "./preview-drawer";
 import { PublishDialog } from "./publish-dialog";
@@ -22,6 +26,8 @@ export function EditWorkspace({
   initialPreview,
   initialStatus,
   initialSeo,
+  trackingIntegrations,
+  initialTracking,
 }: {
   landingId: string;
   landingTitle: string;
@@ -40,6 +46,9 @@ export function EditWorkspace({
   initialPreview: PreviewState;
   initialStatus: PublishStatus;
   initialSeo: { seoTitle: string; seoDescription: string };
+  /** LB.35b — the company's pixels, and which of them this page reports to. */
+  trackingIntegrations: readonly TrackingIntegrationOption[];
+  initialTracking: TrackingValues;
 }) {
   // Where this editor sends its requests. The legacy dashboard and the
   // console mount the same components against different bases.
@@ -143,6 +152,8 @@ export function EditWorkspace({
             onPreviewChange={handlePreviewChange}
             landingId={landingId}
             initialSeo={initialSeo}
+            trackingIntegrations={trackingIntegrations}
+            initialTracking={initialTracking}
           />
           <div className="hidden lg:block">
             <PreviewPanel

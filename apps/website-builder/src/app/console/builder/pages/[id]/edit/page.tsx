@@ -68,6 +68,25 @@ export default async function ConsoleEditLandingPage({
     },
   });
 
+  /* LB.35b — the company's tracking integrations, so the Integrations section
+   * can offer a per-page choice between them. INACTIVE ones are included: a
+   * page linked to one stays linked, and listing only active rows would drop
+   * that link the next time the section saved. No secret is selected —
+   * `serverToken` and `testCode` never leave the server. */
+  const integrations = await forTenant(session.auth!.tenantId).trackingIntegration.findMany({
+    select: { id: true, provider: true, label: true, publicId: true, isActive: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  /* The column verbatim. `null` means "every active integration" and an array
+   * means exactly itself, including an empty one — the section renders all
+   * three states, so it must not be handed a normalised two. */
+  const selectedTracking = Array.isArray(page.trackingIntegrationIds)
+    ? (page.trackingIntegrationIds as unknown[]).filter(
+        (v): v is string => typeof v === "string",
+      )
+    : null;
+
   return (
     // Two providers, because the editor renders both worlds at once: its own
     // controls talk to the console API, and the live preview inside it renders
@@ -98,6 +117,8 @@ export default async function ConsoleEditLandingPage({
         }}
         initialPreview={toPreviewState(page)}
         initialSeo={{ seoTitle: page.seoTitle ?? "", seoDescription: page.seoDescription ?? "" }}
+        trackingIntegrations={integrations}
+        initialTracking={{ selected: selectedTracking }}
         initialStatus={(page.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT") as PublishStatus}
       />
       </StorefrontApiProvider>
