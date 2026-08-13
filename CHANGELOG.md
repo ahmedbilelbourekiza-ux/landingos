@@ -12,6 +12,33 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.36** Brands — **SCOPED, NOT BUILT** (13 August 2026). A measurement
+  and a proposal only, in the shape the store-theme question was left.
+  **No code.** The full write-up is `NEXT_STEPS.md` §LB.36; what the
+  measurement found, in short:
+
+  `CatalogProduct.brand` **already exists** as free text on the ERP side,
+  unread by the storefront and joined by nothing. `LandingPage` already
+  has a real `Category` RELATION with a screen, a picker and a public
+  listing, so "the category a brand sells" would point at a first-class
+  row rather than a string. `LandingPage` has no brand column of any kind.
+
+  **The precedent it has to argue with is LB.19**, which faced the same
+  fork for product categories and deliberately did NOT convert free text
+  to a relation ("a migration plus RLS plus a management screen for
+  something no route needs to join on"). A brand differs on exactly one
+  axis, and it is decisive: **a brand is RENDERED and owns a public
+  surface**, so it needs a stable slug, a logo and an identity that
+  survives a merchant retyping its name — which free text cannot give.
+  The recommendation is therefore a `Brand` row with `SetNull` both ways
+  (nothing that can reach a page may delete one — LB.34's argument).
+
+  It lands cleanly on LB.31's seam: `SiteNav` already takes a resolved
+  name/logo/homePath, so a brand adds one step *before* `resolveStoreName`
+  and changes no component. Size **M–L**, one additive table (RLS 49→50).
+  Three questions are left explicitly to the user, including whether a
+  brand replaces the store name everywhere or only in the product header.
+
 - **LB.35** A landing page links to its own Meta pixels (13 August 2026 —
   **local only, not pushed, not deployed**; **CARRIES A MIGRATION** — see
   below).
