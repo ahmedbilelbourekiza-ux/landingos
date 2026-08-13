@@ -726,11 +726,13 @@ and `/_next/static/*` (still `public, max-age=31536000, immutable`) are outside
 the rule. storefront 40 → **48**; console-shell 20, hardening 12, tracking 15,
 builder-sections 74 unaffected.
 
-### LB.37 — DONE. A shop's `<head>` introduced it as the platform (13 Aug, late night)
+### LB.37 — DONE + DEPLOYED. A shop's `<head>` introduced it as the platform (13 Aug, late night)
 
-**Local commit `fcbd1e5`; NOT deployed at the time of writing.** Found while
-verifying the LB.31–LB.36 deploy and fixed on the user's instruction
-immediately after.
+**`fcbd1e5`, deployed the same night as `ab24466`.** Found while verifying the
+LB.31–LB.36 deploy and fixed on the user's instruction immediately after.
+Confirmed on one throwaway fixture measured before AND after the push, with
+`/console/login` unchanged as the control that proves the fix landed at the
+storefront layer rather than by weakening the root.
 
 **What was measured, and one correction to how it was first reported.** A
 storefront page served `<title>… · LandingOS</title>`, the platform's internal

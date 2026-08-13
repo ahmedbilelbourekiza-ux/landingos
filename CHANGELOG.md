@@ -13,9 +13,27 @@ touched, any **migration**, and any **risk**.
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
 - **LB.37 — a shop's `<head>` introduced it as the platform, and told search
-  engines to go away** (13 August 2026, late night — **local commit
-  `fcbd1e5`; NOT deployed**). Found while verifying the deploy below and
+  engines to go away** (13 August 2026, late night — `fcbd1e5`, **DEPLOYED
+  the same night as `ab24466`**). Found while verifying the deploy below and
   fixed straight after, on the user's instruction.
+
+  **Confirmed on ONE throwaway fixture measured before AND after the push** —
+  the cleanest form of this check, because the build is the only variable.
+  Store home: *"LandingOS — Internal tool…"* / `noindex, nofollow` →
+  **"Boutique Nour Élégance"** / `index, follow` / canonical. Category: the
+  same → **"Montres · Boutique Nour Élégance"** / `index, follow` / canonical.
+  Product: *"Montre en cuir · LandingOS"* → **"Montre en cuir · Boutique Nour
+  Élégance"** (its `index, follow` was already right). Thank-you: `noindex`
+  before and after, but DECLARED rather than inherited. **`/console/login`
+  unchanged** — the row that proves the fix landed at the storefront layer
+  instead of by weakening the root, which is the failure mode a `robots` fix
+  invites. Live 2m50s after the push.
+
+  LB.14a's cache markers re-checked afterwards and all intact; health green;
+  fixture swept with `deleteTenant` (4 rows, 2 passes, both real tenants
+  untouched). A checkout against it correctly answered `UNDELIVERABLE` — that
+  fixture carried no delivery prices, and "an unpriced wilaya is
+  undeliverable, not free" is a pinned rule.
 
   **What.** A storefront page served `<title>… · LandingOS</title>`, the
   platform's internal tagline as its `description`, and — on the **store home

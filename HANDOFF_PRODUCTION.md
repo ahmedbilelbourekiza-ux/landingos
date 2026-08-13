@@ -15,19 +15,30 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### ⚠ ONE SLICE IS WAITING TO DEPLOY: LB.37 — 13 Aug 2026 (late night)
+> ### ✔ LB.37 IS DEPLOYED TOO — 13 Aug 2026 (late night)
 >
-> **`fcbd1e5` is local and NOT deployed.** It fixes the storefront's `<head>`:
-> a shop served the platform's name in its `<title>`, the platform's internal
-> tagline as its description, and `noindex, nofollow` on the store home and
-> every category. **No migration; no schema change.** CHANGELOG §LB.37 has the
-> argument, `NEXT_STEPS.md` §LB.37 the record. storefront 48 → 54.
+> **`origin/main` is `ab24466`.** The storefront `<head>` fix shipped and was
+> confirmed on the SAME throwaway fixture measured before and after the push —
+> the cleanest form of this check, because the only variable is the build.
 >
-> **The marker to confirm it with, when it goes:** a real published page's
-> `<title>` stops containing "LandingOS" and its `<meta name="robots">` reads
-> `index, follow`, while `/console/login` still reads `noindex, nofollow` —
-> one unauthed `curl` for the first, and the console check is the one that
-> catches a fix applied at the wrong layer. Capture both BEFORE pushing.
+> | Page | Before | After |
+> |---|---|---|
+> | store home | *"LandingOS — Internal tool…"* · `noindex, nofollow` | **"Boutique Nour Élégance"** · `index, follow` · canonical |
+> | product | *"Montre en cuir · LandingOS"* · `index, follow` | **"Montre en cuir · Boutique Nour Élégance"** · `index, follow` |
+> | category | *"LandingOS — Internal tool…"* · `noindex, nofollow` | **"Montres · Boutique Nour Élégance"** · `index, follow` · canonical |
+> | thank-you | platform tagline · `noindex` (inherited) | store name · **`noindex` (declared)** |
+> | `/console/login` | platform tagline · `noindex` | **unchanged** |
+>
+> **The console row is the one that matters most.** It is unchanged, which is
+> what proves the fix was applied at the storefront layer rather than by
+> weakening the root's fail-closed default — the failure mode a `robots` fix
+> invites. Live 2m50s after the push. No migration.
+>
+> LB.14a's cache markers were re-checked afterwards and are all intact, health
+> stayed green, and the fixture was swept with `deleteTenant` (4 rows, 2
+> passes; both real tenants untouched). A checkout against that fixture
+> correctly answered `UNDELIVERABLE` — it had no delivery prices, and
+> "an unpriced wilaya is undeliverable, not free" is a pinned rule.
 >
 > ### ✔ EVERYTHING BEFORE IT IS DEPLOYED — 13 Aug 2026 (late night)
 >
@@ -689,20 +700,20 @@ The exact first steps, in order:
 3. **Confirm `origin/main` still equals `d6a56b1`** (`git fetch && git log
    --oneline origin/main -1`) — if it moved, someone else deployed; re-read
    the situation before assuming this document's state. **Local `master` is
-   ahead, and it now carries APPLICATION CODE — LB.37, the storefront
-   `<head>` fix. `git diff origin/main master -- apps packages` is NOT empty,
-   and that non-emptiness is the signal something is waiting to deploy.** Do
-   not trust the commit COUNT any
+   in sync with `origin/main` at `ab24466` — LB.37 shipped too. The check that
+   tells you whether anything is waiting:
+   `git diff origin/main master -- apps packages`. Empty means no application
+   code is queued; non-empty means something is.** Do not trust the commit
+   COUNT any
    handoff quotes — this one said "sixteen" and the real answer was eighteen
    by the time it was read. Derive it: `git rev-list --count origin/main..master`.
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **ONE slice is queued to deploy: LB.37 (`fcbd1e5`)**, the storefront
-   `<head>` fix — no migration, no schema change, suites green, verified live
-   against the running local build. §1 has the marker to confirm it with. The
-   range before it (`bd6d664..d6a56b1`) shipped on 13 Aug (late night) and is
-   verified live; RLS is 49/49.
+4. **Nothing is queued to deploy.** LB.31–LB.36 + LB.15 + LB.14a/b/c
+   (`bd6d664..d6a56b1`) and then LB.37 (`fcbd1e5`) both shipped on 13 Aug
+   (late night) and are verified live — §1 has the records, the markers and
+   the corrections they produced. No migration is pending; RLS is 49/49.
 5. **Know the decisions owned by the user**, none of which may be started
    unprompted:
    - the `erp-serveur` decommission (dashboard action);

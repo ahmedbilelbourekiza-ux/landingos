@@ -2,12 +2,12 @@
 
 **Last updated:** 13 August 2026, late night — the LB.31–LB.36 / LB.15 /
 LB.14a–c range **DEPLOYED**
-**Branch:** `master` · **`d6a56b1` is the APPLICATION TREE production serves.
-⚠ `master` now carries ONE undeployed code slice on top — **LB.37**
-(`fcbd1e5`), the storefront `<head>` fix: a shop served the platform's name in
-its `<title>` and `noindex` on its home and categories. No migration.
-`git diff origin/main master -- apps packages` is NOT empty, and that is the
-signal. No migration is pending.** LB.35's column was applied to
+**Branch:** `master`, in sync with `origin/main` at `ab24466` · **LB.31–LB.36
++ LB.15 + LB.14a/b/c shipped as `d6a56b1`, then **LB.37** (`fcbd1e5`) — the
+storefront `<head>` fix, so a shop no longer serves the platform's name in its
+`<title>` nor `noindex` on its home and categories. Nothing is queued:
+`git diff origin/main master -- apps packages` is the check. No migration is
+pending.** LB.35's column was applied to
 `landingos_prod` earlier the same night; the app code followed as
 `bd6d664..d6a56b1`. See `HANDOFF_PRODUCTION.md` §1 first.
 
