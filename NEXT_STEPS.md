@@ -41,6 +41,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | **SPLIT INTO THREE, because they are three different risks.** LB.14a caching — **DONE 13 Aug 2026 (night), local commit only**; LB.14b version history and LB.14c custom domains — see their own rows below. Original scoping: handoff §13 |
+| ~~**LB.14c**~~ | ~~Custom-domain console flow~~ | S | **PREMISE FALSE — the flow already exists** (B5, 10 Aug, deployed): claim, per-row token, **real DNS TXT verification**, primary, unlink, screen, tests. Driven live to confirm. **What was wrong and is now fixed (13 Aug, night, local commit):** the verify route distinguishes "no TXT record yet" from "wrong value" on purpose — the opposite instruction to a merchant mid-setup — and both arrived as "that didn't work", because one code carried both meanings and B5 mapped **none** of its five refusal codes in `action-errors.ts`. Split + six messages ×3 locales. platform/domains 13→14. **⚠ SCOPED, NOT BUILT — the part that needs infrastructure:** a verified domain still 403s until the OPERATOR adds the hostname to Render and it issues a certificate (proven: `x-render-routing` 403; no Render credential exists here). **Custom domains are therefore complete in the app and inert in production.** Three options + the `isPrimary`-has-no-reader finding written up below; the decision is yours |
 | **LB.14b** | Page version history / undo (M-02, = CAPABILITY_AUDIT B7) | M–L | **SCOPED, NOT BUILT (13 Aug 2026) — it needs a new table, therefore a production migration, and that was out of scope for the session that measured it.** Confirmed nothing exists: the whole schema has ONE history table and it is `SalesOrderStatusHistory`. Eleven separate section-save routes and no single write path to hook. A snapshot measured at 0.6–3.6 KB on real pages, so storage is not the argument — the three open questions are all product decisions (when a version is taken, what restore does to a page that has SOLD, whether restore may republish). Proposed shape + costs written up below; **RLS would move 49 → 50.** **Built instead, needing no migration: the `duplicate` completeness fix**, because until this exists a duplicate is the only way back a merchant has |
 | ~~**LB.14a**~~ | ~~Storefront caching (P-01)~~ | S–M | **DONE 13 Aug 2026 (night); local commit only, not deployed — and the finding inverted the premise.** The pages were sending `no-store` (the strictest header there is); the **delivery quote was sending no `Cache-Control` at all**, and RFC 9111 lets a shared cache invent freshness for exactly that. The rule settled on: *a response may be reused by a shared cache only if a stale copy cannot cost somebody money or expose somebody's order* — stricter than "changes rarely", because a storefront is reachable through a MERCHANT's own hostname and this platform cannot purge their CDN. Public pages → `private, max-age=60, must-revalidate` (the one real win: `no-store` forbade even a back-button redisplay); quote, pixel configs and thank-you → `private, no-store`. **ISR measured UNAVAILABLE, not declined** — `revalidate = 60` still built as `ƒ (Dynamic)` with no warning, because a custom domain wins over a path prefix and so every render reads the Host header. storefront 40→48 |
 | ~~**LB.15**~~ | ~~Editor money inputs off `type="number"` (pricing section)~~ | S | **DONE 13 Aug 2026 (night); local commit only, not deployed — and the measurement found data loss, not style residue.** Three boxes: `price`, `oldPrice`, and every variant option's supplement. `step="1"` made any sub-unit price `stepMismatch` (the browser calling it invalid while `aria-invalid` said fine) and **two ArrowUp presses on 2990.50 stored 2992** — the control discarding the centimes. All three are now text + `inputMode="decimal"` + `dir="ltr"`, and ONE reader (`lib/landing/money-field.ts`) serves the schema, the preview strip and the save body. A comma is a decimal separator; `1,000` is REFUSED rather than guessed (a 1000× error either way), while a dot with three places is deliberately allowed because that is what a stored `Decimal` returns. New key `builder.editor.priceUnreadable` ×3 locales. calc 20→28, builder-sections 73→74 |
@@ -388,6 +389,92 @@ storefront path uses. After LB.35 merged, that client did not know
 nothing to do with the change under test. Fix is
 `npm run generate --workspace @landingos/db`. **After any schema change, both
 clients have to be regenerated.**
+
+### LB.14c — the console flow ALREADY EXISTS; one gap closed, one scoped (13 Aug, night)
+
+**Local commit only, not deployed.** Asked for as "a UI for a tenant to
+configure their own custom domain from inside the console", with the sensible
+worry that it might need DNS/SSL nobody here can test. **The premise measured
+false: the whole flow was built as `CAPABILITY_AUDIT` B5 on 10 August and is
+deployed.** That is the third time this queue has asked for something already
+shipped (LB.33's fresh-form defect and LB.35's single-pixel claim were the
+others).
+
+**What exists, confirmed by reading it and by driving it in the running
+console:**
+
+| Piece | Where |
+|---|---|
+| Schema | `TenantDomain` — `domain @unique` (globally, because one hostname belonging to two tenants is unresolvable by definition), `verificationToken`, `verifiedAt`, `isPrimary` |
+| Claim / list | `POST` / `GET /api/platform/domains` — hostname normalised, platform's own names refused, 5 per workspace, `409 DOMAIN_TAKEN` from the cross-tenant `@unique` |
+| **Real DNS proof** | `POST /api/platform/domains/[id]/verify` — `resolveTxt("_landingos-verify.<domain>")` via `node:dns`, exact token match, nothing else writes `verifiedAt` |
+| Primary / unlink | `PATCH` / `DELETE /api/platform/domains/[id]` |
+| Console screen | `/console/settings/domains` + `domains-manager.tsx`, i18n'd, gated on `platform:domains:manage` (SENSITIVE → OWNER/ADMIN) |
+| Read side | `tenantByDomain` refuses any row without `verifiedAt`; the `tenant_isolation_verified` RLS policy, guarded since `90f3d43` |
+| Tests | `test/platform/domains.test.ts`, now 14 |
+
+Driven live: claiming `shop.lb14c-probe.dz` produced the pending row, the TXT
+record name, the token value and the CNAME target, all in French; Vérifier ran
+a real DNS lookup and failed correctly; unlink removed it. **So the DNS half is
+not missing and does not need to be built.**
+
+**What WAS wrong, and is now fixed** — see the commit before this one. The
+verify route distinguishes two failures on purpose ("no record" = keep waiting
+for propagation; "records exist but none match" = you published the wrong
+string — the opposite instruction), and both reached the merchant as
+`Cela n'a pas fonctionné.` One code carried both meanings, and B5 had mapped
+**none** of its five refusal codes in `action-errors.ts`. Split into
+`DNS_NO_RECORD` / `DNS_TOKEN_MISMATCH`, six messages added in en/fr/ar.
+
+**⚠ WHAT CANNOT BE BUILT HERE, AND IT IS THE PART THAT MAKES THE FEATURE REAL.**
+
+A verified row in the database does not make a hostname serve. Two more things
+must be true, and only one of them is the merchant's:
+
+1. **The merchant points the name at the platform** (CNAME to
+   `landingos.onrender.com`). The screen already tells them to.
+2. **The platform operator adds that hostname to the Render service, and Render
+   issues its TLS certificate.** Until then the request never reaches the app
+   at all — **already proven, not theorised**: `resolve-tenant.ts` records that
+   Render answers **403 with `x-render-routing`** for an unconfigured hostname,
+   measured by a deploy probe. There is no Render API credential on this
+   machine (`HANDOFF_PRODUCTION.md` §3), so step 2 cannot be automated, tested
+   or even observed from here.
+
+**Consequence, stated plainly for the handoff: custom domains are complete in
+the application and INERT IN PRODUCTION until the operator adds each hostname
+in the Render dashboard.** A merchant can claim, verify and mark primary today
+and their domain will still 403. Nobody is affected yet — `landingos_prod` held
+**0 `TenantDomain` rows** at the last measurement — but the first merchant who
+tries will get no explanation.
+
+**Three options, for the decision that is yours:**
+
+- **(a) Manual/support step, documented.** After a merchant verifies, the
+  operator adds the hostname in Render. Cheapest and honest. Needs the screen
+  to SAY so — today "Vérifié" implies done, and the merchant has no way to know
+  a step remains. **Recommended**, and it is the only one buildable without
+  credentials.
+- **(b) Automate through Render's API.** A `RENDER_API_KEY` + service id, a call
+  to add a custom domain on verify, and polling for certificate issuance. Real
+  work, and it puts a deploy-platform credential inside the app — worth
+  weighing against how many merchants will ever use this.
+- **(c) Terminate TLS somewhere the platform controls** (a proxy in front of
+  Render with on-demand certificates). Largest change, removes the manual step
+  entirely, and is an infrastructure decision rather than a code one.
+
+**One defect that waits on the same decision, recorded so it is not
+rediscovered: `isPrimary` is written and has no functional reader.** The PATCH
+route's own comment says "Primary means the hostname canonical links use", and
+nothing uses it that way — the storefront's `canonical` is deliberately
+path-only, `storefrontHref` branches on `viaCustomDomain` rather than on
+primary, and **the editor's Copy Link builds its URL from
+`window.location.origin`, which is the CONSOLE's host.** So a merchant with a
+verified primary domain still copies a `landingos.onrender.com` link. That is
+the platform's most-caught defect class (a column with a writer and no reader,
+nine times before) — and it must NOT be "fixed" until (a), (b) or (c) is
+chosen, because pointing Copy Link at a domain that 403s would replace a link
+that works with one that does not.
 
 ### LB.14b — SCOPED, NOT BUILT. Page version history (13 Aug, night)
 

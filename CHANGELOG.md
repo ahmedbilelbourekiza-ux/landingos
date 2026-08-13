@@ -57,6 +57,88 @@ touched, any **migration**, and any **risk**.
   `npm run generate --workspace @landingos/db` fixes it. **After any schema
   change, regenerate BOTH clients.**
 
+- **LB.14c** A domain refusal that named its own fix said "that didn't work"
+  (13 August 2026, night — **local commit only; not pushed, not deployed**).
+
+  **The premise measured false, for the third time in this queue** (LB.33's
+  fresh-form defect and LB.35's single-pixel claim were the others). The
+  custom-domain console flow was asked for as something to build; it was built
+  as `CAPABILITY_AUDIT` B5 on 10 August and is deployed — claim a hostname with
+  a per-row token, prove it with a **real** DNS TXT lookup
+  (`resolveTxt("_landingos-verify.<domain>")`), choose the canonical one,
+  unlink; screen at `/console/settings/domains`, gated on
+  `platform:domains:manage` (SENSITIVE → OWNER/ADMIN); `tenantByDomain` refuses
+  any row without `verifiedAt`. Driven live to confirm: claiming
+  `shop.lb14c-probe.dz` produced the pending row, the TXT record name, the token
+  and the CNAME target in French; Vérifier ran a real lookup and failed
+  correctly; unlink removed it.
+
+  **What driving it found.** The verify route distinguishes two failures
+  deliberately, and its comment says why: "no record" means keep waiting for
+  propagation, "records exist but none match" means you published the wrong
+  string. Those are the **opposite instruction** to somebody mid-setup. Both
+  reached the merchant as `Cela n'a pas fonctionné.`
+
+  Two causes, and the second is the interesting one:
+
+  1. **One CODE carried both meanings**, with the difference living only in an
+     English developer message — and `lib/console/action-errors.ts` states, at
+     length, that a screen keys off the code and never renders the message.
+     So the distinction could not reach a screen at all. Split into
+     `DNS_NO_RECORD` and `DNS_TOKEN_MISMATCH`.
+  2. **B5 shipped five refusal codes and mapped none of them.** Every one fell
+     through to the generic fallback, on the one screen where every refusal
+     names something the merchant must go and change in their own DNS zone.
+     `action-errors.ts` already documents this exact shape happening once
+     before — `UNKNOWN_ADAPTER`, LP.2 — in a comment sitting directly above
+     where the six new entries now go.
+
+  Six messages in en/fr/ar. **Verified live:** the failed verify now reads
+  "Aucun enregistrement TXT trouvé pour l'instant à ce nom. Créez-le dans votre
+  zone DNS, puis réessayez — la propagation peut prendre jusqu'à une heure", and
+  a malformed hostname is told what a hostname looks like. Probe row unlinked
+  afterwards.
+
+  **⚠ WHAT WAS NOT BUILT, AND WHY — this is the part a deployer must know.** A
+  verified row does not make a hostname serve. The merchant must CNAME the name
+  (the screen says so), **and the platform operator must add that hostname to
+  the Render service so Render issues its TLS certificate.** Until then the
+  request never reaches the app: Render answers **403 with `x-render-routing`**
+  for an unconfigured hostname, proven by an earlier deploy probe and recorded
+  in `resolve-tenant.ts`. There is no Render API credential on this machine
+  (§3), so that step cannot be automated, tested or observed from here — which
+  is exactly the "needs real external infrastructure" case, and it was scoped
+  rather than attempted.
+
+  **Consequence: custom domains are COMPLETE IN THE APP AND INERT IN
+  PRODUCTION.** A merchant can claim, verify and mark primary today and their
+  domain will still 403. Nobody is affected yet (`landingos_prod` held 0
+  `TenantDomain` rows at last measurement), but the first one who tries gets no
+  explanation. Three options — a documented manual step (recommended, and the
+  only one buildable without credentials), Render's API, or platform-controlled
+  TLS termination — are written up in `NEXT_STEPS.md` §LB.14c.
+
+  **One defect deliberately left alone, recorded so it is not rediscovered:**
+  `isPrimary` is written by the PATCH route and has **no functional reader**.
+  Its own comment says "primary means the hostname canonical links use", and
+  nothing uses it that way — the storefront canonical is deliberately path-only,
+  `storefrontHref` branches on `viaCustomDomain`, and the editor's Copy Link
+  builds from `window.location.origin`, the CONSOLE's host. So a merchant with a
+  verified primary domain still copies a platform link. That is this project's
+  most-caught defect class (nine times before), and it must NOT be closed until
+  the operator question above is answered: pointing Copy Link at a hostname that
+  403s replaces a link that works with one that does not.
+
+  #### Files
+  `src/app/api/platform/domains/[id]/verify/route.ts`,
+  `src/lib/console/action-errors.ts`,
+  `packages/i18n/src/messages/{en,fr,ar}.json`, `test/platform/domains.test.ts`.
+
+  **Tests.** platform/domains 13 → **14** — the new one asserts against the
+  module rather than by clicking, so it fails when a SIXTH code is added to
+  these routes and left unmapped. i18n 22, console-shell 20. **Migration.**
+  None.
+
 - **LB.14b** The only way back a merchant has was quietly lossy — and version
   history is SCOPED, not built (13 August 2026, night — **local commit only;
   not pushed, not deployed**).
