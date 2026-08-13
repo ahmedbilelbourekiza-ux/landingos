@@ -41,6 +41,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | **SPLIT INTO THREE, because they are three different risks.** LB.14a caching — **DONE 13 Aug 2026 (night), local commit only**; LB.14b version history and LB.14c custom domains — see their own rows below. Original scoping: handoff §13 |
+| **LB.14b** | Page version history / undo (M-02, = CAPABILITY_AUDIT B7) | M–L | **SCOPED, NOT BUILT (13 Aug 2026) — it needs a new table, therefore a production migration, and that was out of scope for the session that measured it.** Confirmed nothing exists: the whole schema has ONE history table and it is `SalesOrderStatusHistory`. Eleven separate section-save routes and no single write path to hook. A snapshot measured at 0.6–3.6 KB on real pages, so storage is not the argument — the three open questions are all product decisions (when a version is taken, what restore does to a page that has SOLD, whether restore may republish). Proposed shape + costs written up below; **RLS would move 49 → 50.** **Built instead, needing no migration: the `duplicate` completeness fix**, because until this exists a duplicate is the only way back a merchant has |
 | ~~**LB.14a**~~ | ~~Storefront caching (P-01)~~ | S–M | **DONE 13 Aug 2026 (night); local commit only, not deployed — and the finding inverted the premise.** The pages were sending `no-store` (the strictest header there is); the **delivery quote was sending no `Cache-Control` at all**, and RFC 9111 lets a shared cache invent freshness for exactly that. The rule settled on: *a response may be reused by a shared cache only if a stale copy cannot cost somebody money or expose somebody's order* — stricter than "changes rarely", because a storefront is reachable through a MERCHANT's own hostname and this platform cannot purge their CDN. Public pages → `private, max-age=60, must-revalidate` (the one real win: `no-store` forbade even a back-button redisplay); quote, pixel configs and thank-you → `private, no-store`. **ISR measured UNAVAILABLE, not declined** — `revalidate = 60` still built as `ƒ (Dynamic)` with no warning, because a custom domain wins over a path prefix and so every render reads the Host header. storefront 40→48 |
 | ~~**LB.15**~~ | ~~Editor money inputs off `type="number"` (pricing section)~~ | S | **DONE 13 Aug 2026 (night); local commit only, not deployed — and the measurement found data loss, not style residue.** Three boxes: `price`, `oldPrice`, and every variant option's supplement. `step="1"` made any sub-unit price `stepMismatch` (the browser calling it invalid while `aria-invalid` said fine) and **two ArrowUp presses on 2990.50 stored 2992** — the control discarding the centimes. All three are now text + `inputMode="decimal"` + `dir="ltr"`, and ONE reader (`lib/landing/money-field.ts`) serves the schema, the preview strip and the save body. A comma is a decimal separator; `1,000` is REFUSED rather than guessed (a 1000× error either way), while a dot with three places is deliberately allowed because that is what a stored `Decimal` returns. New key `builder.editor.priceUnreadable` ×3 locales. calc 20→28, builder-sections 73→74 |
 | ~~LB.10~~ | ~~`website-builder:orders:write`~~ | — | **DONE in the LB.10 commit** (B-08 closed, console writes rerouted through the API, webhooks fire from console changes) |
@@ -387,6 +388,89 @@ storefront path uses. After LB.35 merged, that client did not know
 nothing to do with the change under test. Fix is
 `npm run generate --workspace @landingos/db`. **After any schema change, both
 clients have to be regenerated.**
+
+### LB.14b — SCOPED, NOT BUILT. Page version history (13 Aug, night)
+
+**No code, deliberately: it needs a new table, therefore a production
+migration, and this session was explicitly not to require one.** What follows
+is the measurement and the proposal, so the decision can be made rather than
+discovered halfway through building.
+
+**What exists today — confirmed, not assumed.** Nothing. No `*Version`,
+`*History` or `*Snapshot` model exists on `LandingPage`; the whole schema
+contains exactly one history table, `SalesOrderStatusHistory`, which is about
+an order's status and nothing else. Every one of the editor's saves is a
+destructive overwrite.
+
+**The write surface a snapshot would have to hook — measured: eleven routes**
+under `/api/builder/landings/[id]/`: `general`, `pricing`, `shipping`,
+`order-form`, `media`, `variants`, `features`, `reviews`, `faqs`,
+`delivery-prices`, `publish` — plus `archive`, the top-level `[id]` PATCH, and
+`duplicate`. They are separate on purpose (a section saves explicitly, which
+`BUILDER_AUDIT.md` M-02 itself calls "fine as a model"), and that is exactly
+what makes a snapshot hook awkward: **there is no single write path to hang it
+on.** Any design that hooks eleven routes will be missing the twelfth within a
+month — which is precisely the drift that had already happened to `duplicate`
+(fixed in the commit before this one).
+
+**What a snapshot must contain.** `LandingPage` plus seven owned relations:
+`media`, `variants`, `features`, `reviews`, `faqs`, `setting`,
+`deliveryPrices` — and now `trackingIntegrationIds`. `duplicate` is the one
+piece of code that already knows this list, which is both the reason it is the
+right starting point and the reason it is dangerous: it is the same list, and
+it has already gone stale twice.
+
+**How big one is — measured on real dev pages** (whole page + all relations,
+as JSON): 595 B for an empty page, **1.4–3.6 KB** for pages with 1–3 images and
+up to 6 variants. A rich page with a photo gallery and fifteen variants is
+plausibly 10–20 KB. At one snapshot per section save, a merchant editing hard
+for a day writes a few hundred KB. **That is small enough that the storage is
+not the argument** — the arguments are all about correctness.
+
+**The three questions that are product decisions, not engineering ones:**
+
+1. **When is a version taken?** Per section save is the honest reading of "no
+   way back" and produces a version list dominated by trivia (eleven entries
+   for one afternoon's work on one page). Per publish is a much better list and
+   does not help the case M-02 actually describes — a mis-save on a page that
+   is not republished. A third option, "snapshot the state BEFORE the first
+   save of a session and label it", is closer to undo than to history.
+2. **What does restore do to a page that has SOLD?** `SalesOrder` rows point at
+   `landingPageId`, and LB.30's thank-you page reads `order.landingPage` to
+   theme itself. Restoring a price is therefore visible on the confirmation
+   page of an order taken at the OTHER price. LB.34 already settled the
+   neighbouring question — a page that sold something may not be hard-deleted —
+   and restore needs the same kind of answer stated up front.
+3. **Does restoring change `published`/`status`?** LB.34's precedent says
+   restore-from-archive lands on DRAFT so nothing republishes itself. A version
+   restore that silently re-publishes a page would be worse.
+
+**The shape recommended, if it is built.** One additive table:
+
+```
+LandingPageVersion
+  id, tenantId, landingPageId, actorUserId?, reason (save|publish|restore),
+  snapshot Json,          // the page + its seven relations, duplicate's list
+  createdAt
+  @@index([tenantId, landingPageId, createdAt])
+```
+
+A Json snapshot rather than shadow tables, for LB.35's reason on
+`trackingIntegrationIds`: the value is small, always read whole, and never
+queried from the other side. Restore rebuilds by DELETING the owned relation
+rows and recreating them inside `withTenant`'s existing transaction — the same
+shape `variants`'s PUT already uses, so it is a known-safe pattern here.
+
+**Cost:** **M–L. One additive table → a production `db push` → an `apply-rls`
+run moving 49 → 50.** That is the whole reason it is not in this session:
+`CAPABILITY_AUDIT.md` B7 said the same thing in different words, and it has
+been true every time it was re-measured.
+
+**What was built instead, because it needed no migration and was the same
+finding:** `duplicate` was quietly dropping the two parts the page grew after
+LB.6 wrote it. Until version history exists, duplicating a page before a risky
+edit is the only way back a merchant has, and a lossy copy is worse than no
+copy because it looks like a backup. See the commit and the CHANGELOG entry.
 
 ### LB.14a — DONE. The storefront caching story, and what it refuses (13 Aug, night)
 

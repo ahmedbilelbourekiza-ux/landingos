@@ -57,6 +57,57 @@ touched, any **migration**, and any **risk**.
   `npm run generate --workspace @landingos/db` fixes it. **After any schema
   change, regenerate BOTH clients.**
 
+- **LB.14b** The only way back a merchant has was quietly lossy — and version
+  history is SCOPED, not built (13 August 2026, night — **local commit only;
+  not pushed, not deployed**).
+
+  **Version history was measured and deliberately NOT built**, because it needs
+  a new table and therefore a production migration, which was out of scope for
+  this session. `CAPABILITY_AUDIT.md` B7 said the same thing and it is still
+  true. The measurement, the proposed shape and the three product decisions it
+  waits on are in `NEXT_STEPS.md` §LB.14b. In short: nothing exists (the whole
+  schema holds one history table, `SalesOrderStatusHistory`); **eleven separate
+  section-save routes** mean there is no single write path to hook a snapshot
+  on; a snapshot measures **0.6–3.6 KB** on real pages, so storage is not the
+  argument; and the open questions — when a version is taken, what restore does
+  to a page that has SOLD, whether restore may republish — are product
+  decisions. RLS would move 49 → 50.
+
+  **What the measurement found that WAS buildable.** M-02 reads "no duplicate
+  page, no version history, no autosave, no undo — a mis-save has no way back."
+  Duplicate was built in LB.6, so until version history exists, **copying a
+  page before a risky edit is the only way back a merchant has.** Read against
+  the current schema, that copy had stopped being whole — twice, both after
+  LB.6 wrote it:
+
+  1. **`deliveryPrices` (LB.20).** A page's own per-wilaya delivery prices did
+     not come along. Duplicating a HEAVY product produced a page that silently
+     charges the company's ordinary shipping, so **every order the copy takes
+     under-charges**, and the merchant's first clue is a carrier bill that will
+     not reconcile.
+  2. **`trackingIntegrationIds` (LB.35, the day before).** Absent means "fire
+     the tenant's WHOLE active set", so dropping a deliberate subset made the
+     copy report to **more** ad accounts than the page it came from — the
+     surprising direction, and the reason absence could not be left alone.
+
+  Neither omission was a decision: no comment, no changelog entry and no test
+  claims either on purpose. It is drift — a copy list written once against a
+  page that has grown twice since. Verified by direct measurement before the
+  fix: neither field appeared anywhere in the duplicate route.
+
+  `?? undefined` rather than `?? null` on the Json column, deliberately: Prisma
+  reads an explicit null there as the JSON value `null`, a THIRD state beside
+  "absent" and "a list", and absent is what the column's own comment defines as
+  *inherit the tenant's set*.
+
+  #### Files
+  `src/app/api/builder/landings/[id]/duplicate/route.ts`, `test/hardening.test.ts`.
+
+  **Tests.** hardening 12 → **13**; the new test makes both copies through the
+  REAL route and is written to be where a third omission surfaces.
+  builder-api 35, builder-sections 74 unaffected. **Migration.** None — that is
+  the point.
+
 - **LB.14a** The one response that must never be stale had no cache directive
   (13 August 2026, night — **local commit only; not pushed, not deployed**).
 
