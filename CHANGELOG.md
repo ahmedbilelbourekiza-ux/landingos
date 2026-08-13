@@ -57,6 +57,36 @@ touched, any **migration**, and any **risk**.
   `npm run generate --workspace @landingos/db` fixes it. **After any schema
   change, regenerate BOTH clients.**
 
+- **HOUSEKEEPING — the dev-tenant sweep, and the number was not five**
+  (13 August 2026, night, user-authorised. **`neondb` only; production was not
+  touched and no code changed.**)
+
+  **Authorised as "5 leftover test tenants from an earlier, unrelated session".**
+  Measuring before deleting found **224 tenant rows** in `neondb`: `demo` and
+  `acme` (the real local fixtures) plus 222 contract-suite tenants going back to
+  2 August — 92 of them from 6 August alone.
+
+  **Swept: the 6-tenant cluster from 12 August 02:32–02:35**, which is the
+  session the instruction describes (six rather than five because that session
+  ran two ERP suites). `deleteTenant()` removed **163 product-domain rows** in 2
+  passes each; every tenant row gone; **0 rows remaining** for those slugs; and
+  **0 orphans** read back across `LandingPage`, `SalesOrder`, `CatalogProduct`,
+  `Client`, `FinancialRecord` and `Membership`.
+
+  **NOT swept, and this is a decision rather than an omission: the other 216.**
+  A go-ahead for five is not a go-ahead for two hundred and twenty-four, and
+  `deleteTenant()` is total and irreversible, so the reversible default was
+  taken. They all predate LB.27's suite hooks (2–10 August), they carry no
+  orphans, and `neondb` serves dev and tests only. The full count, the
+  per-day breakdown and the one command that would clear them are in
+  `NEXT_STEPS.md`.
+
+  **What the measurement incidentally proves: LB.27 works.** **Zero** tenants
+  were created on 13 August, despite this session running builder-sections,
+  storefront, builder-api, hardening, calc, console-shell, tracking, i18n and
+  platform/domains repeatedly. Every suite cleaned up after itself — which the
+  pre-LB.27 harness could not have produced.
+
 - **LB.14c** A domain refusal that named its own fix said "that didn't work"
   (13 August 2026, night — **local commit only; not pushed, not deployed**).
 

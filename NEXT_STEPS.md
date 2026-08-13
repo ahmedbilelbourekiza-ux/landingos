@@ -390,6 +390,59 @@ nothing to do with the change under test. Fix is
 `npm run generate --workspace @landingos/db`. **After any schema change, both
 clients have to be regenerated.**
 
+### Housekeeping — the dev-tenant sweep, and the number was not five (13 Aug, night)
+
+**Authorised: "5 leftover test tenants from an earlier, unrelated session are
+still sitting in the dev database — sweep them with `deleteTenant()`."**
+Measuring before deleting found something materially different, so the sweep
+was scoped to what was actually authorised and the rest is reported here rather
+than acted on.
+
+**What is in `neondb`:** at the start, **224 tenant rows**. Two are the real
+local fixtures (`demo` — Demo Trading Co., `acme` — Acme Trading). The other
+222 are contract-suite tenants, by day of creation:
+
+| Day | Tenants |
+|---|---|
+| 2 Aug | 14 | 
+| 3 Aug | 7 |
+| 5 Aug | 17 |
+| 6 Aug | 92 |
+| 7 Aug | 65 |
+| 8 Aug | 1 |
+| 10 Aug | 22 |
+| **12 Aug** | **6** |
+| 13 Aug | **0** |
+
+**The 12 August cluster of 6 is the "earlier session" in the instruction** —
+`erp-delivery-*`, `erp-carrier-beta-*`, `erp-shipment-beta-*`,
+`erp-screens-*`, `erp-screens-builder-*`, `erp-screens-beta-*`, all created
+between 02:32 and 02:35. Six rather than five, because that session ran two
+ERP suites; same session, same cluster.
+
+**Swept, with `deleteTenant()`:** 6 tenants, **163 product-domain rows**, 2
+passes each, every tenant row gone, **0 rows remaining for those slugs**, and
+**0 orphans** across `LandingPage`, `SalesOrder`, `CatalogProduct`, `Client`,
+`FinancialRecord` and `Membership` read back afterwards.
+
+**NOT swept, deliberately: the other 216.** A go-ahead for five tenants is not
+a go-ahead for two hundred, and `deleteTenant()` is total and irreversible —
+so the default chosen here was the reversible one. They are all from 2–10
+August, i.e. **before LB.27's `deleteTenant` hooks landed on the suites**, and
+they are harmless where they sit: `neondb` is dev/tests only, and the orphan
+count is zero, so LB.27's bulk clean still holds. They cost Neon storage and
+they make any unscoped "how many tenants" reading in dev meaningless.
+
+**If you want them gone, that is one decision and one command** — the shape is
+`asPlatform().tenant.findMany()` for every slug that is not `demo` or `acme`,
+then `deleteTenant(id)` per row, with the same read-back. Worth doing in one
+sitting rather than piecemeal.
+
+**One thing this measurement quietly proves: LB.27 works.** **Zero** tenants
+were created on 13 August despite this session running builder-sections,
+storefront, builder-api, hardening, calc, console-shell, tracking, i18n and
+platform/domains repeatedly. Every one of those suites cleaned up after itself.
+
 ### LB.14c — the console flow ALREADY EXISTS; one gap closed, one scoped (13 Aug, night)
 
 **Local commit only, not deployed.** Asked for as "a UI for a tenant to
