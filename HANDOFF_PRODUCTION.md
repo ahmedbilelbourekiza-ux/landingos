@@ -1,8 +1,10 @@
 # HANDOFF_PRODUCTION — deployment and production state
 
-**Written:** 9 August 2026, ~19:00 UTC · **Updated:** 13 August 2026, night
-(the LB.30 deploy — see §1; the LB.27–LB.29 deploy is the morning record, the
-LB.13–LB.26 deploy + LB.20 migration the 12 August record below) · **For:**
+**Written:** 9 August 2026, ~19:00 UTC · **Updated:** 13 August 2026, late
+night — **LB.35's migration applied to `landingos_prod` as a database action on
+its own, with no code deployed** (see §1; the LB.30 deploy is the earlier-night
+record, LB.27–LB.29 the morning one, and the LB.13–LB.26 deploy + LB.20
+migration the 12 August record below) · **For:**
 the next conversation/agent picking this project up. Read this FIRST for anything
 touching production; `PROJECT_STATE.md` (platform history),
 `BUILDER_HANDOFF.md` (product) and `UIUX_PASS.md` (the UI/UX + mobile passes)
@@ -46,16 +48,36 @@ remain the deep references.
 >
 > ### ⚠ WHAT IS STILL NOT DEPLOYED
 >
-> **LB.31–LB.36 remain LOCAL COMMITS.** `origin/main` is still `bd6d664`;
-> production runs the LB.30 app tree (`4f1b599`). Production is now a schema
-> ONE nullable column ahead of the code it serves — the additive,
-> forward-compatible direction, which is exactly why the column goes first.
-> No deployed query names it.
+> **`origin/main` is `bd6d664`; production runs the LB.30 app tree
+> (`4f1b599`). Sixteen local commits are ahead of it, `bd6d664..ca1e9b3`:**
 >
-> The other local slices — LB.31, LB.32, LB.33, LB.34, LB.36 — carry **no**
-> schema change. LB.34 in particular needed none: it writes the
-> `LandingPageStatus.ARCHIVED` value that has existed since the port.
-> **Nothing blocks the app deploy now except the user's approval to push.**
+> | Range | What |
+> |---|---|
+> | `bd6d664..790e4ae` | **LB.31–LB.36** (the six-slice range) + its merge record |
+> | `790e4ae..ca1e9b3` | **LB.15** money inputs, **LB.14a** storefront caching, **LB.14b** the duplicate-completeness fix, **LB.14c** the domain-refusal messages, the dev-tenant sweep record, and the deploy/migration records for all of it |
+>
+> **NO MIGRATION REMAINS.** LB.35's column is applied (above). **Nothing in
+> `790e4ae..ca1e9b3` touches `packages/db/prisma` at all** — verified — so
+> the whole range is a plain app deploy. RLS stays **49/49**.
+>
+> Production is currently a schema ONE nullable column ahead of the code it
+> serves. That is the additive, forward-compatible direction and the reason
+> the column went first; no deployed query names it.
+>
+> **Nothing blocks the app deploy except the user's approval to push.**
+>
+> **Deploy markers available for the next deploy, in order of strength** —
+> apply the rule the last two deploys taught (one method, on a page that
+> contains the changed code):
+> 1. **Public, strongest: a `Cache-Control` flip.** A real tenant's published
+>    storefront page goes from `private, no-cache, no-store, max-age=0,
+>    must-revalidate` to `private, max-age=60, must-revalidate`, and
+>    `/api/storefront/<t>/wilayas` from **no header at all** to
+>    `private, no-store, max-age=0, must-revalidate`. Unauthed, one `curl -D -`,
+>    and no build older than this range can serve either.
+> 2. Authed content: the editor's price box carries `inputmode="decimal"` and
+>    no `type="number"` (LB.15); the domains screen answers a failed verify
+>    with the DNS-specific message rather than the generic one (LB.14c).
 >
 > ### One local trap this uncovered
 >
@@ -196,6 +218,10 @@ remain the deep references.
   that ran green against this build (console-shell ×2, team ×1).
 
 ## 2. RECENT COMMITS / DEPLOYMENTS (all on `main`, all deployed, oldest first)
+
+> **Everything in this table IS deployed. The sixteen commits in
+> `bd6d664..ca1e9b3` are NOT** — they are listed in §1, they carry no
+> migration, and they are waiting only on approval to push.
 
 | Commit | What it is |
 |---|---|
@@ -514,16 +540,39 @@ The exact first steps, in order:
    `uploads: r2`. If `isolation` is missing, an old build is serving; if
    `BYPASSED`, stop everything and tell the user to fix Render's
    `DATABASE_URL` (see §3).
-3. **Confirm `origin/main` still equals `08e386d`** (`git fetch && git log
+3. **Confirm `origin/main` still equals `bd6d664`** (`git fetch && git log
    --oneline origin/main -1`) — if it moved, someone else deployed; re-read
-   the situation before assuming this document's state. Note that
-   **`claude/interesting-herschel-ceeb8f` carries LB.30, unmerged** (§1).
-4. **Know the open decision owned by the user:** the `erp-serveur`
-   decommission. (The separate-database decision was resolved and executed
-   10 Aug — §4.) It may not be started unprompted.
-5. The most valuable next engineering work, if the user asks "what now":
-   UI.6 loading states (perceived speed) or the storefront JS diet (customer
-   phones) — both scoped in §5.
+   the situation before assuming this document's state. **Local `master` is
+   `ca1e9b3`, sixteen commits ahead, and none of them is pushed.** The stale
+   worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits at
+   `fecc4ff`, an ancestor of master — it is fully merged and can be removed.
+4. **The one thing waiting on nothing but approval: deploy
+   `bd6d664..ca1e9b3`.** It carries NO migration (LB.35's column is already
+   applied — §1), RLS stays 49/49, and §1 lists the markers to confirm it
+   with, strongest first (a public `Cache-Control` flip; one unauthed
+   `curl -D -`).
+5. **Know the decisions owned by the user**, none of which may be started
+   unprompted:
+   - the `erp-serveur` decommission (dashboard action);
+   - **custom domains: they are complete in the app and INERT in production**
+     until each hostname is added to the Render service so it issues a
+     certificate — three options written up in `NEXT_STEPS.md` §LB.14c, with
+     a recommendation. `landingos_prod` holds 0 `TenantDomain` rows, so
+     nobody is affected yet;
+   - **page version history** (`NEXT_STEPS.md` §LB.14b) — needs one additive
+     table, so RLS 49 → 50, and three product decisions;
+   - LB.36 brands, LB.23 Facebook Ads (blocked on a Meta app), LB.24 AI
+     generator;
+   - the 216 historical test tenants still in `neondb` (dev only) — the count
+     and the one command are in `NEXT_STEPS.md`.
+6. The most valuable next engineering work, if the user asks "what now":
+   the storefront JS diet (~1.29MB on customer phones, §5.4) or **LB.14a.2,
+   "one front door per tenant identity"** — the front-door split that would
+   make storefront pages genuinely cacheable. LB.14a measured that ISR is
+   *structurally unavailable* today, not merely unconfigured: a custom domain
+   wins over a path prefix, so every storefront render reads the `Host`
+   header, and a `revalidate` export on those routes is inert while looking
+   deliberate.
 6. The demo login for local browser work is documented in the project memory
    (`owner@demo.test`, demo tenant) — it exists in `neondb` (dev/tests) ONLY;
    production (`landingos_prod`) has no demo accounts and must stay that way.

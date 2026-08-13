@@ -1,7 +1,9 @@
 # LandingOS — Project State
 
-**Last updated:** 8 August 2026 (overnight readiness audit)
-**Branch:** `master` · **Last commit:** *LB.10 — the pre-production readiness audit*
+**Last updated:** 13 August 2026, late night — LB.15, LB.14a, LB.14b, LB.14c
+**Branch:** `master` (`ca1e9b3`) · **`origin/main` is `bd6d664`; sixteen commits
+are local and unpushed, and none of them needs a migration** — LB.35's column is
+already in `landingos_prod`. See `HANDOFF_PRODUCTION.md` §1 first.
 
 ---
 
@@ -105,6 +107,31 @@ on a real tenant's store home), then verified with a throwaway tenant and
 two real API orders: themed thank-you inherits the merchant theme, home and
 category hold the default, unthemed falls back; swept with `deleteTenant`.
 
+> ### 13 Aug 2026 (night): LB.35's MIGRATION IS APPLIED. The CODE is still local.
+>
+> **The database moved and the code did not, on purpose.** The user approved
+> LB.35's migration as an action on its own:
+> `ALTER TABLE "LandingPage" ADD COLUMN "trackingIntegrationIds" JSONB;` is now
+> in `landingos_prod` — diff previewed first (exactly that one statement, no
+> other drift), datasource read back out of the push's own output, column
+> confirmed `jsonb`/nullable with the one existing row NULL, a second diff
+> returning empty, and **RLS unchanged at 49** because no table was added.
+>
+> **`origin/main` is `bd6d664` and production runs the LB.30 app tree
+> (`4f1b599`). Sixteen local commits are ahead: `bd6d664..ca1e9b3`** —
+> LB.31–LB.36 and its merge record, then **LB.15** (money inputs), **LB.14a**
+> (storefront caching), **LB.14b** (the duplicate-completeness fix + version
+> history scoped), **LB.14c** (the domain-refusal messages + custom domains
+> scoped), the dev-tenant sweep, and the records for all of it.
+>
+> **NO MIGRATION REMAINS.** Verified: nothing in `790e4ae..ca1e9b3` touches
+> `packages/db/prisma`. The whole range is a plain app deploy, RLS stays 49/49.
+> Production is one nullable column AHEAD of the code it serves — the
+> additive, forward-compatible direction, which is why the column went first.
+>
+> *(the paragraph below was the state before that migration ran, kept for the
+> record)*
+>
 > ### LB.31–LB.36 are MERGED INTO LOCAL `master`, and NOT DEPLOYED
 >
 > `bd6d664..fecc4ff`, merged 13 Aug 2026 as a **clean fast-forward** — master
@@ -128,14 +155,36 @@ category hold the default, unthemed falls back; swept with `deleteTenant`.
 > writes the `LandingPageStatus.ARCHIVED` value that has existed since the
 > port with no writer.
 
-**Suite totals after LB.35** (measured against the merged state):
-builder-sections **73** · storefront **40** · builder-api **35** ·
-console-shell **20** · i18n **22** · tracking **15** ·
-*(historical, after LB.30)* storefront 36 · builder-api 23 ·
-hardening **12** · webhooks **10** ·
-tracking **15** · erp/screens **172** · erp/finance **44** · erp/catalog **75** ·
-erp/access **205** · erp/ai **31** · i18n **22** · packages/db **35** ·
-product-registry **36** · calc **20**.
+**Suite totals after LB.15 / LB.14a / LB.14b / LB.14c** — every one re-run per
+file against the final build on 13 Aug 2026 (night), all green:
+
+builder-sections **74** · storefront **48** · builder-api **35** ·
+hardening **13** · calc **28** · console-shell **20** · tracking **15** ·
+webhooks **10** · platform/domains **14** · platform/team **63** ·
+platform/workspace **4** · platform/sessions **2** · i18n **22** ·
+packages/db **35**.
+
+What moved this session: calc 20 → **28** (LB.15's money reader, in the one
+pure suite), storefront 40 → **48** (LB.14a's cache policy, asserted on the
+served header), builder-sections 73 → **74** (no money box in the editor is a
+number input), hardening 12 → **13** (a duplicate carries the parts the page
+grew after LB.6), platform/domains 13 → **14** (every refusal the domains
+screen can produce has a message in the reader's language).
+
+*(unchanged, not re-run this session)* erp/screens **172** ·
+erp/finance **44** · erp/catalog **75** · erp/access **205** · erp/ai **31** ·
+product-registry **36**. *(historical, after LB.30)* storefront 36 ·
+builder-api 23 · calc 20 · hardening 12.
+
+**Two red runs, both re-verified green, both the documented Neon transient** —
+recorded because the rule is to rerun a red once before believing it:
+`packages/db` failed 2/35 in a back-to-back run and passes 35/35 alone;
+`platform/team` failed 1/63 and passes 63/63 alone. One earlier red was NOT
+transient and is worth knowing: builder-sections failed a published-page
+render with `PrismaClientValidationError: Unknown field
+trackingIntegrationIds`, because **`builder:build` regenerates the app's
+Prisma client and not `packages/db/prisma/client`.** After any schema change,
+run `npm run generate --workspace @landingos/db` as well.
 
 **The rule this pass adds to the method:** *a feature that reads a number and a
 feature that charges it must call the same function.* LB.20's quote and charge
