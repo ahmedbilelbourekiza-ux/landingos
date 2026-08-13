@@ -32,6 +32,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.28**~~ | ~~The dead `rtl:` Tailwind variant~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug — and the premise measured FALSE.** `rtl:` is native on Tailwind 4.3.3 (`:lang()`-keyed); the data table was already correct in Arabic, the calendar is unmounted. Real fixes: the editor back arrow now flips (it cited the false premise for not flipping), the stale comments/memory corrected, and the dir-island rule recorded in globals.css. i18n 22, builder-sections 73 |
 | ~~**LB.29**~~ | ~~`ui/sheet.tsx` closes on a physical edge~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (verified in production Arabic: close at x 17–33). `right-4` → `end-4`; scope corrected by measurement — the mobile nav drawer is a custom logical-first component and was never affected; the editor preview drawer is the only live Sheet. ar close x 343→17 at 375px emulation, fr unchanged. No physical device reachable — caveat recorded. builder-sections 73 |
 | ~~**LB.30**~~ | ~~Home/category/thank-you follow the visitor's dark mode~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production: the themed order's thank-you wears the merchant theme under emulated dark; fixture swept with `deleteTenant`). LB.26's recorded remainder. The thank-you inherits the ORDER's landing-page theme (the checkout journey's last step looks like the page the customer bought on); home/category wear `DEFAULT_THEME` — a store-level theme field on `StoreSettings` is a schema migration + merchant UI, deliberately left as a decision, with the two call sites marked. Verified live under emulated dark OS both ways (bound theme + default). storefront 33→36 |
+| ~~**LB.34**~~ | ~~No way to delete a landing page~~ | M | **DONE 13 Aug 2026, local only.** A hard-DELETE route already existed and cascades into `SalesOrder` (+ status history, drafts; fulfilment SetNull) — wiring a button to it would have shredded revenue history. Archive instead, using the never-written `ARCHIVED` enum value: **no migration**. Sets status AND unpublishes; restore lands on DRAFT. Hard delete kept for orderless pages, `409 HAS_ORDERS` otherwise. builder-api 23→29 |
 | ~~**LB.33**~~ | ~~"Full name" looks invalid on a fresh form~~ | S | **DONE 13 Aug 2026, local only — premise measured FALSE.** Fresh field is `aria-invalid="false"`, neutral border, no `required`, form `noValidate`, and the compiled variant is `[aria-invalid=true]`; the red state is genuine but post-submit only. The real defect found in the same component: `Field` derived `htmlFor` from label TEXT, so **no checkout field had a working label**. Fixed explicitly. storefront 38→40 |
 | ~~**LB.32**~~ | ~~The editor's sticky header overlaps the content~~ | S | **DONE 13 Aug 2026, local only.** Not z-index, not padding: `sticky top-16` cleared a shell header that is not above this screen (the editor mounts outside `ConsoleShell`). Sticky reserves no space for its offset, so content flowed from 56 while the header painted 64→120 — a permanent 64px overlap. `scroll-mt-24` corroborated the diagnosis. `top-0`; anchored-scroll clearance −24px→+40px |
 | ~~**LB.31**~~ | ~~The storefront header shows "LandingOS" and links to the platform~~ | S | **DONE 13 Aug 2026, local only.** Not preview-only: with no `StoreSettings` row the published page rendered the platform wordmark linking to `/` (307 → console), plus the platform's internal description and copyright. Both production tenants have exactly that null row — 0 published pages, so unseen, one publish away. `resolveStoreName` + deleted fallbacks; brand is a span in the preview drawer. storefront 36→38 |
@@ -336,6 +337,39 @@ tenant and two real API orders: the themed order's thank-you wears the
 merchant's `#141414` theme under an emulated dark OS, home/category hold
 the default, the unthemed order falls back cleanly; fixture swept with
 `deleteTenant`, zero rows behind.
+
+**LB.34 — DONE. A landing page can be archived, and the delete that was
+already there stops being able to shred a sales history (13 Aug).** Asked for
+as "there is no way to delete a landing page"; the measurement changed the
+answer's shape twice. FIRST, a `DELETE /api/builder/landings/[id]` route
+already existed — live and callable by anyone with `pages:write`, just never
+wired to a button — so the gap was a delete nobody had looked at, not a
+missing one. SECOND, what it destroys: `SalesOrder.landingPage` is
+`onDelete: Cascade`, `SalesOrderStatusHistory` cascades from the order,
+`DraftOrder` from the page, and `FulfillmentOrder.salesOrder` is SetNull, so
+deleting the row a product was sold from takes **every order, every status
+transition and every captured lead** with it and orphans the ERP's fulfilment
+records — silently. Wiring the requested button to that route would have
+shipped a one-click revenue shredder. Since LB.30 there is a second reason to
+keep the row: the thank-you page reads `order.landingPage.title` and its
+theme. **The decision — archive is the delete, and it needs NO MIGRATION:**
+`LandingPageStatus.ARCHIVED` has existed since the port with no writer
+(`webhooks/payloads.ts` already maps it to `"archived"`), so this gives the
+value its first one. Archiving sets `status: ARCHIVED` AND `published:
+false`, because the storefront filters on both and setting one alone leaves a
+page archived in the console and still on sale; restoring lands on DRAFT,
+never straight back to PUBLISHED, because putting a page on sale is the
+publish decision with its own permission. The hard delete is KEPT for pages
+that never sold anything — a mistyped draft should be able to go away — and
+returns `409 HAS_ORDERS` otherwise. In the console, archived pages leave the
+working list behind an "Archived (n)" door that exists only when something is
+behind it, with Archive↔Restore in place so undo is never on another screen.
+Verified live: archiving a page with an order dropped it from the list and
+raised the door, the archived view showed it as **Archivé with its order
+count still 1**, and Restore returned it to DRAFT, unpublished, order intact.
+builder-api 23 → **29**. **Recorded, not built:** the editor has no archive
+control — the pages list is where a merchant retires a product, and the
+editor keeps publish/unpublish.
 
 **LB.33 — DONE. The "invalid on arrival" report measured false; the broken
 labels beside it fixed (13 Aug).** Reported as the Full name field showing a

@@ -22,13 +22,24 @@ export function PageRowActions({
   id,
   publicPath,
   published,
+  archived,
   labels,
   errors,
 }: {
   readonly id: string;
   readonly publicPath: string;
   readonly published: boolean;
-  readonly labels: { edit: string; duplicate: string; view: string };
+  /** An archived row offers Restore in place of Archive — the same door both
+   *  ways, so a merchant never has to find a different screen to undo. */
+  readonly archived: boolean;
+  readonly labels: {
+    edit: string;
+    duplicate: string;
+    view: string;
+    archive: string;
+    restore: string;
+    archiveConfirm: string;
+  };
   readonly errors: ActionErrors;
 }) {
   const { run, pending, error } = useApiAction(errors);
@@ -41,6 +52,17 @@ export function PageRowActions({
       // not an end in itself.
       router.push(`/console/builder/pages/${(data as { id: string }).id}/edit`);
     }
+  };
+
+  /* ARCHIVE, not delete — and the label says archive because that is what it
+     does. A landing page cascades to its SalesOrders, so "delete" here would
+     take a product's whole commercial history with it (LB.33). Archiving
+     unpublishes and hides; the orders stay. Only archiving asks, because only
+     archiving changes what customers can see. */
+  const setArchived = async (next: boolean) => {
+    if (next && !window.confirm(labels.archiveConfirm)) return;
+    const { ok } = await run("POST", `/api/builder/landings/${id}/archive`, { archived: next });
+    if (ok) router.refresh();
   };
 
   return (
@@ -56,6 +78,16 @@ export function PageRowActions({
           {labels.view}
         </a>
       )}
+      <ActionButton
+        pending={pending}
+        pendingLabel="…"
+        size="sm"
+        variant="ghost"
+        data-testid={archived ? "page-restore" : "page-archive"}
+        onClick={() => setArchived(!archived)}
+      >
+        {archived ? labels.restore : labels.archive}
+      </ActionButton>
       <ActionError message={error} />
     </div>
   );

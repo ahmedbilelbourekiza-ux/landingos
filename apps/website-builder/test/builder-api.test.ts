@@ -371,3 +371,159 @@ describe('the landings screen renders in the shell', { skip }, () => {
     assert.match(r.headers.get('location') ?? '', /\/console\/login/);
   });
 });
+
+describe('a page is ARCHIVED, not deleted, once it has sold anything (LB.34)', { skip }, () => {
+  /* The reference graph is why this slice exists. `SalesOrder.landingPage` is
+     onDelete: Cascade, and so are the order's status history and DraftOrder;
+     FulfillmentOrder.salesOrder is SetNull. So deleting the row a product was
+     sold from destroys that product's whole commercial history, silently and
+     with no undo — and a DELETE route for it already existed, simply unexposed
+     in the console. These tests pin both halves: the destructive path refuses,
+     and the archive path keeps the orders. */
+
+  async function pageWithOrder(title: string) {
+    const page = await withTenant(tenantA, (tx) =>
+      (tx as any).landingPage.create({
+        data: {
+          tenantId: tenantA, title, slug: `${title.toLowerCase().replace(/\W+/g, '-')}-${Date.now()}`,
+          price: 2500, published: true, status: 'PUBLISHED',
+        },
+        select: { id: true, slug: true },
+      }),
+    );
+    const order = await withTenant(tenantA, (tx) =>
+      (tx as any).salesOrder.create({
+        data: {
+          tenantId: tenantA, landingPageId: page.id,
+          customerName: 'Archive Test', phone: '0555111222',
+          wilaya: 'Alger', baladia: 'Centre', address: '',
+          quantity: 1, productPrice: 2500, shippingPrice: 400, totalPrice: 2900,
+        },
+        select: { id: true },
+      }),
+    );
+    return { page, order };
+  }
+
+  test('DELETE refuses a page that has orders, naming archive as the way', async () => {
+    const { page, order } = await pageWithOrder('Sold Page');
+
+    const r = await api(`/api/builder/landings/${page.id}`, tokens.ownerA, { method: 'DELETE' });
+    assert.equal(r.status, 409, 'a page with orders must not be deletable');
+    assert.equal(r.body?.error?.code, 'HAS_ORDERS');
+
+    // The point of the refusal: both rows are still there.
+    const stillThere = await withTenant(tenantA, async (tx) => ({
+      page: await (tx as any).landingPage.findUnique({ where: { id: page.id }, select: { id: true } }),
+      order: await (tx as any).salesOrder.findUnique({ where: { id: order.id }, select: { id: true } }),
+    }));
+    assert.ok(stillThere.page, 'the page was deleted anyway');
+    assert.ok(stillThere.order, 'the order was destroyed with its page');
+  });
+
+  test('archiving unpublishes the page and KEEPS its orders', async () => {
+    const { page, order } = await pageWithOrder('Archive Me');
+
+    const r = await api(`/api/builder/landings/${page.id}/archive`, tokens.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({ archived: true }),
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body?.data?.status, 'ARCHIVED');
+
+    const after = await withTenant(tenantA, async (tx) => ({
+      page: await (tx as any).landingPage.findUnique({
+        where: { id: page.id }, select: { status: true, published: true },
+      }),
+      order: await (tx as any).salesOrder.findUnique({
+        where: { id: order.id }, select: { id: true, totalPrice: true },
+      }),
+    }));
+    assert.equal(after.page.status, 'ARCHIVED');
+    // Both, not just status: the storefront filters on published AND status,
+    // so setting one without the other leaves a page archived in the console
+    // and still on sale to customers.
+    assert.equal(after.page.published, false, 'an archived page is still published');
+    assert.ok(after.order, 'archiving destroyed the order — the whole point was that it must not');
+  });
+
+  test('an archived page is gone from the storefront and from the working list', async () => {
+    const { page } = await pageWithOrder('Vanishing Page');
+    const slug = (await withTenant(tenantA, (tx) =>
+      (tx as any).landingPage.findUnique({ where: { id: page.id }, select: { slug: true } }),
+    )).slug;
+    const tenantSlug = `api-a-${stamp}`;
+
+    const live = await fetch(`${BASE}/${tenantSlug}/${slug}`, { redirect: 'manual' });
+    assert.equal(live.status, 200, 'the fixture page should be live before archiving');
+
+    await api(`/api/builder/landings/${page.id}/archive`, tokens.ownerA, {
+      method: 'POST', body: JSON.stringify({ archived: true }),
+    });
+
+    const gone = await fetch(`${BASE}/${tenantSlug}/${slug}`, { redirect: 'manual' });
+    assert.equal(gone.status, 404, 'an archived page is still reachable by URL');
+
+    const list = await fetch(`${BASE}/console/builder/pages`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.ownerA}` },
+    });
+    const html = await list.text();
+    assert.ok(!html.includes('Vanishing Page'), 'an archived page still sits in the working list');
+    assert.match(html, /data-testid="archived-link"/, 'no door to the archive');
+
+    // ...and it IS in the archived view, with a way back.
+    const archived = await fetch(`${BASE}/console/builder/pages?archived=1`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.ownerA}` },
+    });
+    const archivedHtml = await archived.text();
+    assert.match(archivedHtml, /Vanishing Page/, 'the archived page is not in the archived view');
+    assert.match(archivedHtml, /data-testid="page-restore"/, 'no way to restore it');
+  });
+
+  test('restoring returns a page to DRAFT, never straight back on sale', async () => {
+    const { page } = await pageWithOrder('Restore Me');
+    await api(`/api/builder/landings/${page.id}/archive`, tokens.ownerA, {
+      method: 'POST', body: JSON.stringify({ archived: true }),
+    });
+
+    const r = await api(`/api/builder/landings/${page.id}/archive`, tokens.ownerA, {
+      method: 'POST', body: JSON.stringify({ archived: false }),
+    });
+    assert.equal(r.status, 200);
+
+    const after = await withTenant(tenantA, (tx) =>
+      (tx as any).landingPage.findUnique({
+        where: { id: page.id }, select: { status: true, published: true },
+      }),
+    );
+    assert.equal(after.status, 'DRAFT');
+    // Putting a page back on sale is the PUBLISH decision, with its own
+    // permission and its own publishability checks. Restore must not smuggle it.
+    assert.equal(after.published, false, 'restore put a page back on sale by itself');
+  });
+
+  test('a page that never sold anything is still genuinely deletable', async () => {
+    const page = await withTenant(tenantA, (tx) =>
+      (tx as any).landingPage.create({
+        data: { tenantId: tenantA, title: 'Typo Page', slug: `typo-${Date.now()}`, price: 100 },
+        select: { id: true },
+      }),
+    );
+
+    const r = await api(`/api/builder/landings/${page.id}`, tokens.ownerA, { method: 'DELETE' });
+    assert.equal(r.status, 200, 'a page with no orders has no history to protect');
+
+    const gone = await withTenant(tenantA, (tx) =>
+      (tx as any).landingPage.findUnique({ where: { id: page.id }, select: { id: true } }),
+    );
+    assert.equal(gone, null, 'the page survived a delete that should have removed it');
+  });
+
+  test('archiving needs the publish permission, not merely write', async () => {
+    const { page } = await pageWithOrder('Permission Page');
+    const r = await api(`/api/builder/landings/${page.id}/archive`, tokens.viewerA, {
+      method: 'POST', body: JSON.stringify({ archived: true }),
+    });
+    assert.equal(r.status, 403, 'a viewer took a page off the storefront');
+  });
+});

@@ -12,6 +12,65 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.34** A landing page can be archived — and the hard delete that was
+  already there stops being able to destroy a sales history (13 August
+  2026 — **local only, not pushed, not deployed**).
+
+  **Asked for as "there is no way to delete a landing page". The
+  measurement changed the shape of the answer twice.**
+
+  **First: a DELETE route already existed** — `DELETE
+  /api/builder/landings/[id]`, live and callable by anyone with
+  `website-builder:pages:write`, simply never wired to a button. So the
+  gap was not "no way to delete" but "a way to delete that nobody had
+  looked at".
+
+  **Second: what that route destroys.** `SalesOrder.landingPage` is
+  `onDelete: Cascade`; `SalesOrderStatusHistory` cascades from the order,
+  `DraftOrder` cascades from the page, and `FulfillmentOrder.salesOrder`
+  is SetNull. Deleting the row a product was sold from therefore takes
+  **every order placed from it, every status transition, and every
+  captured lead**, and orphans the ERP's fulfilment records — silently,
+  with no undo. Adding the requested button to that route would have
+  shipped a one-click revenue-history shredder. Since LB.30 there is a
+  second reason: the thank-you page reads `order.landingPage.title` and
+  its theme, so a past customer's confirmation needs the row.
+
+  **The decision: archive is the delete, and it needs NO migration.**
+  `LandingPageStatus.ARCHIVED` has existed since the port with no writer
+  — `webhooks/payloads.ts` already maps it to `"archived"` for
+  subscribers — so this gives the value its first one. Archiving sets
+  `status: ARCHIVED` **and** `published: false`, because the storefront
+  filters on both and setting one alone leaves a page archived in the
+  console and still on sale. Restoring returns a page to DRAFT, never
+  straight to PUBLISHED: putting it back on sale is the publish decision,
+  which has its own permission and its own publishability checks. This
+  follows LB.18/LB.27's posture that destruction is a deliberate, named
+  act.
+
+  **The hard delete is kept and guarded**, rather than removed: a page
+  that has never been ordered from is still genuinely deletable, because
+  a mistyped draft should be able to go away instead of cluttering an
+  archive forever. A page WITH orders now gets `409 HAS_ORDERS` naming
+  archive as the way.
+
+  **In the console:** archived pages leave the working list and live
+  behind an "Archived (n)" door that only exists when there is something
+  behind it; the row action is Archive, becoming Restore in that view, so
+  undo is never on another screen. Archiving asks first, because it is
+  the half that changes what customers see. The archived view's empty
+  state says "nothing archived", not "create your first page".
+
+  **Verified live** through the console against the build carrying it:
+  archiving a page with an order removed it from the list and raised the
+  door to "Archivées (1)"; the archived view showed it with status
+  **Archivé and its order count still 1**; Restore returned it to DRAFT,
+  unpublished, order intact. builder-api 23 → **29** (six tests: the
+  refusal keeps both rows, archive keeps the order, the archived page
+  404s on the storefront and leaves the list, restore lands on DRAFT
+  without republishing, an orderless page still deletes, and a viewer
+  cannot archive).
+
 - **LB.33** The checkout form's "invalid on arrival" report, measured — and
   the defect that was actually there (13 August 2026 — **local only, not
   pushed, not deployed**).

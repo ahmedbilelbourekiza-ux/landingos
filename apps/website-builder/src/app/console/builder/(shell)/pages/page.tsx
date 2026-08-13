@@ -28,8 +28,13 @@ export const dynamic = "force-dynamic";
  * be a weaker copy of a rule that already holds.
  * ========================================================================== */
 
-export default async function BuilderPagesScreen() {
+export default async function BuilderPagesScreen({
+  searchParams,
+}: {
+  searchParams: Promise<{ archived?: string }>;
+}) {
   const { session, locale: raw, t } = await requireProduct("website-builder", "/console/builder/pages");
+  const showArchived = (await searchParams).archived === "1";
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
   const mayEdit = can(session.auth!, "website-builder:pages:write");
   /* LB.21 — the control only exists for a tenant that HAS the Manager and may
@@ -41,22 +46,32 @@ export default async function BuilderPagesScreen() {
   const errors = actionErrors(t);
   const tenantSlug = session.tenant!.slug;
 
-  const pages = await forTenant(session.auth!.tenantId).landingPage.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    select: {
-      id: true,
-      title: true,
-      slug: true,
-      status: true,
-      published: true,
-      price: true,
-      currency: true,
-      updatedAt: true,
-      category: { select: { name: true } },
-      _count: { select: { salesOrders: true } },
-    },
-  });
+  /* LB.33 — archived pages are OUT of the working list by default and reachable
+     through `?archived=1`. This is a status filter, not a tenant filter: rule 2
+     still holds, the binding decides whose rows these are. Counting both lists
+     in the same pass means the "Archived (3)" door can state its own size, and
+     a merchant with none never sees a door to an empty room. */
+  const db = forTenant(session.auth!.tenantId);
+  const [pages, archivedCount] = await Promise.all([
+    db.landingPage.findMany({
+      where: showArchived ? { status: "ARCHIVED" } : { status: { not: "ARCHIVED" } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        status: true,
+        published: true,
+        price: true,
+        currency: true,
+        updatedAt: true,
+        category: { select: { name: true } },
+        _count: { select: { salesOrders: true } },
+      },
+    }),
+    db.landingPage.count({ where: { status: "ARCHIVED" } }),
+  ]);
 
   return (
     <>
@@ -82,13 +97,37 @@ export default async function BuilderPagesScreen() {
         <PublishToErpPanel errors={errors} />
       )}
 
+      {/* The archive door. Shown when there is something behind it, or when
+          you are already through it and need the way back. */}
+      {(archivedCount > 0 || showArchived) && (
+        <p className="mt-4 text-sm">
+          {showArchived ? (
+            <Link href="/console/builder/pages" className="underline underline-offset-4">
+              {t("builder.pages.backToActive")}
+            </Link>
+          ) : (
+            <Link
+              href="/console/builder/pages?archived=1"
+              data-testid="archived-link"
+              className="text-muted-foreground underline underline-offset-4"
+            >
+              {t("builder.pages.archivedCount", { count: archivedCount })}
+            </Link>
+          )}
+        </p>
+      )}
+
       {pages.length === 0 ? (
         <EmptyState
           testId="landings-table"
-          title={t("builder.overview.firstPageTitle")}
-          description={t("builder.overview.firstPageHint")}
+          // The archived view's emptiness means something different from a new
+          // workspace's: offering "create your first page" to someone who came
+          // looking for what they archived would answer a question they did
+          // not ask.
+          title={showArchived ? t("builder.pages.archivedEmpty") : t("builder.overview.firstPageTitle")}
+          description={showArchived ? t("builder.pages.archivedHint") : t("builder.overview.firstPageHint")}
           action={
-            mayEdit ? (
+            mayEdit && !showArchived ? (
               <Link href="/console/builder/pages/new" className="ui-btn ui-btn-primary tap">
                 {t("builder.overview.createPage")}
               </Link>
@@ -167,10 +206,14 @@ export default async function BuilderPagesScreen() {
                       id={p.id}
                       publicPath={`/${tenantSlug}/${p.slug}`}
                       published={p.published}
+                      archived={p.status === "ARCHIVED"}
                       labels={{
                         edit: t("common.edit"),
                         duplicate: t("builder.pages.duplicate"),
                         view: t("builder.pages.view"),
+                        archive: t("builder.pages.archive"),
+                        restore: t("builder.pages.restore"),
+                        archiveConfirm: t("builder.pages.archiveConfirm"),
                       }}
                       errors={errors}
                     />

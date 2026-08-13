@@ -35,6 +35,13 @@
     "pages": {
       "duplicate": "Dupliquer",
       "view": "Voir",
+      "archive": "Archiver",
+      "restore": "Restaurer",
+      "archiveConfirm": "Archiver cette page ? Elle quitte votre boutique et cette liste. Ses commandes sont conservées, et vous pouvez la restaurer à tout moment.",
+      "archivedCount": "Archivées ({count})",
+      "backToActive": "Retour aux pages actives",
+      "archivedEmpty": "Aucune page archivée.",
+      "archivedHint": "Ces pages ne sont plus en ligne. Leurs commandes sont conservées, et une restauration les remet en brouillon.",
       "colPage": "Page",
       "colPrice": "Prix",
       "colCategory": "Catégorie",

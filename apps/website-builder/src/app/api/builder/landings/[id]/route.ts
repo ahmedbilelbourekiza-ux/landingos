@@ -30,6 +30,20 @@ export const GET = tenantRoute<Params>("website-builder:read", async ({ db, para
   return apiOk(page);
 });
 
+/**
+ * Hard delete — and it REFUSES when there is commercial history to lose.
+ *
+ * `SalesOrder.landingPage` is `onDelete: Cascade`. So is the order's status
+ * history, and so is `DraftOrder`; `FulfillmentOrder.salesOrder` is SetNull.
+ * Before LB.33 this route would happily take a page that had sold a hundred
+ * orders and take the orders with it — no warning, no undo, and the console
+ * offered no button so nobody had noticed. The guard below is the fix: a page
+ * that has ever been ordered from cannot be deleted, only archived
+ * (`POST /archive`), which is what the console now offers.
+ *
+ * A page with NO orders is still genuinely deletable, because a mistyped draft
+ * should be able to actually go away rather than clutter an archive forever.
+ */
 export const DELETE = tenantRoute<Params>("website-builder:pages:write", async ({ db, params, session, afterCommit }) => {
   // The webhook payload is built from a snapshot taken BEFORE the delete —
   // there is no row to re-read afterwards (LB.3).
@@ -39,8 +53,18 @@ export const DELETE = tenantRoute<Params>("website-builder:pages:write", async (
       media: { orderBy: { displayOrder: "asc" } },
       variants: { orderBy: { displayOrder: "asc" } },
       category: { select: { name: true } },
+      _count: { select: { salesOrders: true, draftOrders: true } },
     },
   });
+  if (!snapshot) return apiError(404, "NOT_FOUND", "That page does not exist.");
+
+  if (snapshot._count.salesOrders > 0) {
+    return apiError(
+      409,
+      "HAS_ORDERS",
+      "This page has orders, and deleting it would delete them too. Archive it instead — it stays out of the catalogue and off the storefront, and its orders keep working.",
+    );
+  }
 
   const { count } = await (db as any).landingPage.deleteMany({ where: { id: params.id } });
   if (count === 0) return apiError(404, "NOT_FOUND", "That page does not exist.");
