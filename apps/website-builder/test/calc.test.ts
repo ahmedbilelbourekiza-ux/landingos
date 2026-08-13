@@ -7,6 +7,7 @@ import {
 import {
   computeBlock, totalsOf, recordLines, netProfitOf, grandTotal, type CalcInputs,
 } from '../src/lib/erp/calc.ts';
+import { normaliseTypedMoney, readTypedMoney } from '../src/lib/landing/money-field.ts';
 
 /* =============================================================================
  * test/calc.test.ts — LP.16d.
@@ -212,5 +213,82 @@ describe('D-LP.16.1 — the saved record agrees with the screen that produced it
       str(one.incidents, 2),
       'exactly the incident total, overstated',
     );
+  });
+});
+
+/* =============================================================================
+ * LB.15 — how a typed price is read.
+ *
+ * This belongs in the one pure suite for the same reason the calculator's
+ * arithmetic does: it is money, it runs in a browser, and its failure mode is
+ * a wrong number rather than an exception. The editor's price boxes stopped
+ * being `type="number"` in LB.15 (M-05 / D-06), which means a function — not
+ * the browser — now decides what the characters mean. Both the box that
+ * validates and the request that saves call THIS one, so they cannot disagree.
+ * ========================================================================== */
+
+describe('LB.15 — a typed price is read once, by one function', () => {
+  test('plain digits, and a dot, are read as written', () => {
+    assert.equal(normaliseTypedMoney('2990'), '2990');
+    assert.equal(normaliseTypedMoney('2990.50'), '2990.50');
+    assert.equal(readTypedMoney('2990.50'), 2990.5);
+  });
+
+  test('a comma is a decimal separator, because the fr and ar keypads offer one', () => {
+    // The measured defect this replaces: `type="number"` with `step="1"` took
+    // 2990.50 to 2992 on two arrow presses, discarding the centimes.
+    assert.equal(normaliseTypedMoney('2990,50'), '2990.50');
+    assert.equal(readTypedMoney('2990,50'), 2990.5);
+  });
+
+  test('spaces are grouping, including the ones a French locale inserts', () => {
+    assert.equal(normaliseTypedMoney('2 990,50'), '2990.50');
+    assert.equal(normaliseTypedMoney('2 990,50'), '2990.50', 'NBSP');
+    assert.equal(normaliseTypedMoney('2 990,50'), '2990.50', 'narrow NBSP');
+  });
+
+  test('an ambiguous grouping is REFUSED, never guessed', () => {
+    // `1,000` is a thousand to an English reader and one to a French one.
+    // Guessing either way is a 1000x error on a price, which is the single
+    // mistake this function exists to prevent.
+    assert.equal(normaliseTypedMoney('1,000'), null);
+    assert.equal(normaliseTypedMoney('1,000.50'), null, 'both separators');
+    assert.equal(normaliseTypedMoney('1,00,0'), null, 'two commas');
+    assert.equal(readTypedMoney('1,000'), null);
+  });
+
+  test('a dot with three places is NOT refused, and the asymmetry is the point', () => {
+    // A dot is the separator this function EMITS, so `1.000` is what a stored
+    // Decimal comes back as. Refusing it would put an error on a form nobody
+    // touched — the shape LB.33 measured. A comma never arrives that way.
+    assert.equal(normaliseTypedMoney('1.000'), '1.000');
+    assert.equal(readTypedMoney('1.000'), 1);
+  });
+
+  test('empty is a real answer and unreadable is not the same thing', () => {
+    // An optional old price depends on telling these apart: one clears the
+    // "was" price, the other must show a message.
+    assert.equal(readTypedMoney(''), undefined);
+    assert.equal(readTypedMoney('   '), undefined);
+    assert.equal(readTypedMoney(null), undefined);
+    assert.equal(readTypedMoney(undefined), undefined);
+    assert.equal(readTypedMoney('abc'), null);
+    assert.equal(readTypedMoney('-5'), null, 'a price is never negative');
+    assert.equal(readTypedMoney('.'), null);
+  });
+
+  test('a half-typed separator survives, so the next keystroke can be a decimal', () => {
+    // "2990," is what the box holds for one keystroke between 2990 and
+    // 2990,50. Reading it as unusable would delete the separator under the
+    // cursor and make a decimal price unenterable.
+    assert.equal(normaliseTypedMoney('2990,'), '2990.');
+    assert.equal(readTypedMoney('2990,'), 2990);
+  });
+
+  test('a stored number round-trips through the box unchanged', () => {
+    // The initial value arrives as a number and goes straight into a text box.
+    for (const n of [0, 1, 2990, 2990.5, 1999.9, 0.2]) {
+      assert.equal(readTypedMoney(n), n, `${n} must survive the box`);
+    }
   });
 });

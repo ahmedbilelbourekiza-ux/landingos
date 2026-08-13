@@ -193,6 +193,7 @@
       "pricePositive": "Le prix doit être supérieur à 0.",
       "oldPricePositive": "L'ancien prix doit être supérieur à 0.",
       "oldPriceHigher": "L'ancien prix doit être supérieur au prix actuel.",
+      "priceUnreadable": "Écrivez le prix en chiffres avec au plus un séparateur décimal — 2990 ou 2990,50.",
       "seoTitleLabel": "Titre pour la recherche",
       "seoDescriptionLabel": "Description pour la recherche",
       "seoDescriptionPlaceholder": "Ce qu'un client voit sous le titre dans les résultats de recherche et les aperçus de liens.",

@@ -732,6 +732,54 @@ describe('the landing editor moved, not rewritten', { skip }, () => {
     assert.ok(style.includes('--background:'), 'the console tokens are not redefined in scope');
   });
 
+  test('no money box in the editor is a number input (LB.15 / M-05)', async () => {
+    // A number input hands back a JS float into a `Decimal` column, and this
+    // one did worse than that: with `step="1"`, two arrow presses on 2990.50
+    // stored 2992 — the centimes rounded away by the control itself. The rule
+    // is the ERP's (`erp/screens.test.ts`, "money is never a number input"),
+    // asserted here on the screen a merchant actually prices a product on.
+    //
+    // A variant is created first so the option row — the third money box, and
+    // the only one that is not in the page's first render — is present.
+    await withTenant(tenant, (tx) =>
+      (tx as any).landingVariant.create({
+        data: {
+          tenantId: tenant, landingPageId: pageId,
+          name: 'Lot', value: 'x3', extraPrice: 500.75, displayOrder: 0,
+        },
+      }),
+    );
+
+    const r = await fetch(`${BASE}/console/builder/pages/${pageId}/edit`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+
+    for (const id of ['price', 'oldPrice']) {
+      const tag = html.match(new RegExp(`<input[^>]*id="${id}"[^>]*>`))?.[0] ?? '';
+      assert.notEqual(tag, '', `no ${id} control found`);
+      assert.ok(!/type="number"/.test(tag), `${id} rendered as ${tag}`);
+      assert.match(tag, /inputmode="decimal"/i, `${id} offers no decimal keypad`);
+      // A price reads left-to-right in Arabic too; every other money box on
+      // this platform is the same island (LB.28's rule lives inside it).
+      assert.match(tag, /dir="ltr"/i, `${id} is not an LTR money island`);
+    }
+
+    const optionTag = html.match(/<input[^>]*aria-label="[^"]*"[^>]*value="500.75"[^>]*>/)?.[0]
+      ?? html.match(/<input[^>]*value="500.75"[^>]*>/)?.[0] ?? '';
+    assert.notEqual(optionTag, '', "the variant option's extra-price box did not render");
+    assert.ok(!/type="number"/.test(optionTag), `the option supplement rendered as ${optionTag}`);
+    assert.match(optionTag, /inputmode="decimal"/i);
+
+    // And nothing else on the screen quietly reintroduces one.
+    assert.equal(
+      (html.match(/<input[^>]*type="number"/g) ?? []).length,
+      0,
+      'a number input is still rendered somewhere in the editor',
+    );
+  });
+
   test("another tenant's page cannot be opened for editing", async () => {
     const r = await fetch(`${BASE}/console/builder/pages/${otherPageId}/edit`, {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },

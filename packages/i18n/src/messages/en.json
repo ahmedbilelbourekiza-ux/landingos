@@ -193,6 +193,7 @@
       "pricePositive": "The price must be greater than 0.",
       "oldPricePositive": "The old price must be greater than 0.",
       "oldPriceHigher": "The old price must be higher than the current price.",
+      "priceUnreadable": "Write the price in digits with at most one decimal separator — 2990 or 2990.50.",
       "seoTitleLabel": "Search title",
       "seoDescriptionLabel": "Search description",
       "seoDescriptionPlaceholder": "What a customer sees under the title in search results and link previews.",
