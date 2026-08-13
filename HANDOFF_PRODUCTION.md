@@ -15,7 +15,21 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### ✔ NO APPLICATION CODE IS WAITING TO DEPLOY — 13 Aug 2026 (late night)
+> ### ⚠ ONE SLICE IS WAITING TO DEPLOY: LB.37 — 13 Aug 2026 (late night)
+>
+> **`fcbd1e5` is local and NOT deployed.** It fixes the storefront's `<head>`:
+> a shop served the platform's name in its `<title>`, the platform's internal
+> tagline as its description, and `noindex, nofollow` on the store home and
+> every category. **No migration; no schema change.** CHANGELOG §LB.37 has the
+> argument, `NEXT_STEPS.md` §LB.37 the record. storefront 48 → 54.
+>
+> **The marker to confirm it with, when it goes:** a real published page's
+> `<title>` stops containing "LandingOS" and its `<meta name="robots">` reads
+> `index, follow`, while `/console/login` still reads `noindex, nofollow` —
+> one unauthed `curl` for the first, and the console check is the one that
+> catches a fix applied at the wrong layer. Capture both BEFORE pushing.
+>
+> ### ✔ EVERYTHING BEFORE IT IS DEPLOYED — 13 Aug 2026 (late night)
 >
 > **`origin/main` is `d6a56b1` and that is what production serves.** The range
 > that had been held back, `bd6d664..d6a56b1`, was pushed and verified live;
@@ -152,13 +166,17 @@ remain the deep references.
   priced server-side. **Cleanup with `deleteTenant`:** 12 rows in 2 passes as
   the RLS-scoped `landingos_app` role, fixture user removed separately, every
   scoped count read back **0**, both real tenants untouched, health green.
-- **A PRE-EXISTING issue found during this deploy and deliberately NOT
-  touched:** a storefront page's `<title>` reads `<page> · LandingOS` and it
-  inherits `robots: { index: false, follow: false }`, both from the ROOT
-  layout — byte-identical in `bd6d664` and `d6a56b1`, so not a regression and
-  outside LB.31's SiteNav/SiteFooter scope. A merchant's shop nonetheless
-  carries the platform's name in the browser tab and tells search engines not
-  to index it. **User decision, not a silent patch** — see `NEXT_STEPS.md`.
+- **A PRE-EXISTING issue found during this deploy — since FIXED as LB.37,
+  which is NOT yet deployed.** A storefront page's `<title>` read
+  `<page> · LandingOS` and the storefront inherited the root layout's
+  `robots: { index: false, follow: false }` — byte-identical in `bd6d664` and
+  `d6a56b1`, so not a regression and outside LB.31's SiteNav/SiteFooter scope.
+  **The note first written here was wrong in one way worth keeping:** it
+  implied the product page was noindexed. It was not — it had set
+  `index: true` since it was written. The pages actually excluded from search
+  were the store HOME and every CATEGORY. The claim came from reading the root
+  layout and inferring inheritance instead of reading the response, which is
+  LB.14a's rule a second time. Fixed in `fcbd1e5` (see CHANGELOG §LB.37).
 - *(historical — the state this deploy replaced)* **Deployed commit:
   `4f1b599`** (13 Aug 2026, night, user-approved —
   **LB.30**: the store home, category and thank-you pages wear the store's
@@ -671,18 +689,20 @@ The exact first steps, in order:
 3. **Confirm `origin/main` still equals `d6a56b1`** (`git fetch && git log
    --oneline origin/main -1`) — if it moved, someone else deployed; re-read
    the situation before assuming this document's state. **Local `master` is
-   a commit or two ahead — this deploy's record, DOCUMENTATION only. Confirm
-   that with `git diff origin/main master -- apps packages` returning empty,
-   which is a check rather than a claim.** Do not trust the commit COUNT any
+   ahead, and it now carries APPLICATION CODE — LB.37, the storefront
+   `<head>` fix. `git diff origin/main master -- apps packages` is NOT empty,
+   and that non-emptiness is the signal something is waiting to deploy.** Do
+   not trust the commit COUNT any
    handoff quotes — this one said "sixteen" and the real answer was eighteen
    by the time it was read. Derive it: `git rev-list --count origin/main..master`.
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **Nothing is queued to deploy.** The range that was waiting here
-   (`bd6d664..d6a56b1`) shipped on 13 Aug (late night) and is verified live —
-   §1 has the record, the markers and the two corrections it produced. No
-   migration is pending and RLS is 49/49.
+4. **ONE slice is queued to deploy: LB.37 (`fcbd1e5`)**, the storefront
+   `<head>` fix — no migration, no schema change, suites green, verified live
+   against the running local build. §1 has the marker to confirm it with. The
+   range before it (`bd6d664..d6a56b1`) shipped on 13 Aug (late night) and is
+   verified live; RLS is 49/49.
 5. **Know the decisions owned by the user**, none of which may be started
    unprompted:
    - the `erp-serveur` decommission (dashboard action);

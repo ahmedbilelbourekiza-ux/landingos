@@ -726,33 +726,66 @@ and `/_next/static/*` (still `public, max-age=31536000, immutable`) are outside
 the rule. storefront 40 → **48**; console-shell 20, hardening 12, tracking 15,
 builder-sections 74 unaffected.
 
-### FOUND DURING THE 13 Aug DEPLOY, NOT FIXED — the storefront's `<title>` and `robots` are the platform's
+### LB.37 — DONE. A shop's `<head>` introduced it as the platform (13 Aug, late night)
 
-**Measured on a real published page in production, deliberately left alone.**
-A storefront page serves `<title>Montre en cuir · LandingOS</title>` and
-inherits `robots: { index: false, follow: false }`. Both come from the ROOT
-layout's `metadata` export, whose comment reads "Internal admin tool — never
-indexed" — written when this app was only a console.
+**Local commit `fcbd1e5`; NOT deployed at the time of writing.** Found while
+verifying the LB.31–LB.36 deploy and fixed on the user's instruction
+immediately after.
 
-**It is not a regression and it is not LB.31's.** `app/layout.tsx` is
-byte-identical between `bd6d664` and `d6a56b1`, and LB.31's scope was SiteNav
-and SiteFooter — which are correct: the body of a storefront page carries the
-merchant's name and links to the merchant's own root, with zero platform
-strings. This is the metadata layer, which nobody has claimed yet.
+**What was measured, and one correction to how it was first reported.** A
+storefront page served `<title>… · LandingOS</title>`, the platform's internal
+tagline as its `description`, and — on the **store home and every category** —
+`robots: noindex, nofollow`. All three come from the ROOT layout, whose
+comment reads "Internal admin tool — never indexed": true when this app was
+only a console, inherited by every storefront page since.
 
-**Why it matters more than it looks.** A merchant's shop shows the platform's
-name in the browser tab and in any link preview, and tells every search engine
-not to index the shop at all. For a console that is correct; for a
-customer-facing storefront reachable on the merchant's own hostname it is
-close to the opposite of what they want.
+**The first report of this said the PRODUCT page inherits `noindex`. It does
+not** — it has set `index: true` plus a canonical since it was written. That
+claim came from reading the root layout and inferring inheritance instead of
+reading the response. The routes actually excluded from search were the shop
+FRONT and the whole catalogue structure, which is worse than the version
+reported, and the lesson is LB.14a's again: **read the served response, not
+the config.**
 
-**Why it was not fixed here.** It needs a `generateMetadata` on the storefront
-route group that overrides both `title` and `robots`, and `robots` is a
-product decision, not a cleanup: whether a merchant's page SHOULD be indexed
-depends on whether the platform wants to host public SEO surface, and it
-interacts with the D2 front-door question in LB.14a.2 (a page reachable at two
-hostnames needs a canonical). Two lines in the wrong place would publish every
-draft-quality page to Google.
+**The shape of the fix.** The root layout STAYS `noindex` — it is the
+fail-closed default, and the console declares no `robots` of its own and
+relies entirely on that inheritance (now pinned by a test that fails if
+somebody "fixes" the root instead). The storefront opts IN at
+`(storefront)/[tenant]/layout.tsx`, so a future route under it is public by
+construction and a future route anywhere else is not. Title, description,
+`robots` and `openGraph.siteName` are declared once there rather than in four
+pages, the same argument the favicon in that file already makes.
+
+**`absolute`, not `default` — and a test caught it.** A `title.default` is
+still the title of a segment that HAS a parent template, so the first attempt
+served "Shop A Store · LandingOS": the platform's name put back in the tab by
+the metadata written to remove it. `AbsoluteTemplateString`
+(`{ absolute, template }`) is the one form that ends template resolution
+upward while still templating children.
+
+**The thank-you page opts back OUT, explicitly.** The blanket opt-in is right
+for a shop and wrong for a customer's order — that page carries a name, a
+wilaya and a total. An unguessable id is what makes it safe to serve without a
+session, not what keeps it out of an index. LB.14a already refuses to let any
+cache hold that response; a page nobody may cache is a page nobody may index.
+
+**Corrected in passing:** the product page's canonical was hand-built as
+`/${tenant}/${slug}` under a comment claiming it was "correct relative to
+whichever host served it". Relative was true; the right PATH was not, because
+a custom domain drops the tenant prefix. It goes through `storefrontHref` now,
+the helper every other storefront link already uses. **Custom-domain ROUTING
+is still the known-inert LB.14a.2 problem and was deliberately not touched.**
+
+storefront **48 → 54**, asserting served HTML rather than metadata objects.
+Verified live against the running build across all four storefront pages plus
+the console as a control; fixture swept with `deleteTenant` (4 rows, 2
+passes). builder-sections 74, builder-api 35, console-shell 20, hardening 13,
+calc 28, i18n 22 unaffected.
+
+**Still open, deliberately:** the platform serves **no `robots.txt` and no
+`sitemap.xml`** — both are on the reserved-slug list and neither route exists.
+Per-page `robots` meta is what governs indexing today; a sitemap would be the
+next real SEO step and is a product decision, not a cleanup.
 
 ### LB.15 — DONE. A price spinner was rounding the centimes away (13 Aug, night)
 

@@ -12,6 +12,76 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.37 — a shop's `<head>` introduced it as the platform, and told search
+  engines to go away** (13 August 2026, late night — **local commit
+  `fcbd1e5`; NOT deployed**). Found while verifying the deploy below and
+  fixed straight after, on the user's instruction.
+
+  **What.** A storefront page served `<title>… · LandingOS</title>`, the
+  platform's internal tagline as its `description`, and — on the **store home
+  and every category** — `robots: noindex, nofollow`. All three come from the
+  ROOT layout, whose comment reads "Internal admin tool — never indexed".
+  True when this app was only a console; inherited by every storefront page
+  ever since. LB.31 closed exactly this leak in the BODY and stopped there.
+
+  **A correction to how it was first reported.** The deploy note below said
+  the storefront "inherits `robots: index:false`", implying the product page
+  too. It does not — the product page has set `index: true` and a canonical
+  since it was written. That claim came from reading the root layout and
+  INFERRING inheritance rather than reading the response, and the truth was
+  worse: what was excluded from search was the shop FRONT and the entire
+  catalogue structure, while product pages were fine all along. LB.14a's rule,
+  a second time: **read the served response, not the config.**
+
+  **The root stays `noindex`, on purpose.** It is the fail-closed default, and
+  the console declares no `robots` of its own — it relies entirely on that
+  inheritance. So the storefront opts IN at its own layout instead, which
+  makes a future route under it public by construction and a future route
+  anywhere else private by construction. A test now fails if somebody "fixes"
+  the root instead.
+
+  **`absolute`, not `default`, and the test taught it.** A `title.default` is
+  still the title of a segment that HAS a parent template, so the first
+  attempt served "Shop A Store · LandingOS" — the platform's name back in the
+  tab, put there by the very metadata written to remove it.
+  `{ absolute, template }` ends template resolution upward while still
+  templating children.
+
+  **The thank-you page opts back OUT, explicitly.** The blanket opt-in is
+  right for a shop and wrong for a customer's order: that page carries a name,
+  a wilaya and a total. An unguessable id is what makes it safe to serve
+  without a session — it is not what keeps it out of an index, because a
+  crawler does not guess a URL that was linked or pasted. LB.14a already
+  refuses to let any shared cache hold that response, and the two decisions
+  belong together: a page nobody may cache is a page nobody may index.
+
+  **Corrected in passing.** The product page's canonical was hand-built as
+  `/${tenant}/${slug}` under a comment claiming it was "correct relative to
+  whichever host served it" — relative was true, the right PATH was not, since
+  a custom domain drops the tenant prefix. It uses `storefrontHref` now, the
+  helper every other storefront link goes through. Custom-domain ROUTING
+  remains the known-inert LB.14a.2 problem and was not touched.
+
+  **Files.** `(storefront)/[tenant]/layout.tsx` (title/description/robots/
+  siteName for the subtree), `[tenant]/page.tsx` and
+  `[tenant]/category/[slug]/page.tsx` (canonicals + the category's own title),
+  `[tenant]/[slug]/page.tsx` (canonical via the helper, siteName re-stated
+  because a page's `openGraph` REPLACES the layout's), `thank-you/[orderId]/
+  page.tsx` (explicit `noindex`), `test/storefront.test.ts`.
+
+  **Migration.** None. **Risk.** The one that matters is the thank-you page,
+  and it is covered by a test asserting the served `noindex` rather than the
+  declaration.
+
+  storefront **48 → 54**; builder-sections 74, builder-api 35, console-shell
+  20, hardening 13, calc 28, i18n 22 unaffected. Verified live against the
+  running build on all four storefront pages plus the console as a control,
+  fixture swept with `deleteTenant` (4 rows, 2 passes).
+
+  **Left open, deliberately:** the platform serves no `robots.txt` and no
+  `sitemap.xml` — both are reserved slugs and neither route exists. A sitemap
+  is the next real SEO step and a product decision, not a cleanup.
+
 - **DEPLOY — LB.31–LB.36, LB.15 and LB.14a/b/c reach production** (13 August
   2026, late night, user-approved). **This SUPERSEDES every "local only / not
   pushed / not deployed" note on the entries below down to and including the
@@ -89,14 +159,14 @@ touched, any **migration**, and any **risk**.
   `deleteMany` safe. The two real production tenants are untouched. The
   fixture storefront now 404s. Health green throughout.
 
-  **One PRE-EXISTING issue found and deliberately NOT touched.** A storefront
-  page's `<title>` is `<page> · LandingOS`, and it inherits
-  `robots: { index: false, follow: false }` — both from the ROOT layout's
-  metadata, which this range does not modify (byte-identical in `bd6d664` and
-  `d6a56b1`). So it is neither a regression nor inside LB.31, whose scope was
-  SiteNav/SiteFooter. But a merchant's shop currently carries the platform's
-  name in its browser tab and tells search engines not to index itself. Left
-  for a decision rather than patched live; see `NEXT_STEPS.md`.
+  **One PRE-EXISTING issue found and deliberately NOT touched here.** A
+  storefront page's `<title>` is `<page> · LandingOS` and the storefront
+  inherits the root's `robots: { index: false, follow: false }` — from the
+  ROOT layout, which this range does not modify (byte-identical in `bd6d664`
+  and `d6a56b1`), so neither a regression nor inside LB.31's SiteNav/SiteFooter
+  scope. **Fixed immediately afterwards as LB.37 above, which also corrects
+  this paragraph: the `noindex` inheritance hit the store HOME and every
+  CATEGORY, not the product page, which had opted into indexing all along.**
 
   **Risk.** Low. No DDL, no RLS change, and the one behavioural change with
   blast radius — caching — was measured on five paths plus two controls. The
