@@ -34,7 +34,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.30**~~ | ~~Home/category/thank-you follow the visitor's dark mode~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production: the themed order's thank-you wears the merchant theme under emulated dark; fixture swept with `deleteTenant`). LB.26's recorded remainder. The thank-you inherits the ORDER's landing-page theme (the checkout journey's last step looks like the page the customer bought on); home/category wear `DEFAULT_THEME` — a store-level theme field on `StoreSettings` is a schema migration + merchant UI, deliberately left as a decision, with the two call sites marked. Verified live under emulated dark OS both ways (bound theme + default). storefront 33→36 |
 | **LB.35b** | **The per-page pixel control has no UI.** Reported as "not visible on my real account" — measured 13 Aug: LB.35 built the column, the PATCH, the storefront read path and the tests, and **touched no editor file**; `trackingIntegrationIds` appears in no `.tsx` in the repo. The editor's Integrations section still renders LB.5's signpost ("configured once per company"), which LB.35 made out of date. The mechanism is live and correct in production; only the door is missing. Needs the tenant's integrations loaded into the editor, a control for THREE states (NULL = all, `[]` = none, `[ids]` = subset), the save path, ×3 locales, tests — plus one product call: whether NULL reads as "all" or "not configured". **Not started.** §LB.35b below |
 | ~~**LB.35**~~ | ~~A landing page can link only one Meta pixel~~ | M | **DONE 13 Aug 2026; DEPLOYED the same night — but see LB.35b: the console control was never built.** (its migration was applied to `landingos_prod` first, as its own approved action; the app code followed in `bd6d664..d6a56b1`). Verified live: a page's explicit one-integration subset survived a duplicate through the real route. Premise half-false: multiple pixels per TENANT already fired (Meta fetched a signals/config for both ids). The gap was per-PAGE selection, blocked because an App Router layout cannot see its child's params — the loader mount moved from the layout to the four storefront routes, with LB.5's "no page forgets" guarantee moved into a test. builder-api 29→35 |
-| ~~**LB.38**~~ | ~~No way to permanently delete a page, even an order-free one~~ | S | **DONE 13 Aug 2026 (late night); NOT deployed.** LB.34's hardened `DELETE` was wired to NOTHING — `method: "DELETE"` in no component — so a mistyped draft could only be archived. Delete row-action added beside Archive, **offered only at zero orders** (the route refuses regardless; the absence is so nobody is invited to press a button that always 409s). `HAS_ORDERS` was also unmapped in `action-errors.ts` — the LB.14c pattern a third time — and now names Archive ×3 locales. Shown for archived rows too when order-free. No migration. builder-api 35→37 |
+| ~~**LB.38**~~ | ~~No way to permanently delete a page, even an order-free one~~ | S | **DONE 13 Aug 2026 (late night); DEPLOYED the same night.** LB.34's hardened `DELETE` was wired to NOTHING — `method: "DELETE"` in no component — so a mistyped draft could only be archived. Delete row-action added beside Archive, **offered only at zero orders** (the route refuses regardless; the absence is so nobody is invited to press a button that always 409s). `HAS_ORDERS` was also unmapped in `action-errors.ts` — the LB.14c pattern a third time — and now names Archive ×3 locales. Shown for archived rows too when order-free. No migration. builder-api 35→37 |
 | ~~**LB.34**~~ | ~~No way to delete a landing page~~ | M | **DONE 13 Aug 2026; DEPLOYED the same night.** Verified in production: archiving 404s the storefront and the checkout refuses the page, **while the order it had already sold survived intact**; restore landed on DRAFT. **The hard delete it kept had no UI until LB.38.** A hard-DELETE route already existed and cascades into `SalesOrder` (+ status history, drafts; fulfilment SetNull) — wiring a button to it would have shredded revenue history. Archive instead, using the never-written `ARCHIVED` enum value: **no migration**. Sets status AND unpublishes; restore lands on DRAFT. Hard delete kept for orderless pages, `409 HAS_ORDERS` otherwise. builder-api 23→29 |
 | ~~**LB.33**~~ | ~~"Full name" looks invalid on a fresh form~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night — premise measured FALSE.** Fresh field is `aria-invalid="false"`, neutral border, no `required`, form `noValidate`, and the compiled variant is `[aria-invalid=true]`; the red state is genuine but post-submit only. The real defect found in the same component: `Field` derived `htmlFor` from label TEXT, so **no checkout field had a working label**. Fixed explicitly. storefront 38→40 |
 | ~~**LB.32**~~ | ~~The editor's sticky header overlaps the content~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (measured in production: header band `[0,56]` at every scroll position, anchored scroll landing a card at 96px with 40px clearance). Not z-index, not padding: `sticky top-16` cleared a shell header that is not above this screen (the editor mounts outside `ConsoleShell`). Sticky reserves no space for its offset, so content flowed from 56 while the header painted 64→120 — a permanent 64px overlap. `scroll-mt-24` corroborated the diagnosis. `top-0`; anchored-scroll clearance −24px→+40px |
@@ -763,9 +763,13 @@ copy, and tests. It also needs one product decision: whether the default
 NULL should be shown as "all" or as "not configured", since they look
 identical and mean the same thing today.
 
-### LB.39 — DONE, NOT DEPLOYED. Each shop gets a sitemap (13 Aug, late night)
+### LB.39 — DONE + DEPLOYED. Each shop gets a sitemap (13 Aug, late night)
 
-**`dbe1cf0`, local only.** LB.37 settled which storefront pages may be indexed
+**`dbe1cf0`, DEPLOYED 13 Aug 2026 (late night).** Confirmed on production
+against a pre-push baseline: `/{tenant}/sitemap.xml` **404 → 200**, absolute
+`https://` URLs, the four right entries and all five exclusions absent.
+
+LB.37 settled which storefront pages may be indexed
 and left nothing telling a crawler where to look. This is the same decision
 written where it will be read.
 
@@ -850,9 +854,15 @@ the host IS one shop, so a root `robots.txt` naming that shop's sitemap is
 unambiguous and valuable. That makes this worth revisiting exactly when
 LB.14c's hostnames actually reach Render, and not before.
 
-### LB.38 — DONE, NOT DEPLOYED. The hard delete finally gets a door (13 Aug, late night)
+### LB.38 — DONE + DEPLOYED. The hard delete finally gets a door (13 Aug, late night)
 
-**`a70f588`, local only.** Reported by the user as: the archive control IS
+**`a70f588`, DEPLOYED 13 Aug 2026 (late night).** Confirmed on production
+against a pre-push baseline: `page-delete` **0 → 3** with `page-archive`
+unchanged at 4, `HAS_ORDERS` unmapped → mapped, the one row with an order
+offering Archive and no Delete, a real delete removing the page from the
+database, and a real 409 on the sold one.
+
+Reported by the user as: the archive control IS
 visible and working — the gap is that there is still no way to permanently
 DELETE a page, even one that never had an order.
 

@@ -15,6 +15,43 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.38 + LB.39 ARE DEPLOYED — 13 Aug 2026 (late night)
+>
+> **`origin/main` is `964755b`** (`2f009aa..964755b`, four commits, **no
+> migration** — nothing under `packages/db/prisma` in the range). Live 3m10s
+> after the push. Three baselines were captured on a throwaway fixture BEFORE
+> pushing, and all three flipped:
+>
+> | Marker | Before | After |
+> |---|---|---|
+> | `/{tenant}/sitemap.xml` | **404** (no route) | **200** `application/xml`, 4 URLs |
+> | `page-delete` in the pages list | **0** | **3** — the three order-free rows |
+> | `HAS_ORDERS` in the error map | **unmapped** | **mapped** |
+>
+> **LB.39 on production:** absolute `https://` URLs on the real host; home,
+> visible category and published pages listed; **hidden-cat, secret-draft,
+> retired-item, the `published:true`+`status:DRAFT` half-state, and thank-you
+> all absent**; `Cache-Control: private, max-age=60, must-revalidate`
+> inherited from LB.14a's rule exactly as the route's comment says it should
+> be; unknown tenant 404.
+>
+> **LB.38 on production, per row:** Half State (0 orders) delete YES · Secret
+> Draft (0) YES · **BBB Has Orders (1) delete NO, archive YES** · AAA Never
+> Sold (0) YES. Then exercised both paths for real: `DELETE` on the order-free
+> page **succeeded and removed it from the DATABASE** (state afterwards lists
+> four pages, none of them it — not an archived fifth), and `DELETE` on the
+> page with an order **refused 409 `HAS_ORDERS`** naming Archive.
+>
+> **The two slices agree with each other, which is the check worth keeping:**
+> the sitemap re-fetched straight after the delete had dropped that page,
+> because both read the same publication predicate rather than two copies of
+> it.
+>
+> Cleanup: `deleteTenant` swept 9 rows in 2 passes, fixture user removed
+> separately, 0 landing pages left, both real tenants untouched, storefront
+> and its sitemap now 404. Health green; LB.14a's wilayas marker and LB.37's
+> console `noindex` both re-checked and intact.
+>
 > ### ✔ LB.37 IS DEPLOYED TOO — 13 Aug 2026 (late night)
 >
 > **`origin/main` is `ab24466`.** The storefront `<head>` fix shipped and was
@@ -710,22 +747,10 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **TWO slices are queued to deploy, both local, neither carrying a
-   migration:**
-   - **LB.38** (`a70f588`) — a Delete row-action for order-free pages. LB.34's
-     hardened `DELETE` had been wired to nothing since it was written.
-   - **LB.39** (`dbe1cf0`) — a per-tenant `/{tenant}/sitemap.xml` listing
-     exactly LB.37's indexable set.
-
-   Suites green (storefront 60, builder-api 37, builder-sections 74,
-   console-shell 20, hardening 13, webhooks 10, tracking 15, i18n 22), both
-   verified live against the running local build, **not deployed — the user
-   asked to be asked first.** Markers for when they go: a page with zero
-   orders shows a Delete control and one with orders does not; and
-   `curl /{tenant}/sitemap.xml` returns XML listing the home, visible
-   categories and published pages only.
-
-   Everything before them shipped on 13 Aug (late night) and is verified live
+4. **Nothing is queued to deploy.** **LB.38** (`a70f588`) and **LB.39**
+   (`dbe1cf0`) shipped together on 13 Aug (late night) as
+   `2f009aa..964755b`, no migration, and are verified live — §1 has the
+   record. Everything before them shipped earlier the same night
    — LB.31–LB.36 + LB.15 + LB.14a/b/c (`bd6d664..d6a56b1`) and LB.37
    (`fcbd1e5`). §1 has the records, the markers and the corrections they
    produced. No migration is pending; RLS is 49/49.

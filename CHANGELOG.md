@@ -13,7 +13,16 @@ touched, any **migration**, and any **risk**.
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
 - **LB.39 — a shop can be crawled on purpose now, and only where LB.37 allows**
-  (13 August 2026, late night — `dbe1cf0`, **local; NOT deployed**).
+  (13 August 2026, late night — `dbe1cf0`, **DEPLOYED the same night** in
+  `2f009aa..964755b`). Confirmed on production against a baseline captured
+  before the push: `/{tenant}/sitemap.xml` went **404 → 200
+  `application/xml`**, absolute `https://` URLs on the real host, home +
+  visible category + published pages listed, and hidden-cat, secret-draft,
+  retired-item, the `published:true`+`status:DRAFT` half-state and thank-you
+  all absent. `Cache-Control: private, max-age=60, must-revalidate` arrived
+  from LB.14a's rule exactly as this route's comment predicts. Deleting a page
+  through LB.38 dropped it from the sitemap on the next fetch — the two agree
+  because they read one predicate, not two copies of it.
 
   **What.** `/{tenant}/sitemap.xml`. Included: the store home, every visible
   category, every published page. Excluded: thank-you (LB.37 marks it
@@ -80,7 +89,15 @@ touched, any **migration**, and any **risk**.
   15 (with the stub bases its own header documents), i18n 22.
 
 - **LB.38 — a page that never sold anything could only ever be archived**
-  (13 August 2026, late night — `a70f588`, **local; NOT deployed**). Reported
+  (13 August 2026, late night — `a70f588`, **DEPLOYED the same night** in
+  `2f009aa..964755b`). Confirmed on production against a pre-push baseline:
+  `page-delete` went **0 → 3** in the pages list (the three order-free rows)
+  while `page-archive` stayed at 4, and `HAS_ORDERS` went from **unmapped to
+  mapped**. Per row: the one page with an order offers Archive and **no**
+  Delete. Both paths then exercised for real — `DELETE` on the order-free page
+  removed it from the DATABASE (four pages left, none of them it, not an
+  archived fifth); `DELETE` on the page with an order refused **409
+  `HAS_ORDERS`** naming Archive. Reported
   as "the archive control works, but there is still no way to DELETE a page."
   Measured: correct, and the missing piece is not the route.
 
