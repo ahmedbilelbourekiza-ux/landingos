@@ -101,8 +101,34 @@ on a real tenant's store home), then verified with a throwaway tenant and
 two real API orders: themed thank-you inherits the merchant theme, home and
 category hold the default, unthemed falls back; swept with `deleteTenant`.
 
-**Suite totals after LB.30:** builder-sections **73** · storefront **36** ·
-builder-api **23** · console-shell **20** · hardening **12** · webhooks **10** ·
+> ### LB.31–LB.36 are MERGED INTO LOCAL `master`, and NOT DEPLOYED
+>
+> `bd6d664..fecc4ff`, merged 13 Aug 2026 as a **clean fast-forward** — master
+> was an ancestor of the branch (it had been synced onto master's tip at the
+> end of the LB.30 deploy), so there was nothing to rebase and the merged tree
+> hash is **identical** to the branch tip that was tested and verified live.
+> Not one byte of application code changed in the merge.
+>
+> **`origin/main` is still at `bd6d664`. Nothing is pushed and nothing is
+> deployed.** Production continues to run the LB.30 app tree (`4f1b599`).
+>
+> **THE BLOCKER IS LB.35's MIGRATION.** It adds
+> `LandingPage.trackingIntegrationIds JSONB` and that column exists only in
+> `neondb`. Until it is applied to `landingos_prod` — user-approved, in the
+> LB.20 order, before the app push — this range cannot ship: the storefront
+> and the general PATCH both read the column, so deploying the code first
+> would break every landing page render. No `apply-rls` re-run is needed (no
+> new table; still 49/49). Full runbook: `HANDOFF_PRODUCTION.md` §1.
+>
+> The other five carry no schema change. LB.34 notably needed none — it
+> writes the `LandingPageStatus.ARCHIVED` value that has existed since the
+> port with no writer.
+
+**Suite totals after LB.35** (measured against the merged state):
+builder-sections **73** · storefront **40** · builder-api **35** ·
+console-shell **20** · i18n **22** · tracking **15** ·
+*(historical, after LB.30)* storefront 36 · builder-api 23 ·
+hardening **12** · webhooks **10** ·
 tracking **15** · erp/screens **172** · erp/finance **44** · erp/catalog **75** ·
 erp/access **205** · erp/ai **31** · i18n **22** · packages/db **35** ·
 product-registry **36** · calc **20**.

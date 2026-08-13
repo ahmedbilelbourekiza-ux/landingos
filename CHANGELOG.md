@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 Work driven by the engineering audit of 1 August 2026. Findings are referenced
 by their audit IDs (`SEC-01`, `BUG-02`, `PERF-01`, …). From Phase 3 onward,
@@ -11,6 +11,33 @@ touched, any **migration**, and any **risk**.
 ---
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
+
+- **MERGE — LB.31…LB.36 land on local `master`** (13 August 2026). **Merge
+  only: NOT pushed, NOT deployed.** Supersedes the "local only" note on all
+  six entries below, which now means *merged to master locally*.
+
+  **What.** `bd6d664..fecc4ff`, six commits, merged as a **clean
+  fast-forward**. Master was an ANCESTOR of the branch — it had been synced
+  onto master's tip at the end of the LB.30 deploy, before these six began —
+  so there was nothing to rebase and no conflict to resolve. The merged tree
+  hash is **identical** to the branch tip that was tested and verified live,
+  and `git diff fecc4ff master -- apps packages` is empty: not one byte of
+  application code moved.
+
+  **`origin/main` remains at `bd6d664`.** Production still runs the LB.30
+  app tree (`4f1b599`).
+
+  **⚠ THE DEPLOY BLOCKER IS LB.35's MIGRATION.**
+  `LandingPage.trackingIntegrationIds JSONB` exists in `neondb` only. The
+  storefront's integration resolver and the general PATCH both read it, so
+  pushing this code before the column exists in `landingos_prod` would break
+  every landing page render. It must be applied first, user-approved, in the
+  LB.20 order. No `apply-rls` re-run (no new table; 49/49 stands). The other
+  five slices carry no schema change at all.
+
+  **Suites re-run against the merged state**, not merely inherited from the
+  branch: builder-api **35**, storefront **40**, builder-sections **73**,
+  console-shell **20**, tracking **15**, i18n **22**.
 
 - **LB.36** Brands — **SCOPED, NOT BUILT** (13 August 2026). A measurement
   and a proposal only, in the shape the store-theme question was left.
@@ -40,7 +67,7 @@ touched, any **migration**, and any **risk**.
   brand replaces the store name everywhere or only in the product header.
 
 - **LB.35** A landing page links to its own Meta pixels (13 August 2026 —
-  **local only, not pushed, not deployed**; **CARRIES A MIGRATION** — see
+  **merged to local `master`; not pushed, not deployed**; **CARRIES A MIGRATION** — see
   below).
 
   **The premise, measured first — and half of it was already false.**
@@ -100,7 +127,7 @@ touched, any **migration**, and any **risk**.
 
 - **LB.34** A landing page can be archived — and the hard delete that was
   already there stops being able to destroy a sales history (13 August
-  2026 — **local only, not pushed, not deployed**).
+  2026 — **merged to local `master`; not pushed, not deployed**).
 
   **Asked for as "there is no way to delete a landing page". The
   measurement changed the shape of the answer twice.**
@@ -158,7 +185,7 @@ touched, any **migration**, and any **risk**.
   cannot archive).
 
 - **LB.33** The checkout form's "invalid on arrival" report, measured — and
-  the defect that was actually there (13 August 2026 — **local only, not
+  the defect that was actually there (13 August 2026 — **merged to local `master`; not
   pushed, not deployed**).
 
   **The reported bug does NOT reproduce, and the mechanism says why.** A
@@ -193,7 +220,7 @@ touched, any **migration**, and any **risk**.
   label pointing at a control that exists. storefront 38 → **40**.
 
 - **LB.32** The editor's sticky header stops covering the content below it
-  (13 August 2026 — **local only, not pushed, not deployed**).
+  (13 August 2026 — **merged to local `master`; not pushed, not deployed**).
 
   **The root cause is a stale offset, not a z-index or a padding.** The
   workspace header carried `sticky top-16` — a 64px offset that exists to
@@ -225,7 +252,7 @@ touched, any **migration**, and any **risk**.
   elsewhere depends on the old value.
 
 - **LB.31** A storefront never wears the platform's identity (13 August
-  2026 — **local only, not pushed, not deployed**).
+  2026 — **merged to local `master`; not pushed, not deployed**).
 
   **Reported** as "the live preview shows LandingOS in the header and
   clicking it goes back to the platform". Measured, it was not confined

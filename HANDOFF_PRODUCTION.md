@@ -14,6 +14,11 @@ remain the deep references.
 
 > ### ⚠ THE NEXT DEPLOY CARRIES A MIGRATION — read before pushing
 >
+> **LB.31–LB.36 are MERGED INTO LOCAL `master`** (`bd6d664..fecc4ff`, a clean
+> fast-forward on 13 Aug 2026) **but are NOT pushed and NOT deployed.**
+> `origin/main` is still `bd6d664`, and production still runs the LB.30 app
+> tree (`4f1b599`). **This migration is why the range is being held.**
+>
 > **LB.35 adds one column** and it is NOT yet in `landingos_prod`:
 >
 > ```sql
