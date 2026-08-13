@@ -12,6 +12,68 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.35b — the per-page pixel choice finally has somewhere to be made**
+  (13 August 2026, late night — `dd4edac`, **local; NOT deployed**).
+
+  **What was wrong.** LB.35 built the column, the PATCH that validates it, the
+  storefront read path and eleven tests, shipped all of it to production, and
+  built no way for a merchant to use it: `trackingIntegrationIds` appeared in
+  **no component anywhere in the repo**. Its own "verified live" note describes
+  linking a page to a pixel — done with a hand-written API call.
+
+  **What the merchant met was worse than an absence.** The editor HAS an
+  Integrations section, and it rendered a signpost: one sentence saying
+  tracking is "configured once for the whole workspace and applies to every
+  page automatically", plus a link to settings. True when LB.5 wrote it. LB.35
+  made the second half false and left it in place — so the section named after
+  the feature actively told merchants the choice did not exist here.
+
+  **A mode switch, not a checkbox list**, because the column has THREE states
+  and a list of ticks expresses two. `null` = every active integration (the
+  default, and what every page did before the column existed); `[ids]` = an
+  explicit subset; `[]` = none, which the storefront honours rather than
+  treating as "unset". With only checkboxes, "nothing ticked" would have to
+  mean either all or none and could not mean both.
+
+  **Two choices that protect a merchant's reporting.** Switching to "choose"
+  starts from every ACTIVE integration, not from an empty list — starting
+  empty reads as "turn everything off" at the exact moment someone asks to be
+  more specific, and one careless save would stop their reporting. And
+  inactive integrations are **listed and marked, not hidden**: one fires
+  nothing today, but a page linked to it stays linked, and showing only active
+  rows would quietly drop that link on the next save.
+
+  **The empty selection gets its own line on screen.** It is legal and
+  honoured, and it is the one choice that stops reporting without an error, so
+  the merchant should read that they made it rather than discover it in an ad
+  account.
+
+  **One thing the i18n guard taught**, kept as a comment where it applies:
+  `t(cond ? a : b)` is invisible to the key-exists scan AND looks like
+  hardcoded English to LB.13's guard — it failed exactly that way first. Two
+  literal `t()` calls with the ternary outside satisfy both.
+
+  `builder.editor.integrationsBody` is **deleted**, not reworded: orphaned the
+  moment this section stopped rendering it, and its text had become untrue.
+
+  **Files.** `components/landings/edit/sections/tracking-section.tsx` (new),
+  `edit-sections.tsx`, `edit-workspace.tsx`,
+  `app/console/builder/pages/[id]/edit/page.tsx`, `packages/i18n` (8 new keys
+  ×3 locales, 1 deleted), `test/builder-api.test.ts`.
+
+  **Migration.** None. **Risk.** The destructive direction is a save that
+  narrows reporting, which is why "choose" pre-selects the active set and why
+  the empty state is called out rather than left silent.
+
+  **Verified live in the running editor, in French, all three states end to
+  end:** "all" stored `null` and served both active pixels; a subset stored
+  `["<id>"]` and served that pixel with the other absent; nothing ticked
+  stored `[]` and served **no** pixels while the page still rendered 200. The
+  inactive pixel stayed out of the storefront throughout, since the resolver
+  filters on `isActive` first. builder-api **37 → 41**; storefront 60,
+  builder-sections 74, console-shell 20, hardening 13, tracking 15, i18n 22
+  unaffected.
+
 - **LB.39 — a shop can be crawled on purpose now, and only where LB.37 allows**
   (13 August 2026, late night — `dbe1cf0`, **DEPLOYED the same night** in
   `2f009aa..964755b`). Confirmed on production against a baseline captured

@@ -747,10 +747,19 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **Nothing is queued to deploy.** **LB.38** (`a70f588`) and **LB.39**
-   (`dbe1cf0`) shipped together on 13 Aug (late night) as
-   `2f009aa..964755b`, no migration, and are verified live — §1 has the
-   record. Everything before them shipped earlier the same night
+4. **ONE slice is queued to deploy: LB.35b (`dd4edac`)** — the editor control
+   for per-page tracking pixels, which LB.35 shipped the mechanism for and
+   never built a door to. **No migration.** Suites green (builder-api 41,
+   storefront 60, builder-sections 74, console-shell 20, hardening 13,
+   tracking 15, i18n 22), verified live in the running editor across all three
+   states including what the storefront then serves. **Not deployed — the user
+   asked to be asked first.** Marker for when it goes: the editor's
+   Integrations section serves `data-testid="tracking-mode-all"` where it used
+   to serve the sentence "applies to every page automatically".
+
+   **LB.38** (`a70f588`) and **LB.39** (`dbe1cf0`) shipped together on 13 Aug
+   (late night) as `2f009aa..964755b`, no migration, verified live — §1 has
+   the record. Everything before them shipped earlier the same night
    — LB.31–LB.36 + LB.15 + LB.14a/b/c (`bd6d664..d6a56b1`) and LB.37
    (`fcbd1e5`). §1 has the records, the markers and the corrections they
    produced. No migration is pending; RLS is 49/49.
