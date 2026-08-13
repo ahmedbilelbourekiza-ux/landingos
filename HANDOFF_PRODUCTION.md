@@ -15,13 +15,18 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### ✔ NOTHING IS WAITING TO DEPLOY — 13 Aug 2026 (late night)
+> ### ✔ NO APPLICATION CODE IS WAITING TO DEPLOY — 13 Aug 2026 (late night)
 >
-> **`origin/main` and local `master` are both `d6a56b1`.** The range that had
-> been held back, `bd6d664..d6a56b1`, was pushed and verified live; the
-> details are in the deploy record below and in CHANGELOG's top entry. There
-> is **no migration pending**, RLS is **49/49**, and no code is sitting
-> unpushed.
+> **`origin/main` is `d6a56b1` and that is what production serves.** The range
+> that had been held back, `bd6d664..d6a56b1`, was pushed and verified live;
+> the details are in the deploy record below and in CHANGELOG's top entry.
+> **No migration pending**, RLS **49/49**.
+>
+> **One local commit sits on top: `ed30038`, this deploy's record.** It is
+> documentation only — `git diff origin/main master -- apps packages` is
+> empty — so pushing it changes nothing a user can see, and it was left
+> unpushed deliberately rather than trigger a Render rebuild of an
+> already-verified build. Push it whenever the next real change goes out.
 >
 > ### ✔ LB.35's MIGRATION WAS APPLIED FIRST — 13 Aug 2026 (night)
 >
@@ -658,7 +663,9 @@ The exact first steps, in order:
 3. **Confirm `origin/main` still equals `d6a56b1`** (`git fetch && git log
    --oneline origin/main -1`) — if it moved, someone else deployed; re-read
    the situation before assuming this document's state. **Local `master` is
-   `d6a56b1` too: nothing is unpushed.** Do not trust the commit COUNT any
+   `ed30038`, one DOCUMENTATION commit ahead — this deploy's record, carrying
+   no application code (`git diff origin/main master -- apps packages` is
+   empty).** Do not trust the commit COUNT any
    handoff quotes — this one said "sixteen" and the real answer was eighteen
    by the time it was read. Derive it: `git rev-list --count origin/main..master`.
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
