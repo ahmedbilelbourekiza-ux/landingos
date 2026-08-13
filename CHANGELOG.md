@@ -12,6 +12,60 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.38 — a page that never sold anything could only ever be archived**
+  (13 August 2026, late night — `a70f588`, **local; NOT deployed**). Reported
+  as "the archive control works, but there is still no way to DELETE a page."
+  Measured: correct, and the missing piece is not the route.
+
+  **What was there.** The hardened `DELETE` has existed since LB.34 — it
+  refuses `409 HAS_ORDERS` for a page that has sold anything and hard-deletes
+  one that has not. **Nothing called it.** `method: "DELETE"` appeared in no
+  component and `HAS_ORDERS` nowhere outside the route file, so the only way
+  to reach it was a hand-written API call. The route's own comment says
+  archiving "is what the console now offers" — true, and the whole story. A
+  mistyped draft could be archived and never removed, so an archive meant for
+  retired products filled up with pages that had never been anything.
+
+  **Offered only at zero orders, and that is belt and braces on purpose.** The
+  route stays the authority and refuses regardless; the button's absence is so
+  a merchant is never invited to press something that always fails for them. A
+  control that always answers 409 is worse than no control — it teaches them
+  the console is unreliable. A page WITH orders shows Archive, the door that
+  works. The count needed no new query: the list already selects
+  `_count.salesOrders` for its Orders column.
+
+  **`HAS_ORDERS` was also unmapped in `action-errors.ts`** — the
+  `UNKNOWN_ADAPTER` and LB.14c note happening a third time. In normal use the
+  refusal is now unreachable; the case that is NOT normal use is a list
+  rendered before the first order arrived and still open in another tab, where
+  the row says zero and the database disagrees. The merchant was one click
+  from being told "that didn't work" about the one refusal in this screen that
+  is actively protecting their revenue history. It names Archive now, in all
+  three locales.
+
+  **Deliberately shown for ARCHIVED rows too**, when they have no orders —
+  clearing out an archive of pages that never sold anything is the thing being
+  asked for.
+
+  **Files.** `components/console/builder/page-row-actions.tsx`,
+  `app/console/builder/(shell)/pages/page.tsx`, `lib/console/action-errors.ts`,
+  `packages/i18n` (`builder.pages.delete`, `builder.pages.deleteConfirm`,
+  `common.error.hasOrders` ×3 locales), `test/builder-api.test.ts`.
+
+  **Migration.** None. **Risk.** The destructive path is the one being added,
+  and it is bounded by a route that independently refuses anything with
+  commercial history — the UI can only ever offer what the route would allow.
+
+  **Verified live in the running console (French)** on a fixture holding one
+  page of each kind: the sold row offers Archiver and no Supprimer; the
+  never-sold row offers both; the confirm names the loss as irreversible; and
+  the row leaves the table AND the database — reading state afterwards lists
+  only the sold page, not an archived pair. The first click, where the browser
+  auto-dismissed the native dialog, correctly deleted nothing. `DELETE`
+  against the sold page still answers 409 with the translated message.
+  builder-api **35 → 37**; storefront 54, builder-sections 74, console-shell
+  20, hardening 13, i18n 22 unaffected.
+
 - **LB.37 — a shop's `<head>` introduced it as the platform, and told search
   engines to go away** (13 August 2026, late night — `fcbd1e5`, **DEPLOYED
   the same night as `ab24466`**). Found while verifying the deploy below and

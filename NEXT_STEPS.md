@@ -33,7 +33,8 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.29**~~ | ~~`ui/sheet.tsx` closes on a physical edge~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (verified in production Arabic: close at x 17–33). `right-4` → `end-4`; scope corrected by measurement — the mobile nav drawer is a custom logical-first component and was never affected; the editor preview drawer is the only live Sheet. ar close x 343→17 at 375px emulation, fr unchanged. No physical device reachable — caveat recorded. builder-sections 73 |
 | ~~**LB.30**~~ | ~~Home/category/thank-you follow the visitor's dark mode~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production: the themed order's thank-you wears the merchant theme under emulated dark; fixture swept with `deleteTenant`). LB.26's recorded remainder. The thank-you inherits the ORDER's landing-page theme (the checkout journey's last step looks like the page the customer bought on); home/category wear `DEFAULT_THEME` — a store-level theme field on `StoreSettings` is a schema migration + merchant UI, deliberately left as a decision, with the two call sites marked. Verified live under emulated dark OS both ways (bound theme + default). storefront 33→36 |
 | ~~**LB.35**~~ | ~~A landing page can link only one Meta pixel~~ | M | **DONE 13 Aug 2026; DEPLOYED the same night** (its migration was applied to `landingos_prod` first, as its own approved action; the app code followed in `bd6d664..d6a56b1`). Verified live: a page's explicit one-integration subset survived a duplicate through the real route. Premise half-false: multiple pixels per TENANT already fired (Meta fetched a signals/config for both ids). The gap was per-PAGE selection, blocked because an App Router layout cannot see its child's params — the loader mount moved from the layout to the four storefront routes, with LB.5's "no page forgets" guarantee moved into a test. builder-api 29→35 |
-| ~~**LB.34**~~ | ~~No way to delete a landing page~~ | M | **DONE 13 Aug 2026; DEPLOYED the same night.** Verified in production: archiving 404s the storefront and the checkout refuses the page, **while the order it had already sold survived intact**; restore landed on DRAFT. A hard-DELETE route already existed and cascades into `SalesOrder` (+ status history, drafts; fulfilment SetNull) — wiring a button to it would have shredded revenue history. Archive instead, using the never-written `ARCHIVED` enum value: **no migration**. Sets status AND unpublishes; restore lands on DRAFT. Hard delete kept for orderless pages, `409 HAS_ORDERS` otherwise. builder-api 23→29 |
+| ~~**LB.38**~~ | ~~No way to permanently delete a page, even an order-free one~~ | S | **DONE 13 Aug 2026 (late night); NOT deployed.** LB.34's hardened `DELETE` was wired to NOTHING — `method: "DELETE"` in no component — so a mistyped draft could only be archived. Delete row-action added beside Archive, **offered only at zero orders** (the route refuses regardless; the absence is so nobody is invited to press a button that always 409s). `HAS_ORDERS` was also unmapped in `action-errors.ts` — the LB.14c pattern a third time — and now names Archive ×3 locales. Shown for archived rows too when order-free. No migration. builder-api 35→37 |
+| ~~**LB.34**~~ | ~~No way to delete a landing page~~ | M | **DONE 13 Aug 2026; DEPLOYED the same night.** Verified in production: archiving 404s the storefront and the checkout refuses the page, **while the order it had already sold survived intact**; restore landed on DRAFT. **The hard delete it kept had no UI until LB.38.** A hard-DELETE route already existed and cascades into `SalesOrder` (+ status history, drafts; fulfilment SetNull) — wiring a button to it would have shredded revenue history. Archive instead, using the never-written `ARCHIVED` enum value: **no migration**. Sets status AND unpublishes; restore lands on DRAFT. Hard delete kept for orderless pages, `409 HAS_ORDERS` otherwise. builder-api 23→29 |
 | ~~**LB.33**~~ | ~~"Full name" looks invalid on a fresh form~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night — premise measured FALSE.** Fresh field is `aria-invalid="false"`, neutral border, no `required`, form `noValidate`, and the compiled variant is `[aria-invalid=true]`; the red state is genuine but post-submit only. The real defect found in the same component: `Field` derived `htmlFor` from label TEXT, so **no checkout field had a working label**. Fixed explicitly. storefront 38→40 |
 | ~~**LB.32**~~ | ~~The editor's sticky header overlaps the content~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (measured in production: header band `[0,56]` at every scroll position, anchored scroll landing a card at 96px with 40px clearance). Not z-index, not padding: `sticky top-16` cleared a shell header that is not above this screen (the editor mounts outside `ConsoleShell`). Sticky reserves no space for its offset, so content flowed from 56 while the header painted 64→120 — a permanent 64px overlap. `scroll-mt-24` corroborated the diagnosis. `top-0`; anchored-scroll clearance −24px→+40px |
 | ~~**LB.31**~~ | ~~The storefront header shows "LandingOS" and links to the platform~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production on a real published page: header and footer name the merchant and link to its own root, zero platform strings in the body). Not preview-only: with no `StoreSettings` row the published page rendered the platform wordmark linking to `/` (307 → console), plus the platform's internal description and copyright. Both production tenants have exactly that null row — 0 published pages, so unseen, one publish away. `resolveStoreName` + deleted fallbacks; brand is a span in the preview drawer. storefront 36→38 |
@@ -725,6 +726,56 @@ before, only now with a TTL). **Not started.**
 and `/_next/static/*` (still `public, max-age=31536000, immutable`) are outside
 the rule. storefront 40 → **48**; console-shell 20, hardening 12, tracking 15,
 builder-sections 74 unaffected.
+
+### LB.38 — DONE, NOT DEPLOYED. The hard delete finally gets a door (13 Aug, late night)
+
+**`a70f588`, local only.** Reported by the user as: the archive control IS
+visible and working — the gap is that there is still no way to permanently
+DELETE a page, even one that never had an order.
+
+**Measured, and the report is exactly right.** The hardened `DELETE` route has
+existed since LB.34: `409 HAS_ORDERS` for a page that has sold anything, real
+hard delete otherwise. **It was wired to nothing.** `method: "DELETE"` appeared
+in no component; `HAS_ORDERS` appeared nowhere outside the route file. The
+route's own docstring says archiving "is what the console now offers" — true,
+and complete. The consequence is small and constant: a mistyped draft could be
+archived and never removed, so an archive intended for retired products
+accumulated pages that had never been anything.
+
+**What "delete" means here, confirmed before building:** full hard removal, as
+the existing route already does — the row and its media, variants, features,
+reviews and FAQs. Not a second kind of archive. That is only safe because the
+route refuses anything with orders, and it refuses on the database's count
+rather than on what the screen believed.
+
+**Offered only at zero orders — belt and braces, deliberately.** The route is
+the authority and refuses regardless. The button's absence is a separate
+courtesy: a merchant should never be invited to press something that always
+fails for them, and a control that always answers 409 teaches them the console
+is unreliable. A page with orders shows Archive instead, which is the door that
+works for it. The order count cost nothing — the list already selects
+`_count.salesOrders` for its Orders column.
+
+**A second gap found on the way.** `HAS_ORDERS` had no entry in
+`action-errors.ts` — the `UNKNOWN_ADAPTER` and LB.14c pattern for a third time.
+Normally unreachable now, but a list rendered before the first order arrived
+and left open in another tab is the case that is not normal: the row says zero,
+the database disagrees, and the reply would have been the generic "that didn't
+work" for the one refusal in this screen that protects a merchant's revenue
+history. It names Archive now, ×3 locales.
+
+**Shown for ARCHIVED rows too**, when they are order-free — clearing that
+archive out is the point of the request.
+
+**Verified live in the running console, in French,** on a fixture with one page
+of each kind: sold row → Archiver, no Supprimer; never-sold row → both; the
+confirm names the loss as irreversible; the row leaves the table AND the
+database (state afterwards lists only the sold page — not an archived pair).
+The first click, where the browser auto-dismissed the native dialog, correctly
+deleted nothing. A direct `DELETE` against the sold page still answers 409 with
+the translated message. builder-api **35 → 37**, the new pair asserting the
+DOOR rather than the route; storefront 54, builder-sections 74, console-shell
+20, hardening 13, i18n 22 unaffected. **No migration.**
 
 ### LB.37 — DONE + DEPLOYED. A shop's `<head>` introduced it as the platform (13 Aug, late night)
 
