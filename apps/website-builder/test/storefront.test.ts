@@ -977,3 +977,76 @@ describe("a storefront's <head> wears the merchant, and is allowed to be found",
     );
   });
 });
+
+/* =============================================================================
+ * LB.39 — the sitemap, which is LB.37's decision written where a crawler reads.
+ *
+ * The pairing is the point: LB.37 says which pages may be indexed, and this
+ * says which pages to go and look at. If they can disagree, one of them is
+ * lying, so these tests assert the SAME boundary from the other side —
+ * especially the half-state row (`published: true` with `status: DRAFT`),
+ * which is exactly what a filter written from memory rather than from the
+ * storefront's own predicate would let through.
+ * ========================================================================== */
+describe('LB.39 — a shop lists what it sells, and nothing else', { skip }, () => {
+  const sitemap = async (slug: string) => {
+    const res = await fetch(`${BASE}/${slug}/sitemap.xml`);
+    return { status: res.status, type: res.headers.get('content-type') ?? '', body: await res.text() };
+  };
+
+  test('it lists the home, visible categories and published pages', async () => {
+    const s = await sitemap(slugA);
+    assert.equal(s.status, 200);
+    assert.match(s.type, /application\/xml/);
+    assert.match(s.body, /<urlset\s+xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">/);
+    assert.match(s.body, new RegExp(`<loc>[^<]*/${slugA}</loc>`), 'the store home is missing');
+    assert.match(s.body, new RegExp(`<loc>[^<]*/${slugA}/shared-item</loc>`), 'a published page is missing');
+    assert.match(s.body, new RegExp(`<loc>[^<]*/${slugA}/category/fixture-category</loc>`), 'a visible category is missing');
+  });
+
+  test('it excludes the draft, and the exclusion is the storefront predicate', async () => {
+    // `secret-draft` is the same row the "an unpublished draft must not appear"
+    // test above keeps off the store home. A sitemap that advertises it hands a
+    // crawler a 404 and the merchant an indexed page they never published.
+    const s = await sitemap(slugA);
+    assert.ok(!/secret-draft/.test(s.body), 'an unpublished draft was advertised to crawlers');
+  });
+
+  test('it excludes the thank-you page, which LB.37 marks noindex', async () => {
+    // The two must agree. A page carrying a customer's name, wilaya and total
+    // is not merely unlisted by accident — it is excluded by the same decision
+    // that puts `noindex` in its <head>.
+    const s = await sitemap(slugA);
+    assert.ok(!/thank-you/.test(s.body), "a customer's order page was listed for crawling");
+  });
+
+  test("it lists only THIS tenant's pages", async () => {
+    // The whole file is about what a tenant binding must not allow. A sitemap
+    // is a list of URLs, which is exactly the shape a leak takes.
+    const s = await sitemap(slugA);
+    assert.ok(!new RegExp(slugB).test(s.body), "another tenant's shop appeared in this one's sitemap");
+    const other = await sitemap(slugB);
+    assert.ok(!new RegExp(slugA).test(other.body), 'and the same the other way round');
+  });
+
+  test('every lastmod is a real date, not an invented one', async () => {
+    // A static date trains a crawler to stop believing the field. Every value
+    // here comes off the row's own `updatedAt`, so each must parse and none
+    // may sit in the future.
+    const s = await sitemap(slugA);
+    const stamps = [...s.body.matchAll(/<lastmod>([^<]+)<\/lastmod>/g)].map((m) => m[1]);
+    assert.ok(stamps.length > 0, 'no lastmod was emitted at all');
+    const soon = Date.now() + 60_000;
+    for (const raw of stamps) {
+      const t = Date.parse(raw);
+      assert.ok(Number.isFinite(t), `lastmod "${raw}" is not a date`);
+      assert.ok(t <= soon, `lastmod "${raw}" is in the future`);
+    }
+    assert.equal(new Set(stamps).size > 0, true);
+  });
+
+  test('a slug with no tenant behind it is a 404, not an empty shop', async () => {
+    const s = await sitemap(`no-such-shop-${stamp}`);
+    assert.equal(s.status, 404, 'an unknown shop reported itself as real but empty');
+  });
+});

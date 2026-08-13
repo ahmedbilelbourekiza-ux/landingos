@@ -154,6 +154,41 @@ async function currentHost(): Promise<string | null> {
 }
 
 /**
+ * The absolute origin this request arrived at — `https://shop.acme.dz`.
+ *
+ * Exists because a sitemap is the one thing this app emits that CANNOT be
+ * path-relative: the protocol requires absolute `<loc>` values. Everything
+ * else — canonicals, nav, Copy Link — stays relative on purpose.
+ *
+ * It reuses `currentHost()` rather than reading a header itself, which is the
+ * whole point: the rule about which header may be believed is stated once,
+ * above, and a second reader would be a second chance to get it wrong. A
+ * spoofed `X-Forwarded-Host` therefore cannot put another hostname into a
+ * merchant's sitemap.
+ *
+ * The SCHEME is derived from the host rather than from `X-Forwarded-Proto`,
+ * deliberately: that header is client input too, and this deployment is
+ * https-only everywhere that is not a development machine. Trusting it would
+ * add a second spoofable input to gain nothing.
+ */
+export async function currentOrigin(): Promise<string | null> {
+  const host = await currentHost();
+  if (!host) return null;
+  const local =
+    host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host.endsWith(".localhost");
+  if (!local) return `https://${host}`;
+
+  /* Development only: `currentHost()` strips the port because a domain lookup
+   * must not include one, but an origin without it does not resolve on a dev
+   * machine. Read back from the raw header rather than threading a second
+   * return value through the vetted path, and only for a host already proven
+   * local — so this branch cannot run in production. */
+  const raw = (await headers()).get("host") ?? "";
+  const port = /:(\d+)$/.exec(raw)?.[1];
+  return `http://${host}${port ? `:${port}` : ""}`;
+}
+
+/**
  * Resolve a tenant from a linked, VERIFIED custom domain.
  *
  * Verification is not decoration: without it, anyone could point a hostname at
