@@ -31,7 +31,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.27**~~ | ~~Tenant deletion leaves orphaned rows~~ | M | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (and used there for the deploy's own fixture cleanup — 9 rows, zero behind). `deleteTenant()` in packages/db — an RLS-scoped sweep chosen over FK cascades on purpose (a cascade makes an accidental delete silently total). Harness + 11 suite hooks swapped; `neondb` bulk-cleaned **73,267 → 0** orphans and still 0 after suite runs. packages/db 33→35 |
 | ~~**LB.28**~~ | ~~The dead `rtl:` Tailwind variant~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug — and the premise measured FALSE.** `rtl:` is native on Tailwind 4.3.3 (`:lang()`-keyed); the data table was already correct in Arabic, the calendar is unmounted. Real fixes: the editor back arrow now flips (it cited the false premise for not flipping), the stale comments/memory corrected, and the dir-island rule recorded in globals.css. i18n 22, builder-sections 73 |
 | ~~**LB.29**~~ | ~~`ui/sheet.tsx` closes on a physical edge~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (verified in production Arabic: close at x 17–33). `right-4` → `end-4`; scope corrected by measurement — the mobile nav drawer is a custom logical-first component and was never affected; the editor preview drawer is the only live Sheet. ar close x 343→17 at 375px emulation, fr unchanged. No physical device reachable — caveat recorded. builder-sections 73 |
-| ~~**LB.30**~~ | ~~Home/category/thank-you follow the visitor's dark mode~~ | S | **DONE 13 Aug 2026, local only.** LB.26's recorded remainder. The thank-you inherits the ORDER's landing-page theme (the checkout journey's last step looks like the page the customer bought on); home/category wear `DEFAULT_THEME` — a store-level theme field on `StoreSettings` is a schema migration + merchant UI, deliberately left as a decision, with the two call sites marked. Verified live under emulated dark OS both ways (bound theme + default). storefront 33→36 |
+| ~~**LB.30**~~ | ~~Home/category/thank-you follow the visitor's dark mode~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production: the themed order's thank-you wears the merchant theme under emulated dark; fixture swept with `deleteTenant`). LB.26's recorded remainder. The thank-you inherits the ORDER's landing-page theme (the checkout journey's last step looks like the page the customer bought on); home/category wear `DEFAULT_THEME` — a store-level theme field on `StoreSettings` is a schema migration + merchant UI, deliberately left as a decision, with the two call sites marked. Verified live under emulated dark OS both ways (bound theme + default). storefront 33→36 |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
@@ -326,7 +326,13 @@ hold `#FAF9F6` + `color-scheme:light` with `html.dark` stamped and ignored;
 a theme temporarily bound to the order's page flips the thank-you to that
 theme's id and background, then unbound and re-verified; a light-OS visitor
 with a stale `.dark` in localStorage gets the same stable canvas.
-storefront 33 → **36**.
+storefront 33 → **36**. **DEPLOYED 13 Aug 2026 (night)** — `e940f06`
+rebased onto the deploy-record commit as `4f1b599` (docs-only conflicts;
+the code merged clean) and re-verified on the real domain with a throwaway
+tenant and two real API orders: the themed order's thank-you wears the
+merchant's `#141414` theme under an emulated dark OS, home/category hold
+the default, the unthemed order falls back cleanly; fixture swept with
+`deleteTenant`, zero rows behind.
 
 **Phase 5, 6 and 7 are complete. LEGACY PARITY IS REACHED — Tiers 1, 2 and 3 of
 `LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that

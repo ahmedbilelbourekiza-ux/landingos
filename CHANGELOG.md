@@ -12,6 +12,40 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **DEPLOY — LB.30 reaches production** (13 August 2026, night,
+  user-approved). Supersedes the "local only" note on the LB.30 entry and
+  closes the "Not in this deploy: LB.30" caveat of the morning's record.
+
+  **What.** `0f6d743..4f1b599` pushed to `origin/main`; Render
+  auto-deployed. **Rollback point: `0f6d743`.** No migration. The commit
+  is `e940f06` **rebased** onto `0f6d743`: branch and master had diverged
+  by one commit each (the morning's deploy-record commit landed after the
+  branch was cut), so the predicted fast-forward was impossible — stopped
+  and reported first, rebased on approval. Conflicts were confined to the
+  three shared handoff docs, resolved by keeping both records; the four
+  code/test files merged clean, so the deployed app tree is byte-identical
+  to the one verified locally (storefront 36/36).
+
+  **Confirmed by a public content marker — one method, on a page that
+  contains the changed code** (the morning's rule, applied): a real
+  tenant's public store home read WITHOUT `data-landing-theme` in its HTML
+  before the push (baseline), then polled until it served the scope div
+  with `background-color:#FAF9F6` / `--background:#FAF9F6` /
+  `color-scheme:light` inline — markup only LB.30 emits on a store home.
+  No fingerprint hashes, no authed probe: the changed pages are public.
+
+  **Verified live** with a throwaway tenant (`lb30-check-*`): fixtures by
+  prod-DB script, then two REAL orders through the production checkout
+  API (each priced server-side **3,400** = 2,900 + 500). Emulated dark-OS
+  visitor at 375 px: the themed order's thank-you wears the MERCHANT's
+  `#141414` theme (scope id = the theme row) — inherited, not bled; store
+  home and category hold the `#FAF9F6` default; the unthemed order's
+  thank-you falls back cleanly; the landing page still carries exactly one
+  scope (LB.26 intact) and matches the thank-you its checkout lands on.
+  **Cleanup:** `deleteTenant` — 6 rows in 2 passes (the orders and their
+  status history cascaded with their pages), tenant row gone, all scoped
+  counts read back 0.
+
 - **DEPLOY — LB.27, LB.28, LB.29 reach production** (13 August 2026,
   user-approved). Supersedes the "local only" notes on those three entries.
 
@@ -59,8 +93,8 @@ touched, any **migration**, and any **risk**.
   (`lab(2.48 …)`) — the last step of a real checkout journey.
 
 - **LB.30** The rest of the storefront wears the store's theme, not the
-  visitor's dark mode (13 August 2026 — **local only, not pushed, not
-  deployed**).
+  visitor's dark mode (13 August 2026 — **deployed to production the same
+  night**, see the deploy entry above).
 
   **The remainder LB.26 recorded and did not build.** The theme-bleed fix
   scoped only pages rendered through `LandingTemplate`; the store home,

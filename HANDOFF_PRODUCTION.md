@@ -1,9 +1,9 @@
 # HANDOFF_PRODUCTION — deployment and production state
 
-**Written:** 9 August 2026, ~19:00 UTC · **Updated:** 13 August 2026 (the
-LB.27–LB.29 deploy — see §1; the LB.13–LB.26 deploy + LB.20 migration are the
-12 August record below) · **For:** the next conversation/agent picking this
-project up. Read this FIRST for anything
+**Written:** 9 August 2026, ~19:00 UTC · **Updated:** 13 August 2026, night
+(the LB.30 deploy — see §1; the LB.27–LB.29 deploy is the morning record, the
+LB.13–LB.26 deploy + LB.20 migration the 12 August record below) · **For:**
+the next conversation/agent picking this project up. Read this FIRST for anything
 touching production; `PROJECT_STATE.md` (platform history),
 `BUILDER_HANDOFF.md` (product) and `UIUX_PASS.md` (the UI/UX + mobile passes)
 remain the deep references.
@@ -12,7 +12,43 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-- **Deployed commit: `08e386d`** (13 Aug 2026, user-approved — the range
+- **Deployed commit: `4f1b599`** (13 Aug 2026, night, user-approved —
+  **LB.30**: the store home, category and thank-you pages wear the store's
+  theme instead of the visitor's dark mode; the thank-you inherits the theme
+  of the landing page its order came from). **Rollback point: `0f6d743`**
+  (the state this deploy replaced). **No migration.** The commit is
+  `e940f06` REBASED onto `0f6d743`: the worktree branch and `master` had
+  diverged by one commit each (the LB.27–29 deploy-record landed after the
+  branch was cut), so the predicted fast-forward was impossible — stopped
+  and reported per instruction, then rebased on approval. The conflicts
+  were confined to the three shared handoff docs (both sides kept); the
+  four code/test files merged clean, so the app tree is byte-identical to
+  the one verified locally (storefront 36/36, live-checked both ways).
+- **Confirmed by a definitive PUBLIC content marker** — applying the rule
+  the last deploy taught (one method, on a page that contains the changed
+  code): a real tenant's public store home flipped from no
+  `data-landing-theme` in its HTML (baseline read before the push) to
+  serving the scope div with `background-color:#FAF9F6`,
+  `--background:#FAF9F6` and `color-scheme:light` inline — markup only
+  LB.30's code emits on a store home, checked with a single method
+  end-to-end. No authed probe was needed: the changed pages are public.
+- **Live verification (13 Aug, night), throwaway tenant `lb30-check-*` on
+  the real domain:** fixtures created by prod-DB script (subscription +
+  a `#141414` "Merchant Night" theme + a themed and an unthemed published
+  page + category + Adrar delivery 500/300), then **two REAL orders
+  through the production checkout API** (each priced server-side
+  **3,400** = 2,900 + 500). Under an emulated dark-OS visitor at 375px:
+  the themed order's thank-you wears the MERCHANT's theme
+  (`data-landing-theme` = the theme row's id, canvas `rgb(20,20,20)`,
+  text `#FAFAFA`) — inherited, not bled; store home and category hold
+  `#FAF9F6` with the default scope; the unthemed order's thank-you falls
+  back to the default cleanly; the landing page itself still carries
+  exactly ONE scope (LB.26 intact), and it visually matches the thank-you
+  its checkout lands on. **Cleanup with `deleteTenant`:** 6 rows in 2
+  passes (the orders and their status history cascaded with their pages),
+  tenant row gone, every scoped count read back **0**.
+- *(historical — the 13 Aug morning state this deploy replaced)*
+  **Deployed commit: `08e386d`** (13 Aug 2026, user-approved — the range
   `e3939e9..08e386d`: the 12-Aug deploy record commit plus **LB.27** the
   tenant-deletion sweep, **LB.28** the `rtl:` correction, **LB.29** the Sheet
   logical close edge). **Rollback point:
@@ -36,14 +72,12 @@ remain the deep references.
   clients 200; health green. **Fixture removed with `deleteTenant` itself** —
   9 product-domain rows swept in 2 passes, zero rows behind, its first real
   production use.
-- **⚠ NOT deployed: LB.30** (`e940f06` on `claude/interesting-herschel-ceeb8f`,
-  a worktree branch — never merged to `master`, so the 13-Aug push could not
-  carry it). It themes the store home, category and thank-you pages. The gap
-  is OPEN in production and was measured there on 13 Aug: under a dark-OS
-  visitor a landing page holds `#FAF9F6` (LB.26) while the **thank-you page
-  has no theme scope and renders near-black** — the last step of a real
-  checkout. Merging that branch is a decision the user has not yet taken with
-  the branch situation in view.
+- *(resolved the same night)* The "**⚠ NOT deployed: LB.30**" warning that
+  stood here is CLOSED — the user approved the merge with the branch
+  situation in view, `e940f06` was rebased onto `0f6d743` as `4f1b599` and
+  deployed; see the current-state bullets above. The near-black thank-you
+  measured on production that morning is the exact page verified themed
+  that night.
 - *(historical — the 12 Aug state this deploy replaced)* **Deployed commit:**
   `e3939e9` (12 Aug 2026, evening — the full local range
   `b767928..e3939e9`, 20 commits: LB.13 editor i18n, LB.16–LB.22 the feature
@@ -110,6 +144,7 @@ remain the deep references.
 
 | Commit | What it is |
 |---|---|
+| `0f6d743..4f1b599` | **13 Aug 2026 (night): LB.30** — the store home, category and thank-you pages wear the store's theme (thank-you inherits its order's landing-page theme; home/category wear the default — a store-level theme field stays an open product decision). `e940f06` rebased onto the deploy-record commit; docs-only conflicts. No migration. Verified by a public content marker (the theme scope appearing on a real tenant's store home) + a throwaway tenant with two real API orders, themed and unthemed, under an emulated dark OS |
 | `e3939e9..08e386d` | **13 Aug 2026: LB.27–LB.29** — the `deleteTenant` sweep (a tenant delete used to orphan every product-domain row; 73,267 of them had accumulated in dev), the `rtl:` record correction + editor back-arrow flip, and the Sheet's logical close edge. No migration. Verified by authed content markers + a full throwaway-tenant journey |
 | `b767928..e3939e9` | **12 Aug 2026 (evening): the LB.13–LB.26 range** — editor i18n (LB.13), dead-component deletion (LB.16), ERP detail back-nav (LB.17), the finance module switch (LB.18), product categories (LB.19), **per-product delivery pricing (LB.20, with its production migration applied first)**, catalogue publishing (LB.21), image-derived themes (LB.22), the Finances/Calculator merge (LB.25), the storefront theme-bleed fix (LB.26) |
 | `5ac85b0` | The UI/UX pass: builder overview rebuilt, table headers, editor variant-label + unsaved-state fixes, ERP order summary strip, notification timestamps, locale switcher auto-submit (~60 i18n keys) |

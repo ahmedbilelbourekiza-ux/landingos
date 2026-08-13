@@ -87,9 +87,12 @@ throwaway tenant on the real domain. See `HANDOFF_PRODUCTION.md` §1.
 **LB.27, LB.28 and LB.29 are DEPLOYED** — `e3939e9..08e386d` pushed 13 Aug
 2026 with the user's approval, no migration, verified live by authed content
 markers plus a full throwaway-tenant journey (`HANDOFF_PRODUCTION.md` §1).
-**LB.30 is NOT deployed**: it lives on `claude/interesting-herschel-ceeb8f`,
-never merged to `master`, so the store home / category / thank-you pages
-still follow the visitor's dark mode in production.
+**LB.30 is DEPLOYED too** (the same night, user-approved): `e940f06` rebased
+onto the deploy-record commit as `4f1b599` — docs-only conflicts, code clean
+— pushed and confirmed by a PUBLIC content marker (the theme scope appearing
+on a real tenant's store home), then verified with a throwaway tenant and
+two real API orders: themed thank-you inherits the merchant theme, home and
+category hold the default, unthemed falls back; swept with `deleteTenant`.
 
 **Suite totals after LB.30:** builder-sections **73** · storefront **36** ·
 builder-api **23** · console-shell **20** · hardening **12** · webhooks **10** ·
