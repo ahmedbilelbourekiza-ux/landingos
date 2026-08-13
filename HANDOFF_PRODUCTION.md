@@ -474,7 +474,51 @@ edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
    gloss). **Benefits/FAQ (LB.12) is DONE** — it was left on this list in
    error and is removed here.
 
-## 6. TESTING STATUS (as of 9 Aug 2026, evening)
+10. **Added 13 Aug (late night), all measured this session, none started:**
+    - **LB.14a.2 — one front door per tenant identity.** The only way to make
+      storefront pages genuinely cacheable. Today a custom domain wins over a
+      path prefix, so every render reads the `Host` header and ISR is
+      structurally unavailable — `revalidate` on those routes is INERT while
+      looking deliberate (measured: the build still emits `ƒ (Dynamic)`, no
+      warning). Scoped in `NEXT_STEPS.md` §LB.14a.
+    - **`TenantDomain.isPrimary` is a writer with no functional reader.** The
+      editor's Copy Link builds from `window.location.origin` — the CONSOLE's
+      host — so a merchant with a verified primary domain still copies a
+      platform link. **Deliberately NOT fixed**: until a hostname actually
+      reaches Render, pointing Copy Link at it swaps a working link for a 403.
+    - **The builder's money routes still parse with `z.coerce.number()`.** A
+      latent D-06 violation rather than a live defect (every typeable price
+      round-trips a double exactly, and server-side arithmetic is already
+      Decimal). Changing it needs every caller measured — checkout, catalogue
+      publish, webhooks, CSV import.
+    - **`apps/website-builder/prisma/schema.prisma` is a drifted 570-line
+      legacy schema** whose generated client is imported for TYPES only
+      (`lib/landing/mappers.ts`), and `ignoreBuildErrors` means the drift
+      cannot fail a build. Deleting it is a small slice that touches the
+      prebuild and LB.9's Docker client-generation step.
+    - **216 historical test tenants in `neondb`** (dev only, 2–10 Aug,
+      pre-LB.27 hooks, zero orphans). Count and command in `NEXT_STEPS.md`.
+
+## 6. TESTING STATUS
+
+**Re-run per file against the FINAL local build, 13 Aug 2026 (late night) —
+all green:** builder-sections **74** · storefront **48** · builder-api **35** ·
+hardening **13** · calc **28** · console-shell **20** · tracking **15** ·
+webhooks **10** · platform/domains **14** · platform/team **63** ·
+platform/workspace **4** · platform/sessions **2** · i18n **22** ·
+packages/db **35**. (ERP suites untouched this session: erp/screens 172,
+erp/finance 44, erp/catalog 75, erp/access 205, erp/ai 31,
+product-registry 36.)
+
+Two reds re-verified green, both the documented Neon transient — `packages/db`
+2/35 and `platform/team` 1/63, each passing alone. **One red was NOT
+transient and is the rule to remember:** builder-sections failed a
+published-page render with `PrismaClientValidationError: Unknown field
+trackingIntegrationIds`, because `builder:build` regenerates the app's Prisma
+client and **not** `packages/db/prisma/client`. Run
+`npm run generate --workspace @landingos/db` after any schema change.
+
+*(historical, kept for the record)*
 
 **Tested locally (green, per file, against the a42676b build):**
 console-shell **19/19** · platform/team **63/63** · erp/screens **173/173** ·
