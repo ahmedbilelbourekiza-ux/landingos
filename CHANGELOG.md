@@ -13,7 +13,7 @@ touched, any **migration**, and any **risk**.
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
 - **LB.40 — `robots.txt` said `Allow: /` to everyone, including the console**
-  (14 August 2026 — `f1e38bf`, **local; NOT deployed**).
+  (14 August 2026 — `f1e38bf`, **DEPLOYED the same day** in `c89b19b..0286f99`). Confirmed on production against a pre-push baseline: `Googlebot` 1 → 0, the other three old user-agents gone, `Disallow: /console/` and `Disallow: /api/` 0 → 1, and no `Sitemap:` on the platform host. The custom-domain branch is untestable in production by construction — Render 403s an unconfigured hostname at the edge (LB.14c) — and is covered by tests locally.
 
   **It is a replacement, not the addition it was asked for.**
   `public/robots.txt` already existed and had been serving in production the

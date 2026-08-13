@@ -15,6 +15,35 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.40 IS DEPLOYED — 14 Aug 2026
+>
+> **`origin/main` is `0286f99`** (`c89b19b..0286f99`, two commits, **no
+> migration**). Live 2m45s after the push. Baseline captured on a throwaway
+> production fixture BEFORE pushing:
+>
+> | Marker | Before | After |
+> |---|---|---|
+> | `Googlebot` in `/robots.txt` | **1** (the old static file) | **0** |
+> | `Bingbot` / `Twitterbot` / `facebookexternalhit` | present | **0** |
+> | `Disallow: /console/` | **0** | **1** |
+> | `Disallow: /api/` | **0** | **1** |
+> | `Sitemap:` on the platform host | absent | **absent** (correct — naming one would be the tenant roster) |
+>
+> A forged `X-Forwarded-Host` was re-checked against production and still adds
+> no `Sitemap` line. **The custom-domain branch could NOT be exercised in
+> production and that is expected, not a gap:** Render answers 403 at the edge
+> for any hostname not configured on the service, so a verified custom domain
+> cannot reach the app at all yet (LB.14c). It is covered by tests locally,
+> both the verified and the unverified case.
+>
+> **Full regression sweep after the deploy, all intact:** health green on four
+> checks · LB.14a's five cache paths unchanged (`no-store` on the quote and
+> thank-you, `max-age=60` on the public page, console and root untouched) ·
+> LB.37's console `noindex` and a storefront serving `index, follow` with the
+> merchant's own `<title>` · LB.39's sitemap listing home + visible category +
+> published page · LB.38's Delete control offered on the order-free page ·
+> LB.35b's `tracking-mode-all` present in the editor.
+>
 > ### ✔ LB.35b IS DEPLOYED — 13 Aug 2026 (late night)
 >
 > **`origin/main` is `407854a`** (`2c75c3c..407854a`, two commits, **no
@@ -778,15 +807,8 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **ONE slice is queued to deploy: LB.40 (`f1e38bf`)** — `robots.txt`.
-   **No migration.** It REPLACES `public/robots.txt`, which had been serving
-   `Allow: /` to every crawler including `/console` and `/api`; the platform
-   host now disallows those and names no sitemap, while a verified custom
-   domain names that one shop's. Suites green (storefront 66, builder-api 41,
-   builder-sections 74, console-shell 20, hardening 13, tracking 15, webhooks
-   10, i18n 22). **Not deployed — the user asked to be asked first.** Marker
-   for when it goes: `curl https://landingos.onrender.com/robots.txt` stops
-   containing `Googlebot` and starts containing `Disallow: /console/`.
+4. **Nothing is queued to deploy.** **LB.40** (`f1e38bf`) shipped on 14 Aug as
+   `c89b19b..0286f99`, no migration, verified live — §1 has the record.
 
    **LB.35b** (`dd4edac`) shipped on 13 Aug
    (late night) as `2c75c3c..407854a`, no migration, verified live — §1 has

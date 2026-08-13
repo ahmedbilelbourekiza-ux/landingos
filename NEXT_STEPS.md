@@ -810,9 +810,9 @@ copy, and tests. It also needs one product decision: whether the default
 NULL should be shown as "all" or as "not configured", since they look
 identical and mean the same thing today.
 
-### LB.40 — DONE, NOT DEPLOYED. robots.txt stops inviting crawlers in (14 Aug)
+### LB.40 — DONE + DEPLOYED. robots.txt stops inviting crawlers in (14 Aug)
 
-**`f1e38bf`, local only.** Asked for as "add the robots.txt". It is a
+**`f1e38bf`, DEPLOYED 14 Aug 2026** (`c89b19b..0286f99`). Confirmed on production against a pre-push baseline: `Googlebot` 1 → 0, `Disallow: /console/` 0 → 1, and the platform host still names no sitemap. Asked for as "add the robots.txt". It is a
 **replacement**.
 
 **The finding, and it corrects my own note.** `public/robots.txt` already
