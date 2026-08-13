@@ -41,7 +41,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
-| **LB.15** | Editor money inputs off `type="number"` (pricing section) | S | D-06 style residue; single values round-trip exactly, arithmetic is Decimal server-side since LB.10 |
+| ~~**LB.15**~~ | ~~Editor money inputs off `type="number"` (pricing section)~~ | S | **DONE 13 Aug 2026 (night); local commit only, not deployed — and the measurement found data loss, not style residue.** Three boxes: `price`, `oldPrice`, and every variant option's supplement. `step="1"` made any sub-unit price `stepMismatch` (the browser calling it invalid while `aria-invalid` said fine) and **two ArrowUp presses on 2990.50 stored 2992** — the control discarding the centimes. All three are now text + `inputMode="decimal"` + `dir="ltr"`, and ONE reader (`lib/landing/money-field.ts`) serves the schema, the preview strip and the save body. A comma is a decimal separator; `1,000` is REFUSED rather than guessed (a 1000× error either way), while a dot with three places is deliberately allowed because that is what a stored `Decimal` returns. New key `builder.editor.priceUnreadable` ×3 locales. calc 20→28, builder-sections 73→74 |
 | ~~LB.10~~ | ~~`website-builder:orders:write`~~ | — | **DONE in the LB.10 commit** (B-08 closed, console writes rerouted through the API, webhooks fire from console changes) |
 
 ### The 12 August pass — LB.16 to LB.22, slice by slice
@@ -356,19 +356,109 @@ from the branch.
 **`origin/main` is still `bd6d664`; production still runs the LB.30 app tree
 (`4f1b599`). Nothing here is pushed or deployed.**
 
-**⚠ THE BLOCKER BEFORE ANY DEPLOY IS LB.35's MIGRATION.**
-`LandingPage.trackingIntegrationIds JSONB` lives in `neondb` only. Both the
-storefront's integration resolver and the general PATCH read that column, so
-pushing this code before it exists in `landingos_prod` would break every
-landing page render. Apply it FIRST, user-approved, in the LB.20 order (diff →
-owner-role push with the datasource confirmed → verify the column → then the
-app). **No `apply-rls` re-run** — no new table, so it stays 49/49, which is
-the one way it differs from LB.20. The other five slices carry no schema
-change; LB.34 in particular needed none, writing the `ARCHIVED` enum value
-that has existed since the port.
+**✔ LB.35's MIGRATION IS APPLIED — 13 Aug 2026 (night), user-approved, as a
+database action ON ITS OWN.** `LandingPage.trackingIntegrationIds JSONB` now
+exists in `landingos_prod`. The DDL was previewed with `migrate diff` against
+the live production database (exactly that one statement, no other drift),
+pushed with the datasource confirmed `landingos_prod` in the output, and read
+back afterwards: `jsonb`, nullable, the one existing page row NULL — which is
+"inherit the tenant's whole set", what every page did before the column
+existed. A second `migrate diff` then returned *an empty migration*. **No
+`apply-rls` re-run**, as predicted: 49 tables with policies before and after
+(no new table). Shell-env overrides only; `packages/db/.env` still names
+`neondb`.
+
+**That was a migration, NOT a deploy.** `origin/main` is still `bd6d664` and
+the LB.31–LB.36 application code remains local. Production now runs the LB.30
+app tree against a schema that carries one extra nullable column no deployed
+code reads — the additive, forward-compatible direction, and the reason the
+column had to land first. The other five slices carry no schema change; LB.34
+in particular needed none, writing the `ARCHIVED` enum value that has existed
+since the port.
+
+**One local hazard this uncovered, worth knowing before any suite run:**
+`npm run builder:build` regenerates the APP's Prisma client
+(`apps/website-builder/src/generated/prisma`) through its own prebuild, but
+**not** `packages/db/prisma/client`, which is a second generated client the
+storefront path uses. After LB.35 merged, that client did not know
+`trackingIntegrationIds` and every published-page render 500'd with a
+`PrismaClientValidationError` — one red test in builder-sections that had
+nothing to do with the change under test. Fix is
+`npm run generate --workspace @landingos/db`. **After any schema change, both
+clients have to be regenerated.**
+
+### LB.15 — DONE. A price spinner was rounding the centimes away (13 Aug, night)
+
+**Local commit only, not deployed.** Asked for as style residue — "the
+editor's money inputs are still `type="number"`, the M-05/D-06 finding" — and
+the measurement found silent data loss sitting behind the rule.
+
+**What was affected, exactly.** Three boxes, all `Decimal` columns: the
+Pricing section's `price` and `oldPrice`, and the extra-price box on every
+variant option row. Nothing else in the editor — LB.20's delivery overrides
+were already text with a decimal keypad, and the create screen was fixed in
+LB.6. That is the whole of it, confirmed by reading every numeric input under
+`components/landings/` and by counting `input[type=number]` in the served
+editor HTML: three, then zero.
+
+**What `type="number"` was actually doing.** All three carried `step="1"`.
+Measured in the running editor:
+
+- A price of `2990.50` makes the box `stepMismatch: true` / `valid: false` —
+  the browser calls the field invalid while the section's own `aria-invalid`,
+  driven by zod, says it is fine. Two verdicts on one box.
+- **Two ArrowUp presses on `2990.50` produced `2992`.** The first snapped the
+  value to 2991, rounding the centimes away; the strip confirmed the form had
+  taken it. The control itself was destroying money.
+- On the variant row, `Number(e.target.value) || 0` turned anything it could
+  not parse into a free option.
+
+**The fix, and the one rule it adds.** All three are now
+`type="text" inputMode="decimal" dir="ltr"` with the pattern the create screen
+has published since LB.6 — the same money island the ERP panels use, so no
+`rtl:` utility may go inside one (LB.28). And because a box that stops being a
+number input needs SOMETHING to say what the characters mean,
+`lib/landing/money-field.ts` says it once: the schema that validates, the
+preview strip and the request that saves all call `readTypedMoney`. Two
+readings would let the section refuse a price it then sends, or send one it
+never showed — LB.20's rule, one field further on.
+
+**The comma decision, which is the part worth arguing about.** A comma is a
+decimal separator, because the fr and ar keypads offer one and a merchant here
+types `2990,50`. Ambiguity is **refused rather than guessed**: `1,000` is a
+thousand to an English reader and one to a French one, and picking either
+silently is a 1000× error on a price. A dot with three places is deliberately
+NOT refused — a dot is the separator the function itself emits, so `1.000` is
+what a stored `Decimal` comes back as, and refusing it would put an error on a
+form nobody had touched (LB.33's shape, avoided on purpose).
+`builder.editor.priceUnreadable` is new in all three locales, because "your
+price must be greater than 0" is untrue and useless when what you typed was
+`1,000`.
+
+**The variant row now holds the TEXT.** Driven straight off
+`option.extraPrice`, a controlled box could not hold `500,` for the keystroke
+between `500` and `500,75` — the number parsed back and the separator vanished
+under the cursor, which is why a decimal supplement was unenterable at all.
+
+**Verified live in fr and ar** against the running build: zero
+`input[type=number]` in the editor; `2990,50` typed in French saved and read
+back from the database as `2990.50`; `500,75` on a variant option stored as
+`500.75`; `1,000` refused with the new message in both languages; the box
+computing `direction: ltr` inside `dir="rtl"`. Fixtures restored afterwards
+(price back to 5900, the throwaway variant deleted, the demo user's locale put
+back to fr). calc 20→**28**, builder-sections 73→**74**, storefront 40,
+builder-api 35, i18n 22.
+
+**Recorded rather than widened.** Both routes still parse money with
+`z.coerce.number()`. Every price a merchant can type round-trips through a
+double exactly, and the server-side arithmetic is already `Decimal` (M-06's
+storefront test), so this is a latent rule violation rather than a live
+defect. Changing how the quote/charge path parses is its own slice and needs
+its own measurement of every caller — the storefront checkout, the catalogue
+publish, the webhooks and the CSV import all reach those columns.
 
 **LB.35 — DONE. A landing page links to its own Meta pixels (13 Aug).
-⚠ CARRIES A MIGRATION.** Half the premise measured false before anything was
+⚠ ITS MIGRATION IS NOW APPLIED — see above.** Half the premise measured false before anything was
 touched: "only the first pixel fires" was never true — with two active Meta
 integrations, Meta's own `fbevents.js` fetched a `signals/config` for BOTH
 ids in a real browser, so the loader's `for (const id of ids) fbq("init",id)`

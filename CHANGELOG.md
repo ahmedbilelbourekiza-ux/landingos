@@ -12,6 +12,144 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **MIGRATION — LB.35's column reaches production** (13 August 2026, night,
+  **user-approved as a database action on its own; no code was pushed**).
+  This CLOSES the "⚠ deploy blocker" note on the merge entry below.
+
+  **What.** `ALTER TABLE "LandingPage" ADD COLUMN "trackingIntegrationIds"
+  JSONB;` — one statement, against `landingos_prod`.
+
+  **In the LB.20 order, and it is the order that makes it safe.** The DDL was
+  previewed with `prisma migrate diff --from-url <prod> --to-schema-datamodel`
+  BEFORE anything was written, and it rendered exactly that one statement and
+  nothing else — no other drift had accumulated between the schema and the
+  production database. `prisma db push` then reported
+  `Datasource "db": PostgreSQL database "landingos_prod"` in its own output,
+  which is the check that the target was never assumed. Afterwards the column
+  read back as `jsonb`, `is_nullable = YES`, and the single existing
+  `LandingPage` row holds NULL — which MEANS "fire the tenant's whole set of
+  integrations", exactly what that page did before the column existed. A
+  second `migrate diff` returned *"This is an empty migration."*
+
+  **No `apply-rls` run, and the count is the evidence:** 49 tables with
+  policies and 49 with `relrowsecurity` before and after. Policies are
+  per-table and no table was added — the one way this differs from LB.20,
+  which moved 48→49. Overrides were shell-env only; `packages/db/.env` still
+  names `neondb`, and the verification script was deleted after use.
+
+  **This is not a deploy.** `origin/main` is still `bd6d664` and LB.31–LB.36
+  remain local commits. Production runs the LB.30 app tree against a schema
+  with one extra nullable column that no deployed code reads — the additive,
+  forward-compatible direction, and the whole reason the column goes first.
+
+  **Risk.** None identified for the running build: no deployed query names the
+  column, and NULL is the pre-existing meaning. The remaining risk is the
+  ordinary one — the app code is not yet deployed, so per-page pixel selection
+  is unavailable in production until it is.
+
+  **A local trap this uncovered, recorded because it cost a red suite.**
+  `npm run builder:build` regenerates the APP's Prisma client through its own
+  prebuild but NOT `packages/db/prisma/client`, a second generated client the
+  storefront path uses. That client still had no `trackingIntegrationIds`
+  after the LB.35 merge, so every published-page render 500'd with
+  `PrismaClientValidationError: Unknown field trackingIntegrationIds` — one
+  failing builder-sections test with nothing to do with the change under test.
+  `npm run generate --workspace @landingos/db` fixes it. **After any schema
+  change, regenerate BOTH clients.**
+
+- **LB.15** A price spinner was rounding the centimes away (13 August 2026,
+  night — **local commit only; not pushed, not deployed**).
+
+  **Asked for as style residue.** `BUILDER_AUDIT.md` M-05 names money entering
+  through `type="number"` as "the exact input style D-06's rules refuse for
+  `Decimal` columns"; LB.6 fixed the create screen and left the editor.
+  Measured in the running editor first, the rule was hiding silent data loss.
+
+  **What was affected, exactly — three boxes.** The Pricing section's `price`
+  and `oldPrice`, and the extra-price box on every variant option row. All
+  three are `Decimal` columns (`LandingPage.price`, `.oldPrice`,
+  `LandingVariantOption.extraPrice`). Nothing else: LB.20's per-page delivery
+  overrides were already text with a decimal keypad, and the create screen has
+  been since LB.6. Confirmed by reading every numeric input under
+  `components/landings/` and by counting `input[type=number]` in the served
+  editor HTML — three before, zero after.
+
+  **What the control was doing, measured.** All three carried `step="1"`:
+
+  1. A price of `2990.50` leaves the box `stepMismatch: true` / `valid: false`
+     — the browser calling the field invalid while the section's own
+     `aria-invalid`, driven by zod, says it is fine. Two verdicts, one box.
+  2. **Two ArrowUp presses on `2990.50` produced `2992`.** The first snapped it
+     to 2991 and the preview strip followed, so the form had taken it. The
+     control was destroying money on a keypress.
+  3. On the variant row, `Math.max(0, Number(e.target.value) || 0)` turned
+     anything unparseable into **0** — a free option on a product that charges
+     for one.
+
+  **The fix.** `type="text" inputMode="decimal" dir="ltr"` plus the pattern the
+  create screen has published since LB.6 — the same money island the ERP order
+  and product panels use, which is also why no `rtl:` utility may appear inside
+  one (LB.28's rule).
+
+  **The rule this slice adds.** *When a box stops being a number input,
+  exactly one function may say what the characters mean.*
+  `src/lib/landing/money-field.ts` is that function, and the schema that
+  validates, the preview strip that shows, and the request that saves all call
+  it. Two readings would let the section refuse a price it then sends, or send
+  one it never showed — LB.20's quote-equals-charge rule, one field further on.
+
+  **The comma, and why ambiguity is refused.** A comma is a decimal separator,
+  because the fr and ar keypads offer one and a merchant in Algeria types
+  `2990,50`. But `1,000` is a thousand to an English reader and one to a French
+  one: `normaliseTypedMoney` returns `null` for it rather than guessing,
+  because guessing wrong is a 1000× error on a price. **A dot followed by three
+  digits is deliberately NOT refused** — a dot is the separator this function
+  emits, so `1.000` is what a stored `Decimal` of 1 with three places comes
+  back as, and refusing it would put an error on a form nobody had touched,
+  which is precisely the defect LB.33 spent a slice disproving.
+
+  **Two refusals, not one.** `builder.editor.priceUnreadable` is new in en/fr/ar
+  because unreadable text and a non-positive number are different mistakes:
+  telling somebody who typed `1,000` that their price must be greater than zero
+  is untrue and no help.
+
+  **The variant row holds the TEXT now.** Driven straight off
+  `option.extraPrice`, a controlled input cannot hold `500,` for the keystroke
+  between `500` and `500,75` — the number parses back and the separator
+  disappears under the cursor, so a decimal supplement was unenterable. The
+  prop still wins whenever it disagrees with what the text says, so a cancel or
+  a reload resets the box.
+
+  **Verified live, in French and Arabic, against the running build.** Zero
+  `input[type=number]` in the editor; `2990,50` typed in French saved and read
+  back out of the database as Decimal `2990.50`; `500,75` on a variant option
+  stored as `500.75`; `1,000` refused with the new message in both languages;
+  the box computing `direction: ltr` under `<html dir="rtl">`. Fixtures
+  restored afterwards — price back to 5900, the throwaway variant deleted, the
+  demo user's locale returned to fr.
+
+  #### Files
+  `src/lib/landing/money-field.ts` (new), `.../edit/sections/pricing-section.tsx`,
+  `.../edit/sections/variant-option-row.tsx`, `packages/i18n/src/messages/{en,fr,ar}.json`,
+  `test/calc.test.ts`, `test/builder-sections.test.ts`.
+
+  **Tests.** calc 20 → **28** (the reader, in the one pure suite — it is money,
+  it runs in a browser, and its failure mode is a wrong number rather than an
+  exception), builder-sections 73 → **74** (the rendered tags, the ERP's own
+  "money is never a number input" assertion applied to the screen a merchant
+  actually prices a product on, including a guard that no input in the whole
+  editor is `type="number"`). storefront 40, builder-api 35, i18n 22.
+
+  **Migration.** None.
+
+  **Risk, stated rather than fixed.** Both routes still parse money with
+  `z.coerce.number()`. Every price a merchant can type round-trips a double
+  exactly, and the server-side arithmetic is already `Decimal` (M-06's
+  storefront test), so this is a latent rule violation, not a live defect.
+  Changing how the quote/charge path parses is its own slice: the storefront
+  checkout, the catalogue publish, the webhooks and the CSV import all reach
+  those columns and each would need measuring.
+
 - **MERGE — LB.31…LB.36 land on local `master`** (13 August 2026). **Merge
   only: NOT pushed, NOT deployed.** Supersedes the "local only" note on all
   six entries below, which now means *merged to master locally*.

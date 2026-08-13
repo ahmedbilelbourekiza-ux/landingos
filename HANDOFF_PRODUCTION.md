@@ -12,39 +12,60 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### ⚠ THE NEXT DEPLOY CARRIES A MIGRATION — read before pushing
+> ### ✔ LB.35's MIGRATION IS APPLIED — 13 Aug 2026 (night). The app code is still NOT deployed.
 >
-> **LB.31–LB.36 are MERGED INTO LOCAL `master`** (`bd6d664..fecc4ff`, a clean
-> fast-forward on 13 Aug 2026) **but are NOT pushed and NOT deployed.**
-> `origin/main` is still `bd6d664`, and production still runs the LB.30 app
-> tree (`4f1b599`). **This migration is why the range is being held.**
+> **The database and the code moved separately, on purpose, and only the
+> database moved.** The user approved the migration as an action on its own;
+> nothing was pushed.
 >
-> **LB.35 adds one column** and it is NOT yet in `landingos_prod`:
+> **Applied to `landingos_prod`:**
 >
 > ```sql
 > ALTER TABLE "LandingPage" ADD COLUMN "trackingIntegrationIds" JSONB;
 > ```
 >
-> That is the entire DDL, previewed with `prisma migrate diff` and applied so
-> far to **`neondb` only** (the push asserted the target was not
-> `landingos_prod` before running). It is additive and nullable, so existing
-> rows keep their meaning — NULL means "this page fires all of the tenant's
-> active integrations", which is what every page did before the column
-> existed.
+> **How, in the LB.20 order — and the order is what made it safe:**
+> 1. `prisma migrate diff --from-url <prod owner> --to-schema-datamodel` FIRST.
+>    It rendered exactly that one statement and nothing else, which is also how
+>    we know no other drift had accumulated between the schema and production.
+> 2. `prisma db push`, with `Datasource "db": PostgreSQL database
+>    "landingos_prod"` read back out of the push's own output — the target is
+>    confirmed, never assumed.
+> 3. Read back afterwards: `jsonb`, `is_nullable = YES`; the one existing
+>    `LandingPage` row holds NULL, which MEANS "fire all of the tenant's active
+>    integrations" — what every page did before the column existed.
+> 4. `migrate diff` again → *"This is an empty migration."*
 >
-> **Apply it to production BEFORE the app deploy, in the LB.20 order:** diff
-> against `landingos_prod` → push with the owner role on the direct endpoint,
-> confirming `Datasource … "landingos_prod"` in the output → verify the column
-> is present → then push the app. Env overrides shell-only; never edit
-> `packages/db/.env`.
+> **No `apply-rls` run, and the numbers are the evidence:** 49 tables with
+> policies, 49 with `relrowsecurity`, before and after. No table was added.
+> (That is the one way this differed from LB.20, which moved 48→49.)
 >
-> **No `apply-rls` re-run is needed.** Policies are per-table and no table was
-> added, so the count stays **49/49**. (This is the one thing that differs
-> from LB.20, which added a table and moved 48→49.)
+> Overrides were shell-env only; `packages/db/.env` still names `neondb`. The
+> read-only verification script was deleted after use. Health stayed green
+> throughout.
+>
+> ### ⚠ WHAT IS STILL NOT DEPLOYED
+>
+> **LB.31–LB.36 remain LOCAL COMMITS.** `origin/main` is still `bd6d664`;
+> production runs the LB.30 app tree (`4f1b599`). Production is now a schema
+> ONE nullable column ahead of the code it serves — the additive,
+> forward-compatible direction, which is exactly why the column goes first.
+> No deployed query names it.
 >
 > The other local slices — LB.31, LB.32, LB.33, LB.34, LB.36 — carry **no**
 > schema change. LB.34 in particular needed none: it writes the
 > `LandingPageStatus.ARCHIVED` value that has existed since the port.
+> **Nothing blocks the app deploy now except the user's approval to push.**
+>
+> ### One local trap this uncovered
+>
+> `npm run builder:build` regenerates the APP's Prisma client through its own
+> prebuild but **not** `packages/db/prisma/client` — a second generated client
+> the storefront path uses. After the LB.35 merge it still had no
+> `trackingIntegrationIds`, and every published-page render 500'd with
+> `PrismaClientValidationError`, showing up as one unrelated-looking red test.
+> **After any schema change run `npm run generate --workspace @landingos/db`
+> as well.**
 
 - **Deployed commit: `4f1b599`** (13 Aug 2026, night, user-approved —
   **LB.30**: the store home, category and thank-you pages wear the store's
