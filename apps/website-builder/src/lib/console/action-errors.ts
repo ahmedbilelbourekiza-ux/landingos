@@ -74,6 +74,23 @@ const ERROR_KEYS: Record<string, string> = {
   // "narrow the filter". A generic message here sends somebody to support for a
   // problem they can solve in one click.
   TOO_MANY_ROWS: "common.error.tooManyRows",
+  /* LB.14c — the custom-domains screen, and it is the UNKNOWN_ADAPTER note
+   * above happening a second time. B5 shipped five refusal codes and mapped
+   * none of them, so a screen whose every refusal names a thing the merchant
+   * must go and change in their own DNS zone answered "that didn't work" to
+   * all five — measured in the running console.
+   *
+   * `DNS_NO_RECORD` and `DNS_TOKEN_MISMATCH` are two codes because the verify
+   * route's own comment calls the distinction essential: one means "keep
+   * waiting, DNS has not propagated", the other means "you published the
+   * wrong string, go and fix it". They are the opposite instruction, and
+   * collapsing them costs somebody an afternoon. */
+  DNS_NO_RECORD: "common.error.dnsNoRecord",
+  DNS_TOKEN_MISMATCH: "common.error.dnsTokenMismatch",
+  INVALID_DOMAIN: "common.error.invalidDomain",
+  DOMAIN_TAKEN: "common.error.domainTaken",
+  DOMAIN_LIMIT: "common.error.domainLimit",
+  NOT_VERIFIED: "common.error.domainNotVerified",
   INTERNAL_ERROR: "common.error.internal",
   // Not from the server — the request never arrived. Worth its own wording
   // because "nothing was saved" is certain here and merely likely otherwise.

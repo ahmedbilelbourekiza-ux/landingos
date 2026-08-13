@@ -18,6 +18,14 @@ type Params = { id: string };
  * propagation is exactly the case they need distinguished. Nothing here
  * reveals another tenant's anything — the row is reached through the
  * caller's own binding.
+ *
+ * LB.14c — THAT DISTINCTION IS IN THE CODE, NOT ONLY IN THE MESSAGE. It used
+ * to be one code (`VERIFICATION_FAILED`) carrying two meanings in an English
+ * developer message, and `lib/console/action-errors.ts` states that a screen
+ * keys off the CODE and never shows the message. So the two cases the comment
+ * above calls essential arrived at the merchant as one untranslated fallback:
+ * "that didn't work" — measured in the running console. A code per cause is
+ * what makes the distinction reach the person who has to act on it.
  */
 
 export const POST = tenantRoute<Params>("platform:domains:manage", async ({ db, params }) => {
@@ -34,7 +42,7 @@ export const POST = tenantRoute<Params>("platform:domains:manage", async ({ db, 
   } catch {
     return apiError(
       422,
-      "VERIFICATION_FAILED",
+      "DNS_NO_RECORD",
       `No TXT record found at _landingos-verify.${row.domain} — create it with the token, then allow time for DNS to propagate.`,
     );
   }
@@ -44,7 +52,7 @@ export const POST = tenantRoute<Params>("platform:domains:manage", async ({ db, 
   if (!found) {
     return apiError(
       422,
-      "VERIFICATION_FAILED",
+      "DNS_TOKEN_MISMATCH",
       "A TXT record exists but none matches the token exactly.",
     );
   }

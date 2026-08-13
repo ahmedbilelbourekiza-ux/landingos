@@ -138,11 +138,39 @@ describe('verification is the gate', { skip }, () => {
   test('verifying without the DNS record fails and writes nothing', async () => {
     const r = await post(`/api/platform/domains/${domainId}/verify`, tokens.a);
     assert.equal(r.status, 422);
-    assert.equal(r.body.error.code, 'VERIFICATION_FAILED');
+    // LB.14c — a code per CAUSE, not one code for two. "keep waiting, DNS has
+    // not propagated" and "you published the wrong string" are the opposite
+    // instruction to the person mid-setup, and the route's own comment calls
+    // that distinction essential. It used to arrive as one code, which
+    // `action-errors.ts` then had no entry for at all.
+    assert.equal(r.body.error.code, 'DNS_NO_RECORD');
     const row = await withTenant(tenantA, (tx) =>
       (tx as any).tenantDomain.findUnique({ where: { id: domainId }, select: { verifiedAt: true } }),
     );
     assert.equal((row as any).verifiedAt, null, 'a failed lookup must never verify');
+  });
+
+  test("every refusal this screen can produce has a message in the reader's language", async () => {
+    /* B5 shipped five refusal codes and mapped NONE of them, so a screen where
+     * every refusal names something the merchant must go and change in their
+     * own DNS zone answered "that didn't work" to all five — measured in the
+     * running console before this was fixed. It is the second time this exact
+     * shape has been caught; `action-errors.ts` records the first
+     * (`UNKNOWN_ADAPTER`, LP.2) directly above the entries added here.
+     *
+     * Asserted against the module rather than by clicking, so it fails when a
+     * SIXTH code is added to these routes and not mapped. */
+    const { actionErrors, FALLBACK } = await import('../../src/lib/console/action-errors.ts');
+    const messages = actionErrors((key: string) => `T:${key}`);
+    for (const code of [
+      'DNS_NO_RECORD', 'DNS_TOKEN_MISMATCH', 'INVALID_DOMAIN',
+      'DOMAIN_TAKEN', 'DOMAIN_LIMIT', 'NOT_VERIFIED',
+    ]) {
+      assert.ok(messages[code], `${code} has no message and falls back to "that didn't work"`);
+      assert.notEqual(messages[code], messages[FALLBACK], `${code} still shows the generic refusal`);
+    }
+    // And the two DNS causes must not collapse back into one wording.
+    assert.notEqual(messages.DNS_NO_RECORD, messages.DNS_TOKEN_MISMATCH);
   });
 
   test('an unverified domain cannot become primary', async () => {
