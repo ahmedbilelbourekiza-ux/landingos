@@ -23,6 +23,7 @@ export function PageRowActions({
   publicPath,
   published,
   archived,
+  orderCount,
   labels,
   errors,
 }: {
@@ -32,6 +33,10 @@ export function PageRowActions({
   /** An archived row offers Restore in place of Archive — the same door both
    *  ways, so a merchant never has to find a different screen to undo. */
   readonly archived: boolean;
+  /** How many orders this page has sold. Decides whether Delete is offered at
+   *  all — see the comment on `remove` below. The list already selects it for
+   *  the Orders column, so this costs no extra query. */
+  readonly orderCount: number;
   readonly labels: {
     edit: string;
     duplicate: string;
@@ -39,6 +44,8 @@ export function PageRowActions({
     archive: string;
     restore: string;
     archiveConfirm: string;
+    delete: string;
+    deleteConfirm: string;
   };
   readonly errors: ActionErrors;
 }) {
@@ -65,6 +72,30 @@ export function PageRowActions({
     if (ok) router.refresh();
   };
 
+  /* DELETE, and it is a genuinely different act from Archive — LB.38.
+   *
+   * The hardened route has existed since LB.34: it refuses `409 HAS_ORDERS`
+   * for a page that has sold anything and hard-deletes one that has not. What
+   * it never had was a door. Its own comment said archiving "is what the
+   * console now offers", and that was the whole story — a mistyped draft could
+   * only ever be archived, so an archive nobody wanted filled up with pages
+   * that had never been anything.
+   *
+   * OFFERED ONLY AT ZERO ORDERS, which is belt and braces on purpose. The
+   * route is the authority and refuses regardless; the button's absence is so
+   * a merchant is never invited to press something that always fails for them.
+   * Hiding it also puts Archive where their eye already is for exactly the
+   * pages where Archive is the right answer.
+   *
+   * No `router.refresh()` on success and no optimistic removal: `run` already
+   * settles, and the row is gone, so refresh is what re-renders the list
+   * without it. Kept explicit rather than relying on the archive path's. */
+  const remove = async () => {
+    if (!window.confirm(labels.deleteConfirm)) return;
+    const { ok } = await run("DELETE", `/api/builder/landings/${id}`);
+    if (ok) router.refresh();
+  };
+
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="page-row-actions">
       <Link href={`/console/builder/pages/${id}/edit`} className={button("default", "sm")}>
@@ -88,6 +119,22 @@ export function PageRowActions({
       >
         {archived ? labels.restore : labels.archive}
       </ActionButton>
+      {/* Only for a page that has never sold anything. A page WITH orders sees
+          Archive above and no Delete at all, which is the honest offer: the
+          route would refuse it, and a button that always refuses is worse than
+          no button. */}
+      {orderCount === 0 && (
+        <ActionButton
+          pending={pending}
+          pendingLabel="…"
+          size="sm"
+          variant="ghost"
+          data-testid="page-delete"
+          onClick={remove}
+        >
+          {labels.delete}
+        </ActionButton>
+      )}
       <ActionError message={error} />
     </div>
   );

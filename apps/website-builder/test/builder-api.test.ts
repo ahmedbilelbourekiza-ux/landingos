@@ -526,6 +526,54 @@ describe('a page is ARCHIVED, not deleted, once it has sold anything (LB.34)', {
     });
     assert.equal(r.status, 403, 'a viewer took a page off the storefront');
   });
+
+  /* LB.38 — the route above is only half the feature, and the missing half is
+   * what a merchant could actually reach. The hardened DELETE had existed
+   * since LB.34 and NOTHING in the console called it: `method: "DELETE"`
+   * appeared in no component, so a page that had never sold anything could
+   * only be archived, forever. These two assert the DOOR, not the route. */
+
+  const pagesListHtml = async () => {
+    const res = await fetch(BASE + '/console/builder/pages', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.ownerA}` },
+      redirect: 'follow',
+    });
+    assert.equal(res.status, 200);
+    return res.text();
+  };
+
+  /** The row markup for one page id, so a sibling row cannot satisfy a match. */
+  const rowFor = (html: string, id: string): string => {
+    const start = html.indexOf(`data-page-id="${id}"`);
+    assert.ok(start > -1, `page ${id} is not in the list`);
+    const end = html.indexOf('data-page-id="', start + 20);
+    return html.slice(start, end === -1 ? html.length : end);
+  };
+
+  test('the pages list OFFERS Delete on a page that never sold anything', async () => {
+    const page = await withTenant(tenantA, (tx) =>
+      (tx as any).landingPage.create({
+        data: { tenantId: tenantA, title: 'Deletable Draft', slug: `deletable-${Date.now()}`, price: 100 },
+        select: { id: true },
+      }),
+    );
+    const row = rowFor(await pagesListHtml(), page.id);
+    assert.match(row, /data-testid="page-delete"/, 'no way to delete a page with no orders');
+    assert.match(row, /data-testid="page-archive"/, 'archive must stay available too');
+  });
+
+  test('the pages list HIDES Delete on a page that has orders, and still offers Archive', async () => {
+    // A button that always answers 409 is worse than no button: it invites the
+    // merchant to try, refuses, and teaches them the console is unreliable.
+    // Archive is the door that works for this row, and it is the one shown.
+    const { page } = await pageWithOrder('Sold, Not Deletable');
+    const row = rowFor(await pagesListHtml(), page.id);
+    assert.ok(
+      !/data-testid="page-delete"/.test(row),
+      'a page with orders offered a Delete that the route would refuse',
+    );
+    assert.match(row, /data-testid="page-archive"/, 'archive is what this row must offer');
+  });
 });
 
 describe('a landing page links to its own Meta pixels (LB.35)', { skip }, () => {

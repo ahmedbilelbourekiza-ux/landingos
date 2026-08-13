@@ -91,6 +91,14 @@ const ERROR_KEYS: Record<string, string> = {
   DOMAIN_TAKEN: "common.error.domainTaken",
   DOMAIN_LIMIT: "common.error.domainLimit",
   NOT_VERIFIED: "common.error.domainNotVerified",
+  /* LB.38. The pages list hides Delete for a page that has sold anything, so
+   * in normal use this refusal is unreachable — it is here for the case that
+   * is NOT normal use: a list rendered before the first order arrived, still
+   * open in another tab. The row says "no orders", the database disagrees, and
+   * the merchant is one click from being told "that didn't work" about the one
+   * refusal in this screen that is actively protecting their revenue history.
+   * The message names the door that IS open, which is Archive. */
+  HAS_ORDERS: "common.error.hasOrders",
   INTERNAL_ERROR: "common.error.internal",
   // Not from the server — the request never arrived. Worth its own wording
   // because "nothing was saved" is certain here and merely likely otherwise.

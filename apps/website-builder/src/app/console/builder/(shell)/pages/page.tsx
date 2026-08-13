@@ -207,6 +207,9 @@ export default async function BuilderPagesScreen({
                       publicPath={`/${tenantSlug}/${p.slug}`}
                       published={p.published}
                       archived={p.status === "ARCHIVED"}
+                      // Already selected for the Orders column above, so
+                      // deciding whether Delete may be offered costs nothing.
+                      orderCount={p._count.salesOrders}
                       labels={{
                         edit: t("common.edit"),
                         duplicate: t("builder.pages.duplicate"),
@@ -214,6 +217,8 @@ export default async function BuilderPagesScreen({
                         archive: t("builder.pages.archive"),
                         restore: t("builder.pages.restore"),
                         archiveConfirm: t("builder.pages.archiveConfirm"),
+                        delete: t("builder.pages.delete"),
+                        deleteConfirm: t("builder.pages.deleteConfirm"),
                       }}
                       errors={errors}
                     />
