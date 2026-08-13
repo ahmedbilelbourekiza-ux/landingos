@@ -2,9 +2,10 @@
 
 **Last updated:** 13 August 2026, late night — the LB.31–LB.36 / LB.15 /
 LB.14a–c range **DEPLOYED**
-**Branch:** `master` (`ed30038`) · **`origin/main` is `d6a56b1` and that is
-what production serves; the one commit above it is this deploy's record,
-documentation only. No migration is pending.** LB.35's column was applied to
+**Branch:** `master` · **`origin/main` is `d6a56b1` and that is what
+production serves; the commits above it are this deploy's record,
+documentation only — check with `git diff origin/main master -- apps packages`
+(empty). No migration is pending.** LB.35's column was applied to
 `landingos_prod` earlier the same night; the app code followed as
 `bd6d664..d6a56b1`. See `HANDOFF_PRODUCTION.md` §1 first.
 

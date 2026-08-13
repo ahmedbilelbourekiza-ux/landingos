@@ -22,11 +22,14 @@ remain the deep references.
 > the details are in the deploy record below and in CHANGELOG's top entry.
 > **No migration pending**, RLS **49/49**.
 >
-> **One local commit sits on top: `ed30038`, this deploy's record.** It is
-> documentation only — `git diff origin/main master -- apps packages` is
-> empty — so pushing it changes nothing a user can see, and it was left
-> unpushed deliberately rather than trigger a Render rebuild of an
-> already-verified build. Push it whenever the next real change goes out.
+> **Local `master` sits a commit or two above it: this deploy's own record.**
+> Documentation only, and the way to confirm that is
+> `git diff origin/main master -- apps packages` returning **empty** — not a
+> hash written here, because a record commit cannot know its own hash and
+> every attempt to pin one in this file has gone stale immediately (twice
+> while writing this very entry). Left unpushed on purpose: pushing docs
+> rebuilds an already-verified build for nothing. Push it with the next real
+> change.
 >
 > ### ✔ LB.35's MIGRATION WAS APPLIED FIRST — 13 Aug 2026 (night)
 >
@@ -663,9 +666,9 @@ The exact first steps, in order:
 3. **Confirm `origin/main` still equals `d6a56b1`** (`git fetch && git log
    --oneline origin/main -1`) — if it moved, someone else deployed; re-read
    the situation before assuming this document's state. **Local `master` is
-   `ed30038`, one DOCUMENTATION commit ahead — this deploy's record, carrying
-   no application code (`git diff origin/main master -- apps packages` is
-   empty).** Do not trust the commit COUNT any
+   a commit or two ahead — this deploy's record, DOCUMENTATION only. Confirm
+   that with `git diff origin/main master -- apps packages` returning empty,
+   which is a check rather than a claim.** Do not trust the commit COUNT any
    handoff quotes — this one said "sixteen" and the real answer was eighteen
    by the time it was read. Derive it: `git rev-list --count origin/main..master`.
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
