@@ -57,6 +57,108 @@ touched, any **migration**, and any **risk**.
   `npm run generate --workspace @landingos/db` fixes it. **After any schema
   change, regenerate BOTH clients.**
 
+- **LB.14a** The one response that must never be stale had no cache directive
+  (13 August 2026, night — **local commit only; not pushed, not deployed**).
+
+  **`BUILDER_AUDIT.md` P-01 asked for a decision, not a change**: "every
+  storefront page is `force-dynamic` with 8 relation includes; no cache header,
+  no ISR … bounded and indexed, so acceptable at launch scale — but decide and
+  record the caching story." Measuring first produced the opposite of the
+  expected finding.
+
+  **What was being sent, read off the running build with `curl -D -`:** the
+  three public pages sent `private, no-cache, no-store, max-age=0,
+  must-revalidate` — the strictest header there is, and Next's default for a
+  `force-dynamic` route. `GET /api/storefront/[t]/wilayas` — **the delivery
+  quote** — sent **no `Cache-Control` at all**, as did `/tracking` and
+  `/meta-pixels`. RFC 9111 §4.2.2 lets a shared cache assign its own heuristic
+  freshness to a 200 GET with no freshness information. So the marketing pages
+  were locked down hard enough to forbid a back-button redisplay, and the one
+  response whose staleness costs a customer money carried no instruction.
+
+  **Timings, for scale** (dev machine → Neon eu-central-1, an upper bound):
+  landing page 1.12–1.90 s TTFB / 120 KB, store home 0.73–0.87 s, the quote
+  0.54–0.73 s — every one a cold round trip.
+
+  **The rule, in `src/lib/storefront/cache-policy.ts` with its argument:** *a
+  response may be reused by a SHARED cache only if a stale copy of it cannot
+  cost somebody money or expose somebody's order.* Deliberately stricter than
+  "product data changes rarely", because a storefront is reachable at a
+  MERCHANT's own hostname, a merchant may put any proxy in front of it, and
+  **this platform cannot purge a cache it does not own** — `public`/`s-maxage`
+  would be a promise that cannot be taken back once a price changes.
+
+  **Why the public pages fail that test**, which is easy to miss because they
+  look like static marketing: every one renders a price — the product page in
+  its hero and its JSON-LD, home and category in each card — and the checkout
+  recomputes the price server-side from the row. A stale copy does not merely
+  look wrong; it takes an order at a number the customer never agreed to. And
+  LB.34 made ARCHIVE the delete, so a shared copy of an archived page keeps
+  selling a product the merchant retired.
+
+  **What changed.** Public pages: `private, max-age=60, must-revalidate` — the
+  one real win available, because `no-store` cost a full server render for a
+  back navigation on a phone, and a minute of PRIVATE freshness adds no hazard
+  that was not already there (a tab left open is already unboundedly stale).
+  The delivery quote, both pixel-config routes and the thank-you page:
+  `private, no-store, max-age=0, must-revalidate`.
+
+  **ISR is unavailable, not declined — and it was measured, because "just add
+  `revalidate`" is the obvious suggestion.** `export const revalidate = 60` was
+  put on the category route with `force-dynamic` removed. The build still
+  emitted `ƒ /[tenant]/category/[slug]  (Dynamic) server-rendered on demand`,
+  **with no warning and no error**; at runtime the route still sent `no-store`
+  and still cost a round trip. `resolveStorefrontTenant` asks `tenantByDomain`
+  first because a custom domain WINS over a path prefix (decision D2), that
+  reads the `Host` header, and `headers()` is a Dynamic API — so a `revalidate`
+  export on a storefront route is inert while looking deliberate. Same shape as
+  the Tailwind `calc()` that compiled to nothing, `--theme-background` with a
+  writer and no reader, and the `rtl:` variant assumed dead.
+
+  **Two config rules were silently wrong before the response was read**, which
+  is why the tests assert the SERVED header and never the config:
+
+  1. **Next applies EVERY matching header rule, later ones overriding earlier
+     ones.** The thank-you `no-store` was written first on the assumption that
+     first match wins, and the broad tenant rule overrode it — **a customer's
+     order confirmation was answering `max-age=60`** while the config said
+     otherwise. It is now both last AND excluded from the broad rule, so it
+     does not depend on ordering semantics at all.
+  2. **`.*` in the tenant segment matches the EMPTY string**, so the bare root
+     `/` was caught and its 307 to `/console` began being cached. The root is
+     the one path whose meaning depends on the Host (platform root → console; a
+     verified custom domain's root → that tenant's storefront, `acbc96a`) and a
+     header chosen by PATH cannot tell them apart. `.+`; it keeps the framework
+     default.
+
+  **Stated boundaries** (also in `NEXT_STEPS.md` §LB.14a): a custom-domain
+  storefront HOME is served by `/` and is therefore deliberately uncached,
+  while a path-prefix home gets the 60 s; a 404 is cached for 60 s too, which
+  fails closed but can show a merchant their own stale 404 for a minute after
+  publishing; and **none of this reduces database load** — only repeat-visit
+  and back-navigation cost moved.
+
+  **Scoped, not built — LB.14a.2.** Making these pages genuinely cacheable
+  means one front door per tenant identity: resolve custom domains in a rewrite
+  that runs before the page, so `/[tenant]/[slug]` renders from params alone
+  and can take `revalidate`. It touches D2's guarantee, the `X-Forwarded-Host`
+  trust rule, and every storefront test.
+
+  #### Files
+  `src/lib/storefront/cache-policy.ts` (new), `next.config.ts` (+`headers()`),
+  `src/app/api/storefront/[tenant]/{wilayas,tracking,meta-pixels}/route.ts`,
+  `test/storefront.test.ts`.
+
+  **Tests.** storefront 40 → **48**, including one that pins the rule which was
+  silently inert. console-shell 20, hardening 12, tracking 15,
+  builder-sections 74 — unaffected. Verified live across nine paths; console
+  screens and `/_next/static/*` (still `public, max-age=31536000, immutable`)
+  are outside the rule.
+
+  **Migration.** None. **Risk.** The 60-second private window on public pages
+  is the only new behaviour; it is per-browser, shorter than any tab a customer
+  leaves open, and reversible by one constant.
+
 - **LB.15** A price spinner was rounding the centimes away (13 August 2026,
   night — **local commit only; not pushed, not deployed**).
 

@@ -40,7 +40,8 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | **LB.36** | Brands — a store organised around brands instead of one flat shop | M–L | **SCOPED, NOT BUILT (13 Aug 2026; the scoping doc is merged to local `master`)** — a measurement + proposal pass only, like the store-theme question. Full write-up below; the decision is yours |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
-| **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
+| **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | **SPLIT INTO THREE, because they are three different risks.** LB.14a caching — **DONE 13 Aug 2026 (night), local commit only**; LB.14b version history and LB.14c custom domains — see their own rows below. Original scoping: handoff §13 |
+| ~~**LB.14a**~~ | ~~Storefront caching (P-01)~~ | S–M | **DONE 13 Aug 2026 (night); local commit only, not deployed — and the finding inverted the premise.** The pages were sending `no-store` (the strictest header there is); the **delivery quote was sending no `Cache-Control` at all**, and RFC 9111 lets a shared cache invent freshness for exactly that. The rule settled on: *a response may be reused by a shared cache only if a stale copy cannot cost somebody money or expose somebody's order* — stricter than "changes rarely", because a storefront is reachable through a MERCHANT's own hostname and this platform cannot purge their CDN. Public pages → `private, max-age=60, must-revalidate` (the one real win: `no-store` forbade even a back-button redisplay); quote, pixel configs and thank-you → `private, no-store`. **ISR measured UNAVAILABLE, not declined** — `revalidate = 60` still built as `ƒ (Dynamic)` with no warning, because a custom domain wins over a path prefix and so every render reads the Host header. storefront 40→48 |
 | ~~**LB.15**~~ | ~~Editor money inputs off `type="number"` (pricing section)~~ | S | **DONE 13 Aug 2026 (night); local commit only, not deployed — and the measurement found data loss, not style residue.** Three boxes: `price`, `oldPrice`, and every variant option's supplement. `step="1"` made any sub-unit price `stepMismatch` (the browser calling it invalid while `aria-invalid` said fine) and **two ArrowUp presses on 2990.50 stored 2992** — the control discarding the centimes. All three are now text + `inputMode="decimal"` + `dir="ltr"`, and ONE reader (`lib/landing/money-field.ts`) serves the schema, the preview strip and the save body. A comma is a decimal separator; `1,000` is REFUSED rather than guessed (a 1000× error either way), while a dot with three places is deliberately allowed because that is what a stored `Decimal` returns. New key `builder.editor.priceUnreadable` ×3 locales. calc 20→28, builder-sections 73→74 |
 | ~~LB.10~~ | ~~`website-builder:orders:write`~~ | — | **DONE in the LB.10 commit** (B-08 closed, console writes rerouted through the API, webhooks fire from console changes) |
 
@@ -386,6 +387,115 @@ storefront path uses. After LB.35 merged, that client did not know
 nothing to do with the change under test. Fix is
 `npm run generate --workspace @landingos/db`. **After any schema change, both
 clients have to be regenerated.**
+
+### LB.14a — DONE. The storefront caching story, and what it refuses (13 Aug, night)
+
+**Local commit only, not deployed.** `BUILDER_AUDIT.md` P-01 asked for a
+decision rather than a change. Measuring produced the opposite of the expected
+finding.
+
+**What was actually being sent, measured with `curl -D -`:**
+
+| Response | Before | Consequence |
+|---|---|---|
+| `/[tenant]`, `/[tenant]/[slug]`, `/[tenant]/category/[slug]` | `private, no-cache, no-store, max-age=0, must-revalidate` (Next's `force-dynamic` default) | strictest possible; forbids even a back-button redisplay |
+| `GET /api/storefront/[t]/wilayas` — **the delivery quote** | **no `Cache-Control` at all** | RFC 9111 §4.2.2 lets a shared cache assign its own heuristic freshness |
+| `GET /api/storefront/[t]/tracking`, `/meta-pixels` | **no `Cache-Control` at all** | same |
+| `/[tenant]/thank-you/[orderId]` | the dynamic default | correct — but by accident, not by decision |
+
+So the marketing pages were locked down hard enough to hurt, and **the one
+response whose staleness costs a customer money carried no instruction at
+all.** That is the finding.
+
+**Timings, for scale** (dev machine → Neon eu-central-1, so this is an upper
+bound): landing page **1.12–1.90 s** TTFB / 120 KB; store home **0.73–0.87 s**;
+the wilayas quote **0.54–0.73 s**. Every one a cold database round trip.
+
+**The rule, now in `src/lib/storefront/cache-policy.ts` with the argument
+attached:** *a response may be reused by a SHARED cache only if a stale copy of
+it cannot cost somebody money or expose somebody's order.*
+
+That is deliberately stricter than "product data changes rarely", and the
+reason is custom domains: a storefront is reachable at a MERCHANT's own
+hostname, they are free to put Cloudflare in front of it, and **this platform
+has no way to purge it.** `public`/`s-maxage` would be a promise we cannot take
+back once a price changes.
+
+**Why the public pages are not shareable either**, which is easy to miss
+because they look like static marketing:
+
+1. **Every one of them renders a price** — the product page in its hero and its
+   JSON-LD, home and category in each card — and the checkout recomputes the
+   price server-side from the row (the storefront suite asserts the server
+   ignores what the browser submits). A stale copy does not look wrong, it
+   **takes an order at a number the customer never agreed to.**
+2. **LB.34 made archive the delete.** A shared copy of an archived page keeps
+   selling a product the merchant retired.
+
+**What changed:** public pages `private, max-age=60, must-revalidate`; the
+delivery quote, both pixel-config routes and the thank-you page
+`private, no-store, max-age=0, must-revalidate`. The 60 seconds is the one real
+win available — it makes a back navigation free on a phone, and it adds no
+hazard class that was not already there, because a page left open in a tab is
+already unboundedly stale.
+
+**ISR is UNAVAILABLE, not declined — and this was measured because "just add
+`revalidate`" is the obvious suggestion.** `export const revalidate = 60` was
+put on the category route with `force-dynamic` removed. The build still emitted
+`ƒ /[tenant]/category/[slug]  (Dynamic) server-rendered on demand`, **with no
+warning and no error**, and at runtime the route still sent `no-store` and
+still cost a round trip per request. The cause is structural:
+`resolveStorefrontTenant` asks `tenantByDomain` FIRST because a custom domain
+wins over a path prefix (decision D2), that reads the `Host` header, and
+`headers()` is a Dynamic API — so a `revalidate` export on a storefront route
+is **inert while looking deliberate**, the shape this project has been caught
+by three times (the Tailwind `calc()`, `--theme-background`, `rtl:`).
+
+**Two mistakes the config made before the response was read** — both now pinned
+by tests that assert the SERVED header, never the config:
+
+- **Next applies every matching header rule, later ones overriding earlier.**
+  The thank-you `no-store` was written first, assuming first-match-wins, and
+  the broad tenant rule silently overrode it: **a customer's order confirmation
+  was answering `max-age=60`.** It is now both last and excluded from the broad
+  rule, so it does not depend on ordering semantics at all.
+- **`.*` in the tenant segment matches the EMPTY string**, so the bare root `/`
+  was caught and its 307 to `/console` started being cached for a minute. The
+  root is the one path whose meaning depends on the Host (platform root →
+  console; a verified custom domain's root → that tenant's storefront,
+  `acbc96a`), and a header chosen by PATH cannot tell them apart, so it keeps
+  the framework default. `.+`.
+
+**Stated boundaries of this decision, so the next person does not have to
+rediscover them:**
+
+- A custom domain's storefront HOME is served by `/`, which is deliberately
+  left uncached for the reason above — so a path-prefix home gets the 60 s and
+  a custom-domain home does not. Fixing that needs the same front-door split
+  ISR needs.
+- A **404 is cached for 60 s too.** That fails closed (an unpublished page
+  stays unavailable), but a merchant who publishes and immediately reloads the
+  public URL in the same browser can see their own stale 404 for up to a
+  minute. A hard reload clears it.
+- Nothing here reduces database load. The DB cost per render is unchanged; only
+  the repeat-visit and back-navigation cost moved. **The load fix is the
+  front-door split, scoped below.**
+
+**Scoped, not built — LB.14a.2, "one front door per tenant identity."** To make
+storefront pages statically cacheable, path-prefix rendering must not read a
+header. Shape: resolve custom domains in one place that runs BEFORE the page
+(a rewrite that turns `shop.acme.dz/x` into `/acme/x` internally), so
+`/[tenant]/[slug]` renders from params alone and can take `revalidate`. It
+touches D2's "a custom domain wins" guarantee, the `X-Forwarded-Host` trust
+rule recorded in `resolve-tenant.ts`, and every storefront test — a real slice
+with a real blast radius, and it needs the price-staleness question answered
+first (a cached page and a server-side price are the same divergence as
+before, only now with a TTL). **Not started.**
+
+**Verified live across nine paths** against the running build; console screens
+and `/_next/static/*` (still `public, max-age=31536000, immutable`) are outside
+the rule. storefront 40 → **48**; console-shell 20, hardening 12, tracking 15,
+builder-sections 74 unaffected.
 
 ### LB.15 — DONE. A price spinner was rounding the centimes away (13 Aug, night)
 
