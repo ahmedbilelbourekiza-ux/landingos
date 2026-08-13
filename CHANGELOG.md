@@ -12,6 +12,41 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.33** The checkout form's "invalid on arrival" report, measured — and
+  the defect that was actually there (13 August 2026 — **local only, not
+  pushed, not deployed**).
+
+  **The reported bug does NOT reproduce, and the mechanism says why.** A
+  fresh, untouched purchase form was measured on the published page and in
+  the editor's preview drawer, at desktop and at 375px: the name input
+  carries `aria-invalid="false"` with the theme's neutral `#E5E7EB`
+  border, matches neither `:invalid` nor `:user-invalid`, and has no
+  `required` attribute (the form is `noValidate`, so the browser never
+  applies its own validity styling either). The Tailwind variant compiles
+  to `[aria-invalid=true]` — read out of the served stylesheet rather
+  than assumed — so the literal `"false"` React renders cannot match it.
+  The red border IS real, and correct: after an empty submit the same
+  input goes `aria-invalid="true"` with `#f87171` and the Arabic message.
+  It arrives on submit, not on arrival, so the capture almost certainly
+  followed a submit attempt.
+
+  **What the investigation did find.** `Field` derived its label's
+  `htmlFor` from the label TEXT — `label.replace(/\s+/g,"").toLowerCase()`
+  turned "الاسم الكامل" into `الاسمالكامل` while the input's id is
+  `fullName`. **Not one field in the checkout form had a working label:**
+  measured `fullName.labels.length === 0`. Tapping a label did not focus
+  its input, and assistive technology announced every input unnamed — on
+  the only form in the product that takes money. The labels are
+  merchant-authored and translated, so an id derived from them could
+  never match a fixed id; `htmlFor` is passed in explicitly now, and the
+  two destination selects gained the ids they never had.
+
+  **Verified live** on the build carrying it: fresh form still neutral,
+  and `fullName`, `phone`, `wilaya`, `notes` each report exactly one
+  associated label (all were 0), with no dangling `for`. Two tests pin
+  both halves — no field invalid on a freshly served form, and every
+  label pointing at a control that exists. storefront 38 → **40**.
+
 - **LB.32** The editor's sticky header stops covering the content below it
   (13 August 2026 — **local only, not pushed, not deployed**).
 

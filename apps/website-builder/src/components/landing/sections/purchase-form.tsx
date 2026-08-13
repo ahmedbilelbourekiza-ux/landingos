@@ -347,7 +347,7 @@ export function PurchaseForm({
       case "customerName":
         if (!config.customerName.visible) return null;
         return (
-          <Field key={key} label={config.customerName.label} error={errors.fullName?.message}>
+          <Field key={key} htmlFor="fullName" label={config.customerName.label} error={errors.fullName?.message}>
             <Input
               id="fullName"
               dir="auto"
@@ -362,7 +362,7 @@ export function PurchaseForm({
       case "phone":
         if (!config.phone.visible) return null;
         return (
-          <Field key={key} label={config.phone.label} error={errors.phone?.message}>
+          <Field key={key} htmlFor="phone" label={config.phone.label} error={errors.phone?.message}>
             <Input
               id="phone"
               type="tel"
@@ -380,10 +380,12 @@ export function PurchaseForm({
         return (
           <Field
             key={key}
+            htmlFor="wilaya"
             label={config.wilaya.label}
             error={!selectedWilaya && submitError ? "يرجى اختيار الولاية" : undefined}
           >
             <select
+              id="wilaya"
               value={selectedWilaya}
               onChange={(e) => {
                 setSelectedWilaya(e.target.value ? Number(e.target.value) : "");
@@ -409,10 +411,12 @@ export function PurchaseForm({
         return (
           <Field
             key={key}
+            htmlFor="baladia"
             label={config.baladia.label}
             error={!selectedBaladia && submitError ? "يرجى اختيار البلدية" : undefined}
           >
             <select
+              id="baladia"
               value={selectedBaladia}
               onChange={(e) => setSelectedBaladia(e.target.value ? Number(e.target.value) : "")}
               className="h-11 w-full border border-input bg-transparent px-3 text-base sm:h-9 sm:text-sm"
@@ -429,7 +433,7 @@ export function PurchaseForm({
       case "notes":
         if (!config.notes.visible) return null;
         return (
-          <Field key={key} label={config.notes.label} error={errors.notes?.message}>
+          <Field key={key} htmlFor="notes" label={config.notes.label} error={errors.notes?.message}>
             <Textarea
               id="notes"
               dir="auto"
@@ -563,10 +567,29 @@ export function PurchaseForm({
   );
 }
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+/* `htmlFor` is passed IN, not derived from the label text.
+ *
+ * It used to be `label.replace(/\s+/g,"").toLowerCase()`, which produced
+ * `الاسمالكامل` for a control whose id is `fullName` — so it matched no
+ * element and NOT ONE field in the checkout form had a working label. Tapping
+ * a label did not focus its input, and assistive tech announced every input
+ * unnamed, on the only form in the product that takes money. The labels are
+ * merchant-authored and translated, so deriving an id from them could never
+ * work: the id is fixed and the text is not. */
+function Field({
+  htmlFor,
+  label,
+  error,
+  children,
+}: {
+  htmlFor: string;
+  label: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={label.replace(/\s+/g, "").toLowerCase()}>{label}</Label>
+      <Label htmlFor={htmlFor}>{label}</Label>
       {children}
       {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
     </div>

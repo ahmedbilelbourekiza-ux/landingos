@@ -256,6 +256,44 @@ describe("the storefront's chrome pages wear a stable theme, never the viewer's"
   });
 });
 
+describe('the checkout form is neutral until the customer acts, and its labels work', { skip }, () => {
+  // The "Full name shows a red invalid border with no interaction" report did
+  // NOT reproduce: measured on the published page and in the editor's preview
+  // drawer, a fresh field carries aria-invalid="false" and the theme's neutral
+  // border, and the compiled variant is `[aria-invalid=true]`, which "false"
+  // cannot match. The red state is real but arrives only after a submit
+  // attempt. This test pins the SERVED state so a future default-invalid
+  // regression is caught at the source rather than in a screenshot.
+  test('a freshly served purchase form marks no field invalid', async () => {
+    const r = await get(`/${slugA}/shared-item`);
+    assert.equal(r.status, 200);
+    assert.match(r.text, /id="fullName"/, 'the name input is not on the page');
+    assert.ok(
+      !/aria-invalid="true"/.test(r.text),
+      'a field is invalid before the customer has touched anything',
+    );
+    // The error paragraph is rendered only alongside a real error.
+    assert.ok(!/role="alert"/.test(r.text), 'an error message is present on a fresh form');
+  });
+
+  // The defect the investigation DID find. Field derived htmlFor from the
+  // label TEXT — `الاسم الكامل` became `الاسمالكامل` while the input's id is
+  // `fullName` — so no label in the checkout form resolved to its control.
+  // The labels are merchant-authored and translated; an id derived from them
+  // could never match a fixed id.
+  test('every checkout label points at a control that exists', async () => {
+    const r = await get(`/${slugA}/shared-item`);
+    const ids = new Set([...r.text.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]));
+    const fors = [...r.text.matchAll(/<label[^>]*\bfor="([^"]+)"/g)].map((m) => m[1]);
+    assert.ok(fors.length > 0, 'no labels rendered at all');
+    const dangling = fors.filter((f) => !ids.has(f));
+    assert.deepEqual(dangling, [], `labels point at no control: ${dangling.join(', ')}`);
+    for (const expected of ['fullName', 'phone']) {
+      assert.ok(fors.includes(expected), `nothing labels #${expected}`);
+    }
+  });
+});
+
 describe("a storefront never wears the PLATFORM's identity", { skip }, () => {
   // The branding leak. The template's nav and footer fell back to the platform
   // wordmark — linking to `/`, the platform's own console — whenever the tenant

@@ -32,6 +32,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.28**~~ | ~~The dead `rtl:` Tailwind variant~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug — and the premise measured FALSE.** `rtl:` is native on Tailwind 4.3.3 (`:lang()`-keyed); the data table was already correct in Arabic, the calendar is unmounted. Real fixes: the editor back arrow now flips (it cited the false premise for not flipping), the stale comments/memory corrected, and the dir-island rule recorded in globals.css. i18n 22, builder-sections 73 |
 | ~~**LB.29**~~ | ~~`ui/sheet.tsx` closes on a physical edge~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (verified in production Arabic: close at x 17–33). `right-4` → `end-4`; scope corrected by measurement — the mobile nav drawer is a custom logical-first component and was never affected; the editor preview drawer is the only live Sheet. ar close x 343→17 at 375px emulation, fr unchanged. No physical device reachable — caveat recorded. builder-sections 73 |
 | ~~**LB.30**~~ | ~~Home/category/thank-you follow the visitor's dark mode~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production: the themed order's thank-you wears the merchant theme under emulated dark; fixture swept with `deleteTenant`). LB.26's recorded remainder. The thank-you inherits the ORDER's landing-page theme (the checkout journey's last step looks like the page the customer bought on); home/category wear `DEFAULT_THEME` — a store-level theme field on `StoreSettings` is a schema migration + merchant UI, deliberately left as a decision, with the two call sites marked. Verified live under emulated dark OS both ways (bound theme + default). storefront 33→36 |
+| ~~**LB.33**~~ | ~~"Full name" looks invalid on a fresh form~~ | S | **DONE 13 Aug 2026, local only — premise measured FALSE.** Fresh field is `aria-invalid="false"`, neutral border, no `required`, form `noValidate`, and the compiled variant is `[aria-invalid=true]`; the red state is genuine but post-submit only. The real defect found in the same component: `Field` derived `htmlFor` from label TEXT, so **no checkout field had a working label**. Fixed explicitly. storefront 38→40 |
 | ~~**LB.32**~~ | ~~The editor's sticky header overlaps the content~~ | S | **DONE 13 Aug 2026, local only.** Not z-index, not padding: `sticky top-16` cleared a shell header that is not above this screen (the editor mounts outside `ConsoleShell`). Sticky reserves no space for its offset, so content flowed from 56 while the header painted 64→120 — a permanent 64px overlap. `scroll-mt-24` corroborated the diagnosis. `top-0`; anchored-scroll clearance −24px→+40px |
 | ~~**LB.31**~~ | ~~The storefront header shows "LandingOS" and links to the platform~~ | S | **DONE 13 Aug 2026, local only.** Not preview-only: with no `StoreSettings` row the published page rendered the platform wordmark linking to `/` (307 → console), plus the platform's internal description and copyright. Both production tenants have exactly that null row — 0 published pages, so unseen, one publish away. `resolveStoreName` + deleted fallbacks; brand is a span in the preview drawer. storefront 36→38 |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
@@ -335,6 +336,30 @@ tenant and two real API orders: the themed order's thank-you wears the
 merchant's `#141414` theme under an emulated dark OS, home/category hold
 the default, the unthemed order falls back cleanly; fixture swept with
 `deleteTenant`, zero rows behind.
+
+**LB.33 — DONE. The "invalid on arrival" report measured false; the broken
+labels beside it fixed (13 Aug).** Reported as the Full name field showing a
+red invalid outline on a fresh form with no interaction. It does not
+reproduce, and the mechanism explains why: on the published page and in the
+preview drawer, desktop and 375px, the input is `aria-invalid="false"` with
+the theme's neutral `#E5E7EB`, matches neither `:invalid` nor
+`:user-invalid`, carries no `required`, and the form is `noValidate` so the
+browser applies no validity styling of its own. The Tailwind variant compiles
+to `[aria-invalid=true]` — **read out of the served stylesheet rather than
+assumed**, which is what killed the first hypothesis that React's literal
+`"false"` was matching an attribute-presence selector. The red state is real
+and correct: after an empty submit the same field goes `aria-invalid="true"`
+with `#f87171` and the Arabic message, so the capture almost certainly
+followed a submit. **The investigation did find a real defect in that exact
+component:** `Field` derived its label's `htmlFor` from the label TEXT, so
+`الاسم الكامل` became `الاسمالكامل` while the input's id is `fullName` —
+NOT ONE field in the checkout form had a working label (`labels.length` was
+0), tapping a label focused nothing and assistive tech announced every input
+unnamed, on the only form in the product that takes money. Merchant-authored,
+translated labels can never yield a fixed id, so `htmlFor` is passed in
+explicitly and the two destination selects gained the ids they never had.
+Verified live: 0 → 1 label each for `fullName`/`phone`/`wilaya`/`notes`, no
+dangling `for`. storefront 38 → **40**.
 
 **LB.32 — DONE. The editor's sticky header stops covering the content below
 it (13 Aug).** Reported as the header overlapping content when scrolling. The
