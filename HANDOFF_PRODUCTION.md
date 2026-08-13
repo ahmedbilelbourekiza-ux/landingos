@@ -15,6 +15,37 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.35b IS DEPLOYED — 13 Aug 2026 (late night)
+>
+> **`origin/main` is `407854a`** (`2c75c3c..407854a`, two commits, **no
+> migration**). Live 2m30s after the push. Baseline captured on a throwaway
+> production fixture BEFORE pushing:
+>
+> | Marker | Before | After |
+> |---|---|---|
+> | `tracking-mode-all` in the editor | **0** | **1** |
+> | `tracking-mode-choose` | **0** | **1** |
+> | Integrations description | *"Tracking pixels and webhooks."* | *"Which of your tracking pixels report this page."* |
+>
+> **Then driven for real in the production editor**, not just read out of the
+> markup: switched to "choose" (both active pixels arrived pre-ticked, the
+> inactive one listed and marked `inactif`), unticked TikTok Oran, saved. The
+> production database stored `["<Compte Alger id>"]`, and **the production
+> storefront then served that pixel and not the other** — the inactive one
+> stayed out throughout, since the resolver filters `isActive` first.
+>
+> **One thing checked because it looked wrong and was not.** The Arabic phrase
+> "the whole workspace" still appears after the deploy. It is NOT the deleted
+> signpost — `integrationsBody` is gone from the payload entirely. The match is
+> `settings.integrationsHint`, a different key on the settings screen, which
+> should stay. Worth knowing before someone greps for it and concludes the
+> deletion failed.
+>
+> Cleanup: `deleteTenant` swept 6 rows in 2 passes, fixture user removed
+> separately, both real tenants untouched, storefront and sitemap now 404.
+> Health green; LB.14a's wilayas marker, LB.37's console `noindex` and LB.39's
+> sitemap route all re-checked and intact.
+>
 > ### ✔ LB.38 + LB.39 ARE DEPLOYED — 13 Aug 2026 (late night)
 >
 > **`origin/main` is `964755b`** (`2f009aa..964755b`, four commits, **no
@@ -747,15 +778,9 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **ONE slice is queued to deploy: LB.35b (`dd4edac`)** — the editor control
-   for per-page tracking pixels, which LB.35 shipped the mechanism for and
-   never built a door to. **No migration.** Suites green (builder-api 41,
-   storefront 60, builder-sections 74, console-shell 20, hardening 13,
-   tracking 15, i18n 22), verified live in the running editor across all three
-   states including what the storefront then serves. **Not deployed — the user
-   asked to be asked first.** Marker for when it goes: the editor's
-   Integrations section serves `data-testid="tracking-mode-all"` where it used
-   to serve the sentence "applies to every page automatically".
+4. **Nothing is queued to deploy.** **LB.35b** (`dd4edac`) shipped on 13 Aug
+   (late night) as `2c75c3c..407854a`, no migration, verified live — §1 has
+   the record.
 
    **LB.38** (`a70f588`) and **LB.39** (`dbe1cf0`) shipped together on 13 Aug
    (late night) as `2f009aa..964755b`, no migration, verified live — §1 has

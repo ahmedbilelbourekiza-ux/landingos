@@ -13,7 +13,7 @@ touched, any **migration**, and any **risk**.
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
 - **LB.35b — the per-page pixel choice finally has somewhere to be made**
-  (13 August 2026, late night — `dd4edac`, **local; NOT deployed**).
+  (13 August 2026, late night — `dd4edac`, **DEPLOYED the same night** in `2c75c3c..407854a`). Confirmed on production against a pre-push baseline (`tracking-mode-all` 0 → 1), then driven for real in the production editor: unticking one of two active pixels and saving stored the subset in `landingos_prod` and changed which pixel the production storefront serves.
 
   **What was wrong.** LB.35 built the column, the PATCH that validates it, the
   storefront read path and eleven tests, shipped all of it to production, and
