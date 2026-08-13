@@ -4,6 +4,7 @@ import { forTenant } from "@landingos/db";
 import { can } from "@landingos/auth";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { resolveStoreName } from "@/lib/storefront/store-identity";
 import { BuilderApiProvider } from "@/lib/builder/api-base";
 import { StorefrontApiProvider } from "@/lib/storefront/api-base";
 import { toPreviewState } from "@/lib/landing/mappers";
@@ -56,6 +57,17 @@ export default async function ConsoleEditLandingPage({
   // a 404 rather than a leak that the row exists elsewhere.
   if (!page) notFound();
 
+  // The store identity the preview drawer renders in the template's nav and
+  // footer. Read here rather than in the drawer because the drawer is a client
+  // component and this is the same query the published page already makes.
+  const settings = await forTenant(session.auth!.tenantId).storeSettings.findUnique({
+    where: { tenantId: session.auth!.tenantId },
+    select: {
+      storeName: true, storeDescription: true, logo: true,
+      facebook: true, instagram: true, tiktok: true, whatsapp: true, telegram: true,
+    },
+  });
+
   return (
     // Two providers, because the editor renders both worlds at once: its own
     // controls talk to the console API, and the live preview inside it renders
@@ -71,6 +83,19 @@ export default async function ConsoleEditLandingPage({
         landingTitle={page.title}
         landingSlug={page.slug}
         publicPath={`/${session.tenant!.slug}/${page.slug}`}
+        store={{
+          name: resolveStoreName(settings?.storeName, session.tenant!.name),
+          description: settings?.storeDescription ?? null,
+          logo: settings?.logo ?? null,
+          facebook: settings?.facebook ?? null,
+          instagram: settings?.instagram ?? null,
+          tiktok: settings?.tiktok ?? null,
+          whatsapp: settings?.whatsapp ?? null,
+          telegram: settings?.telegram ?? null,
+          // Null on purpose: inside the drawer the brand is a label, not a
+          // way out of the editor.
+          homePath: null,
+        }}
         initialPreview={toPreviewState(page)}
         initialSeo={{ seoTitle: page.seoTitle ?? "", seoDescription: page.seoDescription ?? "" }}
         initialStatus={(page.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT") as PublishStatus}

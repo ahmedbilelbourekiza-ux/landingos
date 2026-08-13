@@ -32,6 +32,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.28**~~ | ~~The dead `rtl:` Tailwind variant~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug — and the premise measured FALSE.** `rtl:` is native on Tailwind 4.3.3 (`:lang()`-keyed); the data table was already correct in Arabic, the calendar is unmounted. Real fixes: the editor back arrow now flips (it cited the false premise for not flipping), the stale comments/memory corrected, and the dir-island rule recorded in globals.css. i18n 22, builder-sections 73 |
 | ~~**LB.29**~~ | ~~`ui/sheet.tsx` closes on a physical edge~~ | S | **DONE 12 Aug 2026 (night); DEPLOYED 13 Aug** (verified in production Arabic: close at x 17–33). `right-4` → `end-4`; scope corrected by measurement — the mobile nav drawer is a custom logical-first component and was never affected; the editor preview drawer is the only live Sheet. ar close x 343→17 at 375px emulation, fr unchanged. No physical device reachable — caveat recorded. builder-sections 73 |
 | ~~**LB.30**~~ | ~~Home/category/thank-you follow the visitor's dark mode~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production: the themed order's thank-you wears the merchant theme under emulated dark; fixture swept with `deleteTenant`). LB.26's recorded remainder. The thank-you inherits the ORDER's landing-page theme (the checkout journey's last step looks like the page the customer bought on); home/category wear `DEFAULT_THEME` — a store-level theme field on `StoreSettings` is a schema migration + merchant UI, deliberately left as a decision, with the two call sites marked. Verified live under emulated dark OS both ways (bound theme + default). storefront 33→36 |
+| ~~**LB.31**~~ | ~~The storefront header shows "LandingOS" and links to the platform~~ | S | **DONE 13 Aug 2026, local only.** Not preview-only: with no `StoreSettings` row the published page rendered the platform wordmark linking to `/` (307 → console), plus the platform's internal description and copyright. Both production tenants have exactly that null row — 0 published pages, so unseen, one publish away. `resolveStoreName` + deleted fallbacks; brand is a span in the preview drawer. storefront 36→38 |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | See handoff §13 |
@@ -333,6 +334,32 @@ tenant and two real API orders: the themed order's thank-you wears the
 merchant's `#141414` theme under an emulated dark OS, home/category hold
 the default, the unthemed order falls back cleanly; fixture swept with
 `deleteTenant`, zero rows behind.
+
+**LB.31 — DONE. A storefront never wears the platform's identity (13 Aug).**
+Reported as "the live preview shows LandingOS and clicking it goes back to the
+platform". The measurement widened it: the leak was never confined to the
+preview. TWO paths reached it. `SiteNav`/`SiteFooter` fell back to the platform
+`<Logo />` — linking to `/`, which 307s to the platform console — whenever
+`store` was null, and the storefront built `store` as `store ? {…} : null`, so
+any tenant WITHOUT a `StoreSettings` row shipped a customer-facing page branded
+`LandingOS`, with the platform's internal description and `© LandingOS` in the
+footer. Separately `StoreSettings.storeName` is NOT NULL with
+`@default("LandingOS")`, so an untouched row carries the platform's name as a
+literal value and the existing `storeName ?? tenant.name` can never fire.
+**Urgency was measured, not assumed:** read-only against `landingos_prod`,
+**both** production tenants have a null settings row and one already holds an
+unpublished page — zero published pages today, so no customer has seen it, but
+it was one publish away. The fix is one resolver (`resolveStoreName`, treating
+absent-row and untouched-default as the same case) plus deleting the platform
+fallbacks: a storefront that cannot name its merchant shows no brand line
+rather than the platform's. The brand links to the tenant's own storefront
+root, and renders as a plain span in the editor's preview drawer, where a live
+link would navigate the merchant out of their editor — the drawer previously
+passed NO store at all, which is why the merchant met the bug first. A test
+that asserted the defect as design ("a tenant with no settings row keeps the
+platform fallback") is replaced by its inverse. storefront 36 → **38**.
+**Deliberately NOT built here:** the "brand" concept (LB.36's scoping) — this
+slice only stops the leak.
 
 **Phase 5, 6 and 7 are complete. LEGACY PARITY IS REACHED — Tiers 1, 2 and 3 of
 `LEGACY_PARITY.md` §4 have all landed, plus a fourth measurement pass (§9) that

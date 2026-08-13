@@ -12,6 +12,58 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.31** A storefront never wears the platform's identity (13 August
+  2026 — **local only, not pushed, not deployed**).
+
+  **Reported** as "the live preview shows LandingOS in the header and
+  clicking it goes back to the platform". Measured, it was not confined
+  to the preview.
+
+  **Two independent paths to the same leak.** (1) `SiteNav`/`SiteFooter`
+  fell back to the platform `<Logo />` whenever `store` was null — and
+  the storefront built `store` as `store ? {…} : null`, so ANY tenant
+  without a `StoreSettings` row shipped a customer-facing page branded
+  `LandingOS`, linking to `/`, which 307s to the platform's own console.
+  The footer additionally printed the platform's INTERNAL description
+  ("Internal tool for building high-converting COD product landing
+  pages.") and `© LandingOS`. (2) `StoreSettings.storeName` is NOT NULL
+  with `@default("LandingOS")`, so an untouched row holds the platform's
+  name as a literal — and the existing `storeName ?? tenant.name` could
+  never fire, because the column is never null.
+
+  **Urgency, measured rather than assumed.** Read-only against
+  `landingos_prod`: **both production tenants have `settings: null`**,
+  and one already holds an unpublished page. Zero published pages today,
+  so no real customer has seen it — but it was one publish away, which
+  is why this is a live-risk fix and not a preview cosmetic.
+
+  **The fix.** `resolveStoreName` (new,
+  `lib/storefront/store-identity.ts`) treats an absent row and an
+  untouched default as the same thing and answers with the tenant's own
+  name. The storefront now builds a store identity ALWAYS. The platform
+  fallbacks are deleted from both components — a storefront that cannot
+  name its merchant shows no brand line rather than the platform's. The
+  brand links to the tenant's own storefront root; in the editor's
+  preview drawer `homePath` is null and it renders as a plain span,
+  because a live link inside a preview navigates the merchant out of
+  their own editor. The drawer now receives the store identity at all
+  (it passed none, which is why the merchant saw it first).
+
+  **A test that asserted the defect** is replaced: "a tenant with no
+  settings row keeps the platform fallback" required a brandless page to
+  render no brand, and the template's answer to that was the platform's
+  wordmark. Its replacement asserts the tenant's own name. New coverage
+  pins the wordmark, the internal description, the platform copyright
+  and the `/` link out of the storefront, using the fixture tenant that
+  never gets a settings row.
+
+  **Verified live** against the build carrying it: a throwaway tenant
+  shaped exactly like production (no settings row) serves its own name,
+  a brand linking to its own storefront, and none of the three platform
+  strings; the preview drawer shows "Acme Trading" as a non-clickable
+  span with zero "LandingOS" text anywhere in it. storefront 36 → **38**.
+  No schema, route or API change.
+
 - **DEPLOY — LB.30 reaches production** (13 August 2026, night,
   user-approved). Supersedes the "local only" note on the LB.30 entry and
   closes the "Not in this deploy: LB.30" caveat of the morning's record.

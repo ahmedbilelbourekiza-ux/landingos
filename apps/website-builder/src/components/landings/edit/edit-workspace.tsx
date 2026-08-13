@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 
 import type { PreviewState } from "@/types/preview";
+import type { StorefrontStoreData } from "@/types/landing";
 import { EditWorkspaceHeader, type PublishStatus } from "./edit-workspace-header";
 import { EditSections } from "./edit-sections";
 import { PreviewPanel } from "./preview-panel";
@@ -17,6 +18,7 @@ export function EditWorkspace({
   landingTitle,
   landingSlug,
   publicPath,
+  store,
   initialPreview,
   initialStatus,
   initialSeo,
@@ -24,6 +26,10 @@ export function EditWorkspace({
   landingId: string;
   landingTitle: string;
   landingSlug: string;
+  /** The tenant's storefront identity, for the preview drawer's nav/footer.
+   *  Resolved on the server so the preview shows the merchant their own brand
+   *  rather than the platform's. */
+  store: StorefrontStoreData;
   /**
    * The page's PUBLIC path on this platform, e.g. `/acme/winter-jacket`.
    * Supplied by the server mount — the legacy `/l/<slug>` this component used
@@ -152,6 +158,7 @@ export function EditWorkspace({
         open={previewDrawerOpen}
         onOpenChange={setPreviewDrawerOpen}
         preview={preview}
+        store={store}
       />
       <PublishDialog
         open={publishDialogOpen}

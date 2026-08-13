@@ -256,6 +256,44 @@ describe("the storefront's chrome pages wear a stable theme, never the viewer's"
   });
 });
 
+describe("a storefront never wears the PLATFORM's identity", { skip }, () => {
+  // The branding leak. The template's nav and footer fell back to the platform
+  // wordmark — linking to `/`, the platform's own console — whenever the tenant
+  // had no StoreSettings row. Measured 13 Aug 2026: BOTH production tenants had
+  // exactly that null row, so this was one publish away from a real customer.
+  // Tenant B NEVER gets a settings row anywhere in this file, which is what
+  // makes it the right fixture here: tenant A acquires one in the B4 block
+  // below, so asserting on A would silently depend on test ordering.
+  test('a tenant with NO store settings row shows its own name, not the platform', async () => {
+    const r = await get(`/${slugB}/shared-item`);
+    assert.equal(r.status, 200);
+
+    assert.match(r.text, /data-testid="store-brand"/, 'no store brand rendered at all');
+    assert.match(r.text, /Shop B/, "the tenant's own name is the honest fallback");
+
+    // The platform wordmark is built from two spans ("Landing" + "OS"); its
+    // presence anywhere in a storefront page is the defect.
+    assert.ok(
+      !/Landing<span class="text-muted-foreground">OS<\/span>/.test(r.text),
+      'the platform wordmark is rendered on a customer-facing page',
+    );
+    // The platform's INTERNAL description used to be the footer's fallback.
+    assert.ok(
+      !/Internal tool for building high-converting/.test(r.text),
+      "the platform's internal description reached a storefront",
+    );
+    assert.ok(!/©\s*\d{4}\s*LandingOS/.test(r.text), 'the footer claims platform copyright');
+  });
+
+  test('the brand never links to the platform root', async () => {
+    const r = await get(`/${slugB}/shared-item`);
+    const brand = r.text.match(/<a[^>]*data-testid="store-brand"[^>]*>/)?.[0] ?? '';
+    assert.notEqual(brand, '', 'the brand is not a link on a published page');
+    const href = brand.match(/href="([^"]*)"/)?.[1] ?? '';
+    assert.equal(href, `/${slugB}`, "the brand must lead to the tenant's own storefront");
+  });
+});
+
 describe('reserved slugs cannot be shadowed by a storefront (R-08)', { skip }, () => {
   test('platform paths still resolve to the platform', async () => {
     // If a tenant slug could shadow these, one company would break the
@@ -687,10 +725,17 @@ describe("the storefront wears the tenant's identity, not the platform's (B4)", 
     assert.match(r.text, /The finest test goods\./);
   });
 
-  test('a tenant with no settings row keeps the platform fallback', async () => {
+  // REPLACES 'a tenant with no settings row keeps the platform fallback',
+  // which asserted the leak as if it were the design: it required that a
+  // brandless page render NO store brand, and the template's answer to that
+  // was the PLATFORM's wordmark linking to the platform console. The rule is
+  // inverted now — a storefront always names its merchant — so the old
+  // expectation is not merely outdated, it is the defect written down.
+  test('a tenant with no settings row still names ITS OWN store', async () => {
     const r = await get(`/${slugB}/shared-item`);
     assert.equal(r.status, 200);
-    assert.ok(!/data-testid="store-brand"/.test(r.text), 'no store row, no store brand');
+    assert.match(r.text, /data-testid="store-brand"/, 'a brandless tenant still gets a brand');
+    assert.match(r.text, /Shop B/, "the tenant's own name stands in for an unset store name");
     assert.match(r.text, /data-testid="storefront-footer"/);
   });
 });

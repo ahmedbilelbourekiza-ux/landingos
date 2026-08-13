@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { withTenant } from "@landingos/db";
 
 import { resolveStorefrontTenant, storefrontHref } from "@/lib/storefront/resolve-tenant";
+import { resolveStoreName } from "@/lib/storefront/store-identity";
 import { toLandingPageData, toThemeData } from "@/lib/landing/mappers";
 import { LandingTemplate } from "@/components/landing/landing-template";
 import { StorefrontApiProvider } from "@/lib/storefront/api-base";
@@ -52,19 +53,24 @@ async function load(tenantSlug: string, pageSlug: string) {
     }),
   ]);
 
-  const storeData = store
-    ? {
-        name: store.storeName ?? tenant.name,
-        description: store.storeDescription,
-        logo: store.logo,
-        facebook: store.facebook,
-        instagram: store.instagram,
-        tiktok: store.tiktok,
-        whatsapp: store.whatsapp,
-        telegram: store.telegram,
-        homePath: `/${tenantSlug}`,
-      }
-    : null;
+  // ALWAYS a store identity, even with no settings row. The old `store ? … :
+  // null` handed the template a null, and the template's fallback was the
+  // PLATFORM's wordmark and copyright — on a real shop's page, linking to the
+  // platform console. Both production tenants had a null row when this was
+  // measured. `resolveStoreName` also absorbs the other half of the leak: the
+  // `storeName` column is NOT NULL defaulting to the platform's own name, so
+  // the previous `?? tenant.name` could never fire.
+  const storeData = {
+    name: resolveStoreName(store?.storeName, tenant.name),
+    description: store?.storeDescription ?? null,
+    logo: store?.logo ?? null,
+    facebook: store?.facebook ?? null,
+    instagram: store?.instagram ?? null,
+    tiktok: store?.tiktok ?? null,
+    whatsapp: store?.whatsapp ?? null,
+    telegram: store?.telegram ?? null,
+    homePath: `/${tenantSlug}`,
+  };
 
   return page ? { tenant, page, store: storeData } : null;
 }

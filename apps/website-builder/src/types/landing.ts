@@ -74,7 +74,10 @@ export interface LandingSettingData {
  * simply don't render; a null store falls back to the platform mark (a page
  * served before the tenant ever opened Settings → Store). */
 export interface StorefrontStoreData {
-  name: string | null;
+  /** Always a real name — never null and never the platform's. Resolved by
+   *  `resolveStoreName`, which treats an absent settings row and an untouched
+   *  `storeName` default as the same thing: use the tenant's own name. */
+  name: string;
   description: string | null;
   logo: string | null;
   facebook: string | null;
@@ -82,8 +85,11 @@ export interface StorefrontStoreData {
   tiktok: string | null;
   whatsapp: string | null;
   telegram: string | null;
-  /** The tenant's own storefront root ("/acme") — the brand link's target. */
-  homePath: string;
+  /** The tenant's own storefront root ("/acme") — the brand link's target.
+   *  NULL where navigating would be wrong rather than merely unhelpful: the
+   *  editor's preview drawer renders the real template inside the console, and
+   *  a live link there would navigate the merchant out of their own editor. */
+  homePath: string | null;
 }
 
 export interface LandingPageData {
