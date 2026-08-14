@@ -20,19 +20,29 @@ export const dynamic = "force-dynamic";
  * appear anywhere in the platform.
  * ========================================================================== */
 
+/* The columns this form writes. LB.41 took the LABELS out of here: this was
+ * the ONE console screen still holding user-facing English, so a merchant on
+ * an Arabic or French account met a translated page frame wrapped around
+ * twelve English field names — and on Arabic, English labels inside an RTL
+ * form is what "this screen is broken" looks like. The catalogue owns the
+ * words now; this array owns only the shape.
+ *
+ * It escaped LB.13's guard because that scan covers the EDITOR directories and
+ * nothing else. Measured while fixing: this was the only console screen it
+ * missed, so the guard now covers the console settings screens too. */
 const FIELDS = [
-  { name: "storeName", label: "Store name", required: true },
-  { name: "storeDescription", label: "Description" },
-  { name: "phone", label: "Phone" },
-  { name: "email", label: "Email", type: "email" },
-  { name: "address", label: "Address" },
-  { name: "facebook", label: "Facebook" },
-  { name: "instagram", label: "Instagram" },
-  { name: "tiktok", label: "TikTok" },
-  { name: "whatsapp", label: "WhatsApp" },
+  { name: "storeName", required: true },
+  { name: "storeDescription" },
+  { name: "phone" },
+  { name: "email", type: "email" },
+  { name: "address" },
+  { name: "facebook" },
+  { name: "instagram" },
+  { name: "tiktok" },
+  { name: "whatsapp" },
   // B4 — accepted by the API and rendered by the storefront footer since B4;
   // it simply had no field.
-  { name: "telegram", label: "Telegram" },
+  { name: "telegram" },
 ] as const;
 
 /* The two image identities (B4). File inputs handled INSIDE the server
@@ -40,8 +50,8 @@ const FIELDS = [
  * format allow-list, same per-tenant prefix. A submitted file replaces; the
  * clear checkbox removes; neither means "keep what is there". */
 const IMAGES = [
-  { file: "logoFile", clear: "logoClear", column: "logo", label: "Logo" },
-  { file: "faviconFile", clear: "faviconClear", column: "favicon", label: "Favicon" },
+  { file: "logoFile", clear: "logoClear", column: "logo" },
+  { file: "faviconFile", clear: "faviconClear", column: "favicon" },
 ] as const;
 
 async function save(formData: FormData) {
@@ -96,6 +106,26 @@ export default async function StoreSettingsPage({
   const { saved, error } = await searchParams;
   const tenantId = session.auth.tenantId;
 
+  /* Twelve DIRECT `t("…")` calls rather than a `labelKey` on each FIELDS
+   * entry, and the difference matters to the guards rather than to the reader:
+   * the key-exists scan and LB.13's hardcoded-English scan both read literal
+   * `t("…")` arguments only, so a key threaded through a variable is invisible
+   * to both. LB.35b learned the same thing from the other side. */
+  const LABEL: Record<string, string> = {
+    storeName: t("settings.storeName"),
+    storeDescription: t("settings.storeDescription"),
+    phone: t("settings.storePhone"),
+    email: t("settings.email"),
+    address: t("settings.storeAddress"),
+    facebook: t("settings.storeFacebook"),
+    instagram: t("settings.storeInstagram"),
+    tiktok: t("settings.storeTiktok"),
+    whatsapp: t("settings.storeWhatsapp"),
+    telegram: t("settings.storeTelegram"),
+    logo: t("settings.storeLogo"),
+    favicon: t("settings.storeFavicon"),
+  };
+
   const settings = await withTenant(tenantId, (db) =>
     (db as any).storeSettings.findUnique({ where: { tenantId } }),
   );
@@ -116,7 +146,7 @@ export default async function StoreSettingsPage({
             borderColor: "var(--success-border)",
           }}
         >
-          Saved.
+          {t("settings.saved")}
         </p>
       ) : null}
       {error ? (
@@ -130,8 +160,8 @@ export default async function StoreSettingsPage({
           }}
         >
           {error === "upload"
-            ? "The image was refused — JPEG, PNG, WebP or AVIF up to 8 MB."
-            : "A store name is required."}
+            ? t("settings.storeErrorUpload")
+            : t("settings.storeErrorName")}
         </p>
       ) : null}
 
@@ -143,7 +173,7 @@ export default async function StoreSettingsPage({
         {FIELDS.map((f) => (
           <div key={f.name} className="space-y-1">
             <label htmlFor={f.name} className="ui-label">
-              {f.label}
+              {LABEL[f.name]}
             </label>
             <input
               id={f.name}
@@ -162,7 +192,7 @@ export default async function StoreSettingsPage({
         {IMAGES.map((img) => (
           <div key={img.column} className="space-y-1">
             <label htmlFor={img.file} className="ui-label">
-              {img.label}
+              {LABEL[img.column]}
             </label>
             {settings?.[img.column] && (
               <span className="flex items-center gap-2">
@@ -175,7 +205,7 @@ export default async function StoreSettingsPage({
                 />
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <input type="checkbox" name={img.clear} className="size-3.5 accent-primary" />
-                  Remove
+                  {t("settings.storeRemoveImage")}
                 </label>
               </span>
             )}
@@ -194,7 +224,7 @@ export default async function StoreSettingsPage({
             type="submit"
             className="ui-btn ui-btn-primary tap"
           >
-            Save
+            {t("common.save")}
           </button>
         </div>
       </form>

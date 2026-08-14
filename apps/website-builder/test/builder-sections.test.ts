@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 
 import { asPlatform, withTenant, disconnect, deleteTenant } from '@landingos/db';
 import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } from '@landingos/auth';
+// The Arabic catalogue, because these fixture tenants take the default locale.
+// Read rather than copied, so a reworded sentence does not break a test that
+// is about behaviour — see the assertion that uses it.
+import arMessages from '@landingos/i18n/messages/ar.json' with { type: 'json' };
 
 /* =============================================================================
  * The rest of the ported builder surface: landing editor sections, the order
@@ -678,7 +682,23 @@ describe('platform settings screens', { skip }, () => {
     });
     assert.equal(r.status, 200);
     const html = await r.text();
-    assert.match(html, /administrator access/i, 'the limitation is stated, not just enforced');
+    /* LB.41 — this asserted the English sentence "administrator access", which
+     * stopped appearing the moment the screen was translated: these fixture
+     * tenants take the default locale, `ar`, so the page now says it in Arabic.
+     *
+     * Asserting the CATALOGUE rather than a copy of the prose is what keeps
+     * the test about the behaviour ("the limitation is stated") instead of
+     * about one language's wording — rewording the sentence in en.json should
+     * not break a test, and translating it should not either. */
+    const readOnly = arMessages.settings.integrationsReadOnly as string;
+    assert.ok(
+      html.includes(readOnly),
+      'the limitation is stated, not just enforced',
+    );
+    // And the structural half, which survives any rewording: a manager is not
+    // handed the create panels at all.
+    assert.ok(!html.includes('data-testid="tracking-create"'), 'a manager got the tracking create panel');
+    assert.ok(!html.includes('data-testid="webhook-create"'), 'a manager got the webhook create panel');
   });
 
   test('the builder overview reports this tenant only', async () => {

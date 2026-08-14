@@ -67,23 +67,23 @@ export default async function IntegrationsPage() {
       <PageHeader title={t("settings.integrations")} />
       <p className="mt-1 text-sm text-muted-foreground">
         {mayManage
-          ? "Push your events to your own tools."
-          : "Read-only. Changing an integration needs administrator access."}
+          ? t("settings.integrationsLead")
+          : t("settings.integrationsReadOnly")}
       </p>
 
       <h2 className="mt-8 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-        Tracking &amp; analytics
+        {t("settings.sectionTracking")}
       </h2>
       <DataTable
         testId="tracking-table"
-        empty="No tracking connected yet — Meta, TikTok, GA4, Tag Manager and Google Ads are supported."
+        empty={t("settings.integrationsEmpty")}
         rows={tracking}
         rowKey={(x: any) => x.id}
         rowAttrs={(x: any) => ({ "data-tracking-id": x.id, "data-provider": x.provider })}
         columns={[
           {
             id: "label",
-            header: "Integration",
+            header: t("settings.colIntegration"),
             cell: (x: any) => (
               <>
                 <span className="font-medium">{x.label}</span>
@@ -97,28 +97,30 @@ export default async function IntegrationsPage() {
           },
           {
             id: "server",
-            header: "Server events",
+            header: t("settings.colServerEvents"),
             cell: (x: any) => (
               <span className="text-xs text-muted-foreground">
-                {x.serverToken ? "Credential set" : "Browser only"}
+                {x.serverToken ? t("settings.credentialSet") : t("settings.browserOnly")}
               </span>
             ),
           },
           {
             id: "managed",
-            header: "Managed by",
+            header: t("settings.colManagedBy"),
             cell: (x: any) => (
               <span className="text-xs text-muted-foreground">
-                {x.managedBy === "platform" ? "Platform" : "This company"}
+                {x.managedBy === "platform"
+                  ? t("settings.managedByPlatform")
+                  : t("settings.managedByCompany")}
               </span>
             ),
           },
           {
             id: "state",
-            header: "Status",
+            header: t("settings.colStatus"),
             cell: (x: any) => (
               <span data-active={String(x.isActive)} className="text-xs text-muted-foreground">
-                {x.isActive ? "Active" : "Paused"}
+                {x.isActive ? t("settings.statusActive") : t("settings.statusPaused")}
               </span>
             ),
           },
@@ -138,18 +140,18 @@ export default async function IntegrationsPage() {
       {mayManage && <TrackingCreatePanel errors={errors} />}
 
       <h2 className="mt-10 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-        Webhooks
+        {t("settings.sectionWebhooks")}
       </h2>
       <DataTable
         testId="webhooks-table"
-        empty="No webhook endpoints yet."
+        empty={t("settings.webhooksEmpty")}
         rows={webhooks}
         rowKey={(w: any) => w.id}
         rowAttrs={(w: any) => ({ "data-webhook-id": w.id })}
         columns={[
           {
             id: "label",
-            header: "Endpoint",
+            header: t("settings.colEndpoint"),
             cell: (w: any) => (
               <>
                 <span className="font-medium">{w.label}</span>
@@ -161,7 +163,7 @@ export default async function IntegrationsPage() {
           },
           {
             id: "events",
-            header: "Events",
+            header: t("settings.colEvents"),
             cell: (w: any) => (
               <span className="text-muted-foreground">
                 {Array.isArray(w.events) && w.events.length ? w.events.join(", ") : "—"}
@@ -170,13 +172,13 @@ export default async function IntegrationsPage() {
           },
           {
             id: "deliveries",
-            header: "Deliveries",
+            header: t("settings.colDeliveries"),
             numeric: true,
             cell: (w: any) => w._count.deliveries,
           },
           {
             id: "state",
-            header: "Status",
+            header: t("settings.colStatus"),
             cell: (w: any) => (
               <span
                 data-active={String(w.isActive)}
@@ -195,7 +197,7 @@ export default async function IntegrationsPage() {
                       }
                 }
               >
-                {w.isActive ? "Active" : "Paused"}
+                {w.isActive ? t("settings.statusActive") : t("settings.statusPaused")}
               </span>
             ),
           },
@@ -217,22 +219,21 @@ export default async function IntegrationsPage() {
       {mayManage && <WebhookCreatePanel events={eventOptions} errors={errors} />}
 
       <h2 className="mt-10 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-        Meta pixels (legacy)
+        {t("settings.sectionPixelsLegacy")}
       </h2>
       <p className="mt-1 text-xs text-muted-foreground">
-        Superseded by Tracking &amp; analytics above — the pipeline reads only that list.
-        Recreate any entry here as a Meta integration, then remove it.
+        {t("settings.pixelsLegacyNote")}
       </p>
       <DataTable
         testId="pixels-table"
-        empty="No pixels connected yet."
+        empty={t("settings.pixelsEmpty")}
         rows={pixels}
         rowKey={(p: any) => p.id}
         rowAttrs={(p: any) => ({ "data-pixel-id": p.id })}
         columns={[
           {
             id: "label",
-            header: "Pixel",
+            header: t("settings.colPixel"),
             cell: (p: any) => (
               <>
                 <span className="font-medium">{p.label}</span>
@@ -244,13 +245,13 @@ export default async function IntegrationsPage() {
           },
           {
             id: "token",
-            header: "Access token",
+            header: t("settings.colAccessToken"),
             // Never the value. Only that one exists.
             cell: () => <span className="text-muted-foreground">{t("settings.set")}</span>,
           },
           {
             id: "added",
-            header: "Added",
+            header: t("settings.colAdded"),
             cell: (p: any) => (
               <span className="text-xs text-muted-foreground">
                 {formatDate(p.createdAt, locale)}
@@ -259,10 +260,10 @@ export default async function IntegrationsPage() {
           },
           {
             id: "state",
-            header: "Status",
+            header: t("settings.colStatus"),
             cell: (p: any) => (
               <span data-active={String(p.isActive)} className="text-xs text-muted-foreground">
-                {p.isActive ? "Active" : "Paused"}
+                {p.isActive ? t("settings.statusActive") : t("settings.statusPaused")}
               </span>
             ),
           },

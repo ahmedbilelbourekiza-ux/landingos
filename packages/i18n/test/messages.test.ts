@@ -326,6 +326,16 @@ const EDITOR_DIRS = [
   path.join(CONSOLE_SRC, 'components', 'landings', 'edit'),
   path.join(CONSOLE_SRC, 'lib', 'landing', 'mock-order-form.ts'),
   path.join(CONSOLE_SRC, 'lib', 'landing', 'benefit-icons.ts'),
+  /* LB.41 — the settings screens, added because one of them was NOT covered
+   * and had been holding twelve English field labels since B4. This scan was
+   * written for the editor (M-04 counted 166 strings across 32 editor
+   * components) and its name still says so, but the reason it exists is not
+   * "the editor is special" — it is that a console shipping in three languages
+   * must not render a fourth. `/console/settings/store` was the only screen
+   * outside the editor still doing it; measured across every console screen
+   * when it was found, and every other one was already clean. Covering the
+   * whole settings directory is what stops the next one being written. */
+  path.join(CONSOLE_SRC, 'app', 'console', 'settings'),
 ];
 
 /** Props whose string value a person reads. */
