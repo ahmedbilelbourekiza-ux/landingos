@@ -12,6 +12,67 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.41 — the store settings screen answered in a fourth language**
+  (14 August 2026 — `94b6a40`, **local; NOT deployed**). Investigated as a
+  production error on `/console/settings/store`, digest `2216248186`.
+
+  **The error does not reproduce, and that is the first finding.** A fixture
+  was built shaped EXACTLY like the real tenants — read from `landingos_prod`
+  first rather than assumed: no `StoreSettings` row, OWNER, **TRIALING**,
+  `ar`. Against it, on production: the screen returns **200** and renders its
+  form; a text save redirects `?saved=1` and persists; an image upload reaches
+  R2, stores, and the file serves back with the right content-type. Every path
+  on that screen is healthy.
+
+  **The StoreSettings-row lead is settled rather than left open:** all three
+  real tenants have no row, so "no row" cannot be the cause on its own — the
+  screen falls back to the tenant name and renders.
+
+  **What the digest was is unresolved**, and the candidates are recorded in
+  `NEXT_STEPS.md` §LB.41 rather than guessed at. The strongest is a Neon
+  `P1001` transient, which this project hits repeatedly and which surfaces
+  exactly this way: a server component throws, `console/error.tsx` renders,
+  and the digest is all the user sees. There are no Render logs and no
+  dashboard access, so a digest with no reproduction cannot be traced further.
+
+  **What was found instead is real and is on that screen.** It was the ONLY
+  console screen still rendering user-facing English — twelve field labels,
+  both error messages, the saved banner, Remove and Save — so a merchant on an
+  Arabic account met a translated page frame wrapped around an English form,
+  right-to-left. It escaped LB.13's guard because that scan covers the EDITOR
+  directories and nothing else.
+
+  **The guard now covers `app/console/settings`, and extending it immediately
+  found a second screen:** `settings/integrations`, thirteen more strings a
+  first rough grep had missed because they were JSX ternaries rather than
+  `label:` props. Both screens are fixed and the guard left covering the
+  directory — narrowing it to dodge a known defect is the exemption list its
+  own comment warns against.
+
+  **One test broke correctly.** It asserted the English sentence
+  "administrator access", which stopped appearing once the screen was
+  translated (these fixtures take the default locale, `ar`). It reads the
+  CATALOGUE now instead of a copy of the prose, plus a structural assertion
+  that a manager is handed no create panels — which survives any rewording.
+
+  **Files.** `app/console/settings/store/page.tsx`,
+  `app/console/settings/integrations/page.tsx`, `packages/i18n` (41 new keys
+  ×3 locales), `packages/i18n/test/messages.test.ts` (guard scope),
+  `test/builder-sections.test.ts`.
+
+  **Migration.** None. **Risk.** String extraction only; the behavioural
+  surface is unchanged and the guard now fails if a settings screen regresses.
+
+  Verified on the running build in all three locales: fr *Nom de la boutique /
+  Enregistrer*, ar *اسم المتجر / حفظ*, en unchanged; integrations headings and
+  status cells translated in fr and ar. i18n 22, builder-sections 74,
+  storefront 66, builder-api 41, console-shell 20, hardening 13, webhooks 10,
+  tracking 15.
+
+  **Recorded, not fixed:** six strings in the client write-panels under
+  `components/console/platform` — a layer outside both the screens and the
+  guard's scope. Bounded, listed in `NEXT_STEPS.md`.
+
 - **LB.40 — `robots.txt` said `Allow: /` to everyone, including the console**
   (14 August 2026 — `f1e38bf`, **DEPLOYED the same day** in `c89b19b..0286f99`). Confirmed on production against a pre-push baseline: `Googlebot` 1 → 0, the other three old user-agents gone, `Disallow: /console/` and `Disallow: /api/` 0 → 1, and no `Sitemap:` on the platform host. The custom-domain branch is untestable in production by construction — Render 403s an unconfigured hostname at the edge (LB.14c) — and is covered by tests locally.
 

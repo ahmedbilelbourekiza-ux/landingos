@@ -810,6 +810,76 @@ copy, and tests. It also needs one product decision: whether the default
 NULL should be shown as "all" or as "not configured", since they look
 identical and mean the same thing today.
 
+### LB.41 — DONE, NOT DEPLOYED. The store settings screen answered in a fourth language (14 Aug)
+
+**`94b6a40`, local only.** Investigated as a production error on
+`/console/settings/store`, digest `2216248186`.
+
+#### The error does not reproduce — here is exactly what was tried
+
+A fixture was built shaped **exactly** like the real production tenants, after
+reading their rows first rather than assuming: **no `StoreSettings` row**,
+OWNER membership, **TRIALING** subscription with both entitlements, `ar`
+locale. (The StoreSettings-row lead is worth recording as settled: **all three
+real tenants have no row**, so "no row" cannot be the cause on its own — the
+screen falls back to `session.tenant.name` and renders.)
+
+Against that fixture, on production:
+
+| Path | Result |
+|---|---|
+| `GET /console/settings/store` | **200**, form renders, all 12 fields |
+| Text save (server action) | redirects `?saved=1`, value persists |
+| Image upload → R2 | stored, and the file serves back with `image/png` + immutable caching |
+
+Every path on that screen is healthy. **The digest is unresolved**, and the
+candidates in order:
+
+1. **A Neon `P1001` transient** — the strongest. This project hits them
+   repeatedly, and one inside a server component surfaces exactly this way:
+   the component throws, `console/error.tsx` renders, and the digest is all
+   the user sees. Unreproducible by nature.
+2. A one-off on an older build. The screen itself has not been touched since
+   B4, so nothing recent broke or fixed it.
+3. Something specific to that session that a fixture cannot recreate.
+
+**There are no Render logs and no dashboard access**, so a digest without a
+reproduction cannot be traced further. If it recurs, the thing worth capturing
+is the TIME — a transient shows up as a cluster, a code fault does not.
+
+#### What was found instead, and fixed
+
+`/console/settings/store` was **the only console screen still rendering
+user-facing English**: twelve field labels, both error messages, the saved
+banner, Remove and Save. A merchant on an Arabic account met a translated page
+frame wrapped around an English form, right-to-left — which is a fair
+description of "this screen is broken", and may well be what prompted the
+report alongside whatever produced the digest.
+
+It escaped LB.13's guard because that scan covers the **editor** directories
+and nothing else. The guard now covers `app/console/settings`, and extending it
+immediately found a second screen: **`settings/integrations`, 13 more strings**
+that a first rough grep had missed because they were JSX ternaries rather than
+`label:` props. **Both screens are fixed** and the guard left covering the
+directory — narrowing it to dodge a known defect is the exemption list its own
+comment warns against.
+
+One test broke correctly: it asserted the English sentence "administrator
+access", which stopped appearing once the screen was translated (these fixtures
+take the default locale, `ar`). It reads the **catalogue** now instead of a
+copy of the prose, plus a structural assertion that a manager is handed no
+create panels — which survives any rewording.
+
+Verified on the running build in all three locales: fr *Nom de la boutique /
+Enregistrer*, ar *اسم المتجر / حفظ*, en unchanged; the integrations headings
+and status cells translated in fr and ar. **No migration.**
+
+**Recorded, NOT fixed — six strings in the client write-panels:**
+`components/console/platform/tracking-write.tsx` (4) and `webhook-write.tsx`
+(2). A layer outside both the screens and the guard's scope, bounded and small.
+Worth a follow-up that extends the guard to `components/console/platform` and
+clears them together.
+
 ### LB.40 — DONE + DEPLOYED. robots.txt stops inviting crawlers in (14 Aug)
 
 **`f1e38bf`, DEPLOYED 14 Aug 2026** (`c89b19b..0286f99`). Confirmed on production against a pre-push baseline: `Googlebot` 1 → 0, `Disallow: /console/` 0 → 1, and the platform host still names no sitemap. Asked for as "add the robots.txt". It is a
