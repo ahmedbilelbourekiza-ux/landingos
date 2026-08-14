@@ -810,6 +810,40 @@ copy, and tests. It also needs one product decision: whether the default
 NULL should be shown as "all" or as "not configured", since they look
 identical and mean the same thing today.
 
+### LB.35b RE-VERIFIED ON PRODUCTION — 14 Aug. It was already built and deployed
+
+**Requested again as "build the per-page Meta pixel UI control that's been
+missing since LB.35". It was built earlier the same session (`dd4edac`) and
+deployed (`407854a`), and the design asked for is the design that shipped** —
+so it was re-verified rather than rebuilt. Recorded here because a second
+request for work already done is worth answering with evidence, not a claim.
+
+**The spec, point by point, against what is live:**
+
+| Asked for | Live on production |
+|---|---|
+| Measure the three states end to end | `selectedIds()` returns `null` for anything non-array, so **SQL NULL and JSON null both mean "inherit all"** — the reader is robust to Prisma's Json-null subtlety |
+| NULL should mean "inherit all active integrations" | It does. The UI shows **"Tout votre suivi"** with the hint *"C'est le réglage par défaut"* |
+| Zero pixels must be distinct and deliberate, not the same as "not configured" | It is: a **separate mode**, then untick everything, which raises *"Aucune sélection : cette page ne remontera à aucun de vos suivis."* |
+| Verify against how the field is actually read today | Done — the reasoning was checked against `lib/storefront/tracking.ts`, not against a summary |
+| Control in the Integrations section, replacing the signpost | Yes; the signpost survives only for a tenant with no integrations connected |
+| Save path, three locales, tests | `general` route; ar/fr/en; builder-api 37 → 41 |
+
+**Re-measured end to end on production, 14 Aug, on a throwaway tenant with two
+active pixels:**
+
+| State | Stored | Storefront serves |
+|---|---|---|
+| never touched | `null` | **both** pixels |
+| explicit subset | `["<pixelA>"]` | **only** that one |
+| explicit empty | `[]` | **none** — page still 200, no fallback to all |
+| back to unset | `null` | both return |
+
+Switching to "choose" pre-selects **every active integration**, so the
+transition out of "inherit all" cannot silently reduce reporting — which is the
+same safety argument the request made from the other direction. Fixture swept
+with `deleteTenant`.
+
 ### LB.41 — DONE, NOT DEPLOYED. The store settings screen answered in a fourth language (14 Aug)
 
 **`94b6a40`, local only.** Investigated as a production error on
