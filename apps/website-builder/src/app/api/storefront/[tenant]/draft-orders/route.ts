@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { withTenant } from "@landingos/db";
 
-import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
+import { tenantBySlug, currentOrigin, storefrontHref } from "@/lib/storefront/resolve-tenant";
 import { allowRequest, clientIp, draftLimit } from "@/lib/storefront/rate-limit";
 import { DraftBody } from "@/lib/storefront/contract";
 import { triggerDraftOrderWebhook } from "@/lib/webhooks/tenant-triggers";
@@ -62,7 +62,7 @@ export async function POST(
     const fire = await withTenant(tenant.id, async (db) => {
       const page = await (db as any).landingPage.findFirst({
         where: { id: landingPageId, published: true },
-        select: { id: true },
+        select: { id: true, slug: true },
       });
       if (!page) return null;
 
@@ -96,9 +96,9 @@ export async function POST(
           where: { id: draft.id },
           data: { notifiedAt: new Date() },
         });
-        return { event: "draft_order.created" as const, id: draft.id, leadArrived };
+        return { event: "draft_order.created" as const, id: draft.id, leadArrived, pageSlug: page.slug as string };
       }
-      return { event: "draft_order.updated" as const, id: draft.id, leadArrived };
+      return { event: "draft_order.updated" as const, id: draft.id, leadArrived, pageSlug: page.slug as string };
     });
 
     if (fire) {
@@ -108,6 +108,10 @@ export async function POST(
       // dedup key, and the phone-transition guard above means later
       // keystrokes update the lead rather than creating new ones (LB.5).
       if (fire.leadArrived && fields.phone) {
+        // Rebuilt server-side, same rule as the checkout's Purchase: Meta
+        // requires event_source_url for website events, and the vetted
+        // origin + page slug is the one non-spoofable source of it (LB.43).
+        const origin = await currentOrigin();
         dispatchTrackingEvent(tenant.id, {
           name: "Lead",
           eventId: fire.id,
@@ -121,6 +125,7 @@ export async function POST(
             ttclid: ttclid ?? null,
             ttp: ttp ?? null,
             gaClientId: gaClientId ?? null,
+            url: origin ? `${origin}${storefrontHref(tenant, fire.pageSlug)}` : null,
           },
         });
       }

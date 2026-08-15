@@ -12,6 +12,40 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.43 — server-side conversion events carry the page URL** (15 August
+  2026 — **local; NOT deployed**; no migration).
+
+  **The gap, found while closing LB.11:** the checkout's Purchase and the
+  draft route's Lead dispatched with `action_source: "website"` and no
+  `event_source_url` — the two call sites never set `context.url`, while all
+  three provider adapters were already built to forward it (Meta
+  `event_source_url`, TikTok `page.url`, GA4 `page_location`). Meta accepted
+  and counted the events anyway — LB.11's production evidence — so this is
+  a data-quality completion, not a delivery fix: Meta's docs call the field
+  required for website events, and it feeds matching.
+
+  **The URL is REBUILT server-side, not read from the body.** The vetted
+  `currentOrigin()` (LB.39/LB.40's one header-trust rule) plus
+  `storefrontHref(tenant, page.slug)` — a client-sent URL would be a second
+  spoofable input alongside the headers that rule already vets. The orders
+  route returns `pageSlug` out of its transaction; the draft route's page
+  read gains `slug` and threads it through `fire`. When `currentOrigin()`
+  answers null the field stays absent, which every adapter already guards.
+
+  **Files:** `api/storefront/[tenant]/orders/route.ts`,
+  `api/storefront/[tenant]/draft-orders/route.ts`, `test/tracking.test.ts`.
+
+  **Verified end-to-end through the running build** (the LB.5 stub-receiver
+  convention): a real checkout's Purchase arrived at the receiver with
+  `event_source_url` = `http://127.0.0.1:3000/<tenant>/tracked-product`,
+  TikTok and GA4 carrying the identical URL in their own fields, and the
+  draft route's Lead carrying it too — four new assertions. tracking
+  **15/15** · storefront **66/66** · webhooks **10/10** · builder-api
+  **41/41**. Three storefront reds on the first pass were the per-IP
+  checkout rate limiter meeting the tracking suite's earlier orders from
+  the same address — gone on a clean-bucket rerun (`CHECKOUT_RATE_LIMIT`
+  raised for the run), all 429s, no code path involved.
+
 - **LB.11 — CLOSED by production evidence: the Meta CAPI pipeline works with
   a real pixel and a real token** (15 August 2026 — **no code change**; the
   deployed LB.5 pipeline verified end-to-end on the live store).

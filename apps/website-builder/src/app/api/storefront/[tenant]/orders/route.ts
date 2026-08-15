@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { Prisma, withTenant } from "@landingos/db";
 
-import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
+import { tenantBySlug, currentOrigin, storefrontHref } from "@/lib/storefront/resolve-tenant";
 import { allowRequest, clientIp, checkoutLimit } from "@/lib/storefront/rate-limit";
 import { CheckoutBody } from "@/lib/storefront/contract";
 import { deliveryPricesFor, priceForMethod } from "@/lib/storefront/delivery";
@@ -180,7 +180,13 @@ export async function POST(
         });
       }
 
-      return { order, total, currency: page.currency as string, pageTitle: page.title as string };
+      return {
+        order,
+        total,
+        currency: page.currency as string,
+        pageTitle: page.title as string,
+        pageSlug: page.slug as string,
+      };
     });
 
     if ("error" in result) return result.error;
@@ -200,6 +206,13 @@ export async function POST(
     // browser event shares. Fired AFTER the transaction returned (its read
     // opens its own binding) and never awaited: an ad platform being down is
     // not a reason to slow a customer's checkout (LB.5).
+    //
+    // The page URL is REBUILT server-side (the vetted request origin + the
+    // page's slug) rather than accepted from the body: Meta requires
+    // event_source_url for action_source "website", and a client-sent URL
+    // would be a second spoofable input alongside the headers currentOrigin
+    // already vets (LB.43).
+    const origin = await currentOrigin();
     dispatchTrackingEvent(tenant.id, {
       name: "Purchase",
       eventId: result.order.id,
@@ -217,6 +230,7 @@ export async function POST(
         ttclid: input.ttclid ?? null,
         ttp: input.ttp ?? null,
         gaClientId: input.gaClientId ?? null,
+        url: origin ? `${origin}${storefrontHref(tenant, result.pageSlug)}` : null,
       },
     });
 

@@ -354,6 +354,14 @@ describe('server-side conversion events reach every configured platform', { skip
     assert.equal(meta.body.data[0].user_data.client_user_agent, 'TrackTest/1.0');
     assert.ok(meta.path.includes('access_token=meta-tok'));
 
+    // The page URL, rebuilt server-side from the vetted origin + page slug —
+    // Meta requires event_source_url for website events (LB.43), and the
+    // same value fans out to every provider's own field for it.
+    const pageUrl = `${BASE}/${slug}/tracked-product`;
+    assert.equal(meta.body.data[0].event_source_url, pageUrl);
+    assert.equal(tiktok.body.data[0].page.url, pageUrl);
+    assert.equal(ga4.body.events[0].params.page_location, pageUrl);
+
     assert.equal(tiktok.body.data[0].event_id, orderId);
     assert.equal(tiktok.body.data[0].event, 'PlaceAnOrder');
     assert.equal(tiktok.headers['access-token'], 'tiktok-tok');
@@ -379,6 +387,8 @@ describe('server-side conversion events reach every configured platform', { skip
     const meta = await waitFor(() =>
       hits.find((h) => h.path.includes('/999888777666/events') && h.body?.data?.[0]?.event_name === 'Lead'));
     assert.ok(meta, 'the Lead reached Meta');
+    assert.equal(meta.body.data[0].event_source_url, `${BASE}/${slug}/tracked-product`,
+      'the Lead carries the page URL too — the draft route rebuilds it the same way');
     const tiktok = await waitFor(() =>
       hits.find((h) => h.path.includes('/event/track') && h.body?.data?.[0]?.event === 'SubmitForm'));
     assert.ok(tiktok, 'the Lead reached TikTok as SubmitForm');
