@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { motion } from "framer-motion";
 import type { LandingThemeData } from "@/types/theme";
 import { DEFAULT_THEME } from "@/types/theme";
 
@@ -106,21 +105,20 @@ export function ThemeProvider({
           its own pipeline, which kept serving the FIRST theme's resolved
           background after the editor switched themes — measured live, with
           the inline style already carrying the new value. A plain element's
-          style follows every re-render; the motion.div now only fades the
-          content and carries no style of its own. */}
+          style follows every re-render.
+
+          The inner wrapper must stay a PLAIN div too. It was a framer fade
+          (initial opacity 0), which server-rendered the ENTIRE page invisible
+          until the bundle hydrated — Lighthouse measured the hero image
+          downloaded and then unpainted for 2.5s on a throttled phone, 43% of
+          a 5.8s LCP (LB.44). Nothing between the server HTML and the first
+          paint may depend on JavaScript. */}
       <div
         style={style}
         data-landing-theme={theme.id}
         className={className ?? "flex min-h-screen flex-col"}
       >
-        <motion.div
-          className="flex flex-1 flex-col"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.2 }}
-        >
-          {children}
-        </motion.div>
+        <div className="flex flex-1 flex-col">{children}</div>
       </div>
     </ThemeContext.Provider>
   );

@@ -43,10 +43,12 @@ export function DescriptionImages({ images }: { images: LandingMediaData[] }) {
               // a fixed box would cut off content.
               className="h-auto w-full object-contain"
               sizes="(max-width: 1024px) 100vw, 1152px"
-              // Only the first image is a plausible LCP candidate; the rest sit
-              // well below the fold, so eager-loading them would compete with
-              // the gallery and the buy box for bandwidth.
-              loading={index === 0 ? "eager" : "lazy"}
+              // ALL lazy, the first included. This whole section sits below
+              // the product grid on every breakpoint, and the first image's
+              // `eager` was emitting a PRELOAD that competed with the hero —
+              // the actual LCP element — for a phone's bandwidth (measured in
+              // the served HTML, LB.44).
+              loading="lazy"
             />
           </div>
         ))}

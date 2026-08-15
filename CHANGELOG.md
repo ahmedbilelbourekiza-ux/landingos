@@ -12,6 +12,68 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.44 — the storefront paints before it hydrates: the LCP fix** (15
+  August 2026 — **local; NOT deployed**; no migration).
+
+  **Reported as** PageSpeed 75 on `/bebezzouar/robe`, LCP **5.0s** while FCP
+  was 1.3s. **Measured before touching anything**, and the audit-era suspects
+  were both already fixed: the hero used `next/image` with `priority`, a
+  nine-width srcset and proper `sizes`, and the served webp at `w=750`
+  weighed **19KB** — bytes were never the problem. A local Lighthouse run
+  (perf 50, LCP 5.8s on this machine's throttling) named the LCP element —
+  the hero `<img>` — and the phase that owned it: **Render Delay, 2.5s,
+  43%.** The image was downloaded and then not allowed to paint.
+
+  **The mechanism:** `theme-provider.tsx` wrapped the ENTIRE page in a
+  framer-motion fade. A framer `initial={{opacity:0}}` server-renders as
+  inline `opacity:0`, so every storefront page arrived invisible and stayed
+  invisible until ~1.3MB of JavaScript downloaded, parsed and hydrated —
+  which on a throttled phone is the whole gap between FCP and LCP. The
+  product-info column repeated the pattern with its own entrance.
+
+  **The fixes, all template-level (every storefront page inherits them):**
+  1. The page wrapper is a **plain div** again. The rule now stated in the
+     component: nothing between the server HTML and the first paint may
+     depend on JavaScript.
+  2. The info column's entrance became a **CSS animation**
+     (`landing-fade-up`, `prefers-reduced-motion`-guarded, in globals.css) —
+     it starts at the browser's first paint, JS or no JS, preserving the
+     designed slide-up.
+  3. The hero image adds **`fetchPriority="high"`** — `priority` alone
+     preloads but leaves the fetch competing at default priority with fonts
+     and CSS.
+  4. Description images are **all lazy now**. The first was `eager` and —
+     measured in the served HTML — emitted its own preload that competed
+     with the hero for bandwidth; the section sits below the product grid on
+     every breakpoint.
+
+  **Kept deliberately:** the reviews' scroll-triggered reveal (below the
+  fold, not the LCP, and the interaction is designed); the gallery's
+  crossfade (`AnimatePresence initial={false}` — the first frame was never
+  animated).
+
+  **Verified:** the rebuilt page's served HTML has zero `opacity:0`
+  wrappers, exactly ONE image preload (the hero, `fetchPriority="high"`),
+  and no eager below-fold image. A real browser's buffered LCP entry on the
+  rebuilt page: **LCP = FCP = 1,312ms** — the paint-blocking is gone
+  entirely. Local Lighthouse (same method as baseline): 50 → **75**, LCP
+  5.8 → 3.7s, TBT 1,770 → 500ms — and the residual simulated "render
+  delay" is the simulator's model, contradicted by the real browser's
+  entry. **The production before/after PageSpeed comparison requires the
+  deploy** and is the first thing to run after it.
+
+  **What this deliberately does NOT touch, both already on the queue:** TTFB
+  ~850ms (Render + `force-dynamic` on every storefront render — LB.14a.2's
+  front-door problem) and the ~1.3MB client bundle (the JS diet, §5.4).
+  Also noticed on the way: `category-product-grid.tsx` is mounted by
+  nothing and links to the legacy `/l/` path — flagged for deletion as its
+  own task, LB.16's precedent.
+
+  **Files:** `components/landing/theme-provider.tsx`,
+  `sections/product-info.tsx`, `sections/product-gallery.tsx`,
+  `sections/description-images.tsx`, `app/globals.css`.
+  storefront **66/66** · builder-sections **74/74** · tracking **15/15**.
+
 - **LB.43 — server-side conversion events carry the page URL** (15 August
   2026 — **local; NOT deployed**; no migration).
 

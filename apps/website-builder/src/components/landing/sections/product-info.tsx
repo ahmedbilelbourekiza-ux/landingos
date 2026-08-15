@@ -1,7 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
-
 import { PriceBlock } from "./price-block";
 import { BenefitsList } from "./benefits-list";
 import { VariantSelectors } from "./variant-selectors";
@@ -18,13 +16,11 @@ export function ProductInfo({
   store: LandingOrderStore;
 }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: "easeOut", delay: 0.08 }}
-      className="flex flex-col gap-6"
-      dir="rtl"
-    >
+    // The entrance is a CSS animation, not framer: a framer initial state
+    // server-renders as opacity 0 and holds the column invisible until the
+    // bundle hydrates — seconds on a throttled phone (LB.44). CSS starts at
+    // first paint and needs no JavaScript.
+    <div className="landing-fade-up flex flex-col gap-6" dir="rtl">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
           {page.title}
@@ -62,6 +58,6 @@ export function ProductInfo({
           stopDeskEnabled={page.setting?.stopDeskEnabled ?? false}
         />
       </div>
-    </motion.div>
+    </div>
   );
 }

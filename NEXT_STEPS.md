@@ -844,6 +844,41 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
+### LB.44 — DONE, NOT DEPLOYED. The storefront paints before it hydrates (15 Aug)
+
+**Reported as** PageSpeed 75 / LCP 5.0s on the real page `/bebezzouar/robe`,
+with every other metric healthy (FCP 1.3s, TBT 120ms, CLS 0). **The
+audit-era suspects both measured already fixed** — the hero had
+`priority` + a nine-width srcset, and the served webp weighed 19KB — so the
+diagnosis had to come from Lighthouse, not the audit: the LCP element is the
+hero `<img>`, and **43% of its LCP was Render Delay — downloaded, then not
+allowed to paint.**
+
+**The mechanism was one shared component.** `ThemeProvider` wrapped every
+storefront page in a framer-motion fade; framer's `initial={{opacity:0}}`
+server-renders as inline `opacity:0`, so the page arrived invisible and
+stayed invisible until ~1.3MB of JS hydrated — the whole FCP→LCP gap on a
+throttled phone. The product-info column repeated the pattern.
+
+**Fixed template-wide:** plain div for the page wrapper (the rule is now
+written in the component: nothing between server HTML and first paint may
+depend on JS); a CSS `landing-fade-up` entrance for the info column
+(starts at paint, reduced-motion-guarded); `fetchPriority="high"` on the
+hero; description images ALL lazy (the first was eager **and preloaded**,
+competing with the hero — measured in the served HTML). Real-browser LCP on
+the rebuilt page: **LCP = FCP = 1.3s**. Local Lighthouse 50→75, LCP
+5.8→3.7s. **The production before/after PSI run is the first thing to do
+after this deploys.**
+
+**What it deliberately leaves, both already queued:** TTFB ~850ms
+(LB.14a.2's front-door split) and the 1.3MB bundle (the JS diet, the two
+items §6 of `HANDOFF_PRODUCTION.md` names as the next most valuable
+engineering work). `category-product-grid.tsx` was found mounted by nothing
+and linking the legacy `/l/` path — flagged as its own deletion task.
+
+*(LB.43, same day: the server-side Purchase/Lead now carry
+`event_source_url`, rebuilt from the vetted origin — CHANGELOG §LB.43.)*
+
 ### LB.42 — DONE, NOT DEPLOYED. The write-panels stop speaking English (14 Aug)
 
 **`262f258`, local only.** Asked for as "the six write-panel strings".

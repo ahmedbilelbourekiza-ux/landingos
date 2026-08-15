@@ -843,21 +843,27 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **TWO slices are queued to deploy: LB.42 (`262f258`) and LB.43** — the
-   settings write-panels stop rendering English (plus two i18n-guard fixes),
-   and the server-side conversion events gain `event_source_url` (CHANGELOG
-   §LB.43). **No migration in either.** Suites green on the final build
-   (tracking 15, storefront 66, builder-api 41, webhooks 10; LB.42's own
-   run also had i18n 22, builder-sections 74, console-shell 20, hardening
-   13). **Not deployed — the user asked to be asked first.** Markers:
-   LB.42 — `/console/settings/integrations` with a `locale=fr` cookie serves
-   `Libellé` and `Envoyer un test` where it used to serve `Label` and
-   `Send test` (`Pixel ID` and `Conversions API access token` REMAIN,
-   deliberately — Meta's own dashboard terms). LB.43 — has no unauthed
-   public marker; the deploy proof is a checkout on a fixture (or the next
-   real order) followed by Meta's Events Manager showing the event with its
-   URL, or simply the commit being in the deployed range — the behaviour is
-   pinned by the tracking suite's stub assertions.
+4. **THREE slices are queued to deploy: LB.42 (`262f258`), LB.43, and
+   LB.44** — the settings write-panels stop rendering English (plus two
+   i18n-guard fixes), the server-side conversion events gain
+   `event_source_url` (CHANGELOG §LB.43), and the storefront LCP fix
+   (CHANGELOG §LB.44 — the framer fade that held every page invisible until
+   hydration). **No migration in any.** Suites green on the final build
+   (storefront 66, builder-sections 74, tracking 15, builder-api 41,
+   webhooks 10; LB.42's own run also had i18n 22, console-shell 20,
+   hardening 13). **Not deployed — the user asked to be asked first.**
+   Markers: LB.42 — `/console/settings/integrations` with a `locale=fr`
+   cookie serves `Libellé` and `Envoyer un test` where it used to serve
+   `Label` and `Send test` (`Pixel ID` and `Conversions API access token`
+   REMAIN, deliberately — Meta's own dashboard terms). LB.43 — no unauthed
+   public marker; pinned by the tracking suite's stub assertions. **LB.44
+   has the best marker of the three and it is PUBLIC:** the served HTML of
+   any published page flips from `style="opacity:0"` on the
+   `flex flex-1 flex-col` wrapper (baseline captured 15 Aug) to no such
+   wrapper, one `<link rel="preload" as="image">` with
+   `fetchPriority="high"`, and `landing-fade-up` in the markup — then run
+   PageSpeed on `/bebezzouar/robe` for the real before/after (before:
+   Performance 75, LCP 5.0s).
 
    **LB.41** (`94b6a40`) shipped on 14 Aug as `ce883f1..c3b1917`, and **LB.40** (`f1e38bf`) earlier the same day as
    `c89b19b..0286f99`. Neither carries a migration; both verified live — §1 has the records.

@@ -236,6 +236,37 @@
 }
 
 /* -----------------------------------------------------------------------------
+ * LB.44 — the landing page's entrance, in CSS so it cannot delay first paint.
+ *
+ * The product-info column used to enter through a framer-motion initial state,
+ * which server-renders as `opacity: 0` and stays that way until the bundle
+ * hydrates — on a throttled phone that held the column (and, via a wrapper
+ * with the same pattern, the whole page) invisible for seconds after the
+ * content had arrived. A CSS animation starts at the browser's first paint of
+ * the element, JavaScript or not.
+ * -------------------------------------------------------------------------- */
+@keyframes landing-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.landing-fade-up {
+  animation: landing-fade-up 0.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-fade-up {
+    animation: none;
+  }
+}
+
+/* -----------------------------------------------------------------------------
  * UI.4 — one reduced-motion guard for the whole console.
  *
  * `.row-flash` above already did this correctly and was the only thing in the

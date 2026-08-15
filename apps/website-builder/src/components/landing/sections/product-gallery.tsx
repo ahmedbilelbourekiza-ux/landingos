@@ -86,6 +86,11 @@ export function ProductGallery({ media }: { media: LandingMediaData[] }) {
               alt={current.altText ?? current.url}
               fill
               priority={active === 0}
+              // `priority` alone preloads but leaves the fetch at default
+              // priority, where it shares bandwidth with fonts and CSS; this
+              // image is the page's LCP element (measured, LB.44), so it gets
+              // the network's front of the line explicitly.
+              fetchPriority={active === 0 ? "high" : undefined}
               sizes="(max-width: 1024px) 100vw, 50vw"
               className="object-cover"
             />
