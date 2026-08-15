@@ -837,7 +837,18 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **Nothing is queued to deploy.** **LB.41** (`94b6a40`) shipped on 14 Aug as `ce883f1..c3b1917`, and **LB.40** (`f1e38bf`) earlier the same day as
+4. **ONE slice is queued to deploy: LB.42 (`262f258`)** — the settings
+   write-panels stop rendering English, plus two fixes to the i18n guard that
+   was missing them. **No migration.** Suites green (i18n 22, builder-sections
+   74, storefront 66, builder-api 41, console-shell 20, hardening 13, webhooks
+   10, tracking 15), verified on the running build in all three locales.
+   **Not deployed — the user asked to be asked first.** Marker for when it
+   goes: `/console/settings/integrations` with a `locale=fr` cookie serves
+   `Libellé` and `Envoyer un test` where it used to serve `Label` and
+   `Send test`. Expect `Pixel ID` and `Conversions API access token` to REMAIN
+   — those are deliberate (Meta's own dashboard terms).
+
+   **LB.41** (`94b6a40`) shipped on 14 Aug as `ce883f1..c3b1917`, and **LB.40** (`f1e38bf`) earlier the same day as
    `c89b19b..0286f99`. Neither carries a migration; both verified live — §1 has the records.
 
    **LB.35b** (`dd4edac`) shipped on 13 Aug

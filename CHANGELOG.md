@@ -12,6 +12,66 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.42 — the write-panels stop speaking English, and the guard stops
+  missing them** (14 August 2026 — `262f258`, **local; NOT deployed**).
+
+  **Asked for as "the six write-panel strings". There were 37**, and finding
+  that out is most of the slice.
+
+  **Six was my own number and it was wrong.** It came from a rough grep in
+  LB.41 that looked for `label:` props. Pointing LB.13's guard at
+  `components/console/platform` found **22 immediately** — JSX ternaries and
+  `pendingLabel` props the grep never looked at.
+
+  The panels now take their words as a **prop** rather than reading a
+  catalogue — this console's stated convention for client write controls
+  (`lib/console/action-errors.ts`): the server translates once and hands the
+  result down, so a write control never depends on messages being available
+  client-side. Same shape as `PageRowActions`.
+
+  **THE GUARD ITSELF HAD TWO HOLES, both found by reading the rendered page
+  after it reported clean.**
+
+  1. **It scanned LINE BY LINE**, so it could only see text sharing a line
+     with the `>` that opened it. Prettier puts a long label on the next line,
+     and **fourteen strings** sat in plain sight — `Label`, `Signing secret`,
+     `Send test`, `Confirm delete`, `Deliveries` — while the scan said nothing.
+     A whole-file pass catches them now, and it turned up a **third screen
+     nobody had counted**: `settings/delivery-prices`.
+  2. **Then the new pass still missed one.** The code-shape filter rejects
+     anything containing a semicolon, and **`&apos;` ends in one** — so
+     `Events Manager&apos;s test tab` read as code to a filter looking for
+     code. Entities are decoded before that test now.
+
+  **Six ternaries in three other files are NOT translated**, because they are
+  not prose: `variant={x ? "danger" : "ghost"}`, `action={s ? "suspend" :
+  "reactivate"}`, `aria-pressed={p ? "true" : "false"}`. The ternary branch now
+  skips a lowercase single word, exactly as the jsx-text branch already did —
+  translating machinery would have been the wrong fix, and the guard should not
+  have asked for it.
+
+  **Left English deliberately:** `publicIdLabel: "Pixel ID"` and
+  `serverTokenLabel: "Conversions API access token"` in
+  `lib/tracking/config.ts`. Those are the names Meta uses in its own dashboard,
+  and a merchant reading both screens at once is better served by them
+  matching — a product call, not a cleanup, in provider data rather than a
+  component.
+
+  **Files.** `components/console/platform/{tracking,webhook}-write.tsx`,
+  `app/console/settings/{integrations,delivery-prices}/page.tsx`,
+  `packages/i18n` (34 new keys ×3 locales),
+  `packages/i18n/test/messages.test.ts` (scope + two guard fixes).
+
+  **Migration.** None. **Risk.** String extraction and a widened test; the
+  behavioural surface is unchanged.
+
+  Verified on the running build in all three locales: fr *Plateforme / Libellé
+  / Connecter / Envoyer un test / Créer le point de terminaison*, ar *المنصّة /
+  التسمية / ربط / إرسال اختبار*, en unchanged. The only English left on the
+  screen is the two vendor field names above. i18n 22, builder-sections 74,
+  storefront 66, builder-api 41, console-shell 20, hardening 13, webhooks 10,
+  tracking 15.
+
 - **LB.41 — the store settings screen answered in a fourth language**
   (14 August 2026 — `94b6a40`, **DEPLOYED the same day** in `ce883f1..c3b1917`). Confirmed on production against a pre-push baseline — on a French account, "Store name" → "Nom de la boutique" and the integrations header "Managed by" → "Géré par"; all three locales verified on the live screens. Investigated as a
   production error on `/console/settings/store`, digest `2216248186`.

@@ -844,6 +844,69 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
+### LB.42 — DONE, NOT DEPLOYED. The write-panels stop speaking English (14 Aug)
+
+**`262f258`, local only.** Asked for as "the six write-panel strings".
+**There were 37**, and finding that out is most of what this slice is.
+
+**Six was my own number and it was wrong.** It came from a rough grep in LB.41
+that looked for `label:` props. Pointing LB.13's guard at
+`components/console/platform` found **22 immediately** — JSX ternaries and
+`pendingLabel` props the grep had never looked at.
+
+The panels now take their words as a **prop** rather than reading a catalogue.
+That is this console's stated convention for client write controls
+(`lib/console/action-errors.ts`): the server translates once and hands the
+result down, so a write control never depends on whether messages happen to be
+available client-side. It is the same shape `PageRowActions` uses.
+
+#### The guard had two holes, and both were found by reading the page
+
+**1. It scanned LINE BY LINE.** So it could only ever see text sharing a line
+with the `>` that opened it. Prettier puts a long label on the next line:
+
+```
+<span className="…">
+  Label <span aria-hidden>*</span>
+</span>
+```
+
+and the scan walked past it. **Fourteen more strings** were sitting in plain
+sight — `Label`, `Signing secret`, `Send test`, `Confirm delete`, `Deliveries`.
+A whole-file pass catches them now, and it also turned up a **third screen
+nobody had counted**: `settings/delivery-prices` ("Save", "Saved {n} wilayas.").
+
+**2. Then the new pass still missed one.** The code-shape filter rejects
+anything containing a semicolon — and **`&apos;` ends in one**, so
+`Events Manager&apos;s test tab` read as code to a filter looking for code.
+Entities are decoded before that test now.
+
+Both were caught the same way: **reading the rendered page after the guard
+reported clean.** A green scan is evidence about the scan.
+
+#### What was deliberately NOT translated
+
+Six ternaries in three other files — `variant={x ? "danger" : "ghost"}`,
+`action={s ? "suspend" : "reactivate"}`, `aria-pressed={p ? "true" : "false"}`.
+Those are machinery, not prose, and translating them would have been the wrong
+fix. The ternary branch now skips a lowercase single word, exactly as the
+jsx-text branch already did — so the guard stops asking.
+
+`publicIdLabel: "Pixel ID"` and `serverTokenLabel: "Conversions API access
+token"` in `lib/tracking/config.ts` stay English. They are the names Meta uses
+in its own dashboard, and a merchant reading both screens at once is better
+served by them matching. **A product call, not a cleanup** — and that file is
+provider data rather than a component, so it is outside the guard's scope by
+design. If it is ever revisited, the question is per-provider: whether a
+vendor's field name should be localised at all.
+
+Verified on the running build in all three locales: fr *Plateforme / Libellé /
+Connecter / Envoyer un test / Créer le point de terminaison*, ar *المنصّة /
+التسمية / ربط / إرسال اختبار*, en unchanged. The only English left on the screen
+is the two vendor field names above. i18n 22, builder-sections 74, storefront
+66, builder-api 41, console-shell 20, hardening 13, webhooks 10, tracking 15.
+**No migration.**
+
 ### LB.41 — DONE + DEPLOYED. The store settings screen answered in a fourth language (14 Aug)
 
 **`94b6a40`, DEPLOYED 14 Aug 2026** (`ce883f1..c3b1917`). Confirmed on production against a pre-push baseline: on a French account the store screen went from "Store name" to "Nom de la boutique" and the integrations column header from "Managed by" to "Géré par". Investigated as a production error on
@@ -908,11 +971,12 @@ Verified on the running build in all three locales: fr *Nom de la boutique /
 Enregistrer*, ar *اسم المتجر / حفظ*, en unchanged; the integrations headings
 and status cells translated in fr and ar. **No migration.**
 
-**Recorded, NOT fixed — six strings in the client write-panels:**
-`components/console/platform/tracking-write.tsx` (4) and `webhook-write.tsx`
-(2). A layer outside both the screens and the guard's scope, bounded and small.
-Worth a follow-up that extends the guard to `components/console/platform` and
-clears them together.
+**Recorded, NOT fixed at the time — CLOSED by LB.42 above, and the count was
+wrong.** This said "six strings" in the client write-panels, from a rough grep.
+Extending the guard to `components/console/platform` found **37**, because the
+grep looked for `label:` props and the scan itself could not see JSX text that
+wrapped onto its own line. Kept as written, because the undercount is the point:
+a number produced by grepping is not a measurement.
 
 ### LB.40 — DONE + DEPLOYED. robots.txt stops inviting crawlers in (14 Aug)
 
