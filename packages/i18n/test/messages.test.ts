@@ -336,6 +336,13 @@ const EDITOR_DIRS = [
    * when it was found, and every other one was already clean. Covering the
    * whole settings directory is what stops the next one being written. */
   path.join(CONSOLE_SRC, 'app', 'console', 'settings'),
+  /* LB.42 — the client write-panels the settings screens mount. LB.41 covered
+   * the SCREENS and stopped at the directory boundary, which left the panels
+   * rendering English inside a translated page: the same defect one component
+   * deeper, and invisible to the scan that had just been widened to catch it.
+   * Covering both is what makes "the settings surface is translated" true
+   * rather than "the settings pages are". */
+  path.join(CONSOLE_SRC, 'components', 'console', 'platform'),
 ];
 
 /** Props whose string value a person reads. */
@@ -431,12 +438,72 @@ describe('the editor holds no user-facing English (LB.13 / M-04)', () => {
           flag('message', m[1]);
         }
 
-        // `cond ? "A" : "B"` used as display text.
+        /* `cond ? "A" : "B"` used as display text.
+         *
+         * A LOWERCASE single word is skipped, exactly as in the jsx-text
+         * branch above, and for the same reason: `variant={x ? "danger" :
+         * "ghost"}`, `action={s ? "suspend" : "reactivate"}` and
+         * `aria-pressed={p ? "true" : "false"}` are choosing a variant, an
+         * action id or an ARIA literal — machinery, not prose. Capitalisation
+         * is what separates them from `x ? "Pause" : "Activate"`, which IS
+         * prose and stays flagged. Added in LB.42, when widening this scan to
+         * the write-panels turned up six such pairs across three files and
+         * "translating" them would have been the wrong fix. */
         for (const m of line.matchAll(/\?\s*"([^"]{2,})"\s*:\s*"([^"]{2,})"/g)) {
-          flag('ternary', m[1]);
-          flag('ternary', m[2]);
+          for (const v of [m[1], m[2]]) {
+            if (isIdentifier(v) && !/^[A-Z]/.test(v)) continue;
+            flag('ternary', v);
+          }
         }
       });
+
+      /* JSX TEXT THAT SITS ON ITS OWN LINE — the hole the per-line scan above
+       * has by construction, found in LB.42 and worth stating plainly because
+       * it made the scan look more thorough than it was.
+       *
+       * Everything above works one line at a time, so it can only see text
+       * that shares a line with the `>` that opens it. Prettier puts a long
+       * label on the NEXT line:
+       *
+       *     <span className="…">
+       *       Label <span aria-hidden>*</span>
+       *     </span>
+       *
+       * and the whole scan walked straight past it. Six such strings were
+       * sitting in the settings write-panels while the guard reported clean.
+       *
+       * This pass runs over the comment-stripped SOURCE instead, matching a
+       * `>` followed by a newline and then text. `t(...)`, `{...}` and entity
+       * escapes are excluded the same way, and the line number is recovered by
+       * counting newlines so a failure still points at a place. */
+      const codeAll = raw
+        .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+        .replace(/(^|[^:])\/\/[^\n]*/g, (m, p) => p + m.slice(p.length).replace(/./g, ' '))
+        .replace(/\bt\(\s*"[^"]*"\s*\)/g, 't("@")');
+
+      for (const m of codeAll.matchAll(/>\s*\n\s*([A-Za-z][^<>{}\n]*?)\s*(?=<|\n)/g)) {
+        const v = m[1].trim();
+        if (!v || !hasLatinWord(v)) continue;
+        /* The SAME code-shape filter the per-line branch uses, deliberately
+         * rather than a cleverer one: a wrapped JS expression
+         * (`onPreviewChange("x", v),`, `armedId === row.id`) reaches here too,
+         * and one rule applied in both places is easier to trust than two.
+         * It costs a known blind spot — a real label containing brackets, like
+         * `URL (https)`, is skipped — which is why this pass is a net, not a
+         * proof.
+         *
+         * ENTITIES ARE STRIPPED FIRST, and that is not a detail: `&apos;` ends
+         * in a SEMICOLON, so `Events Manager&apos;s test tab` looked like code
+         * to the filter and the scan reported clean over a real sentence.
+         * Found in LB.42 by reading the rendered page after the guard passed —
+         * a reminder that a green scan is evidence about the scan. */
+        const prose = v.replace(/&[a-z]+;|&#\d+;/gi, "'");
+        if (/^[)\];,.:]/.test(prose) || /[;(){}=]/.test(prose)) continue;
+        if (isEnumLike(v) || isClassString(v) || isPathLike(v)) continue;
+        if (isIdentifier(v) && !/^[A-Z]/.test(v)) continue;
+        const line = codeAll.slice(0, m.index).split('\n').length;
+        found.push(`${path.basename(file)}:${line} [jsx-text-multiline] ${v}`);
+      }
     }
 
     assert.deepEqual(

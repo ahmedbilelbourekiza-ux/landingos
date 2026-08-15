@@ -38,6 +38,51 @@ export default async function IntegrationsPage() {
   const locale = isLocale(raw) ? raw : DEFAULT_LOCALE;
   const mayManage = can(session.auth, "platform:integrations:manage");
   const errors = actionErrors(t);
+  /* LB.42 — the write-panels take their words as props, like `errors` above:
+   * translated once here on the server so a client control holds no catalogue
+   * (`lib/console/action-errors.ts` states the convention and why). */
+  const trackingLabels = {
+    connect: t("settings.connectTracking"),
+    platform: t("settings.fieldPlatform"),
+    labelPlaceholder: t("settings.labelPlaceholder"),
+    managedBy: t("settings.colManagedBy"),
+    operator: t("settings.managedByOperator"),
+    connecting: t("settings.pendingConnecting"),
+    saving: t("settings.pendingSaving"),
+    removing: t("settings.pendingRemoving"),
+    pause: t("settings.actionPause"),
+    activate: t("settings.actionActivate"),
+    fieldLabel: t("settings.fieldLabel"),
+    testCodeHint: t("settings.testEventCodeHint"),
+    connectAction: t("settings.actionConnect"),
+    confirmRemove: t("settings.actionConfirmRemove"),
+    keepIt: t("settings.actionKeepIt"),
+    remove: t("settings.actionRemove"),
+  };
+  const webhookLabels = {
+    add: t("settings.addEndpoint"),
+    labelPlaceholder: t("settings.endpointLabelPlaceholder"),
+    secretPlaceholder: t("settings.secretPlaceholder"),
+    subscribedEvents: t("settings.subscribedEvents"),
+    creating: t("settings.pendingCreating"),
+    sending: t("settings.pendingSending"),
+    saving: t("settings.pendingSaving"),
+    deleting: t("settings.pendingDeleting"),
+    pause: t("settings.actionPause"),
+    activate: t("settings.actionActivate"),
+    noDeliveriesLoaded: t("settings.noDeliveriesLoaded"),
+    noDeliveriesYet: t("settings.noDeliveriesYet"),
+    fieldLabel: t("settings.fieldLabel"),
+    fieldUrl: t("settings.fieldUrlHttps"),
+    fieldSecret: t("settings.fieldSigningSecret"),
+    createEndpoint: t("settings.actionCreateEndpoint"),
+    sendTest: t("settings.actionSendTest"),
+    confirmDelete: t("settings.actionConfirmDelete"),
+    keepIt: t("settings.actionKeepIt"),
+    deleteAction: t("settings.actionDelete"),
+    deliveries: t("settings.colDeliveriesShort"),
+    secretHint: t("settings.secretHint"),
+  };
   // The event vocabulary the delivery layer filters on, offered as-is — a
   // second list here would go stale the day an event is added (D-LP.3's rule).
   const eventOptions = WEBHOOK_EVENTS.map((value) => ({
@@ -130,14 +175,14 @@ export default async function IntegrationsPage() {
                   id: "actions",
                   header: "",
                   cell: (x: any) => (
-                    <TrackingRowActions id={x.id} isActive={x.isActive} errors={errors} />
+                    <TrackingRowActions id={x.id} isActive={x.isActive} errors={errors} labels={trackingLabels} />
                   ),
                 },
               ]
             : []),
         ]}
       />
-      {mayManage && <TrackingCreatePanel errors={errors} />}
+      {mayManage && <TrackingCreatePanel errors={errors} labels={trackingLabels} />}
 
       <h2 className="mt-10 text-sm font-medium uppercase tracking-wide text-muted-foreground">
         {t("settings.sectionWebhooks")}
@@ -209,14 +254,14 @@ export default async function IntegrationsPage() {
                   id: "actions",
                   header: "",
                   cell: (w: any) => (
-                    <WebhookRowActions id={w.id} isActive={w.isActive} errors={errors} />
+                    <WebhookRowActions id={w.id} isActive={w.isActive} errors={errors} labels={webhookLabels} />
                   ),
                 },
               ]
             : []),
         ]}
       />
-      {mayManage && <WebhookCreatePanel events={eventOptions} errors={errors} />}
+      {mayManage && <WebhookCreatePanel events={eventOptions} errors={errors} labels={webhookLabels} />}
 
       <h2 className="mt-10 text-sm font-medium uppercase tracking-wide text-muted-foreground">
         {t("settings.sectionPixelsLegacy")}

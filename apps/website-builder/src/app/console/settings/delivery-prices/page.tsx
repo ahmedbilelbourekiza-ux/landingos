@@ -107,7 +107,7 @@ export default async function DeliveryPricesPage({
             borderColor: "var(--success-border)",
           }}
         >
-          Saved {saved} wilayas.
+          {t("settings.savedWilayas", { count: saved })}
         </p>
       ) : null}
 
@@ -161,7 +161,7 @@ export default async function DeliveryPricesPage({
           type="submit"
           className="mt-4 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
         >
-          Save
+          {t("common.save")}
         </button>
       </form>
       </PageBody>

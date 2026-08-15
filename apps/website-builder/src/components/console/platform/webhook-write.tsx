@@ -28,12 +28,42 @@ export interface WebhookEventOption {
 
 const BASE = "/api/platform/integrations/webhooks";
 
+/* LB.42 — words arrive as a prop, per this console's convention for client
+ * write controls (`lib/console/action-errors.ts`): the server translates once
+ * and passes the result down, so the control holds no catalogue of its own. */
+export interface WebhookLabels {
+  readonly add: string;
+  readonly labelPlaceholder: string;
+  readonly secretPlaceholder: string;
+  readonly subscribedEvents: string;
+  readonly creating: string;
+  readonly sending: string;
+  readonly saving: string;
+  readonly deleting: string;
+  readonly pause: string;
+  readonly activate: string;
+  readonly noDeliveriesLoaded: string;
+  readonly noDeliveriesYet: string;
+  readonly fieldLabel: string;
+  readonly fieldUrl: string;
+  readonly fieldSecret: string;
+  readonly createEndpoint: string;
+  readonly sendTest: string;
+  readonly confirmDelete: string;
+  readonly keepIt: string;
+  readonly deleteAction: string;
+  readonly deliveries: string;
+  readonly secretHint: string;
+}
+
 export function WebhookCreatePanel({
   events,
   errors,
+  labels,
 }: {
   readonly events: readonly WebhookEventOption[];
   readonly errors: ActionErrors;
+  readonly labels: WebhookLabels;
 }) {
   const { run, pending, error } = useApiAction(errors);
   const [open, setOpen] = React.useState(false);
@@ -71,7 +101,7 @@ export function WebhookCreatePanel({
         onClick={() => setOpen((o) => !o)}
       >
         <span className="flex items-center gap-2">
-          <Plus aria-hidden className="size-4" /> Add endpoint
+          <Plus aria-hidden className="size-4" /> {labels.add}
         </span>
         <ChevronDown aria-hidden className={`size-4 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -81,18 +111,18 @@ export function WebhookCreatePanel({
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm">
             <span className="mb-1 block text-muted-foreground">
-              Label <span aria-hidden>*</span>
+              {labels.fieldLabel} <span aria-hidden>*</span>
             </span>
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               className="w-full rounded-md border border-border bg-background px-3 py-2"
-              placeholder="My CRM"
+              placeholder={labels.labelPlaceholder}
             />
           </label>
           <label className="text-sm">
             <span className="mb-1 block text-muted-foreground">
-              URL (https) <span aria-hidden>*</span>
+              {labels.fieldUrl} <span aria-hidden>*</span>
             </span>
             <input
               value={url}
@@ -105,21 +135,20 @@ export function WebhookCreatePanel({
           </label>
           <label className="text-sm sm:col-span-2">
             <span className="mb-1 block text-muted-foreground">
-              Signing secret <span aria-hidden>*</span> — shown only now; stored encrypted, used to
-              HMAC-SHA256 every payload
+              {labels.fieldSecret} <span aria-hidden>*</span> — {labels.secretHint}
             </span>
             <input
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
               dir="ltr"
               className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs"
-              placeholder="a long random string (min 8 chars)"
+              placeholder={labels.secretPlaceholder}
             />
           </label>
         </div>
 
         <fieldset className="mt-4">
-          <legend className="text-sm text-muted-foreground">Subscribed events</legend>
+          <legend className="text-sm text-muted-foreground">{labels.subscribedEvents}</legend>
           <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
             {events.map((event) => (
               <label key={event.value} className="flex items-start gap-2 text-sm">
@@ -141,11 +170,11 @@ export function WebhookCreatePanel({
         <div className="mt-4">
           <ActionButton
             pending={pending}
-            pendingLabel="Creating…"
+            pendingLabel={labels.creating}
             onClick={submit}
             disabled={!label.trim() || !url.trim() || secret.trim().length < 8}
           >
-            Create endpoint
+            {labels.createEndpoint}
           </ActionButton>
           <ActionError message={error} />
         </div>
@@ -169,10 +198,12 @@ export function WebhookRowActions({
   id,
   isActive,
   errors,
+  labels,
 }: {
   readonly id: string;
   readonly isActive: boolean;
   readonly errors: ActionErrors;
+  readonly labels: WebhookLabels;
 }) {
   const { run, pending, error } = useApiAction(errors);
   const [testResult, setTestResult] = React.useState<string | null>(null);
@@ -216,36 +247,36 @@ export function WebhookRowActions({
   return (
     <div data-testid="webhook-actions">
       <div className="flex flex-wrap items-center gap-2">
-        <ActionButton pending={pending} pendingLabel="Sending…" size="sm" variant="default" onClick={test}>
-          Send test
+        <ActionButton pending={pending} pendingLabel={labels.sending} size="sm" variant="default" onClick={test}>
+          {labels.sendTest}
         </ActionButton>
         <ActionButton
           pending={pending}
-          pendingLabel="Saving…"
+          pendingLabel={labels.saving}
           size="sm"
           variant="default"
           onClick={() => run("PATCH", `${BASE}/${id}`, { isActive: !isActive })}
         >
-          {isActive ? "Pause" : "Activate"}
+          {isActive ? labels.pause : labels.activate}
         </ActionButton>
         {confirmingDelete ? (
           <>
             <ActionButton
               pending={pending}
-              pendingLabel="Deleting…"
+              pendingLabel={labels.deleting}
               size="sm"
               variant="danger"
               onClick={() => run("DELETE", `${BASE}/${id}`)}
             >
-              Confirm delete
+              {labels.confirmDelete}
             </ActionButton>
             <button type="button" className={button("default", "sm")} onClick={() => setConfirmingDelete(false)}>
-              Keep it
+              {labels.keepIt}
             </button>
           </>
         ) : (
           <button type="button" className={button("default", "sm")} onClick={() => setConfirmingDelete(true)}>
-            Delete
+            {labels.deleteAction}
           </button>
         )}
         <button
@@ -254,7 +285,7 @@ export function WebhookRowActions({
           aria-expanded={logOpen}
           onClick={toggleLog}
         >
-          Deliveries
+          {labels.deliveries}
         </button>
       </div>
 
@@ -267,9 +298,9 @@ export function WebhookRowActions({
 
       <div hidden={!logOpen} className="mt-3">
         {log === null ? (
-          <p className="text-xs text-muted-foreground">No deliveries loaded.</p>
+          <p className="text-xs text-muted-foreground">{labels.noDeliveriesLoaded}</p>
         ) : log.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Nothing has been delivered to this endpoint yet.</p>
+          <p className="text-xs text-muted-foreground">{labels.noDeliveriesYet}</p>
         ) : (
           <ul className="space-y-1 text-xs" data-testid="webhook-deliveries">
             {log.map((d) => (

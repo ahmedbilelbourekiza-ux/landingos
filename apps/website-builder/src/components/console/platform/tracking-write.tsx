@@ -22,7 +22,37 @@ import { TRACKING_PROVIDERS, trackingProvider } from "@/lib/tracking/config";
 
 const BASE = "/api/platform/integrations/tracking";
 
-export function TrackingCreatePanel({ errors }: { readonly errors: ActionErrors }) {
+/* LB.42 — the panel takes its words as a PROP rather than reading a
+ * catalogue. That is this console's stated convention for client write
+ * controls (see `lib/console/action-errors.ts`): the server translates once
+ * and hands the result down, so a write control never depends on whether
+ * messages happen to be available client-side. */
+export interface TrackingLabels {
+  readonly connect: string;
+  readonly platform: string;
+  readonly labelPlaceholder: string;
+  readonly managedBy: string;
+  readonly operator: string;
+  readonly connecting: string;
+  readonly saving: string;
+  readonly removing: string;
+  readonly pause: string;
+  readonly activate: string;
+  readonly fieldLabel: string;
+  readonly testCodeHint: string;
+  readonly connectAction: string;
+  readonly confirmRemove: string;
+  readonly keepIt: string;
+  readonly remove: string;
+}
+
+export function TrackingCreatePanel({
+  errors,
+  labels,
+}: {
+  readonly errors: ActionErrors;
+  readonly labels: TrackingLabels;
+}) {
   const { run, pending, error } = useApiAction(errors);
   const [open, setOpen] = React.useState(false);
   const [provider, setProvider] = React.useState(TRACKING_PROVIDERS[0].id);
@@ -67,7 +97,7 @@ export function TrackingCreatePanel({ errors }: { readonly errors: ActionErrors 
         onClick={() => setOpen((o) => !o)}
       >
         <span className="flex items-center gap-2">
-          <Plus aria-hidden className="size-4" /> Connect tracking
+          <Plus aria-hidden className="size-4" /> {labels.connect}
         </span>
         <ChevronDown aria-hidden className={`size-4 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -76,7 +106,7 @@ export function TrackingCreatePanel({ errors }: { readonly errors: ActionErrors 
       <div hidden={!open} className="border-t border-border px-4 py-4">
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm">
-            <span className="mb-1 block text-muted-foreground">Platform</span>
+            <span className="mb-1 block text-muted-foreground">{labels.platform}</span>
             <select value={provider} onChange={(e) => setProvider(e.target.value)} className={input}>
               {TRACKING_PROVIDERS.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
@@ -85,10 +115,10 @@ export function TrackingCreatePanel({ errors }: { readonly errors: ActionErrors 
           </label>
           <label className="text-sm">
             <span className="mb-1 block text-muted-foreground">
-              Label <span aria-hidden>*</span>
+              {labels.fieldLabel} <span aria-hidden>*</span>
             </span>
             <input value={label} onChange={(e) => setLabel(e.target.value)} className={input}
-              placeholder="Main store pixel" />
+              placeholder={labels.labelPlaceholder} />
           </label>
           <label className="text-sm">
             <span className="mb-1 block text-muted-foreground">
@@ -109,7 +139,7 @@ export function TrackingCreatePanel({ errors }: { readonly errors: ActionErrors 
           {spec.supportsTestCode && (
             <label className="text-sm">
               <span className="mb-1 block text-muted-foreground">
-                Test event code — optional, routes events to Events Manager&apos;s test tab
+                {labels.testCodeHint}
               </span>
               <input value={testCode} onChange={(e) => setTestCode(e.target.value)} dir="ltr"
                 className={`${input} font-mono text-xs`} />
@@ -129,10 +159,10 @@ export function TrackingCreatePanel({ errors }: { readonly errors: ActionErrors 
             </label>
           ))}
           <label className="text-sm">
-            <span className="mb-1 block text-muted-foreground">Managed by</span>
+            <span className="mb-1 block text-muted-foreground">{labels.managedBy}</span>
             <select value={managedBy} onChange={(e) => setManagedBy(e.target.value as "customer" | "platform")} className={input}>
               <option value="customer">This company (customer-owned)</option>
-              <option value="platform">The platform operator</option>
+              <option value="platform">{labels.operator}</option>
             </select>
           </label>
         </div>
@@ -140,11 +170,11 @@ export function TrackingCreatePanel({ errors }: { readonly errors: ActionErrors 
         <div className="mt-4">
           <ActionButton
             pending={pending}
-            pendingLabel="Connecting…"
+            pendingLabel={labels.connecting}
             onClick={submit}
             disabled={!label.trim() || !publicId.trim()}
           >
-            Connect
+            {labels.connectAction}
           </ActionButton>
           <ActionError message={error} />
         </div>
@@ -157,10 +187,12 @@ export function TrackingRowActions({
   id,
   isActive,
   errors,
+  labels,
 }: {
   readonly id: string;
   readonly isActive: boolean;
   readonly errors: ActionErrors;
+  readonly labels: TrackingLabels;
 }) {
   const { run, pending, error } = useApiAction(errors);
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
@@ -170,31 +202,31 @@ export function TrackingRowActions({
       <div className="flex flex-wrap items-center gap-2">
         <ActionButton
           pending={pending}
-          pendingLabel="Saving…"
+          pendingLabel={labels.saving}
           size="sm"
           variant="default"
           onClick={() => run("PATCH", `${BASE}/${id}`, { isActive: !isActive })}
         >
-          {isActive ? "Pause" : "Activate"}
+          {isActive ? labels.pause : labels.activate}
         </ActionButton>
         {confirmingDelete ? (
           <>
             <ActionButton
               pending={pending}
-              pendingLabel="Removing…"
+              pendingLabel={labels.removing}
               size="sm"
               variant="danger"
               onClick={() => run("DELETE", `${BASE}/${id}`)}
             >
-              Confirm remove
+              {labels.confirmRemove}
             </ActionButton>
             <button type="button" className={button("default", "sm")} onClick={() => setConfirmingDelete(false)}>
-              Keep it
+              {labels.keepIt}
             </button>
           </>
         ) : (
           <button type="button" className={button("default", "sm")} onClick={() => setConfirmingDelete(true)}>
-            Remove
+            {labels.remove}
           </button>
         )}
       </div>
