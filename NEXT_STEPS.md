@@ -844,7 +844,7 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
-### LB.44 — DONE, NOT DEPLOYED. The storefront paints before it hydrates (15 Aug)
+### LB.44 — DONE + DEPLOYED (15 Aug evening). The storefront paints before it hydrates
 
 **Reported as** PageSpeed 75 / LCP 5.0s on the real page `/bebezzouar/robe`,
 with every other metric healthy (FCP 1.3s, TBT 120ms, CLS 0). **The
@@ -879,7 +879,7 @@ and linking the legacy `/l/` path — flagged as its own deletion task.
 *(LB.43, same day: the server-side Purchase/Lead now carry
 `event_source_url`, rebuilt from the vetted origin — CHANGELOG §LB.43.)*
 
-### LB.42 — DONE, NOT DEPLOYED. The write-panels stop speaking English (14 Aug)
+### LB.42 — DONE + DEPLOYED (15 Aug evening). The write-panels stop speaking English (14 Aug)
 
 **`262f258`, local only.** Asked for as "the six write-panel strings".
 **There were 37**, and finding that out is most of what this slice is.

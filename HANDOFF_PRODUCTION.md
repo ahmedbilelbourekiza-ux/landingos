@@ -15,6 +15,68 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.42 + LB.43 + LB.44 ARE DEPLOYED — 15 Aug 2026 (evening)
+>
+> **`origin/main` is `4742554`** (`3fc1ade..4742554`, five commits: LB.42 the
+> write-panel i18n + its record, the LB.11-closure record, LB.43
+> `event_source_url`, LB.44 the storefront LCP fix — **no migration**, proven
+> by `migrate diff` against `landingos_prod` returning *"This is an empty
+> migration."* before the push). **Rollback point: `3fc1ade`.** Live 2m08s
+> after the push.
+>
+> **LB.44, verified on the REAL public page `/bebezzouar/robe`, baseline
+> captured BEFORE pushing:**
+>
+> | Marker | Before | After |
+> |---|---|---|
+> | `style="opacity:0"` wrappers in served HTML | **2** | **0** |
+> | `<link rel="preload" as="image">` | **2** (hero + competing description image) | **1** (hero only) |
+> | `fetchpriority="high"` | **0** | **2** (preload + img) |
+> | `landing-fade-up` | **0** | **1** |
+>
+> **The real before/after Lighthouse run (same page, same machine, same
+> method):** performance **50 → 75**, LCP **5.8s → 3.4s**, TBT **1,770 →
+> 460ms** — and the phase the fix targeted, **Render Delay: 2,479ms (43%) →
+> 34ms (1%)**. What remains of LCP is TTFB (1.5s on this run — the
+> `force-dynamic` + Render dyno problem LB.14a.2 owns) and simulated network
+> Load Time; both documented open items, not regressions.
+>
+> **LB.42, verified with a throwaway prod fixture (session cookie +
+> `locale=fr`) on `/console/settings/integrations`:** `Signing secret` 1→**0**,
+> `Confirmer la suppression` 0→**4**, `Envoyer un test` 0→**2**, `Libellé`
+> 5→**10**, `Send test` 0 throughout; **`Pixel ID` ×1 and `Conversions API
+> access token` ×1 REMAIN, deliberately** (Meta's own dashboard terms). A bare
+> `Label` grep is the WRONG check — it counts camelCase prop names
+> (`pendingLabel`) in the RSC flight payload, which grew BECAUSE the panels
+> now take words as props. Grep visible strings, not substrings.
+>
+> **LB.43 has no public marker by design** — pinned by the tracking suite's
+> four stub assertions; its live proof arrives with the next real order's
+> event in Meta showing `event_source_url`.
+>
+> **Regression sweep after, all intact:** health green · wilayas-404
+> `no-store` (LB.14a) · pixel config `no-store` · robots.txt Disallow
+> console/api with zero Sitemap lines (LB.40) · `/bebezzouar/sitemap.xml` 200
+> xml, 3 URLs (LB.39) · root 307 → console · console `noindex` + storefront
+> `robe · selliora16` with `index, follow` (LB.37) · LB.41's fr settings
+> screens (`Nom de la boutique` ×3, zero `Store name`, `Géré par` intact).
+>
+> Cleanup: fixture swept to **zero remnants** (sessions, membership,
+> subscription cascaded with the tenant; user deleted separately), the three
+> real tenants (`bebezzouar`, `alaa`, `union`) untouched, health green.
+>
+> **Same session, before the deploy: LB.11 closed and the image pipeline
+> confirmed.** The user's real pixel + CAPI token on `bebezzouar` delivered
+> Purchase ×2 / Lead ×2 to Meta (CHANGELOG §LB.11). The upload pipeline was
+> measured end-to-end: a 13.9MB file refused with `FILE_TOO_LARGE` BEFORE any
+> processing, a 3000×3000 upload stored at exactly 2000×2000 (q82, original
+> format kept for alpha), gallery and description images share the one
+> `storeImage` + serve-time `/_next/image` WebP path — **no code change was
+> needed.** One user-side action remains open: the pixel's **Traffic
+> Permissions allow-list blocks `landingos.onrender.com`**, so browser pixel
+> events are dropped on every device (Meta's own console warning names it);
+> the user must allow the domain in Events Manager.
+>
 > ### ✔ LB.41 IS DEPLOYED — 14 Aug 2026
 >
 > **`origin/main` is `c3b1917`** (`ce883f1..c3b1917`, three commits — the
@@ -451,6 +513,7 @@ remain the deep references.
 
 | Commit | What it is |
 |---|---|
+| `3fc1ade..4742554` | **15 Aug 2026 (evening): LB.42 + LB.43 + LB.44** — write-panel i18n (+two guard fixes), server events carry `event_source_url`, and the storefront LCP fix (the whole-page framer fade deleted; CSS entrance; `fetchPriority="high"` hero; description images all lazy). Five commits, fast-forward, no migration (empty `migrate diff` against `landingos_prod` before the push). Verified by the PUBLIC LB.44 marker flips on the real page + a throwaway-fixture authed check of LB.42 + a real Lighthouse before/after (50→75, LCP 5.8→3.4s, Render Delay 2,479→34ms) |
 | `bd6d664..d6a56b1` | **13 Aug 2026 (late night): LB.31–LB.36 + LB.15 + LB.14a/b/c** — storefront branding, the editor's sticky-header offset, checkout field labels, archive/restore, per-page pixel selection, the brand scoping note, money inputs, storefront caching, duplicate completeness, the domain-refusal messages. Eighteen commits, fast-forward, no migration (proven by an empty `migrate diff` against `landingos_prod`). Confirmed by a public `Cache-Control` flip on the wilayas 404 — a marker needing no fixture — plus a throwaway tenant driven through the editor, a duplicate, an archive/restore and a real checkout |
 | `0f6d743..4f1b599` | **13 Aug 2026 (night): LB.30** — the store home, category and thank-you pages wear the store's theme (thank-you inherits its order's landing-page theme; home/category wear the default — a store-level theme field stays an open product decision). `e940f06` rebased onto the deploy-record commit; docs-only conflicts. No migration. Verified by a public content marker (the theme scope appearing on a real tenant's store home) + a throwaway tenant with two real API orders, themed and unthemed, under an emulated dark OS |
 | `e3939e9..08e386d` | **13 Aug 2026: LB.27–LB.29** — the `deleteTenant` sweep (a tenant delete used to orphan every product-domain row; 73,267 of them had accumulated in dev), the `rtl:` record correction + editor back-arrow flip, and the Sheet's logical close edge. No migration. Verified by authed content markers + a full throwaway-tenant journey |
@@ -843,27 +906,12 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **THREE slices are queued to deploy: LB.42 (`262f258`), LB.43, and
-   LB.44** — the settings write-panels stop rendering English (plus two
-   i18n-guard fixes), the server-side conversion events gain
-   `event_source_url` (CHANGELOG §LB.43), and the storefront LCP fix
-   (CHANGELOG §LB.44 — the framer fade that held every page invisible until
-   hydration). **No migration in any.** Suites green on the final build
-   (storefront 66, builder-sections 74, tracking 15, builder-api 41,
-   webhooks 10; LB.42's own run also had i18n 22, console-shell 20,
-   hardening 13). **Not deployed — the user asked to be asked first.**
-   Markers: LB.42 — `/console/settings/integrations` with a `locale=fr`
-   cookie serves `Libellé` and `Envoyer un test` where it used to serve
-   `Label` and `Send test` (`Pixel ID` and `Conversions API access token`
-   REMAIN, deliberately — Meta's own dashboard terms). LB.43 — no unauthed
-   public marker; pinned by the tracking suite's stub assertions. **LB.44
-   has the best marker of the three and it is PUBLIC:** the served HTML of
-   any published page flips from `style="opacity:0"` on the
-   `flex flex-1 flex-col` wrapper (baseline captured 15 Aug) to no such
-   wrapper, one `<link rel="preload" as="image">` with
-   `fetchPriority="high"`, and `landing-fade-up` in the markup — then run
-   PageSpeed on `/bebezzouar/robe` for the real before/after (before:
-   Performance 75, LCP 5.0s).
+4. **NOTHING is queued — LB.42, LB.43 and LB.44 all DEPLOYED 15 Aug 2026
+   (evening) as `3fc1ade..4742554`; §1 has the record with every marker's
+   before/after.** The real Lighthouse comparison on `/bebezzouar/robe`:
+   performance 50 → 75, LCP 5.8s → 3.4s, Render Delay 2,479ms → 34ms.
+   `git diff origin/main master -- apps packages` is the check that nothing
+   is waiting; no migration is pending.
 
    **LB.41** (`94b6a40`) shipped on 14 Aug as `ce883f1..c3b1917`, and **LB.40** (`f1e38bf`) earlier the same day as
    `c89b19b..0286f99`. Neither carries a migration; both verified live — §1 has the records.

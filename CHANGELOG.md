@@ -13,7 +13,10 @@ touched, any **migration**, and any **risk**.
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
 - **LB.44 — the storefront paints before it hydrates: the LCP fix** (15
-  August 2026 — **local; NOT deployed**; no migration).
+  August 2026 — **DEPLOYED 15 Aug evening, `3fc1ade..4742554`**; no
+  migration). **Live result on the real page:** Lighthouse 50→**75**, LCP
+  5.8→**3.4s**, Render Delay 2,479→**34ms**; the four HTML markers flipped
+  exactly as predicted (HANDOFF §1).
 
   **Reported as** PageSpeed 75 on `/bebezzouar/robe`, LCP **5.0s** while FCP
   was 1.3s. **Measured before touching anything**, and the audit-era suspects
@@ -75,7 +78,7 @@ touched, any **migration**, and any **risk**.
   storefront **66/66** · builder-sections **74/74** · tracking **15/15**.
 
 - **LB.43 — server-side conversion events carry the page URL** (15 August
-  2026 — **local; NOT deployed**; no migration).
+  2026 — **DEPLOYED 15 Aug evening, `3fc1ade..4742554`**; no migration).
 
   **The gap, found while closing LB.11:** the checkout's Purchase and the
   draft route's Lead dispatched with `action_source: "website"` and no
@@ -161,7 +164,9 @@ touched, any **migration**, and any **risk**.
   closed by the real endpoint accepting real events from the real store.
 
 - **LB.42 — the write-panels stop speaking English, and the guard stops
-  missing them** (14 August 2026 — `262f258`, **local; NOT deployed**).
+  missing them** (14 August 2026 — `262f258`, **DEPLOYED 15 Aug evening,
+  `3fc1ade..4742554`**; live flip verified: `Signing secret` 1→0,
+  `Confirmer la suppression` 0→4, the two Meta terms deliberately intact).
 
   **Asked for as "the six write-panel strings". There were 37**, and finding
   that out is most of the slice.

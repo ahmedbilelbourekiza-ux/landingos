@@ -1,17 +1,23 @@
 # LandingOS — Project State
 
-**Last updated:** 15 August 2026 — everything through **LB.41**
-is **DEPLOYED**; **LB.42, LB.43 and LB.44 are QUEUED locally**
-**Branch:** `master`, ahead of `origin/main` · **Everything
-through LB.41 is deployed:** LB.31–LB.36 + LB.15 + LB.14a/b/c as `d6a56b1`,
+**Last updated:** 15 August 2026 (evening) — everything through **LB.44**
+is **DEPLOYED**
+**Branch:** `master`, in sync with `origin/main` at `4742554` · **Everything
+through LB.44 is deployed:** LB.31–LB.36 + LB.15 + LB.14a/b/c as `d6a56b1`,
 **LB.37** (`fcbd1e5`) the storefront `<head>` fix, **LB.38** (`a70f588`)
 the Delete door, **LB.39** (`dbe1cf0`) the per-tenant sitemap, **LB.35b**
-(`dd4edac`) the per-page pixel control, **LB.40** (`f1e38bf`) `robots.txt`, and **LB.41** (`94b6a40`) the settings-screen locale fix. **Three slices are
-queued — LB.42 write-panel i18n, LB.43 `event_source_url`, LB.44 the
-storefront LCP fix; `git diff origin/main master -- apps packages` is the
-check, and no migration is pending.** Separately, **LB.11 closed 15 Aug**
-with no code: the user's real pixel + CAPI token on the real store, Purchase
-×2/Lead ×2 confirmed received by Meta (CHANGELOG §LB.11). **LB.35's missing per-page pixel control
+(`dd4edac`) the per-page pixel control, **LB.40** (`f1e38bf`) `robots.txt`,
+**LB.41** (`94b6a40`) the settings-screen locale fix, and — 15 Aug evening,
+`3fc1ade..4742554` — **LB.42** write-panel i18n, **LB.43**
+`event_source_url`, **LB.44** the storefront LCP fix (real Lighthouse
+before/after on the live page: 50→75, LCP 5.8→3.4s, Render Delay
+2,479→34ms). **Nothing is queued; no migration is pending.** Also 15 Aug:
+**LB.11 closed** with no code — the user's real pixel + CAPI token on the
+real store, Purchase ×2/Lead ×2 confirmed received by Meta (CHANGELOG
+§LB.11); the **image upload pipeline confirmed correct** by live probe (8MB
+refusal before processing, 2000px cap verified at 2000×2000, one shared
+pipeline for gallery/description, WebP at serve time); one user action open —
+the pixel's Traffic Permissions must allow `landingos.onrender.com`. **LB.35's missing per-page pixel control
 was built and deployed as LB.35b.** The one deliberate open decision left in
 this area is `robots.txt` (§LB.39). LB.35's column was applied to
 `landingos_prod` earlier the same night; the app code followed as
