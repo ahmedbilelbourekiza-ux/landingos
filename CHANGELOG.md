@@ -12,6 +12,58 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.11 — CLOSED by production evidence: the Meta CAPI pipeline works with
+  a real pixel and a real token** (15 August 2026 — **no code change**; the
+  deployed LB.5 pipeline verified end-to-end on the live store).
+
+  **What happened.** The user linked their real Meta pixel
+  (`1126888189501016`, dataset "selliora fashion") plus a real Conversions
+  API access token to their real tenant (`selliora16`, slug `bebezzouar`)
+  through the console's tracking panel, placed two test orders through the
+  live storefront checkout, and reported that the Purchase "did not appear
+  to fire". Investigated without asking them to test again.
+
+  **Measured, in order:** the `TrackingIntegration` row is correct (provider
+  `meta`, matching pixel id, `serverToken` present in the encrypted
+  `iv:tag:ct` shape, `isActive`, no `testCode`; the legacy `MetaPixelConfig`
+  table is empty, so the right panel was used, and the page's LB.35
+  selection includes the integration). Both orders (15:29:13Z and 15:30:32Z)
+  were real storefront checkouts — each has a converted draft-order row —
+  so `dispatchTrackingEvent` ran twice for Purchase and twice for Lead.
+  Then, from Meta's own side (Marketing API dataset endpoints):
+  `server_last_fired_time` = **15:29:33Z** (twenty seconds after order 1),
+  and the dataset's hourly stats for 15:00–16:00 UTC recorded
+  **Purchase ×2, Lead ×2** — every server event the pipeline sent, received
+  and counted by name. No local decrypt of the token was possible or needed
+  (Render's `AUTH_SECRET` differs from dev; prod encrypts and decrypts with
+  the same value by construction), and no test order of ours was added.
+
+  **Why it looked broken — three effects stacked:**
+  1. **The Test events tab only shows events sent WITH a `test_event_code`**,
+     and the integration has none — so the natural place to "watch a test"
+     is guaranteed empty for these events, forever.
+  2. **Events Manager aggregates with a lag.** Queried 8–15 minutes after
+     the orders, the stats API returned empty three times; the counts
+     appeared only ~35 minutes on. Placing an order and looking immediately
+     shows nothing.
+  3. **The user's browser sent zero pixel events** (an ad blocker, most
+     likely — the dataset shows no WEB-channel activity at all), so the
+     browser-side activity view also looked dead. The server events covered
+     it — which is exactly what CAPI is for on a COD store.
+
+  **One data-quality note, deliberately NOT changed here:** the checkout and
+  draft routes do not pass `context.url`, so the events go out without
+  `event_source_url` while carrying `action_source: "website"`. Meta
+  accepted and counted them regardless (proven above), but Meta's docs call
+  the field required for website events and it can only help matching.
+  Small candidate slice, needs the caller to reconstruct the public page URL.
+
+  **The rule this closes out:** LB.5's contract test drove a real checkout
+  into a LOCAL receiver — everything about the payload was pinned except
+  the one thing a stub cannot prove, acceptance by the real endpoint. That
+  gap (named LB.11, "the one remaining gate before real ad spend") is now
+  closed by the real endpoint accepting real events from the real store.
+
 - **LB.42 — the write-panels stop speaking English, and the guard stops
   missing them** (14 August 2026 — `262f258`, **local; NOT deployed**).
 

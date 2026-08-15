@@ -692,14 +692,18 @@ edge passes a CLIENT-sent `X-Forwarded-Host` through to the app, and
      `FEATURE_PASS_AUG12.md` §5.
 
 9. From the audits, still open: notification write-time i18n, analytics
-   comparisons (PM.10), builder list pagination, LB.11 real-credential
-   tracking smoke test (still gates real ad spend), UI.7 settings i18n
+   comparisons (PM.10), builder list pagination, UI.7 settings i18n
    residue, calculator step structure (UI.8), bulk-bar mobile collapse (it
    scrolls away now but is still a tall card when reached), and the three
    decisions in `EDITOR_I18N.md` §3 (the dead `rtl:` Tailwind variant,
    `ui/sheet.tsx`'s physical close-button edge, the redundant French shipping
    gloss). **Benefits/FAQ (LB.12) is DONE** — it was left on this list in
-   error and is removed here.
+   error and is removed here. **LB.11 is CLOSED (15 Aug):** the user's real
+   pixel + CAPI token on the real store (`selliora16`), two live checkout
+   orders, and Meta's dataset stats recording **Purchase ×2, Lead ×2**
+   server-side — CHANGELOG §LB.11 has the record, including why the user's
+   own manual check looked like a failure (no test code → Test events tab
+   empty; stats lag ~35 min; their browser's pixel blocked).
 
 10. **Added 13 Aug (late night), all measured this session, none started:**
     - **LB.14a.2 — one front door per tenant identity.** The only way to make
@@ -780,9 +784,11 @@ against production) · storefront + checkout pages 200.
   local suites over HTTP; the production build is the same code).
 - The mobile language switcher on the user's REAL device (browser-verified at
   emulated widths; the user's phone has caught things emulation missed).
-- Anything involving the worker, real tracking credentials (LB.11), Web Push
-  on a real device, or real carrier endpoints — unchanged from
-  BUILDER_HANDOFF §11's honest list.
+- Anything involving the worker, Web Push on a real device, or real carrier
+  endpoints — unchanged from BUILDER_HANDOFF §11's honest list. **Real
+  tracking credentials are NO LONGER on this list:** LB.11 closed 15 Aug —
+  the user's real Meta pixel + CAPI token on `selliora16`, Purchase ×2 and
+  Lead ×2 confirmed received by Meta's dataset stats (CHANGELOG §LB.11).
 
 ## 7. CRITICAL INSTRUCTIONS FOR THE NEXT CONVERSATION
 
