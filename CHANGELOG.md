@@ -13,7 +13,7 @@ touched, any **migration**, and any **risk**.
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
 - **LB.41 — the store settings screen answered in a fourth language**
-  (14 August 2026 — `94b6a40`, **local; NOT deployed**). Investigated as a
+  (14 August 2026 — `94b6a40`, **DEPLOYED the same day** in `ce883f1..c3b1917`). Confirmed on production against a pre-push baseline — on a French account, "Store name" → "Nom de la boutique" and the integrations header "Managed by" → "Géré par"; all three locales verified on the live screens. Investigated as a
   production error on `/console/settings/store`, digest `2216248186`.
 
   **The error does not reproduce, and that is the first finding.** A fixture

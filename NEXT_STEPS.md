@@ -844,9 +844,9 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
-### LB.41 — DONE, NOT DEPLOYED. The store settings screen answered in a fourth language (14 Aug)
+### LB.41 — DONE + DEPLOYED. The store settings screen answered in a fourth language (14 Aug)
 
-**`94b6a40`, local only.** Investigated as a production error on
+**`94b6a40`, DEPLOYED 14 Aug 2026** (`ce883f1..c3b1917`). Confirmed on production against a pre-push baseline: on a French account the store screen went from "Store name" to "Nom de la boutique" and the integrations column header from "Managed by" to "Géré par". Investigated as a production error on
 `/console/settings/store`, digest `2216248186`.
 
 #### The error does not reproduce — here is exactly what was tried

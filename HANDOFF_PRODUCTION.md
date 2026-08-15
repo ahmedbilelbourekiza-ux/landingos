@@ -1,11 +1,11 @@
 # HANDOFF_PRODUCTION — deployment and production state
 
-**Written:** 9 August 2026, ~19:00 UTC · **Updated:** 13 August 2026, late
-night — **the LB.31–LB.36 / LB.15 / LB.14a–c range IS DEPLOYED** (`d6a56b1`;
-see §1. LB.35's migration had been applied earlier the same night as a database
-action on its own; the LB.30 deploy is the earlier-night record, LB.27–LB.29
-the morning one, and the LB.13–LB.26 deploy + LB.20 migration the 12 August
-record below) · **For:**
+**Written:** 9 August 2026, ~19:00 UTC · **Updated:** 14 August 2026 —
+**everything through LB.41 IS DEPLOYED** (`c3b1917`; see §1, newest record
+first: LB.41 the settings-screen locale fix, LB.40 `robots.txt`, then LB.35b,
+LB.38+LB.39, LB.37 and the LB.31–LB.36 range on 13 Aug. LB.35's migration was
+applied on 13 Aug as a database action on its own; the LB.13–LB.26 deploy +
+LB.20 migration are the 12 August record below) · **For:**
 the next conversation/agent picking this project up. Read this FIRST for anything
 touching production; `PROJECT_STATE.md` (platform history),
 `BUILDER_HANDOFF.md` (product) and `UIUX_PASS.md` (the UI/UX + mobile passes)
@@ -15,6 +15,36 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.41 IS DEPLOYED — 14 Aug 2026
+>
+> **`origin/main` is `c3b1917`** (`ce883f1..c3b1917`, three commits — the
+> locale fix plus its two doc records, **no migration**). Live 2m50s after the
+> push. Baseline captured on a throwaway production fixture BEFORE pushing,
+> using a FRENCH session against an Arabic-default tenant:
+>
+> | Marker | Before | After |
+> |---|---|---|
+> | `Store name` (English leaking onto a French account) | **1** | **0** |
+> | `Nom de la boutique` | **0** | **1** |
+> | integrations header `Managed by` → `Géré par` | **0** | **1** |
+>
+> All three locales verified on the live screens: fr *Nom de la boutique /
+> Enregistrer*, ar *اسم المتجر / حفظ*, en unchanged; integrations headings and
+> status cells translated in fr and ar.
+>
+> **One `Managed by` remains in the served HTML and it is EXPECTED** — the
+> `<th>` is now `Géré par`; the leftover is the `<label>` inside the create
+> panel (`components/console/platform/tracking-write.tsx`), one of the six
+> strings §LB.41 records as deliberately not fixed. Check the `<th>`, not a
+> bare grep, before concluding the deploy missed something.
+>
+> **Regression sweep after:** health green · LB.40's robots.txt unchanged ·
+> LB.14a's wilayas `no-store` · LB.37's console `noindex` · root 307 ·
+> `/console/settings/store` and `/console/settings/integrations` both 200 with
+> the form still rendering · `/console`, builder pages, team, profile and
+> domains all 200. Fixture swept with `deleteTenant` (3 rows, 2 passes); the
+> three real tenants untouched.
+>
 > ### ✔ LB.40 IS DEPLOYED — 14 Aug 2026
 >
 > **`origin/main` is `0286f99`** (`c89b19b..0286f99`, two commits, **no
@@ -807,8 +837,8 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **Nothing is queued to deploy.** **LB.40** (`f1e38bf`) shipped on 14 Aug as
-   `c89b19b..0286f99`, no migration, verified live — §1 has the record.
+4. **Nothing is queued to deploy.** **LB.41** (`94b6a40`) shipped on 14 Aug as `ce883f1..c3b1917`, and **LB.40** (`f1e38bf`) earlier the same day as
+   `c89b19b..0286f99`. Neither carries a migration; both verified live — §1 has the records.
 
    **LB.35b** (`dd4edac`) shipped on 13 Aug
    (late night) as `2c75c3c..407854a`, no migration, verified live — §1 has
