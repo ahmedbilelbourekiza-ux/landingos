@@ -847,6 +847,37 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
+### LB.54 — BUILT, NOT DEPLOYED, NOT PUSHED (16 Aug, evening): the /0 bug — a slug must contain a letter
+
+**The real 404 you reported at `selliora1.com/0`, closed at its source.**
+Local branch `claude/fix-digit-only-slugs` (`2170cb2` off `1dbe119`), one
+code commit, **no migration**; CHANGELOG §LB.54 is the full record. The
+push is yours — this fix guards every NEW slug write and touches no
+existing row.
+
+**The mechanism, reproduced end to end** (local production build behind a
+verified fixture domain; this environment still has no route to
+production): `slugify` keeps only `[a-z0-9]`, so an ARABIC title keeps
+only its digits — `slugify("ساعة برو 0") === "0"` — and the create form
+derived and submitted that silently. Published at `/0`, linked by the
+home card, the category card and the domain sitemap, copied into
+ads/shares — then the merchant fixes the meaningless address and every
+distributed link 404s. Same trap for "2", "5", "2024"; hence the general
+rule (a slug needs a latin letter), not a zero-guard.
+
+**What still needs YOU, at deploy time:**
+
+1. **Live confirmation** — which real page on selliora1.com carried the
+   digit slug (pages list / sitemap history will show it), and re-run the
+   create flow with an Arabic+digit title expecting the refusal message.
+2. **The already-distributed `/0` links** — they stay 404 by design (a
+   quiet resurrection would hide the class). If those links carry paid
+   traffic, the honest fixes are a slug-history redirect (the LB.14b
+   adjacency — a real slice) or manually recreating a page at a
+   letter-carrying slug and re-pointing the ad. Your call which.
+3. Note: LB.24's generate route inherits the rule through `slugify` when
+   its branch merges (digit-only product names fall through to the
+   model's latin transliteration there — by design).
 ### LB.24 — FIRST SLICE BUILT, NOT DEPLOYED, NOT PUSHED (16 Aug, deploy session): the AI landing generator speaks Darija
 
 **Local branch `claude/lb24-ai-generator`** (`8ac6a58` + review pass

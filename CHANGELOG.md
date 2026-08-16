@@ -12,6 +12,52 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.54 — a slug must contain a letter: an Arabic title's digits can no
+  longer become the whole address** (16 August 2026 — **NOT DEPLOYED, NOT
+  PUSHED: local branch `claude/fix-digit-only-slugs`** off `1dbe119`, one
+  code commit; no migration).
+
+  **The real 404 at `selliora1.com/0`, traced to its source and reproduced
+  end to end** (on the local production build behind a verified fixture
+  domain — this environment still cannot reach production): `slugify`
+  strips every character outside `[a-z0-9]`, which is EVERY Arabic letter,
+  so an Arabic product title carrying a digit derived a slug of exactly
+  that digit — `slugify("ساعة برو 0") === "0"` — and the create form
+  submitted it silently (a pure-Arabic title at least errored; a
+  digit-carrying one did not). The page published at `/0`; the home card,
+  the category card and the DOMAIN SITEMAP all linked it (measured in the
+  reproduction's served HTML and sitemap XML); the address got copied into
+  ads and indexed. The moment the merchant fixed the meaningless slug,
+  every distributed link 404'd. `"0"` is the common case — a price or a
+  phone digit in the title — but `"2"`, `"5"`, `"2024"` mint the same
+  trap, which is why the fix is the general rule, not a guard on zero.
+
+  **The rule, stated once:** a slug without a latin letter is not a slug.
+  `slugify` yields `""` for letterless derivations (the form then asks for
+  an address instead of inventing one); the charset half moved to
+  `slugCharset` for per-keystroke filtering because the letter rule
+  applied mid-typing would erase a digit-first address ("2024-promo") as
+  it is typed; the category form's LOCAL slugify copy is deleted (D-LP.3 —
+  its own comment claimed Arabic names derive empty "rather than mangled",
+  false for «ساعات 2024» → "2024"); and all three server slug write paths
+  (landings create, general PATCH, categories create) refuse letterless
+  slugs with a 422 that names the rule. Existing rows untouched — a live
+  digit-slug page keeps serving until renamed. Editor client schema and
+  the slug messages ×3 locales updated to state the rule.
+
+  **Deliberately NOT done:** no redirect for already-distributed `/0`
+  links — recovering those needs slug-history redirects (the LB.14b
+  adjacency) or an operator call, and a fix that quietly resurrects `/0`
+  would hide the class instead of closing it. Live verification on
+  selliora1.com (which real page carried the digit slug, and whether a
+  redirect is wanted) is owed at deploy time. LB.24's generate route
+  inherits the rule through `slugify` on merge — a digit-only product
+  name falls through to the model's latin transliteration there, by
+  design.
+
+  builder-api **42→49** (digit-only refusals on all three paths, the
+  letter-carrying happy path, pure `slugify`/`slugCharset`) ·
+  builder-sections 74 · console-shell 20 · storefront 76 · i18n 22.
 - **LB.24 — the AI landing generator: merchant facts in, an
   Algerian-dialect draft out** (16 August 2026 — **NOT DEPLOYED, NOT
   PUSHED: local branch `claude/lb24-ai-generator`**, two commits
