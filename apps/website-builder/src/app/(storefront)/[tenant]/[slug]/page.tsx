@@ -70,7 +70,10 @@ async function load(tenantSlug: string, pageSlug: string) {
     tiktok: store?.tiktok ?? null,
     whatsapp: store?.whatsapp ?? null,
     telegram: store?.telegram ?? null,
-    homePath: `/${tenantSlug}`,
+    // storefrontHref, NOT the raw path param: on a custom domain the param is
+    // LB.45's rewrite sentinel, and the brand link rendered `/__domain__` —
+    // found in the served accessibility tree (LB.48).
+    homePath: storefrontHref(tenant),
   };
 
   return page ? { tenant, page, store: storeData } : null;

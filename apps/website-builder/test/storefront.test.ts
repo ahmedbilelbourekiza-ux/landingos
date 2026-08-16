@@ -1268,6 +1268,15 @@ describe('LB.45 — a custom domain\'s paths are the shop\'s own', { skip }, () 
     assert.ok(!r.body.includes(`href="/${slugA}/`), 'no platform-shaped link on the custom domain');
   });
 
+  test('the rewrite sentinel never reaches a rendered link (LB.48)', async () => {
+    // The brand link was built from the raw path param, which on a rewritten
+    // request is `__domain__` — found in the served accessibility tree of a
+    // real page. Every link must come through storefrontHref.
+    const r = await rawGet('/shared-item', host);
+    assert.ok(!r.body.includes('href="/__domain__'), 'the sentinel leaked into a link');
+    assert.match(r.body, /href="\/"/, 'the brand links the shop root on its own domain');
+  });
+
   test('a bare page slug serves the LANDING page, not a listing', async () => {
     const r = await rawGet('/shared-item', host);
     assert.equal(r.status, 200);

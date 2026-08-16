@@ -2,10 +2,10 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useAfterLoad } from "@/lib/landing/use-after-load";
 import type { LandingMediaData } from "@/types/landing";
 
 // Product gallery carousel. Supports:
@@ -19,6 +19,7 @@ export function ProductGallery({ media }: { media: LandingMediaData[] }) {
   const [active, setActive] = React.useState(0);
   const touchStartX = React.useRef<number | null>(null);
   const count = media.length;
+  const ready = useAfterLoad();
 
   const goTo = React.useCallback(
     (index: number) => {
@@ -60,8 +61,41 @@ export function ProductGallery({ media }: { media: LandingMediaData[] }) {
   const current = media[active];
   const showNav = count > 1;
 
+  /* LB.48 — lookahead. Only the ACTIVE image was ever mounted full-size (the
+   * rest are 96px thumbnails), so every swipe paid a full network fetch at
+   * the moment the customer asked to see the image — measured live: the
+   * second image's w=1080 request fired only AFTER the arrow press. The
+   * neighbours on either side are mounted hidden once the page has loaded,
+   * so the fetch has already happened by the time a human swipes; the layer
+   * follows `active`, staying one image ahead in both directions. After the
+   * load event on purpose — see use-after-load.ts. */
+  const lookahead = ready && showNav
+    ? [...new Set([(active + 1) % count, (active - 1 + count) % count])].filter((i) => i !== active)
+    : [];
+
   return (
     <div className="flex flex-col gap-3">
+      {lookahead.length > 0 && (
+        <div
+          aria-hidden="true"
+          style={{ position: "fixed", insetInlineStart: 0, top: 0, width: 1, height: 1, overflow: "hidden", opacity: 0, pointerEvents: "none" }}
+        >
+          {lookahead.map((i) => (
+            <Image
+              key={media[i].id}
+              src={media[i].url}
+              alt=""
+              fill
+              loading="eager"
+              // The SAME sizes as the visible hero, so the browser fetches the
+              // exact candidate the swipe will need — a different sizes value
+              // would warm a width nobody renders.
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              className="object-cover"
+            />
+          ))}
+        </div>
+      )}
       {/* Hero image with optional navigation arrows */}
       <div
         className="group relative aspect-square overflow-hidden rounded-2xl border bg-muted/40 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -72,30 +106,27 @@ export function ProductGallery({ media }: { media: LandingMediaData[] }) {
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={current.id}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-            className="absolute inset-0"
-          >
-            <Image
-              src={current.url}
-              alt={current.altText ?? current.url}
-              fill
-              priority={active === 0}
-              // `priority` alone preloads but leaves the fetch at default
-              // priority, where it shares bandwidth with fonts and CSS; this
-              // image is the page's LCP element (measured, LB.44), so it gets
-              // the network's front of the line explicitly.
-              fetchPriority={active === 0 ? "high" : undefined}
-              sizes="(max-width: 1024px) 100vw, 50vw"
-              className="object-cover"
-            />
-          </motion.div>
-        </AnimatePresence>
+        {/* CSS fade on key-remount, NOT AnimatePresence (LB.49): the
+            crossfade gated the swap on framer's exit animation, and under
+            LazyMotion's async features the exit wedged — thumbnail selected,
+            hero never swapped (measured in the browser). A keyed remount
+            swaps INSTANTLY and the CSS animation fades the new image in;
+            nothing about showing the product depends on JavaScript arriving. */}
+        <div key={current.id} className="landing-fade absolute inset-0">
+          <Image
+            src={current.url}
+            alt={current.altText ?? current.url}
+            fill
+            priority={active === 0}
+            // `priority` alone preloads but leaves the fetch at default
+            // priority, where it shares bandwidth with fonts and CSS; this
+            // image is the page's LCP element (measured, LB.44), so it gets
+            // the network's front of the line explicitly.
+            fetchPriority={active === 0 ? "high" : undefined}
+            sizes="(max-width: 1024px) 100vw, 50vw"
+            className="object-cover"
+          />
+        </div>
 
         {/* Previous button */}
         {showNav && (

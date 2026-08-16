@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 
+import { useAfterLoad } from "@/lib/landing/use-after-load";
 import type { LandingMediaData } from "@/types/landing";
 
 // Long-form images below the product, rendered top to bottom in saved order.
@@ -15,6 +16,7 @@ import type { LandingMediaData } from "@/types/landing";
 // Width is capped at the product grid's max-w-6xl so the images line up with
 // the content above instead of running edge to edge on a wide monitor.
 export function DescriptionImages({ images }: { images: LandingMediaData[] }) {
+  const ready = useAfterLoad();
   // Renders nothing at all when empty — no heading, no spacing — so a product
   // that never uses this feature looks exactly as it did before.
   if (images.length === 0) return null;
@@ -43,12 +45,15 @@ export function DescriptionImages({ images }: { images: LandingMediaData[] }) {
               // a fixed box would cut off content.
               className="h-auto w-full object-contain"
               sizes="(max-width: 1024px) 100vw, 1152px"
-              // ALL lazy, the first included. This whole section sits below
-              // the product grid on every breakpoint, and the first image's
-              // `eager` was emitting a PRELOAD that competed with the hero —
-              // the actual LCP element — for a phone's bandwidth (measured in
-              // the served HTML, LB.44).
-              loading="lazy"
+              // ALL lazy in the SERVED HTML, the first included — LB.44
+              // measured what an eager+preloaded first image did to the hero.
+              // But native lazy waits for scroll PROXIMITY, and on a slow
+              // phone that means the image pops in while the customer watches
+              // (the real-phone report, LB.48). So once the page has LOADED,
+              // the first image — the one nearest the fold — flips to eager
+              // and is cached before anyone scrolls. The hero never shares
+              // its bandwidth; the scroll never waits.
+              loading={ready && index === 0 ? "eager" : "lazy"}
             />
           </div>
         ))}

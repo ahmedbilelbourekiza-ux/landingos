@@ -260,8 +260,47 @@
   animation: landing-fade-up 0.35s ease-out both;
 }
 
+/* LB.49 — the storefront's interaction animations, in CSS because framer
+ * gated CONTENT on its runtime: the gallery's crossfade wedged with the hero
+ * stuck on the old image, the FAQ's collapse held a closed answer visible,
+ * and the reviews' scroll reveal left cards at opacity 0 (all measured in
+ * the browser under LazyMotion). A CSS animation on a keyed or conditional
+ * mount fades the NEW state in and can never hold content hostage — its end
+ * state is always visible.
+ * `.landing-fade` runs on the gallery swap and the FAQ answer;
+ * `.landing-slide-up` on the sticky buy bar's appearance. */
+@keyframes landing-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.landing-fade {
+  animation: landing-fade 0.25s ease-out both;
+}
+
+@keyframes landing-slide-up {
+  from {
+    transform: translateY(80px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.landing-slide-up {
+  animation: landing-slide-up 0.25s ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .landing-fade-up {
+  .landing-fade-up,
+  .landing-fade,
+  .landing-slide-up {
     animation: none;
   }
 }
