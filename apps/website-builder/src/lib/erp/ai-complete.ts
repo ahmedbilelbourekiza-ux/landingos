@@ -121,8 +121,10 @@ export function buildCompletionRequest(
       return {
         // The key rides the query string — Gemini's own convention. Callers
         // must never log this URL; parity with ai-connection's deliberate
-        // key-free `url` field in its results.
-        url: `${base}/models/${model}:generateContent?key=${encodeURIComponent(cfg.apiKey ?? "")}`,
+        // key-free `url` field in its results. Google's own listings name
+        // models as `models/<id>`, so that prefix is normalized away rather
+        // than doubled into a 404 the connection tester cannot catch.
+        url: `${base}/models/${model.replace(/^models\//, "")}:generateContent?key=${encodeURIComponent(cfg.apiKey ?? "")}`,
         headers: { "content-type": "application/json" },
         body: {
           contents: [{ role: "user", parts: users.map((m) => ({ text: m.content })) }],
@@ -193,11 +195,11 @@ export async function completeWithProvider(
 
   const text = await res.text().catch(() => "");
   if (!res.ok) {
-    // Status + a trimmed detail; never the headers, never the key.
-    throw new AiCallError(
-      "AI_UPSTREAM_ERROR",
-      `Provider error ${res.status}: ${text.slice(0, 300)}`,
-    );
+    // The STATUS only — ai-connection's deliberate rule. A merchant-set
+    // baseUrl makes this a server-side fetch of an arbitrary host, and
+    // reflecting response bodies would upgrade that from a status oracle to
+    // a read primitive.
+    throw new AiCallError("AI_UPSTREAM_ERROR", `Provider error ${res.status}.`);
   }
 
   let json: unknown = null;

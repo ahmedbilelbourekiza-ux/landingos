@@ -44,6 +44,7 @@ export function GenerateLandingPanel({
     sellingPointsHint: string;
     photos: string;
     photosHint: string;
+    removePhoto: string;
     submit: string;
     generating: string;
   };
@@ -53,6 +54,7 @@ export function GenerateLandingPanel({
     oldPrice: string;
     sellingPoints: string;
     uploadFailed: string;
+    photosLimit: string;
   };
   readonly errors: ActionErrors;
 }) {
@@ -63,10 +65,18 @@ export function GenerateLandingPanel({
   const [uploading, setUploading] = React.useState(false);
 
   const onPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
+    let files = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (!files.length) return;
     setFieldError(null);
+    // The route accepts 12 photos; refusing the excess here names the limit
+    // instead of letting the server answer a generic invalid-input.
+    const room = 12 - photos.length;
+    if (files.length > room) {
+      setFieldError(messages.photosLimit);
+      files = files.slice(0, Math.max(room, 0));
+      if (!files.length) return;
+    }
     setUploading(true);
     try {
       for (const file of files) {
@@ -96,7 +106,7 @@ export function GenerateLandingPanel({
     const oldPrice = rawOldPrice ? Number(rawOldPrice) : null;
     const sellingPoints = String(form.get("sellingPoints") ?? "")
       .split("\n")
-      .map((line) => line.trim())
+      .map((line) => line.trim().slice(0, 300))
       .filter(Boolean)
       .slice(0, 8);
 
@@ -218,7 +228,7 @@ export function GenerateLandingPanel({
                 {i === 0 ? <span className="text-muted-foreground">★</span> : null}
                 <button
                   type="button"
-                  aria-label={`remove ${p.name}`}
+                  aria-label={`${labels.removePhoto} ${p.name}`}
                   onClick={() => setPhotos((prev) => prev.filter((x) => x.url !== p.url))}
                   className="ms-auto rounded p-1 hover:bg-muted"
                 >

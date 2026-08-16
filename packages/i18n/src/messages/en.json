@@ -127,12 +127,14 @@
         "generate": "Generate the page",
         "generating": "Generating…",
         "uploadFailed": "A photo could not be uploaded.",
-        "noProvider": "No AI provider is configured for this store.",
-        "notConfigured": "AI generation needs a model provider configured for this store.",
+        "noProvider": "No AI provider is configured for this company.",
+        "notConfigured": "AI generation needs an AI provider configured for this company.",
         "configureLink": "Configure an AI provider",
         "upstreamFailed": "The AI provider could not be reached — try again.",
         "invalidOutput": "The AI answer could not be used — try again.",
-        "imageNotOwned": "Photos must be uploaded to this store first."
+        "imageNotOwned": "Photos must be uploaded to this store first.",
+        "removePhoto": "Remove photo",
+        "photosLimit": "Up to 12 photos."
       }
     },
     "editor": {

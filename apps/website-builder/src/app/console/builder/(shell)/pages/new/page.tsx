@@ -90,6 +90,7 @@ export default async function NewLandingPage() {
             sellingPointsHint: t("builder.newPage.ai.sellingPointsHint"),
             photos: t("builder.newPage.ai.photos"),
             photosHint: t("builder.newPage.ai.photosHint"),
+            removePhoto: t("builder.newPage.ai.removePhoto"),
             submit: t("builder.newPage.ai.generate"),
             generating: t("builder.newPage.ai.generating"),
           }}
@@ -99,6 +100,7 @@ export default async function NewLandingPage() {
             oldPrice: t("builder.newPage.ai.oldPriceInvalid"),
             sellingPoints: t("builder.newPage.ai.sellingPointsRequired"),
             uploadFailed: t("builder.newPage.ai.uploadFailed"),
+            photosLimit: t("builder.newPage.ai.photosLimit"),
           }}
           errors={errors}
         />

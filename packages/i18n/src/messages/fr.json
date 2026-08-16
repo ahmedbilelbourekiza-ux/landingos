@@ -127,12 +127,14 @@
         "generate": "Générer la page",
         "generating": "Génération…",
         "uploadFailed": "Une photo n'a pas pu être téléversée.",
-        "noProvider": "Aucun fournisseur d'IA n'est configuré pour cette boutique.",
-        "notConfigured": "La génération par IA nécessite un fournisseur de modèles configuré pour cette boutique.",
+        "noProvider": "Aucun fournisseur d'IA n'est configuré pour cette société.",
+        "notConfigured": "La génération par IA nécessite un fournisseur d'IA configuré pour cette société.",
         "configureLink": "Configurer un fournisseur d'IA",
         "upstreamFailed": "Le fournisseur d'IA est injoignable — réessayez.",
         "invalidOutput": "La réponse de l'IA n'a pas pu être utilisée — réessayez.",
-        "imageNotOwned": "Les photos doivent d'abord être téléversées dans cette boutique."
+        "imageNotOwned": "Les photos doivent d'abord être téléversées dans cette boutique.",
+        "removePhoto": "Retirer la photo",
+        "photosLimit": "12 photos au maximum."
       }
     },
     "editor": {

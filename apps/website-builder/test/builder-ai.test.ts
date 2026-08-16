@@ -155,9 +155,11 @@ const VALID_COPY = {
     { icon: 'not-a-real-icon', title: 'ضمان الجودة', description: null },
   ],
   faqs: [
-    { question: 'قداش يدوم التوصيل؟', answer: 'من 2 حتى 5 أيام على حساب الولاية.' },
+    // Hedged on purpose: delivery windows and return promises are the
+    // merchant's facts, not the model's — the prompt says so.
+    { question: 'قداش يدوم التوصيل؟', answer: 'على حساب الولاية — نأكدولك المدة كي نتواصلو معاك.' },
     { question: 'كيفاش نخلص؟', answer: 'الدفع عند الاستلام — تخلص كي توصلك.' },
-    { question: 'واش نديروا إذا ما عجبتنيش؟', answer: 'عندك الإرجاع في مدة قصيرة.' },
+    { question: 'واش نديرو إذا كان مشكل؟', answer: 'تواصل معنا ونشوفو الحل — رضاك يهمنا.' },
   ],
   seoTitle: 'ساعة ذكية برو بأفضل سعر في الجزائر',
   seoDescription: 'ساعة ذكية بشاشة AMOLED وبطارية 10 أيام — توصيل لكل الولايات والدفع عند الاستلام.',
@@ -216,7 +218,7 @@ describe('POST /api/builder/landings/generate (end to end)', { skip }, () => {
   interface Hit { path: string; headers: Record<string, unknown>; body: any }
   const hits: Hit[] = [];
   // Each test sets what the "model" answers next.
-  const behaviour = { status: 200, answer: JSON.stringify(VALID_COPY) };
+  const behaviour = { status: 200, answer: JSON.stringify(VALID_COPY), delayMs: 0 };
 
   let photoUrl = '';
   let photo2Url = '';
@@ -283,13 +285,15 @@ describe('POST /api/builder/landings/generate (end to end)', { skip }, () => {
         let body: any = null;
         try { body = raw ? JSON.parse(raw) : null; } catch { body = raw; }
         hits.push({ path: req.url ?? '', headers: req.headers as any, body });
-        res.statusCode = behaviour.status;
-        res.setHeader('content-type', 'application/json');
-        res.end(
-          behaviour.status === 200
-            ? JSON.stringify({ choices: [{ message: { content: behaviour.answer } }] })
-            : JSON.stringify({ error: { message: 'stub says no' } }),
-        );
+        setTimeout(() => {
+          res.statusCode = behaviour.status;
+          res.setHeader('content-type', 'application/json');
+          res.end(
+            behaviour.status === 200
+              ? JSON.stringify({ choices: [{ message: { content: behaviour.answer } }] })
+              : JSON.stringify({ error: { message: 'stub says no' } }),
+          );
+        }, behaviour.delayMs);
       });
     });
     await new Promise<void>((resolve, reject) => {
@@ -492,6 +496,23 @@ describe('POST /api/builder/landings/generate (end to end)', { skip }, () => {
     }));
     assert.equal(res.status, 422);
     assert.equal(res.body.error.code, 'INVALID_INPUT');
+  });
+
+  test('a model slower than the 15s transaction budget still lands a page', async () => {
+    // The review's headline finding: the first version awaited the provider
+    // INSIDE withTenant's 15s interactive transaction, so any real-world
+    // generation slower than that returned 500 AFTER billing the tenant's
+    // key. The three-phase shape (D-LP.5.1) is what this pins.
+    behaviour.status = 200;
+    behaviour.answer = JSON.stringify(VALID_COPY);
+    behaviour.delayMs = 16_500;
+    try {
+      const res = await api('/api/builder/landings/generate', tokens.owner, generateBody());
+      assert.equal(res.status, 201, JSON.stringify(res.body));
+      assert.equal(res.body.data.status, 'DRAFT');
+    } finally {
+      behaviour.delayMs = 0;
+    }
   });
 
   test('slug clashes de-clash with suffixes, the duplicate rule', async () => {

@@ -21,8 +21,9 @@ type Params = { id: string };
  *   call   — contact the provider in NO transaction, through `afterCommit`
  *   record — write the outcome in a fresh, short one
  *
- * `apiKey` IS loaded here, and it is the only route in the AI surface that loads
- * it. Both other routes leave it out of their select on purpose so a key cannot
+ * `apiKey` IS loaded here — one of exactly TWO routes in the AI surface that
+ * load it (the other is LB.24's `/api/builder/landings/generate`, which spends
+ * it). Every other route leaves it out of its select on purpose so a key cannot
  * leak through a response; this one needs it to authenticate and **never puts it
  * in the response or the log** — `logIntegration.redact` strips it by key even if
  * a future edit passes it, and the URL recorded for Gemini is deliberately the

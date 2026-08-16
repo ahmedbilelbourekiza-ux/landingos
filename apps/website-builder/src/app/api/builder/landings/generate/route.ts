@@ -1,7 +1,9 @@
+import { withTenant } from "@landingos/db";
 import { z } from "zod";
 
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
 import { triggerProductWebhook } from "@/lib/webhooks/tenant-triggers";
+import { isSafeUploadFilename } from "@/lib/uploads";
 import { completeWithProvider, AiCallError } from "@/lib/erp/ai-complete";
 import {
   buildGenerationMessages,
@@ -26,14 +28,26 @@ export const dynamic = "force-dynamic";
  * DRAFT the merchant reviews in the ordinary editor — publishing stays a
  * separate, separately-permissioned human act.
  *
- * ORDER OF OPERATIONS IS THE ATOMICITY: the model is asked FIRST, with no
- * rows written; only a fully validated answer reaches the one nested create
- * (the duplicate route's shape). A failed or malformed generation leaves
- * nothing behind — no half-page for the merchant to discover and delete.
+ * THE THREE PHASES, D-LP.5.1, the provider-test route's own shape:
+ *   plan   — validate the body, prove photo ownership, load the provider,
+ *            INSIDE the wrapper's transaction; write nothing.
+ *   call   — read the hero's bytes, ask the model, extract the palette, in
+ *            NO transaction, through `afterCommit` — a generation is allowed
+ *            up to 120s and the tenant transaction lives 15; holding a pooled
+ *            connection open across somebody else's latency is the exact
+ *            anti-pattern the TX_OPTIONS comment records.
+ *   record — slug de-clash + theme + page in ONE fresh short transaction, so
+ *            "a malformed answer writes nothing" stays literally true.
  *
- * Provider-missing answers 501 NO_AI_PROVIDER, the same statement the chat
- * route has made since SEC-03: the route exists, the gate holds, the missing
- * half is deployment configuration.
+ * `apiKey` is loaded here (this route and the provider test route are the
+ * TWO places in the AI surface that load it) and never reaches a response,
+ * a log line, or the client.
+ *
+ * Spend note, deliberate: this route bills the tenant's own key and is gated
+ * on `website-builder:pages:write` — NOT `erp:ai:use` — because builder-only
+ * tenants have no ERP permission surface at all. Whether AI spend deserves
+ * its own permission on the builder side is an open product question,
+ * recorded in NEXT_STEPS §LB.24.
  * ========================================================================== */
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -45,9 +59,24 @@ const Body = z.object({
   currency: z.string().trim().length(3).optional(),
   sellingPoints: z.array(z.string().trim().min(1).max(300)).min(1).max(8),
   category: z.string().trim().max(120).optional().nullable(),
-  slug: z.string().trim().max(120).regex(SLUG_RE).optional(),
+  slug: z.string().trim().max(100).regex(SLUG_RE).optional(),
   imageUrls: z.array(z.string().trim().min(1).max(2000)).max(12).optional(),
 });
+
+/** The real ownership rule — readTenantImage's, not a looser prefix copy:
+ * exactly `/uploads/tenants/<tenantId>/<safe-filename>`, applied to EVERY
+ * photo, so a `..` segment can never ride a later gallery slot into the
+ * page. */
+function ownsUpload(url: string, tenantId: string): boolean {
+  const segments = url.split("/").filter(Boolean);
+  return (
+    segments.length === 4 &&
+    segments[0] === "uploads" &&
+    segments[1] === "tenants" &&
+    segments[2] === tenantId &&
+    isSafeUploadFilename(segments[3])
+  );
+}
 
 export const POST = tenantRoute("website-builder:pages:write", async ({ db, req, session, afterCommit }) => {
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
@@ -61,12 +90,8 @@ export const POST = tenantRoute("website-builder:pages:write", async ({ db, req,
     return apiError(422, "INVALID_INPUT", "The old price must be higher than the price.");
   }
 
-  /* Photos must be the tenant's own uploads. The prefix check mirrors
-   * readTenantImage's ownership rule for every photo; the hero additionally
-   * has its bytes read below, which re-proves ownership through storage. */
   const imageUrls = body.imageUrls ?? [];
-  const ownPrefix = `/uploads/tenants/${tenantId}/`;
-  if (imageUrls.some((u) => !u.startsWith(ownPrefix))) {
+  if (imageUrls.some((u) => !ownsUpload(u, tenantId))) {
     return apiError(422, "IMAGE_NOT_OWNED", "Every photo must be one of this store's own uploads.");
   }
 
@@ -82,7 +107,6 @@ export const POST = tenantRoute("website-builder:pages:write", async ({ db, req,
     return apiError(501, "NO_AI_PROVIDER", "No model provider is configured for this company.");
   }
 
-  /* Ask the model BEFORE touching the database. */
   const facts = {
     productName: body.productName,
     price: body.price,
@@ -91,119 +115,149 @@ export const POST = tenantRoute("website-builder:pages:write", async ({ db, req,
     sellingPoints: body.sellingPoints,
     category: body.category ?? null,
   };
-  let copy;
-  try {
-    const answer = await completeWithProvider(
-      {
-        type: provider.type,
-        baseUrl: provider.baseUrl,
-        apiKey: provider.apiKey,
-        defaultModel: provider.defaultModel,
-        temperature: provider.temperature == null ? null : Number(provider.temperature),
-        maxTokens: provider.maxTokens,
-        timeoutMs: provider.timeoutMs,
-      },
-      buildGenerationMessages(facts),
-    );
-    copy = parseGeneratedCopy(answer);
-  } catch (error) {
-    if (error instanceof GenerationParseError) {
-      return apiError(502, "AI_INVALID_OUTPUT", error.message);
-    }
-    if (error instanceof AiCallError) {
-      return apiError(502, error.code, error.message);
-    }
-    throw error;
-  }
 
-  /* Theme: LB.22's pipeline on the first photo. `null` is a real answer
-   * (colourless image) and simply means the default theme. */
-  let palette = null;
-  if (imageUrls[0]) {
-    const bytes = await readTenantImage(imageUrls[0], tenantId);
-    if (!bytes) {
-      return apiError(422, "IMAGE_NOT_OWNED", "The first photo could not be read from this store's uploads.");
-    }
-    palette = await themeFromImage(bytes);
-  }
-
-  /* Slug: the merchant's word wins, then the latin product name, then the
-   * model's transliteration. De-clash with suffixes, the duplicate rule. */
-  const base =
-    body.slug ||
-    slugify(body.productName) ||
-    (copy.slug && SLUG_RE.test(copy.slug) ? copy.slug : "") ||
-    "page";
-  let slug = "";
-  for (let n = 1; n <= 50; n++) {
-    const candidate = n === 1 ? base : `${base}-${n}`;
-    const clash = await (db as any).landingPage.findFirst({
-      where: { slug: candidate },
-      select: { id: true },
-    });
-    if (!clash) { slug = candidate; break; }
-  }
-  if (!slug) return apiError(409, "SLUG_TAKEN", "That address is taken — choose another.");
-
-  const theme = palette
-    ? await (db as any).landingTheme.create({
-        data: { tenantId, name: copy.title.slice(0, 120), ...palette, isBuiltIn: false, sortOrder: 100 },
-        select: { id: true },
-      })
-    : null;
-
-  const created = await (db as any).landingPage.create({
-    data: {
-      tenantId,
-      title: copy.title,
-      slug,
-      status: "DRAFT",
-      published: false,
-      price: body.price,
-      oldPrice: body.oldPrice ?? null,
-      currency: facts.currency,
-      description: copy.description,
-      announcement: copy.announcement ?? null,
-      ctaButtonText: copy.ctaButtonText ?? null,
-      seoTitle: copy.seoTitle ?? null,
-      seoDescription: copy.seoDescription ?? null,
-      themeId: theme?.id ?? null,
-      media: {
-        create: imageUrls.map((url, i) => ({
-          tenantId,
-          type: "IMAGE",
-          url,
-          // The photo shows the product; its name is the honest alt text
-          // until the merchant writes a better one in the editor.
-          altText: body.productName.slice(0, 300),
-          placement: "GALLERY",
-          displayOrder: i,
-        })),
-      },
-      features: {
-        create: copy.benefits.map((b, i) => ({
-          tenantId,
-          icon: b.icon!,
-          title: b.title,
-          description: b.description ?? null,
-          displayOrder: i,
-        })),
-      },
-      faqs: {
-        create: copy.faqs.map((f, i) => ({
-          tenantId,
-          question: f.question,
-          answer: f.answer,
-          displayOrder: i,
-        })),
-      },
-    },
-    select: { id: true, title: true, slug: true, status: true },
-  });
-
+  /* Phases two and three — after the wrapper's transaction has committed and
+   * released its connection. The closure's response REPLACES the placeholder
+   * below; a throw is logged by the wrapper and the placeholder stands. */
   afterCommit(async () => {
-    triggerProductWebhook("product.created", tenantId, created.id);
+    // The hero's bytes first: a photo that cannot be read refuses for free,
+    // BEFORE the tenant's key is billed for an answer that would be thrown
+    // away.
+    let heroBytes: Buffer | null = null;
+    if (imageUrls[0]) {
+      heroBytes = await readTenantImage(imageUrls[0], tenantId);
+      if (!heroBytes) {
+        return apiError(422, "IMAGE_NOT_OWNED", "The first photo could not be read from this store's uploads.");
+      }
+    }
+
+    let copy;
+    try {
+      const answer = await completeWithProvider(
+        {
+          type: provider.type,
+          baseUrl: provider.baseUrl,
+          apiKey: provider.apiKey,
+          defaultModel: provider.defaultModel,
+          temperature: provider.temperature == null ? null : Number(provider.temperature),
+          maxTokens: provider.maxTokens,
+          timeoutMs: provider.timeoutMs,
+        },
+        buildGenerationMessages(facts),
+      );
+      copy = parseGeneratedCopy(answer);
+    } catch (error) {
+      if (error instanceof GenerationParseError) {
+        return apiError(502, "AI_INVALID_OUTPUT", error.message);
+      }
+      if (error instanceof AiCallError) {
+        return apiError(502, error.code, error.message);
+      }
+      throw error;
+    }
+
+    // LB.22's palette. `null` is a real answer (colourless image) and simply
+    // means the default theme.
+    const palette = heroBytes ? await themeFromImage(heroBytes) : null;
+
+    /* Slug: the merchant's word wins, then the latin product name, then the
+     * model's transliteration. Bases are capped so the longest de-clash
+     * suffix stays inside the 120 every other slug writer enforces. */
+    const base =
+      body.slug ||
+      slugify(body.productName).slice(0, 100).replace(/-+$/, "") ||
+      (copy.slug && SLUG_RE.test(copy.slug) ? copy.slug : "") ||
+      "page";
+
+    try {
+      const created = await withTenant(tenantId, async (tx) => {
+        let slug = "";
+        for (let n = 1; n <= 50; n++) {
+          const candidate = n === 1 ? base : `${base}-${n}`;
+          const clash = await (tx as any).landingPage.findFirst({
+            where: { slug: candidate },
+            select: { id: true },
+          });
+          if (!clash) { slug = candidate; break; }
+        }
+        if (!slug) return null;
+
+        const theme = palette
+          ? await (tx as any).landingTheme.create({
+              data: { tenantId, name: copy.title.slice(0, 120), ...palette, isBuiltIn: false, sortOrder: 100 },
+              select: { id: true },
+            })
+          : null;
+
+        return (tx as any).landingPage.create({
+          data: {
+            tenantId,
+            title: copy.title,
+            slug,
+            status: "DRAFT",
+            published: false,
+            price: body.price,
+            oldPrice: body.oldPrice ?? null,
+            currency: facts.currency,
+            description: copy.description,
+            announcement: copy.announcement ?? null,
+            ctaButtonText: copy.ctaButtonText ?? null,
+            seoTitle: copy.seoTitle ?? null,
+            seoDescription: copy.seoDescription ?? null,
+            themeId: theme?.id ?? null,
+            media: {
+              create: imageUrls.map((url, i) => ({
+                tenantId,
+                type: "IMAGE",
+                url,
+                // The photo shows the product; its name is the honest alt
+                // text until the merchant writes a better one in the editor.
+                altText: body.productName.slice(0, 300),
+                placement: "GALLERY",
+                displayOrder: i,
+              })),
+            },
+            features: {
+              create: copy.benefits.map((b, i) => ({
+                tenantId,
+                icon: b.icon!,
+                title: b.title,
+                description: b.description ?? null,
+                displayOrder: i,
+              })),
+            },
+            faqs: {
+              create: copy.faqs.map((f, i) => ({
+                tenantId,
+                question: f.question,
+                answer: f.answer,
+                displayOrder: i,
+              })),
+            },
+          },
+          select: { id: true, title: true, slug: true, status: true },
+        });
+      });
+
+      if (!created) {
+        return apiError(409, "SLUG_TAKEN", "That address is taken — choose another.");
+      }
+
+      // Already post-commit here; the fresh transaction above has closed.
+      triggerProductWebhook("product.created", tenantId, created.id);
+      return apiOk(created, { status: 201 });
+    } catch (error: any) {
+      // Two generations racing the same slug: the loser's unique-constraint
+      // failure is a 409 with a retry, not an anonymous 500 after a billed
+      // model call.
+      if (error?.code === "P2002") {
+        return apiError(409, "SLUG_TAKEN", "That address was just taken — try again.");
+      }
+      throw error;
+    }
   });
 
-  return apiOk(created, { status: 201 });
+  // Replaced by `afterCommit`. Returned so the handler has a value either
+  // way; if the closure throws, the wrapper logs it and this stands.
+  return apiError(500, "INTERNAL_ERROR", "Generation did not complete.");
 });
