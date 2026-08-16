@@ -3,6 +3,7 @@
 import * as React from "react";
 import type { LandingThemeData } from "@/types/theme";
 import { DEFAULT_THEME } from "@/types/theme";
+import { readableTextOnHex } from "@/lib/landing/color-math";
 
 const ThemeContext = React.createContext<LandingThemeData>(DEFAULT_THEME);
 
@@ -62,6 +63,19 @@ export function ThemeProvider({
     "--theme-primary": theme.primary,
     "--theme-primary-foreground": theme.primaryForeground,
     "--theme-accent": theme.accent,
+    /* Text ON the accent (the discount badge). The badge hardcoded
+     * `text-white`, which fails WCAG the moment a theme's accent is light —
+     * amber, gold, sky — exactly the accents product photography extracts
+     * (LB.51, flagged by the contrast audit). Chosen by the same
+     * readable-foreground rule LB.22 uses for buttons, not assumed. */
+    "--theme-accent-foreground": readableTextOnHex(theme.accent),
+    /* Muted TEXT within the theme's own palette (the crossed-out old price).
+     * `--theme-muted` is a SURFACE colour — order-summary paints backgrounds
+     * with it — so using it as a text colour put near-background ink on the
+     * background: measured 1.05:1 on a light theme, 1.6:1 on the dark
+     * fixture theme. A 78% mix of the theme's text keeps the muted reading
+     * while inheriting the text/background pair's contrast headroom. */
+    "--theme-text-muted": `color-mix(in oklab, ${theme.text} 78%, ${theme.background})`,
     "--theme-background": theme.background,
     "--theme-card": theme.card,
     "--theme-text": theme.text,

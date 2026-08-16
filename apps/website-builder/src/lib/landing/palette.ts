@@ -2,6 +2,10 @@ import "server-only";
 
 import sharp from "sharp";
 
+import { contrastRatio, parseHex, readableOn } from "./color-math";
+
+export { contrastRatio, parseHex };
+
 /* =============================================================================
  * A storefront theme, extracted from a product photograph — LB.22.
  *
@@ -49,39 +53,10 @@ const hex = ({ r, g, b }: Rgb) =>
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** WCAG relative luminance. The sRGB gamma expansion matters — a linear
- *  average of channels calls mid-blue and mid-yellow equally bright, and they
- *  are not remotely. */
-function luminance({ r, g, b }: Rgb): number {
-  const f = (c: number) => {
-    const s = c / 255;
-    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
-}
-
-/** WCAG contrast ratio, 1 (identical) to 21 (black on white). */
-export function contrastRatio(a: Rgb, b: Rgb): number {
-  const la = luminance(a);
-  const lb = luminance(b);
-  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
-}
-
-const WHITE: Rgb = { r: 255, g: 255, b: 255 };
-/** Not pure black: #111 on a coloured surface reads as deliberate, #000 as a
- *  fault. The contrast difference against anything mid-tone is negligible. */
-const NEAR_BLACK: Rgb = { r: 17, g: 17, b: 17 };
-
-/**
- * The readable foreground for a surface: whichever of near-black and white
- * contrasts more. Chosen, not assumed — this is the single line that stops the
- * feature shipping unreadable buttons.
- */
-function readableOn(surface: Rgb): Rgb {
-  return contrastRatio(surface, NEAR_BLACK) >= contrastRatio(surface, WHITE)
-    ? NEAR_BLACK
-    : WHITE;
-}
+/* The WCAG arithmetic — luminance, contrastRatio, readableOn — moved to
+ * ./color-math.ts (LB.51) so the CLIENT-side theme provider can use the same
+ * readable-foreground rule for the discount badge without importing this
+ * server-only, sharp-carrying module. One definition, imported back here. */
 
 function toHsl({ r, g, b }: Rgb): { h: number; s: number; l: number } {
   const R = r / 255, G = g / 255, B = b / 255;
@@ -217,11 +192,3 @@ export async function themeFromImage(input: Buffer): Promise<ExtractedTheme | nu
   };
 }
 
-/** Parse `#rrggbb` back to RGB — for the tests, and for asserting contrast. */
-export function parseHex(value: string): Rgb {
-  return {
-    r: parseInt(value.slice(1, 3), 16),
-    g: parseInt(value.slice(3, 5), 16),
-    b: parseInt(value.slice(5, 7), 16),
-  };
-}
