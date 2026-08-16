@@ -26,6 +26,18 @@ const CUSTOM_DOMAIN_HOST = [
 ].join("");
 
 const nextConfig: NextConfig = {
+  /* LB.50 — CSS ships inside the document, not as render-blocking links.
+   * ADOPTED ON MEASUREMENT, same page, same method: perf 81→88 and LCP
+   * 3.7s→2.0s, because the hero can start painting without waiting on two
+   * stylesheet round-trips. The honest costs, also measured: the document
+   * grows (~28KB→106KB gz — the CSS rides in EVERY page view instead of
+   * caching once; FCP +0.3s, TBT +80ms). For an ad-driven COD funnel the
+   * first view is the one that converts, so first-view LCP wins. The flag
+   * is EXPERIMENTAL: if a Next upgrade misbehaves, the symptom is unstyled
+   * pages and the revert is deleting this block. */
+  experimental: {
+    inlineCss: true,
+  },
   output: "standalone",
   // Pin the tracing root to the workspace root rather than letting Next infer
   // it. Inference works today, but it is a heuristic over lockfile location —

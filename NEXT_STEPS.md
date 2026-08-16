@@ -844,6 +844,15 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
+### LB.50 — DONE, NOT DEPLOYED. inlineCss, measured then adopted (16 Aug)
+
+The candidate LB.47 refused to flip blind, given its own pass on the
+framer-free build: **81→88, LCP 3.7→2.0s** for +78KB gz per document (the
+honest cost; first view converts, first view wins). Experimental flag —
+revert is one config block. Follow-up scoped: the single 144KB CSS bundle
+carries console styles into every storefront document; splitting it is the
+next CSS win.
+
 ### LB.49 — DONE, NOT DEPLOYED. The storefront drops its animation library (16 Aug)
 
 The JS-diet backlog, finally measured: 378.6KB gz critical path, framer-motion

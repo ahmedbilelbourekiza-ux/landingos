@@ -12,6 +12,27 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.50 — CSS ships inside the document: `experimental.inlineCss`, its
+  own measured pass** (16 August 2026 — **local; NOT deployed**; no
+  migration).
+
+  LB.47 flagged the candidate and deliberately did not flip it blind; this
+  is the dedicated measurement. **With the flag** (same page, same method,
+  on the framer-free build): stylesheet links 2→0, and Lighthouse moved
+  **81→88 with LCP 3.7s→2.0s** and SI 3.9→3.1s — the hero paints without
+  waiting on two render-blocking CSS round-trips. **The honest costs,
+  measured, not hidden:** the document carries the CSS on every view —
+  ~28KB→**106KB gz** per page — so FCP ticked up 1.2→1.5s, TBT 320→400ms,
+  and a second page view (the thank-you) re-downloads what a cached
+  stylesheet would have kept. **Adopted because the funnel is ad-driven:**
+  the first view is the one that converts, and first-view LCP is the
+  metric this whole week has been about. The flag is experimental; the
+  symptom of a future regression is unstyled pages (loudly visible) and
+  the revert is one config block. One follow-up worth scoping: the CSS
+  bundle itself is 144KB raw for ALL surfaces — console styles ride into
+  every storefront document; splitting them is where the next real CSS win
+  lives. storefront **76/76** · console-shell **20/20**.
+
 - **LB.49 — the storefront drops its animation library, because it kept
   taking content hostage** (16 August 2026 — **local; NOT deployed**; no
   migration).

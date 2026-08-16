@@ -981,12 +981,21 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **NOTHING is queued — LB.47 DEPLOYED 16 Aug as `9acaf00..933f95b` (§1
-   has the record: absolute canonicals, og:image off localhost, both
-   hosts).** LB.46, LB.45 and LB.42–LB.44 all shipped earlier the same
-   weekend; §1 has each record. `git diff origin/main master -- apps
-   packages` is the check that nothing is waiting; no migration is
-   pending. LB.45
+4. **THREE slices are queued to deploy: LB.48, LB.49, LB.50** (the
+   perceived-perf warms + the `/__domain__` brand-link fix, the framer
+   removal, and `experimental.inlineCss` — CHANGELOG has each record with
+   its measurements). **No migration in any.** Suites green on the final
+   build: storefront 76, console-shell 20, builder-sections 74. **Not
+   deployed — the user asked to be asked first.** Markers, all PUBLIC on
+   any product page: stylesheet links 2→0 with one inline `<style>`
+   (LB.50); zero `framer` signatures in the page's chunk set and the page
+   chunk ~95KB gz (LB.49); `landing-fade`/`landing-slide-up` classes in
+   CSS and no `href="/__domain__"` in any served page (LB.48). **After
+   deploy: re-run Lighthouse/PSI on `selliora1.com/dedima`** — local
+   same-method prediction is perf ~88 with LCP ~2s — and re-check the
+   real-phone feel (swipe the gallery, scroll to the description image).
+   LB.47 DEPLOYED 16 Aug as `9acaf00..933f95b`; LB.46, LB.45 and
+   LB.42–LB.44 earlier the same weekend; §1 has each record. LB.45
    went earlier the same day (`cc87b0b..0aa0eae`), LB.42–LB.44 the evening
    before (`3fc1ade..4742554`). `git diff origin/main master -- apps
    packages` is the check that nothing is waiting; no migration is
