@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 
-import { withTenant } from "@landingos/db";
-
 import { resolveStorefrontTenant, currentOrigin } from "@/lib/storefront/resolve-tenant";
 import { resolveStoreName } from "@/lib/storefront/store-identity";
+import { storefrontStoreSettings } from "@/lib/storefront/store-settings";
 
 /* =============================================================================
  * WHOSE IDENTITY A STOREFRONT PAGE WEARS IN ITS <head>.
@@ -49,12 +48,9 @@ export async function generateMetadata({
   // the merchant defaults here would advertise a shop that does not exist.
   if (!tenant) return {};
 
-  const settings = (await withTenant(tenant.id, (db) =>
-    (db as any).storeSettings.findUnique({
-      where: { tenantId: tenant.id },
-      select: { favicon: true, storeName: true, storeDescription: true },
-    }),
-  )) as { favicon: string | null; storeName: string | null; storeDescription: string | null } | null;
+  // The request-scoped shared read (LB.51): the same SELECT the page's own
+  // load() awaits, so the layout no longer opens a transaction of its own.
+  const settings = await storefrontStoreSettings(tenant.id);
 
   // The same resolver the nav and footer use (LB.31): an absent row and an
   // untouched `storeName` default both mean "no name chosen", and the honest

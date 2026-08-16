@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
@@ -5,6 +6,11 @@ import { withTenant } from "@landingos/db";
 
 import { resolveStorefrontTenant, storefrontHref } from "@/lib/storefront/resolve-tenant";
 import { resolveStoreName } from "@/lib/storefront/store-identity";
+import { storefrontStoreSettings } from "@/lib/storefront/store-settings";
+import {
+  activeBrowserIntegrationRows,
+  browserIntegrationsFrom,
+} from "@/lib/storefront/tracking";
 import { toLandingPageData, toThemeData } from "@/lib/landing/mappers";
 import { LandingTemplate } from "@/components/landing/landing-template";
 import { StorefrontApiProvider } from "@/lib/storefront/api-base";
@@ -23,35 +29,45 @@ export const dynamic = "force-dynamic";
  * `published: true` is not redundant beside the binding. The binding decides
  * WHOSE rows these are; publication decides which of them a stranger may see.
  * Dropping it would serve every tenant's drafts to the public.
+ *
+ * `cache()` around load (LB.51): generateMetadata and the page component both
+ * need this data and previously each ran the whole query set — the statement
+ * census measured every relation SELECT arriving at the database TWICE per
+ * request. Per-request dedup only, like resolveStorefrontTenant; the next
+ * request reads fresh, so LB.14a's cross-request rule is untouched. The
+ * tracking rows ride in the same transaction for the same reason: they were a
+ * separate transaction AFTER the page resolved — round trips appended to the
+ * critical path for two reads the page's own transaction could carry.
  * ========================================================================== */
 
-async function load(tenantSlug: string, pageSlug: string) {
+const load = cache(async (tenantSlug: string, pageSlug: string) => {
   const tenant = await resolveStorefrontTenant(tenantSlug);
   if (!tenant) return null;
 
-  const [page, store] = await withTenant(tenant.id, async (db) => [
-    await (db as any).landingPage.findFirst({
-      where: { slug: pageSlug, published: true, status: "PUBLISHED" },
-      include: {
-        media: { orderBy: { displayOrder: "asc" } },
-        variants: { orderBy: { displayOrder: "asc" } },
-        features: { orderBy: { displayOrder: "asc" } },
-        reviews: { orderBy: { displayOrder: "asc" } },
-        faqs: { orderBy: { displayOrder: "asc" } },
-        setting: true,
-        theme: true,
-      },
-    }),
+  const [[page, integrationRows], store] = await Promise.all([
+    withTenant(tenant.id, async (db) => [
+      await (db as any).landingPage.findFirst({
+        where: { slug: pageSlug, published: true, status: "PUBLISHED" },
+        include: {
+          media: { orderBy: { displayOrder: "asc" } },
+          variants: { orderBy: { displayOrder: "asc" } },
+          features: { orderBy: { displayOrder: "asc" } },
+          reviews: { orderBy: { displayOrder: "asc" } },
+          faqs: { orderBy: { displayOrder: "asc" } },
+          setting: true,
+          theme: true,
+        },
+      }),
+      // The pixels this page may fire (LB.35). Same transaction, one query —
+      // the selection itself is applied below, outside the transaction, by
+      // the same function resolveBrowserIntegrations uses.
+      await activeBrowserIntegrationRows(db),
+    ]),
     // The tenant's public identity (B4) — nav brand, footer, socials, the
     // floating WhatsApp number — read here because the template deliberately
-    // reads no settings itself.
-    await (db as any).storeSettings.findUnique({
-      where: { tenantId: tenant.id },
-      select: {
-        storeName: true, storeDescription: true, logo: true,
-        facebook: true, instagram: true, tiktok: true, whatsapp: true, telegram: true,
-      },
-    }),
+    // reads no settings itself. Shared with the layout's generateMetadata
+    // through the request-scoped cache: one SELECT serves both.
+    storefrontStoreSettings(tenant.id),
   ]);
 
   // ALWAYS a store identity, even with no settings row. The old `store ? … :
@@ -76,8 +92,17 @@ async function load(tenantSlug: string, pageSlug: string) {
     homePath: storefrontHref(tenant),
   };
 
-  return page ? { tenant, page, store: storeData } : null;
-}
+  if (!page) return null;
+
+  return {
+    tenant,
+    page,
+    store: storeData,
+    // Resolved here so the component mount needs no second transaction; the
+    // selection function is the one resolveBrowserIntegrations itself uses.
+    integrations: browserIntegrationsFrom(integrationRows, page.trackingIntegrationIds),
+  };
+});
 
 export async function generateMetadata({
   params,
@@ -163,8 +188,13 @@ export default async function StorefrontLandingPage({
     <div data-tenant={found.tenant.slug} data-page-slug={found.page.slug}>
       {/* LB.35 — the pixels linked to THIS product, which is the selection the
           layout could not express. A page with no selection inherits the
-          tenant's active set, exactly as before. */}
-      <StorefrontTracking tenantId={found.tenant.id} landingPageId={found.page.id} />
+          tenant's active set, exactly as before. Pre-resolved inside load()'s
+          own transaction (LB.51), so this mount costs no second one. */}
+      <StorefrontTracking
+        tenantId={found.tenant.id}
+        landingPageId={found.page.id}
+        integrations={found.integrations}
+      />
       <script
         type="application/ld+json"
         // Serialized server-side from our own row; the replace hardens against
