@@ -721,7 +721,10 @@ touches D2's "a custom domain wins" guarantee, the `X-Forwarded-Host` trust
 rule recorded in `resolve-tenant.ts`, and every storefront test — a real slice
 with a real blast radius, and it needs the price-staleness question answered
 first (a cached page and a server-side price are the same divergence as
-before, only now with a TTL). **Not started.**
+before, only now with a TTL). **Not started.** *(16 Aug, later session: the
+OTHER half of the force-dynamic TTFB — per-render database cost — was
+measured and cut 34→10 statements as LB.51, on its own branch; see §LB.51.
+This front-door split remains exactly as scoped here.)*
 
 **Verified live across nine paths** against the running build; console screens
 and `/_next/static/*` (still `public, max-age=31536000, immutable`) are outside
@@ -843,6 +846,80 @@ Switching to "choose" pre-selects **every active integration**, so the
 transition out of "inherit all" cannot silently reduce reporting — which is the
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
+
+### LB.51–LB.53 — BUILT, NOT DEPLOYED (16 Aug, later session): the TTFB census, the gallery-warming trade, the price contrast
+
+**Five commits on branch `claude/perf-ttfb-images-2otrah`** (`047533d`,
+`42440de`, `aa50b56`, `f75eead`, `42b208e` on top of `831c48d`), **no
+migration** — LB.51's schema edit is a Prisma GENERATOR preview flag
+(`relationJoins`), invisible to `migrate diff`. CHANGELOG §LB.51–§LB.53 are
+the full records. **That session's environment could not reach production or
+Neon at all** (egress policy; even the PageSpeed API's anonymous quota was
+exhausted on the shared IP), so everything below was measured on the
+production BUILD served locally — a local Postgres 16 with
+`log_statement=all`, a fixture shaped like dedima (4 gallery + 2 description
+images, a 494KB noisy hero, theme, socials, two active pixels) — and the
+LIVE before/after is owed. Two consequences of that, stated plainly:
+
+- **Local numbers that transfer:** the statement census (34 → 10 per
+  product-page render; serial path ~18 → ~6 round trips; pinned connections
+  4 → 2), the audit mechanisms (the ~226KiB finding reproduced as LB.48's
+  two warmed neighbours; the contrast failure reproduced at ~1.05:1), and
+  every suite green per file. **Local numbers that do NOT transfer:** TTFB
+  itself (local RTT ≈ 0 → ~27ms unchanged; the win is ≈12 round trips ×
+  the real Render↔Neon RTT, plus halved pool-growth under bursts — each new
+  pooled connection pays TLS+auth to Neon, the strongest candidate for the
+  0.79→1.8s run-to-run variance).
+- **The deploy-day protocol (whoever pushes this):** capture warm PSI/
+  Lighthouse baselines on `selliora1.com/dedima` BEFORE pushing (per the
+  standing rule — and remember the LB.48 deploy discovery: a deploy wipes
+  the image-optimizer cache, so judge only WARM re-runs). After: expect the
+  "Improve image delivery" line to drop from ~226KiB to ~113KiB (one
+  deliberate forward warm remains), accessibility → 100 (the contrast
+  audit), and `server-response-time` to shed roughly 12×RTT ms. Also
+  re-verify the LB.35b page-subset behaviour live once (the tracking
+  resolution moved into the page's own transaction — same functions, new
+  call path) and a checkout end to end.
+
+**The three TTFB questions that are hosting decisions, not code — yours:**
+
+1. **Does the Render service spin down when idle?** `.env.example`'s own
+   text records the free tier wiping the container "on every deploy AND
+   every idle spin-down". If the service still idles down, the first
+   visitor after a quiet hour pays container spin-up + a cold image cache —
+   which is exactly the signature of the worst PSI runs (the 47-score/10.6s
+   run after the LB.48-50 deploy). The tradeoff is an always-on paid
+   instance (Render Starter, ~$7/mo) vs. eating that first-visitor cost;
+   for an ad-funnel this is usually the cheapest real TTFB purchase
+   available. **Check the plan in the Render dashboard — no credential
+   exists on any dev machine.**
+2. **Does `landingos_prod`'s Neon compute scale to zero?** Neon suspends
+   idle compute on lower plans; the resume (~0.5–2s) lands on whichever
+   customer arrives first, and intermittently — matching the observed
+   variance. Neon dashboard → the compute's "Scale to zero" setting.
+3. **Are Render and Neon in the same region?** Neon is `eu-central-1`
+   (Frankfurt). If the Render service is NOT in Frankfurt, every one of
+   the remaining ~6 round trips pays a cross-region RTT and this slice's
+   saving multiplies accordingly — but the bigger win would then be moving
+   the service. One dashboard glance.
+
+**Deliberately untouched:** the front-door split (LB.14a.2 proper — true
+static cacheability; still scoped, still needs the price-staleness answer),
+the JS diet (~89KiB unused + 13KiB legacy across two chunks — the known
+backlog, its own slice), and LB.14a's cross-request cache rule (everything
+here is per-REQUEST dedup via React `cache()`). The category page has a
+milder copy of the same double-query shape (metadata + page each query the
+category); left alone — it is not the ad-landing path — noted for whoever
+next touches it.
+
+**Also in the branch:** two `platform/domains` tests re-pinned (`aa50b56`)
+— they asserted the PRE-LB.45 root shapes and failed against any post-LB.45
+build; LB.45's deploy never re-ran this suite. The new assertions pin what
+LB.45 verified live: verified-domain root serves the store home (200, body
+marker), unverified is a fail-closed 404, forged `X-Forwarded-Host` still
+lands on the platform door. If the 404-for-unverified reading is not the
+product behaviour you want (vs. redirecting to the console), say so before
+this deploys — the test is where that decision is now written down.
 
 ### LB.50 — DONE + DEPLOYED (16 Aug). inlineCss, measured then adopted
 

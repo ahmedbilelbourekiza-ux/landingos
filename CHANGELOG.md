@@ -12,6 +12,137 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.53 — the old price becomes readable: surface colours stop being used
+  as ink** (16 August 2026 — **NOT DEPLOYED: local branch
+  `claude/perf-ttfb-images-2otrah`**; no migration).
+
+  Found by the general Lighthouse pass this session ran (all four
+  categories, on a dedima-shaped local fixture): the contrast audit failed
+  on exactly two elements, both in `PriceBlock`. The crossed-out old price
+  was painted in `--theme-muted` — a SURFACE colour; `order-summary` uses
+  the same variable as a `backgroundColor` — so the was-price rendered at
+  **~1.05:1** on a light theme and ~1.6:1 on the dark fixture theme,
+  near-invisible on both, on the number that is half the discount story of
+  a COD funnel. The badge beside it hardcoded `text-white` on
+  `--theme-accent`, which fails the moment an accent is amber or gold —
+  exactly the accents LB.22 extracts from product photography.
+
+  Both fixes are THEME-DERIVED so they hold for whatever a merchant picks:
+  `--theme-text-muted` (a 78% oklab mix of the theme's text into its
+  background — muted ink inheriting the text/background pair's contrast
+  headroom) and `--theme-accent-foreground` (black-or-white chosen by WCAG
+  contrast against this theme's accent, the same readable-foreground rule
+  LB.22 uses for buttons). The WCAG arithmetic moved out of the
+  server-only, sharp-carrying `palette.ts` into a client-safe
+  `lib/landing/color-math.ts`; palette imports it back and re-exports
+  `contrastRatio`/`parseHex`, so the rule keeps ONE definition.
+
+  Local Lighthouse, warm runs, same fixture: **accessibility 97 → 100.**
+  The rest of the general pass came back clean or already-known: SEO 100,
+  CLS 0, best-practices docked only by a sandbox TLS artifact on
+  `fbevents.js` (not reproducible in production), and the one real
+  remaining performance line is the JS-diet backlog (~89KiB unused JS +
+  13KiB legacy polyfills in two chunks) — already scoped, deliberately not
+  built here. Files: `lib/landing/color-math.ts` (new), `palette.ts`,
+  `theme-provider.tsx`, `sections/price-block.tsx`. storefront 76,
+  builder-sections 74 (incl. LB.22's independent contrast assertions).
+
+- **LB.52 — the gallery stops betting two images of the customer's data on
+  every visit** (16 August 2026 — **NOT DEPLOYED: local branch
+  `claude/perf-ttfb-images-2otrah`**; no migration).
+
+  The "Improve image delivery ~226KiB" PageSpeed finding on the dedima
+  page, diagnosed by REPRODUCTION rather than from the report: it is
+  LB.48's own lookahead. The warm layer mounted BOTH gallery neighbours
+  full-size (the hero's own `sizes`) inside a 1×1px hidden container, and
+  Lighthouse counts an eager image displayed at 1×1 as ~100% wasted bytes
+  — two ~113KiB webps against the real page's 882KB source ≈ the reported
+  number. Reproduced on a local dedima-shaped fixture (4 gallery + 2
+  description images, a 494KB noisy hero): the two flagged URLs were
+  precisely `active±1`. **Template-level, not merchant content** — though
+  dedima's source size is why ITS number is the big one (the optimizer
+  serves its w=1080 at ~73–113KiB where a cleaner photo costs ~20).
+
+  The trade, re-made with the measurement in hand rather than reverted:
+  the layer now warms **forward only** (`active+1`) — the first gesture on
+  a gallery is overwhelmingly "next", so the dominant swipe stays instant
+  at half the speculative cost; a backward first-swipe pays one on-demand
+  fetch (the pre-LB.48 behaviour, once), after which the layer warms ahead
+  of the new position as before. And the bet is now DECLINABLE:
+  `useWarmupAllowed()` gates both warmers (the gallery neighbour and the
+  first description image's post-load eager flip) on the visitor's
+  `Save-Data` signal, stated once in `use-after-load.ts` — refusing to
+  speculate is not refusing to serve. Local Lighthouse warm runs: the
+  image-delivery insight drops from two flagged warm images to one (the
+  deliberate forward warm, kept and documented). Files:
+  `sections/product-gallery.tsx`, `sections/description-images.tsx`,
+  `lib/landing/use-after-load.ts`. storefront 76, builder-sections 74.
+
+- **LB.51 — the TTFB investigation: one read per fact, one statement per
+  relation set** (16 August 2026 — **NOT DEPLOYED: local branch
+  `claude/perf-ttfb-images-2otrah`**, two commits; no migration — the
+  schema edit is a GENERATOR preview flag, `migrate diff` unaffected).
+
+  LB.14a.2's TTFB (0.79–1.8s observed run to run) got its measurement.
+  **This session's environment cannot reach production** (egress policy
+  blocks the live site AND Neon), so the critical path was measured the
+  one way that needed neither: the production build served locally
+  against a local Postgres 16 with `log_statement=all`, on a fixture
+  shaped like dedima. The census: **34 statements arrived at the database
+  for ONE product-page render.** The structure, not the queries, was the
+  cost — `load()` ran twice (generateMetadata + page component each ran
+  the full 9-query set), the layout's generateMetadata opened a third
+  transaction for a StoreSettings row the page was already reading, and
+  the tracking resolution opened a fourth transaction serialized AFTER
+  the page's data. Four pinned pooled connections per request; a serial
+  critical path of ~18 round trips.
+
+  Two commits, each independently revertable:
+
+  1. **Dedup (`047533d`):** `load()` wrapped in React `cache()` (the
+     `resolveStorefrontTenant` pattern — per-REQUEST dedup, so LB.14a's
+     cross-request no-store rule is untouched); ONE StoreSettings SELECT
+     serves layout and page through a request-scoped shared reader
+     (`lib/storefront/store-settings.ts`, union select); the tracking
+     rows ride inside `load()`'s own transaction with the query and the
+     selection each defined once (`activeBrowserIntegrationRows` /
+     `browserIntegrationsFrom` — the quote=charge rule applied to
+     pixels). Census 34 → **17**, connections 4 → **2**.
+  2. **relationJoins (`42440de`):** the Prisma preview flag plus
+     `relationLoadStrategy: "join"` on the ONE page query — the
+     7-relation include becomes a single SQL statement instead of eight,
+     because on the pinned withTenant transaction the query count IS the
+     latency (D-PM.1.3). Census 17 → **10**; serial path ~18 → **~6**
+     round trips. The flag only adds the per-query parameter; nothing
+     else opts in. Revert = the commit + regenerate both clients.
+
+  **What this buys in production is RTT-bound and could not be measured
+  from here:** the saving is ≈12 serialized round trips × the
+  Render↔Neon RTT, plus halved pool-growth (each new pooled connection
+  pays TLS+auth to Neon — the strongest local candidate for the
+  0.79→1.8s run-to-run VARIANCE). The live before/after PSI run is owed
+  and specified in NEXT_STEPS §LB.51, along with the three
+  hosting-layer questions (Render plan/spin-down, Neon autosuspend,
+  region pairing) that own whatever TTFB remains after this — and the
+  front-door split (LB.14a.2 proper) stays scoped, untouched.
+
+  **Found on the way and fixed (`aa50b56`):** two `platform/domains`
+  tests still pinned the PRE-LB.45 root shapes (307 to `/console` or
+  `/<slug>` on a custom-domain Host) and failed against any post-LB.45
+  build — the suite was not in LB.45's re-run list. Re-pinned to the
+  deployed behaviour LB.45 verified live: verified domain root serves
+  the store home directly (200, asserted on the body's tenant marker);
+  unverified hostname is a fail-closed 404; forged `X-Forwarded-Host`
+  still lands on the platform door. 14/14.
+
+  Suites, per file against the rebuilt server, all green: storefront
+  **76** · builder-sections **74** · tracking **15** · builder-api
+  **42** · console-shell **20** · hardening **13** · platform/domains
+  **14** · platform/team **63** · packages/db **35**. Served-HTML
+  markers intact throughout (both pixels, JSON-LD, og:image, title
+  template, relation ordering). Local warm TTFB unchanged at ~25–30ms —
+  expected, local RTT ≈ 0; the win scales with production's.
+
 - **LB.50 — CSS ships inside the document: `experimental.inlineCss`, its
   own measured pass** (16 August 2026 — **DEPLOYED same day, `cf5c554..1067984`**; no migration).
 
