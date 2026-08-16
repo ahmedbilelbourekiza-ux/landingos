@@ -844,6 +844,24 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
+### LB.47 — DONE, NOT DEPLOYED. Metadata URLs become absolute (16 Aug)
+
+A real PSI report on `selliora1.com/dedima` asked three questions; the
+measurements answered: **(1) performance** — same page, controlled method,
+dedima 69/LCP 3.0s ≈ robe 69/3.6s, LB.44 intact, TTFB equal on both hosts;
+PSI's 66/6.5s/10.2s is its harsher single-run harness. What remains is the
+JS-diet backlog (unused JS 179KiB, TBT 0.8–1.4s — §5.4, the named next
+lever) and `force-dynamic` TTFB (LB.14a.2); cache lifetimes and image
+delivery measured fine. **(2) canonical** — no `metadataBase` existed, so
+og:image absolutised to `http://localhost:10000/...` in production (every
+social preview imageless since LB.37) while canonicals stayed relative;
+fixed at the storefront layout from `currentOrigin()`. **(3) meta
+description** — the chain (page seo → page description → store description)
+is built and empty on dedima: merchant data, fill any field in the editor
+or store settings. **After deploy, verify on the real page:** canonical
+`https://selliora1.com/dedima`, og:image on `https://selliora1.com/...`,
+zero `localhost` in served metadata.
+
 ### LB.46 — DONE + DEPLOYED (16 Aug). View and Copy Link speak the tenant's domain
 
 The handoff's `isPrimary`-has-no-reader note, closed on schedule: once

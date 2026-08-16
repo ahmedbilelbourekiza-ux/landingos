@@ -956,8 +956,17 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **NOTHING is queued — LB.46 DEPLOYED 16 Aug as `a8f871e..da971fb`
-   (§1 has the record, verified both ways with two prod fixtures).** LB.45
+4. **ONE slice is queued to deploy: LB.47** — `metadataBase` on the
+   storefront layout (CHANGELOG §LB.47): canonicals become absolute and
+   `og:image` stops naming `http://localhost:10000` in production (every
+   social-share preview has been imageless since LB.37). **No migration.**
+   storefront 75 green. **Not deployed — the user asked to be asked
+   first.** Markers, PUBLIC: `selliora1.com/dedima` serves
+   `rel="canonical" href="https://selliora1.com/dedima"` (today: relative
+   `/dedima`) and an `og:image` on `https://selliora1.com` (today:
+   `http://localhost:10000/...`). **LB.46 DEPLOYED 16 Aug as
+   `a8f871e..da971fb`** (§1 has the record, verified both ways with two
+   prod fixtures). LB.45
    went earlier the same day (`cc87b0b..0aa0eae`), LB.42–LB.44 the evening
    before (`3fc1ade..4742554`). `git diff origin/main master -- apps
    packages` is the check that nothing is waiting; no migration is

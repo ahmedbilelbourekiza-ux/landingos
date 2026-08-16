@@ -925,7 +925,8 @@ describe("a storefront's <head> wears the merchant, and is allowed to be found",
     );
     assert.match(metaRobots(r.text), /(^|[\s,])index/, 'a shop must be findable');
     assert.ok(!/noindex/.test(metaRobots(r.text)), 'the home inherited the console noindex');
-    assert.equal(canonicalOf(r.text), `/${slugA}`);
+    // ABSOLUTE since LB.47 (metadataBase on the storefront layout).
+    assert.equal(canonicalOf(r.text), `${BASE}/${slugA}`);
   });
 
   test("a product's title carries the MERCHANT's name, not the platform's", async () => {
@@ -936,7 +937,7 @@ describe("a storefront's <head> wears the merchant, and is allowed to be found",
     // control was the root layout's `%s · LandingOS` template appended to it.
     assert.equal(titleOf(r.text), `Product A · ${storeName}`);
     assert.ok(!/noindex/.test(metaRobots(r.text)));
-    assert.equal(canonicalOf(r.text), `/${slugA}/shared-item`);
+    assert.equal(canonicalOf(r.text), `${BASE}/${slugA}/shared-item`);
   });
 
   test('a category is titled for itself and is indexable', async () => {
@@ -945,7 +946,7 @@ describe("a storefront's <head> wears the merchant, and is allowed to be found",
     assert.equal(r.status, 200);
     assert.equal(titleOf(r.text), `Fixture Category · ${storeName}`);
     assert.ok(!/noindex/.test(metaRobots(r.text)), 'the category inherited the console noindex');
-    assert.equal(canonicalOf(r.text), `/${slugA}/category/fixture-category`);
+    assert.equal(canonicalOf(r.text), `${BASE}/${slugA}/category/fixture-category`);
   });
 
   test("the thank-you page is NOT indexable — it is a customer's order", async () => {
@@ -959,6 +960,27 @@ describe("a storefront's <head> wears the merchant, and is allowed to be found",
       /noindex/,
       "a customer's order page became indexable when the storefront opted in",
     );
+  });
+
+  test('metadata URLs are ABSOLUTE on the request\'s own origin (LB.47)', async () => {
+    // Without metadataBase, Next absolutised og:image against its fallback —
+    // http://localhost:PORT — measured serving localhost:10000 to social
+    // scrapers in PRODUCTION, while the canonical stayed a relative path
+    // PageSpeed flags as invalid. Both must resolve on the serving origin.
+    const html = await fetch(`${BASE}/${slugA}/shared-item`).then((r) => r.text());
+    assert.match(
+      html,
+      new RegExp(`rel="canonical" href="${BASE}/${slugA}/shared-item"`),
+      'the canonical must be absolute on the serving origin',
+    );
+    assert.ok(!/localhost:10000/.test(html), 'no metadata URL may name the fallback host');
+    const og = html.match(/property="og:image" content="([^"]+)"/);
+    if (og) {
+      assert.ok(
+        og[1].startsWith(BASE),
+        `og:image must be absolute on the serving origin, got ${og[1]}`,
+      );
+    }
   });
 
   test('the console is still noindex — the root default must not have moved', async () => {
@@ -1250,7 +1272,14 @@ describe('LB.45 — a custom domain\'s paths are the shop\'s own', { skip }, () 
     const r = await rawGet('/shared-item', host);
     assert.equal(r.status, 200);
     assert.match(r.body, /landing-fade-up/, 'the purchase column is what marks the landing template');
-    assert.match(r.body, /rel="canonical" href="\/shared-item"/, 'canonical is the bare path');
+    // ABSOLUTE since LB.47 (metadataBase): the bare path on the shop's own
+    // origin — a relative canonical is flagged invalid by PageSpeed, and
+    // without metadataBase Next absolutised og:image to localhost:PORT.
+    assert.match(
+      r.body,
+      new RegExp(`rel="canonical" href="https://${host}/shared-item"`),
+      'canonical is the bare path on the shop\'s own origin',
+    );
   });
 
   test('a bare category path serves the listing, and its cards click through', async () => {

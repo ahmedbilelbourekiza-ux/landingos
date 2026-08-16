@@ -12,6 +12,54 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.47 — metadata URLs become absolute, and the PageSpeed report gets an
+  honest answer** (16 August 2026 — **local; NOT deployed**; no migration).
+
+  **Asked as three things on `selliora1.com/dedima`; measured as one bug,
+  one report, one data gap.**
+
+  **The bug — no `metadataBase` anywhere.** Next resolves relative metadata
+  URLs against `http://localhost:${PORT}` when none is set, and production
+  runs on port 10000 — so every storefront page has served
+  `og:image` as **`http://localhost:10000/uploads/...`** since LB.37 wrote
+  the head: every social-share preview of every shop link, imageless. The
+  canonical stayed a relative path (`/dedima`), which PageSpeed flags as
+  invalid. One fix at the storefront layout: `metadataBase` from
+  `currentOrigin()` — the one vetted Host reader, same rule as the sitemap —
+  so canonicals and og:images are now absolute on whichever origin served
+  the page. LB.45's premise ("canonicals point bare") was about the PATH
+  shape; absoluteness was never built until now. Three suite pins moved
+  from relative to absolute; one new test asserts the canonical is
+  absolute on the serving origin and that no metadata URL names the
+  fallback host.
+
+  **The report — the performance number is the harness, not a regression.**
+  Same page, same day, controlled method: `selliora1.com/dedima` scores
+  **69 / LCP 3.0s / SI 2.8s**, and `selliora1.com/robe` **69 / LCP 3.6s** —
+  the two pages are equivalent, LB.44's markers are intact on both (zero
+  opacity wrappers, one preload, `fetchpriority` high, below-fold lazy),
+  and TTFB is identical across the custom domain and the platform host
+  (~0.4–0.7s; the LB.45 rewrite costs nothing measurable). PSI's
+  66/6.5s/10.2s row is its slower datacenter hardware on a single run,
+  likely against a cold dyno. The flagged opportunities, each checked:
+  unused JS 179KiB + legacy JS 26KiB + TBT 0.8–1.4s are REAL and are the
+  long-standing JS-diet backlog (§5.4 — the named next lever, not this
+  slice); render-blocking ~720ms is the two CSS files (candidate:
+  `experimental.inlineCss`, deliberately not flipped here); "efficient
+  cache lifetimes" is already satisfied (measured: `/_next/image` one
+  year, `/uploads` immutable one year, chunks immutable); image delivery
+  ~20KiB is a rounding error on correct `sizes`.
+
+  **The data gap — the description mechanism is complete and empty.** The
+  chain `seoDescription || description` (page) → `storeDescription`
+  (layout) exists; `dedima` has all three null, so nothing renders. The
+  merchant fills any of them (the editor's SEO section, or store settings)
+  and the tag appears — nothing to build.
+
+  **Files:** `(storefront)/[tenant]/layout.tsx`, `test/storefront.test.ts`.
+  storefront 74→**75**. Live verification on `selliora1.com` follows the
+  deploy.
+
 - **LB.46 — the console's View and Copy Link speak the tenant's own domain**
   (16 August 2026 — **DEPLOYED same day, `a8f871e..da971fb`**; no
   migration. Verified live both ways with two prod fixtures — the

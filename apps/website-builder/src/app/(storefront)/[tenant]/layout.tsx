@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { withTenant } from "@landingos/db";
 
-import { resolveStorefrontTenant } from "@/lib/storefront/resolve-tenant";
+import { resolveStorefrontTenant, currentOrigin } from "@/lib/storefront/resolve-tenant";
 import { resolveStoreName } from "@/lib/storefront/store-identity";
 
 /* =============================================================================
@@ -61,7 +61,18 @@ export async function generateMetadata({
   // answer to both is the tenant's own name — never the platform's.
   const storeName = resolveStoreName(settings?.storeName, tenant.name);
 
+  const origin = await currentOrigin();
+
   return {
+    /* LB.47 — the base every relative metadata URL resolves against. Without
+     * it, Next falls back to `http://localhost:${PORT}`, and PRODUCTION
+     * served `og:image` as `http://localhost:10000/uploads/...` (measured on
+     * a real page) — every social-share preview imageless since LB.37 —
+     * while the canonical stayed a relative path PageSpeed flags as invalid.
+     * The origin is `currentOrigin()`: the one vetted reader of the Host
+     * header, so a spoofed X-Forwarded-Host cannot put a foreign hostname
+     * into a merchant's canonical (the same rule the sitemap follows). */
+    ...(origin ? { metadataBase: new URL(origin) } : {}),
     /* `absolute`, NOT `default` — measured, and the first attempt was wrong.
      * A `default` is still the title of a segment that HAS a parent template,
      * so the root's `%s · LandingOS` wrapped it and the store home served
