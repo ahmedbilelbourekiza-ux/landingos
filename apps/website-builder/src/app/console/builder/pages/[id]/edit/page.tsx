@@ -4,6 +4,7 @@ import { forTenant } from "@landingos/db";
 import { can } from "@landingos/auth";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { primaryPublicOrigin, publicPagePath } from "@/lib/console/public-page-url";
 import { resolveStoreName } from "@/lib/storefront/store-identity";
 import { BuilderApiProvider } from "@/lib/builder/api-base";
 import { StorefrontApiProvider } from "@/lib/storefront/api-base";
@@ -87,6 +88,10 @@ export default async function ConsoleEditLandingPage({
       )
     : null;
 
+  // View / Copy Link speak the tenant's own domain once one is verified and
+  // primary; the platform-prefixed path otherwise (LB.46).
+  const publicOrigin = await primaryPublicOrigin(forTenant(session.auth!.tenantId));
+
   return (
     // Two providers, because the editor renders both worlds at once: its own
     // controls talk to the console API, and the live preview inside it renders
@@ -101,7 +106,7 @@ export default async function ConsoleEditLandingPage({
         landingId={page.id}
         landingTitle={page.title}
         landingSlug={page.slug}
-        publicPath={`/${session.tenant!.slug}/${page.slug}`}
+        publicPath={publicPagePath(publicOrigin, session.tenant!.slug, page.slug)}
         store={{
           name: resolveStoreName(settings?.storeName, session.tenant!.name),
           description: settings?.storeDescription ?? null,

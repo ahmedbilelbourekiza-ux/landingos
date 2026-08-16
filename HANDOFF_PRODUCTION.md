@@ -934,14 +934,18 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **NOTHING is queued — LB.45 DEPLOYED 16 Aug as `cc87b0b..0aa0eae`; §1
-   has the record with every marker's before/after on the REAL custom
-   domain `selliora1.com`.** LB.42–LB.44 went the evening before
-   (`3fc1ade..4742554`). `git diff origin/main master -- apps packages` is
-   the check that nothing is waiting; no migration is pending. One data
-   note for the user: `/category/watches` lists empty because the `robe`
-   page has `categoryId: null` — assigning the page to the category in the
-   editor fills the listing; not a defect.
+4. **ONE slice is queued to deploy: LB.46** — the console's View and Copy
+   Link speak the tenant's verified primary domain (CHANGELOG §LB.46;
+   `isPrimary` finally gets its reader). **No migration.** Suites green
+   (builder-api 42, builder-sections 74, console-shell 20). **Not deployed —
+   the user asked to be asked first.** Marker (authed): selliora16's pages
+   list serves `href="https://selliora1.com/robe"` on the View door where
+   it serves the platform path today; any tenant without a domain keeps
+   `/{slug}/{page}`. LB.45 DEPLOYED 16 Aug as `cc87b0b..0aa0eae`;
+   LB.42–LB.44 the evening before (`3fc1ade..4742554`); §1 has the
+   records. One data note for the user: `/category/watches` lists empty
+   because the `robe` page has `categoryId: null` — assigning the page to
+   the category in the editor fills the listing; not a defect.
 
    **LB.41** (`94b6a40`) shipped on 14 Aug as `ce883f1..c3b1917`, and **LB.40** (`f1e38bf`) earlier the same day as
    `c89b19b..0286f99`. Neither carries a migration; both verified live — §1 has the records.

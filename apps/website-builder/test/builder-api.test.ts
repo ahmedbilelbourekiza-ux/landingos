@@ -357,6 +357,91 @@ describe('the landings screen renders in the shell', { skip }, () => {
     assert.match(html, /var\(--neutral-fg\)/);
   });
 
+  test('View and Copy Link speak the tenant\'s own domain once one is verified primary (LB.46)', async () => {
+    // isPrimary finally gets its reader. The domain belongs to tenant B; the
+    // console must link B's pages at it — and keep linking A's pages at the
+    // platform path, because A has no domain (the common case, not an edge).
+    //
+    // PUBLISHED pages on both sides, deliberately: the View door only exists
+    // on a published row (a draft has no public page to view — measured, the
+    // first version of this test asserted an anchor a draft never renders).
+    const domain = `prim-${stamp}.test`;
+    await withTenant(tenantB, (tx) =>
+      (tx as any).tenantDomain.create({
+        data: {
+          tenantId: tenantB, domain,
+          verificationToken: `tok-prim-${stamp}`,
+          verifiedAt: new Date(), isPrimary: true,
+        },
+      }),
+    );
+    for (const tenant of [tenantA, tenantB]) {
+      await withTenant(tenant, (tx) =>
+        (tx as any).landingPage.create({
+          data: {
+            tenantId: tenant, title: 'Domain Linked', slug: 'domain-linked',
+            price: 1900, published: true, status: 'PUBLISHED',
+          },
+        }),
+      );
+    }
+
+    const b = await fetch(BASE + '/console/builder/pages', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.ownerB}` },
+    });
+    const bHtml = await b.text();
+    assert.match(
+      bHtml,
+      new RegExp(`href="https://${domain}/domain-linked"`),
+      'the View door must open on the verified primary domain',
+    );
+
+    const a = await fetch(BASE + '/console/builder/pages', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.ownerA}` },
+    });
+    const aHtml = await a.text();
+    assert.ok(
+      !aHtml.includes(`https://${domain}`),
+      "another tenant's domain must never reach this tenant's screen",
+    );
+    assert.match(
+      aHtml,
+      new RegExp(`href="/api-a-${stamp}/domain-linked"`),
+      'a tenant without a domain keeps the platform-prefixed path',
+    );
+
+    // The editor hands the same URL to Copy Link / Open as its publicPath
+    // prop — asserted in the served payload, where the client reads it.
+    const editor = await fetch(`${BASE}/console/builder/pages/${pageB}/edit`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.ownerB}` },
+    });
+    const editorHtml = await editor.text();
+    assert.ok(
+      editorHtml.includes(`https://${domain}/shared-product`),
+      'the editor must carry the domain-shaped publicPath',
+    );
+
+    // A VERIFIED-BUT-NOT-PRIMARY domain changes nothing: primary is the
+    // merchant's explicit statement of which hostname is THE address.
+    await withTenant(tenantA, (tx) =>
+      (tx as any).tenantDomain.create({
+        data: {
+          tenantId: tenantA, domain: `secondary-${stamp}.test`,
+          verificationToken: `tok-sec-${stamp}`,
+          verifiedAt: new Date(), isPrimary: false,
+        },
+      }),
+    );
+    const a2 = await fetch(BASE + '/console/builder/pages', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.ownerA}` },
+    });
+    assert.match(
+      await a2.text(),
+      new RegExp(`href="/api-a-${stamp}/domain-linked"`),
+      'verified without primary must not move the link',
+    );
+  });
+
   test('a tenant without the builder cannot reach the screen', async () => {
     const r = await fetch(BASE + '/console/builder/pages', {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.erpOwner}` },

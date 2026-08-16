@@ -6,6 +6,7 @@ import { resolveStatus, toneVars } from "@landingos/ui";
 import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { primaryPublicOrigin, publicPagePath } from "@/lib/console/public-page-url";
 import { PageHeader, PageBody, EmptyState } from "@/components/console/ui/primitives";
 import { DataTable, StatusPill } from "@/components/console/data-table";
 import { PageRowActions } from "@/components/console/builder/page-row-actions";
@@ -52,7 +53,7 @@ export default async function BuilderPagesScreen({
      in the same pass means the "Archived (3)" door can state its own size, and
      a merchant with none never sees a door to an empty room. */
   const db = forTenant(session.auth!.tenantId);
-  const [pages, archivedCount] = await Promise.all([
+  const [pages, archivedCount, publicOrigin] = await Promise.all([
     db.landingPage.findMany({
       where: showArchived ? { status: "ARCHIVED" } : { status: { not: "ARCHIVED" } },
       orderBy: { createdAt: "desc" },
@@ -71,6 +72,9 @@ export default async function BuilderPagesScreen({
       },
     }),
     db.landingPage.count({ where: { status: "ARCHIVED" } }),
+    // Every row's View door speaks the tenant's own domain once one is
+    // verified and primary — one query for the whole list (LB.46).
+    primaryPublicOrigin(db),
   ]);
 
   return (
@@ -204,7 +208,7 @@ export default async function BuilderPagesScreen({
                   cell: (p: (typeof pages)[number]) => (
                     <PageRowActions
                       id={p.id}
-                      publicPath={`/${tenantSlug}/${p.slug}`}
+                      publicPath={publicPagePath(publicOrigin, tenantSlug, p.slug)}
                       published={p.published}
                       archived={p.status === "ARCHIVED"}
                       // Already selected for the Orders column above, so

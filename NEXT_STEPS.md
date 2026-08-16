@@ -844,6 +844,22 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
+### LB.46 — DONE, NOT DEPLOYED. View and Copy Link speak the tenant's domain (16 Aug)
+
+The handoff's `isPrimary`-has-no-reader note, closed on schedule: once
+`selliora1.com` actually served (LB.45), the console's View door and the
+editor's Copy Link were the last two surfaces still speaking
+`landingos.onrender.com/bebezzouar/...`. Both took a hard-built `publicPath`
+prop; the copy handler added `window.location.origin` on top. Now
+`lib/console/public-page-url.ts` resolves the ONE public origin (verified +
+primary domain, else null) and both screens build from it — domain URL for
+selliora16, unchanged platform path for every tenant without a domain.
+Verified-but-not-primary deliberately keeps the platform path. **After
+deploy:** selliora16's pages list must show View →
+`https://selliora1.com/robe` and the editor must copy the same; any other
+tenant unchanged. (Also recorded: the View door only exists on PUBLISHED
+rows — the first test version asserted it on a draft.)
+
 ### LB.45 — DONE + DEPLOYED (16 Aug). A custom domain's paths are the shop's own
 
 **The first REAL custom domain found it.** The moment `selliora1.com` passed

@@ -107,8 +107,12 @@ export function EditWorkspace({
 
   // --- Copy Link ---
   const handleCopyLink = () => {
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    navigator.clipboard?.writeText(`${origin}${publicPath}`);
+    // Already absolute when the tenant has a verified primary domain (LB.46)
+    // — prefixing the console's own origin onto that would corrupt the link.
+    const link = publicPath.startsWith("http")
+      ? publicPath
+      : `${typeof window !== "undefined" ? window.location.origin : ""}${publicPath}`;
+    navigator.clipboard?.writeText(link);
   };
 
   // --- Open Landing ---

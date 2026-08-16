@@ -12,6 +12,49 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.46 — the console's View and Copy Link speak the tenant's own domain**
+  (16 August 2026 — **local; NOT deployed**; no migration).
+
+  **The handoff predicted this one.** `TenantDomain.isPrimary` was recorded
+  as "a writer with no functional reader — deliberately NOT fixed: until a
+  hostname actually reaches Render, pointing Copy Link at it swaps a working
+  link for a 403." LB.45 expired that premise the day `selliora1.com` went
+  live: the pages list's **View** door and the editor's **Copy Link / Open**
+  still built `landingos.onrender.com/bebezzouar/robe` while the merchant's
+  own domain served the same page.
+
+  **Where the links actually came from** — not a shared helper: both screens
+  hand a `publicPath` prop hard-built as `/${tenantSlug}/${page.slug}`
+  (`pages/[id]/edit/page.tsx` and the pages list), and the editor's Copy
+  Link prefixed `window.location.origin` — the CONSOLE's host — onto it.
+
+  **The fix:** `lib/console/public-page-url.ts`, the tenant→origin READ
+  direction of the domain story (LB.45's rewrites are host→tenant).
+  `primaryPublicOrigin(db)` — one bound query: a domain both **verified and
+  primary** → `https://<domain>`; else null. `publicPagePath` then builds
+  either the bare domain URL (the shape LB.45 serves and canonicalises) or
+  the platform-prefixed path — the fallback is the common case, since most
+  tenants have no domain. The pages list pays ONE query for the whole list;
+  the copy handler stops prefixing the console origin onto a URL that is
+  already absolute. Verified-but-NOT-primary deliberately changes nothing:
+  primary is the merchant's explicit statement of which hostname is THE
+  address.
+
+  **One measurement the first test version got wrong, kept for the record:**
+  the View door only exists on a PUBLISHED row — a draft has no public page
+  to view — and the suite's shared fixture pages are drafts, so the test
+  asserted an anchor that had never rendered for any draft. The test now
+  publishes its own fixture pages; the pipeline was never broken (a
+  standalone reproduction with published pages worked on the first try).
+
+  **Verified:** with a verified primary domain the pages screen serves
+  `href="https://<domain>/<slug>"` and the editor carries the same URL as
+  its `publicPath`; a tenant WITHOUT a domain keeps
+  `/{tenant}/{slug}` exactly as before; another tenant's domain never
+  reaches the screen; verified-without-primary keeps the platform path.
+  builder-api 41→**42** · builder-sections **74/74** · console-shell
+  **20/20**. Live verification on the real console follows the deploy.
+
 - **LB.45 — a custom domain's paths are the shop's own** (16 August 2026 —
   **DEPLOYED same day, `cc87b0b..0aa0eae`**; no migration. **Live on
   `selliora1.com`:** `/robe` serves the landing page with the order form,
