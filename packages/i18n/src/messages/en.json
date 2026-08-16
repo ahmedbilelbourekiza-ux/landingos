@@ -111,7 +111,29 @@
       "titleRequired": "A title is required.",
       "priceInvalid": "Enter a price of zero or more.",
       "slugInvalid": "That address cannot be used. Try letters, numbers and hyphens.",
-      "slugTaken": "You already have a page at that address."
+      "slugTaken": "You already have a page at that address.",
+      "ai": {
+        "heading": "Generate with AI",
+        "intro": "Give the facts — name, price, selling points, your product photos — and get a full draft page written in Algerian Arabic, ready to review.",
+        "productName": "Product name",
+        "oldPrice": "Old price (optional)",
+        "oldPriceHint": "For showing a discount",
+        "oldPriceInvalid": "The old price must be a number higher than the price.",
+        "sellingPoints": "Key selling points",
+        "sellingPointsHint": "One per line — what makes this product worth buying",
+        "sellingPointsRequired": "Add at least one selling point.",
+        "photos": "Product photos",
+        "photosHint": "Your own photos of the product. The first one becomes the main image and sets the suggested theme.",
+        "generate": "Generate the page",
+        "generating": "Generating…",
+        "uploadFailed": "A photo could not be uploaded.",
+        "noProvider": "No AI provider is configured for this store.",
+        "notConfigured": "AI generation needs a model provider configured for this store.",
+        "configureLink": "Configure an AI provider",
+        "upstreamFailed": "The AI provider could not be reached — try again.",
+        "invalidOutput": "The AI answer could not be used — try again.",
+        "imageNotOwned": "Photos must be uploaded to this store first."
+      }
     },
     "editor": {
       "back": "Back to landing pages",
@@ -1358,7 +1380,6 @@
     "actionRemove": "Remove",
     "actionDelete": "Delete",
     "colDeliveriesShort": "Deliveries",
-
     "secretHint": "shown only now; stored encrypted, used to HMAC-SHA256 every payload",
     "savedWilayas": "Saved {count} wilayas.",
     "domains": "Custom domains",

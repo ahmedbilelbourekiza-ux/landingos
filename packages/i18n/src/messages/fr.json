@@ -111,7 +111,29 @@
       "titleRequired": "Un titre est obligatoire.",
       "priceInvalid": "Saisissez un prix supérieur ou égal à zéro.",
       "slugInvalid": "Cette adresse ne peut pas être utilisée. Essayez des lettres, des chiffres et des tirets.",
-      "slugTaken": "Vous avez déjà une page à cette adresse."
+      "slugTaken": "Vous avez déjà une page à cette adresse.",
+      "ai": {
+        "heading": "Générer avec l'IA",
+        "intro": "Donnez les faits — nom, prix, arguments de vente, vos photos du produit — et obtenez un brouillon complet rédigé en arabe algérien, prêt à relire.",
+        "productName": "Nom du produit",
+        "oldPrice": "Ancien prix (facultatif)",
+        "oldPriceHint": "Pour afficher une remise",
+        "oldPriceInvalid": "L'ancien prix doit être un nombre supérieur au prix.",
+        "sellingPoints": "Arguments de vente clés",
+        "sellingPointsHint": "Un par ligne — ce qui rend ce produit digne d'achat",
+        "sellingPointsRequired": "Ajoutez au moins un argument de vente.",
+        "photos": "Photos du produit",
+        "photosHint": "Vos propres photos du produit. La première devient l'image principale et définit le thème suggéré.",
+        "generate": "Générer la page",
+        "generating": "Génération…",
+        "uploadFailed": "Une photo n'a pas pu être téléversée.",
+        "noProvider": "Aucun fournisseur d'IA n'est configuré pour cette boutique.",
+        "notConfigured": "La génération par IA nécessite un fournisseur de modèles configuré pour cette boutique.",
+        "configureLink": "Configurer un fournisseur d'IA",
+        "upstreamFailed": "Le fournisseur d'IA est injoignable — réessayez.",
+        "invalidOutput": "La réponse de l'IA n'a pas pu être utilisée — réessayez.",
+        "imageNotOwned": "Les photos doivent d'abord être téléversées dans cette boutique."
+      }
     },
     "editor": {
       "back": "Retour aux pages de vente",
@@ -1358,7 +1380,6 @@
     "actionRemove": "Supprimer",
     "actionDelete": "Supprimer",
     "colDeliveriesShort": "Envois",
-
     "secretHint": "affichée une seule fois ; stockée chiffrée, sert à signer chaque charge utile en HMAC-SHA256",
     "savedWilayas": "{count} wilayas enregistrées.",
     "domains": "Domaines personnalisés",
