@@ -226,13 +226,17 @@ describe('a verified domain resolves, and only the edge decides which', { skip }
   /* Host-header control needs node:http — fetch() forbids setting `Host`,
    * which is what made the first manual probe of this silently invalid. */
   function rawGet(path: string, headers: Record<string, string>) {
-    return new Promise<{ status: number; location: string }>((resolve, reject) => {
+    return new Promise<{ status: number; location: string; body: string }>((resolve, reject) => {
       const url = new URL(BASE);
       const req = http.request(
         { host: url.hostname, port: url.port || 80, path, method: 'GET', headers },
         (res) => {
-          res.resume();
-          resolve({ status: res.statusCode ?? 0, location: res.headers.location ?? '' });
+          let body = '';
+          res.setEncoding('utf8');
+          res.on('data', (chunk) => { body += chunk; });
+          res.on('end', () =>
+            resolve({ status: res.statusCode ?? 0, location: res.headers.location ?? '', body }),
+          );
         },
       );
       req.on('error', reject);
@@ -249,14 +253,25 @@ describe('a verified domain resolves, and only the edge decides which', { skip }
     assert.equal(created.status, 201);
   });
 
+  /* THE TWO ASSERTIONS BELOW WERE RE-PINNED AFTER LB.45 (found 16 Aug 2026).
+   * They pinned the PRE-rewrite shapes — the root 307ing everything to
+   * /console or /<slug> — and were never re-run when LB.45 landed (its deploy
+   * record's suite list does not include this file). LB.45's own live
+   * verification on selliora1.com recorded the new shapes: a verified
+   * domain's root serves the store home DIRECTLY (307 → 200), and an
+   * unverified hostname resolves no tenant, so its root is a fail-closed 404
+   * — the same answer any unknown tenant gets, and safer than bouncing a
+   * half-configured merchant domain to the platform's console door. */
   test('an unverified domain serves nothing, whichever header carries it', async () => {
-    for (const headers of [
-      { Host: hostname },
-      { 'X-Forwarded-Host': hostname },
-    ]) {
-      const r = await rawGet('/', headers);
-      assert.match(r.location, /\/console$/, `unverified via ${Object.keys(headers)[0]}`);
-    }
+    // Routed BY the edge (Host): the rewrite makes `/` the domain's own root;
+    // no verified row means no tenant, and no tenant is a 404 — never another
+    // tenant's storefront, never a platform redirect on a merchant hostname.
+    const viaHost = await rawGet('/', { Host: hostname });
+    assert.equal(viaHost.status, 404, 'unverified via Host: fail-closed 404');
+    // Merely CLAIMED in a forwarded header on a platform request: the claim
+    // is ignored and the platform root behaves as itself.
+    const viaForwarded = await rawGet('/', { 'X-Forwarded-Host': hostname });
+    assert.match(viaForwarded.location, /\/console$/, 'spoofed forward: the platform door');
   });
 
   test('a verified domain resolves when the EDGE routed by that hostname', async () => {
@@ -268,12 +283,16 @@ describe('a verified domain resolves, and only the edge decides which', { skip }
     );
     // `Host` is the header the edge validates — an unconfigured hostname never
     // reaches the app (production answers 403 x-render-routing). This is the
-    // legitimate custom-domain shape.
+    // legitimate custom-domain shape. Since LB.45 the root SERVES the store
+    // home directly (200, the domain's own bare shape) rather than 307ing to
+    // the platform's /<slug> path — the shape verified live on the first real
+    // custom domain the day LB.45 deployed.
     const r = await rawGet('/', { Host: hostname });
+    assert.equal(r.status, 200, 'verified + edge-routed: served, not redirected');
     assert.match(
-      r.location,
-      new RegExp(`/dom-a-${stamp}$`),
-      'verified + edge-routed: the tenant storefront',
+      r.body,
+      new RegExp(`data-tenant="dom-a-${stamp}"`),
+      'verified + edge-routed: the tenant\'s own storefront',
     );
   });
 
