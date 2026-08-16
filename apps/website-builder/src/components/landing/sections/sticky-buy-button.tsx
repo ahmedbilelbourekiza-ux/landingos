@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { ShoppingBag } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -55,14 +54,14 @@ export function StickyBuyButton({
   };
 
   return (
-    <AnimatePresence>
+    <>
       {visible && (
-        <motion.div
-          initial={{ y: 80, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 80, opacity: 0 }}
-          transition={{ duration: 0.25, ease: "easeOut" }}
-          className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 p-3 backdrop-blur-md lg:hidden"
+        <div
+          // CSS slide-up on a conditional mount (LB.49): the framer slide
+          // gated the bar's appearance on its runtime. Disappearance is
+          // instant now — losing the exit tween is the documented cost of an
+          // appearance that cannot silently fail.
+          className="landing-slide-up fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 p-3 backdrop-blur-md lg:hidden"
           // Respect the iOS safe area so the button never sits under the
           // home indicator on notched devices.
           style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
@@ -81,8 +80,8 @@ export function StickyBuyButton({
             <ShoppingBag className="size-4" />
             {buttonText} · {formatPrice(subtotal, currency)}
           </Button>
-        </motion.div>
+        </div>
       )}
-    </AnimatePresence>
+    </>
   );
 }

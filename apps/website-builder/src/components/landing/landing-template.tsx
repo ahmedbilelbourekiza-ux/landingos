@@ -43,6 +43,13 @@ export function LandingTemplate({
 
   return (
     <ThemeProvider theme={theme}>
+      {/* LB.49 — NO animation library in the storefront, and that is a
+          measured decision. framer-motion was tried in both LazyMotion forms
+          on the way out: async features left `m` components inert (reviews
+          at opacity 0, FAQ exits wedged, the sticky bar absent), and every
+          failure mode held CONTENT hostage. The sections' animations are CSS
+          on keyed/conditional mounts now — their end state is always
+          visible, and ~40KB gz of runtime left the customer's phone. */}
       <AnnouncementBar />
       <SiteNav store={store} />
       <main className="flex-1">

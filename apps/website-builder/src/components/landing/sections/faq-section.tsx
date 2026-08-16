@@ -1,16 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { LandingFAQData } from "@/types/landing";
 
-// Custom accordion built on a single open-item pattern with Framer Motion
-// height animation. Using native <button> + region + aria-expanded keeps it
-// fully accessible and keyboard-operable, while motion handles the smooth
-// expand/collapse the design calls for. Only one item opens at a time —
+// Custom accordion built on a single open-item pattern. Native <button> +
+// region + aria-expanded keeps it fully accessible and keyboard-operable;
+// the open answer fades in via CSS (LB.49 — the framer height tween gated
+// the collapse on its runtime, and a wedged exit held a "closed" answer
+// visible; a conditional mount cannot). Only one item opens at a time —
 // cleaner for FAQ UX than multiple simultaneous openings.
 function FAQItem({
   faq,
@@ -45,24 +45,18 @@ function FAQItem({
           />
         </button>
       </h3>
-      <AnimatePresence initial={false}>
-        {isOpen && (
-          <motion.div
-            id={panelId}
-            role="region"
-            aria-labelledby={buttonId}
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.28, ease: "easeInOut" }}
-            className="overflow-hidden"
-          >
-            <p className="pb-5 text-sm leading-relaxed text-muted-foreground">
-              {faq.answer}
-            </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {isOpen && (
+        <div
+          id={panelId}
+          role="region"
+          aria-labelledby={buttonId}
+          className="landing-fade overflow-hidden"
+        >
+          <p className="pb-5 text-sm leading-relaxed text-muted-foreground">
+            {faq.answer}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

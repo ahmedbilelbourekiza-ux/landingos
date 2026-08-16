@@ -12,6 +12,78 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.49 — the storefront drops its animation library, because it kept
+  taking content hostage** (16 August 2026 — **local; NOT deployed**; no
+  migration).
+
+  **The JS-diet measurement came first** (the backlog LB.44 and LB.47 both
+  named): the live product page ships 15 chunks, 1,306KB raw / 378.6KB gz,
+  and the biggest — 515KB raw / 140.6KB gz — carries the template with the
+  full `framer-motion` import for four below-fold interactions. The safe
+  slimming was tried in the order framer documents:
+
+  1. **LazyMotion + `m`, static features:** −11.8KB gz. Worked.
+  2. **LazyMotion + async features** (the full diet, −147KB gz off the
+     critical path): the browser said no — `AnimatePresence mode="wait"`
+     wedged the gallery with the hero stuck on the OLD image after a
+     thumbnail click, the FAQ's exit held a "closed" answer visible, the
+     reviews' `whileInView` kept every card at **opacity 0**, the sticky
+     bar never slid in. Every failure mode hid CONTENT.
+  3. Back on static features, the `m` components were STILL inert in this
+     template (measured again, same probes).
+
+  **The decision an unattended session is allowed to make is the reversible
+  safest one: no animation runtime in the storefront at all.** Every
+  entrance/swap became CSS on a keyed or conditional mount — `.landing-fade`
+  on the gallery swap and FAQ answer, `.landing-slide-up` on the sticky
+  bar, and the reviews render PLAINLY (testimonials a customer cannot see
+  are worse than testimonials that do not stagger in). A CSS animation's
+  end state is always visible; the class of bug is deleted, not appeased.
+  The gallery swap is also now INSTANT — which is what the real-phone
+  report asked for. The editor keeps framer for its own preview UI: its
+  bundle, its call.
+
+  **Measured after:** 1,167.8KB raw / **333.2KB gz** — **−45.4KB gz (−12%)**
+  off the customer's critical path, the page chunk alone 140.6 → 95.2KB gz.
+  All four interactions re-verified in the browser: instant gallery swap,
+  FAQ open/close/reopen, reviews visible, sticky bar appearing on scroll.
+  storefront **76/76** · builder-sections **74/74** (the editor's framer
+  untouched).
+
+- **LB.48 — the images a customer is about to ask for are already there**
+  (16 August 2026 — **local; NOT deployed**; no migration).
+
+  **The real-phone report, measured on the live domain first.** Three
+  complaints, three mechanisms:
+  1. **Swipe lag is real and structural:** only the ACTIVE gallery image is
+     mounted full-size — the rest exist as 96px thumbnails — so the second
+     image's w=1080 request fired only AFTER the arrow press (watched in
+     the network log). On 4G that is the lag.
+  2. **Description-image pop-in is native lazy-loading doing what it says:**
+     the fetch waits for scroll proximity, so on a slow network the
+     customer reaches it first.
+  3. Initial-load slowness is LB.44/LB.47's documented residue (TTFB + JS),
+     not a new mechanism.
+
+  **The fix is one idea applied twice: warm the network AFTER `load`.**
+  `use-after-load.ts` says when the page is done; then the gallery mounts
+  its `active±1` neighbours in a hidden 1px layer (same `sizes` as the
+  visible hero, so the browser fetches the exact candidate the swipe will
+  need, following `active` as the customer browses), and the FIRST
+  description image flips from lazy to eager. LB.44's lesson is preserved
+  by construction: nothing competes with the hero — the warms begin only
+  when the network goes quiet, in the seconds before a human can swipe or
+  scroll. Verified in the browser: the neighbour's full-size fetch fired
+  with ZERO interaction (t≈1.8s, post-load), and the below-fold description
+  image was `complete` at scrollY 0.
+
+  **Found on the way, fixed here:** the product page built the store-brand
+  link from the raw path param — which on a rewritten custom-domain request
+  is LB.45's `__domain__` sentinel, so the brand linked `/__domain__`
+  (spotted in the served accessibility tree). It goes through
+  `storefrontHref` now; a new test pins "the sentinel never reaches a
+  rendered link". storefront 75→**76**.
+
 - **LB.47 — metadata URLs become absolute, and the PageSpeed report gets an
   honest answer** (16 August 2026 — **DEPLOYED same day, `9acaf00..933f95b`**;
   no migration. Live on both hosts: absolute canonicals, og:image on the

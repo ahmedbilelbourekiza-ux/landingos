@@ -844,6 +844,32 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
+### LB.49 — DONE, NOT DEPLOYED. The storefront drops its animation library (16 Aug)
+
+The JS-diet backlog, finally measured: 378.6KB gz critical path, framer-motion
+the one heavy slimmable library. Both LazyMotion diets failed IN THE BROWSER
+(async features wedged AnimatePresence — hero stuck, FAQ exits held open,
+reviews invisible; static features still inert here), and every failure hid
+content. The unattended call: CSS animations on keyed/conditional mounts, no
+runtime — the end state is always visible, swaps are instant, **−45.4KB gz**,
+Lighthouse 75→81 / TBT 500→320ms. What remains of the diet, scoped not built:
+react-dom + Next runtime are the floor (~110KB gz); the next real lever is
+hydration-splitting below-fold sections (React lazy boundaries), a design
+change, not a flag. `experimental.inlineCss` gets its own measured pass —
+see the LB.50 note. **After deploy, re-run PageSpeed on `selliora1.com/dedima`.**
+
+### LB.48 — DONE, NOT DEPLOYED. Lookahead + post-load warms (16 Aug)
+
+The real-phone complaints, each traced to its mechanism on the live domain:
+swipe lag = only the active gallery image mounts full-size (the next image's
+fetch fired only after the swipe — watched in the network log); description
+pop-in = native lazy waiting for scroll proximity. One idea fixes both
+without touching LB.44's LCP: **warm after `load`** — gallery neighbours
+mount hidden with the hero's own `sizes`, the first description image flips
+to eager, all beginning in the network's quiet moments. Plus the
+`/__domain__` brand-link leak found in the accessibility tree, now through
+`storefrontHref` and pinned by test.
+
 ### LB.47 — DONE + DEPLOYED (16 Aug). Metadata URLs become absolute
 
 A real PSI report on `selliora1.com/dedima` asked three questions; the

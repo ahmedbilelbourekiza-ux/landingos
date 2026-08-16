@@ -1,7 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
-
 import { StarRating } from "../star-rating";
 import type { LandingReviewData } from "@/types/landing";
 
@@ -38,8 +36,10 @@ function Avatar({ name, src }: { name: string; src: string | null }) {
 
 // Social-proof grid. Each card carries the customer's avatar, star rating,
 // and testimonial. Layout is a single column on mobile, two columns from
-// the sm breakpoint up. Framer Motion staggers the cards in on scroll into
-// view for a premium, deliberate feel without being flashy.
+// the sm breakpoint up. The cards render PLAINLY — no scroll-in reveal —
+// since LB.49: the framer whileInView entrance held every card at opacity 0
+// when its runtime misfired (measured), and testimonials a customer cannot
+// see are worse than testimonials that do not stagger in.
 export function ReviewsSection({ reviews }: { reviews: LandingReviewData[] }) {
   if (reviews.length === 0) return null;
 
@@ -55,13 +55,9 @@ export function ReviewsSection({ reviews }: { reviews: LandingReviewData[] }) {
           </h2>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {reviews.map((review, i) => (
-            <motion.figure
+          {reviews.map((review) => (
+            <figure
               key={review.id}
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-60px" }}
-              transition={{ duration: 0.4, ease: "easeOut", delay: i * 0.06 }}
               className="flex flex-col gap-3 rounded-2xl border bg-card p-5 shadow-sm"
             >
               <div className="flex items-center gap-3">
@@ -76,7 +72,7 @@ export function ReviewsSection({ reviews }: { reviews: LandingReviewData[] }) {
               <blockquote className="text-sm leading-relaxed text-muted-foreground">
                 “{review.reviewText}”
               </blockquote>
-            </motion.figure>
+            </figure>
           ))}
         </div>
       </div>
