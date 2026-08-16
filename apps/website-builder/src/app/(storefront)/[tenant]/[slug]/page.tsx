@@ -47,6 +47,10 @@ const load = cache(async (tenantSlug: string, pageSlug: string) => {
   const [[page, integrationRows], store] = await Promise.all([
     withTenant(tenant.id, async (db) => [
       await (db as any).landingPage.findFirst({
+        // One SQL statement for the page and its seven relations instead of
+        // eight — on the pinned transaction, round trips ARE the latency
+        // (D-PM.1.3). Opt-in per query via the relationJoins preview flag.
+        relationLoadStrategy: "join",
         where: { slug: pageSlug, published: true, status: "PUBLISHED" },
         include: {
           media: { orderBy: { displayOrder: "asc" } },

@@ -46,7 +46,17 @@ generator client {
   // ran last would silently overwrite the other's client, so the builder would
   // start failing with "model does not exist" for models that are right there
   // in its own schema. An explicit output makes the two coexist.
-  output   = "../client"
+  output          = "../client"
+  // relationJoins (LB.51): lets a query OPT IN to `relationLoadStrategy:
+  // "join"`, collapsing an include's one-query-per-relation fan-out into one
+  // SQL statement with lateral joins. On the pinned withTenant transaction
+  // the query COUNT is the latency (D-PM.1.3), so the storefront page's
+  // 7-relation include is the difference between ~10 serialized round trips
+  // and ~3. The flag only ADDS the parameter — every query that does not
+  // pass it keeps the default per-relation strategy, so the blast radius is
+  // exactly the call sites that name it. Preview feature on Prisma 6.19,
+  // measured against the statement census before adoption.
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
