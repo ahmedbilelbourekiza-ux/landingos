@@ -5,7 +5,7 @@ import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { useAfterLoad } from "@/lib/landing/use-after-load";
+import { useWarmupAllowed } from "@/lib/landing/use-after-load";
 import type { LandingMediaData } from "@/types/landing";
 
 // Product gallery carousel. Supports:
@@ -19,7 +19,7 @@ export function ProductGallery({ media }: { media: LandingMediaData[] }) {
   const [active, setActive] = React.useState(0);
   const touchStartX = React.useRef<number | null>(null);
   const count = media.length;
-  const ready = useAfterLoad();
+  const ready = useWarmupAllowed();
 
   const goTo = React.useCallback(
     (index: number) => {
@@ -65,13 +65,21 @@ export function ProductGallery({ media }: { media: LandingMediaData[] }) {
    * rest are 96px thumbnails), so every swipe paid a full network fetch at
    * the moment the customer asked to see the image — measured live: the
    * second image's w=1080 request fired only AFTER the arrow press. The
-   * neighbours on either side are mounted hidden once the page has loaded,
-   * so the fetch has already happened by the time a human swipes; the layer
-   * follows `active`, staying one image ahead in both directions. After the
-   * load event on purpose — see use-after-load.ts. */
-  const lookahead = ready && showNav
-    ? [...new Set([(active + 1) % count, (active - 1 + count) % count])].filter((i) => i !== active)
-    : [];
+   * NEXT image is mounted hidden once the page has loaded, so the fetch has
+   * already happened by the time a human swipes; the layer follows `active`,
+   * staying one image ahead. After the load event on purpose — see
+   * use-after-load.ts.
+   *
+   * FORWARD ONLY since LB.51, and that is a measured trade, not a tidy-up:
+   * warming BOTH neighbours put two full-size images nobody may ever ask for
+   * on every visitor's data plan — PageSpeed's ~226KiB "improve image
+   * delivery" finding on the real page was exactly the two warmed
+   * neighbours, counted ~100% wasted because the warm layer renders at
+   * 1×1px. The first gesture on a gallery sitting at image 1 is
+   * overwhelmingly "next"; a backward swipe pays one on-demand fetch (the
+   * pre-LB.48 behaviour, once), after which the layer is warming ahead of
+   * the new position again. */
+  const lookahead = ready && showNav ? [(active + 1) % count].filter((i) => i !== active) : [];
 
   return (
     <div className="flex flex-col gap-3">

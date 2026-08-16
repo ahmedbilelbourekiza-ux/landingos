@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 
-import { useAfterLoad } from "@/lib/landing/use-after-load";
+import { useWarmupAllowed } from "@/lib/landing/use-after-load";
 import type { LandingMediaData } from "@/types/landing";
 
 // Long-form images below the product, rendered top to bottom in saved order.
@@ -16,7 +16,9 @@ import type { LandingMediaData } from "@/types/landing";
 // Width is capped at the product grid's max-w-6xl so the images line up with
 // the content above instead of running edge to edge on a wide monitor.
 export function DescriptionImages({ images }: { images: LandingMediaData[] }) {
-  const ready = useAfterLoad();
+  // useWarmupAllowed, not useAfterLoad (LB.51): the eager flip below is a
+  // speculative fetch too, and Save-Data visitors have declined those.
+  const ready = useWarmupAllowed();
   // Renders nothing at all when empty — no heading, no spacing — so a product
   // that never uses this feature looks exactly as it did before.
   if (images.length === 0) return null;
