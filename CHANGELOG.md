@@ -13,7 +13,9 @@ touched, any **migration**, and any **risk**.
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
 - **LB.47 — metadata URLs become absolute, and the PageSpeed report gets an
-  honest answer** (16 August 2026 — **local; NOT deployed**; no migration).
+  honest answer** (16 August 2026 — **DEPLOYED same day, `9acaf00..933f95b`**;
+  no migration. Live on both hosts: absolute canonicals, og:image on the
+  serving origin, zero localhost refs — HANDOFF §1).
 
   **Asked as three things on `selliora1.com/dedima`; measured as one bug,
   one report, one data gap.**

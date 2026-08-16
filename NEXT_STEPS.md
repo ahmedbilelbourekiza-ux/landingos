@@ -844,7 +844,7 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
-### LB.47 — DONE, NOT DEPLOYED. Metadata URLs become absolute (16 Aug)
+### LB.47 — DONE + DEPLOYED (16 Aug). Metadata URLs become absolute
 
 A real PSI report on `selliora1.com/dedima` asked three questions; the
 measurements answered: **(1) performance** — same page, controlled method,

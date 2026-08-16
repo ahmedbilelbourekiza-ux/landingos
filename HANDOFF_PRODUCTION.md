@@ -15,6 +15,31 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.47 IS DEPLOYED — 16 Aug 2026: metadata URLs are absolute, og:image stops naming localhost
+>
+> **`origin/main` is `933f95b`** (`9acaf00..933f95b`, one commit, **no
+> migration**). **Rollback point: `9acaf00`.** Live 2m49s after the push.
+> All markers PUBLIC, baselines captured on the REAL page BEFORE pushing:
+>
+> | Marker on `selliora1.com/dedima` | Before | After |
+> |---|---|---|
+> | canonical | relative `/dedima` (PSI: invalid) | **`https://selliora1.com/dedima`** |
+> | `og:image` | **`http://localhost:10000/uploads/...`** (imageless social previews since LB.37) | **`https://selliora1.com/uploads/...`**; twitter:image absolute too |
+> | `localhost:10000` refs in served HTML | **4** | **0** |
+>
+> The platform host flipped identically (`https://landingos.onrender.com/bebezzouar/dedima`
+> canonical, zero localhost). **Regression sweep intact:** landing markers on
+> dedima and robe · bare robots sitemap + sitemap locs on the custom domain ·
+> console `noindex` · root 307 · wilayas-404 `no-store` · health green. No
+> fixture was needed anywhere.
+>
+> **The same slice's investigation, recorded in CHANGELOG §LB.47:** the PSI
+> 66/6.5s/10.2s report on dedima is the harness, not a regression — same
+> page, controlled method: dedima 69/LCP 3.0s ≈ robe 69/3.6s, LB.44 intact,
+> TTFB equal across hosts. Real residuals: the JS-diet backlog (§5.4) and
+> `force-dynamic` TTFB (LB.14a.2). Meta description: mechanism complete,
+> dedima's three source fields all null — merchant data.
+>
 > ### ✔ LB.46 IS DEPLOYED — 16 Aug 2026: View and Copy Link speak the tenant's domain
 >
 > **`origin/main` is `da971fb`** (`a8f871e..da971fb`, one commit, **no
@@ -956,17 +981,12 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **ONE slice is queued to deploy: LB.47** — `metadataBase` on the
-   storefront layout (CHANGELOG §LB.47): canonicals become absolute and
-   `og:image` stops naming `http://localhost:10000` in production (every
-   social-share preview has been imageless since LB.37). **No migration.**
-   storefront 75 green. **Not deployed — the user asked to be asked
-   first.** Markers, PUBLIC: `selliora1.com/dedima` serves
-   `rel="canonical" href="https://selliora1.com/dedima"` (today: relative
-   `/dedima`) and an `og:image` on `https://selliora1.com` (today:
-   `http://localhost:10000/...`). **LB.46 DEPLOYED 16 Aug as
-   `a8f871e..da971fb`** (§1 has the record, verified both ways with two
-   prod fixtures). LB.45
+4. **NOTHING is queued — LB.47 DEPLOYED 16 Aug as `9acaf00..933f95b` (§1
+   has the record: absolute canonicals, og:image off localhost, both
+   hosts).** LB.46, LB.45 and LB.42–LB.44 all shipped earlier the same
+   weekend; §1 has each record. `git diff origin/main master -- apps
+   packages` is the check that nothing is waiting; no migration is
+   pending. LB.45
    went earlier the same day (`cc87b0b..0aa0eae`), LB.42–LB.44 the evening
    before (`3fc1ade..4742554`). `git diff origin/main master -- apps
    packages` is the check that nothing is waiting; no migration is
