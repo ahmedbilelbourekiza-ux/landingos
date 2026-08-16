@@ -13,7 +13,10 @@ touched, any **migration**, and any **risk**.
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
 - **LB.45 — a custom domain's paths are the shop's own** (16 August 2026 —
-  **local; NOT deployed**; no migration).
+  **DEPLOYED same day, `cc87b0b..0aa0eae`**; no migration. **Live on
+  `selliora1.com`:** `/robe` serves the landing page with the order form,
+  `/category/watches` 404→200, root 307→200, robots names the bare
+  sitemap; nine platform-host checks intact — HANDOFF §1).
 
   **Found on the FIRST real linked domain** (`selliora1.com`, verified and
   serving via Render that day): `/robe` rendered the store home — a

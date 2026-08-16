@@ -15,6 +15,33 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.45 IS DEPLOYED — 16 Aug 2026: the first custom domain works end to end
+>
+> **`origin/main` is `0aa0eae`** (`cc87b0b..0aa0eae`, one commit, **no
+> migration** — no schema path in the range). **Rollback point: `cc87b0b`.**
+> Live 2m28s after the push. Baselines captured on the REAL custom domain
+> BEFORE pushing — the first deploy verifiable on a merchant's own hostname:
+>
+> | Marker on `selliora1.com` | Before | After |
+> |---|---|---|
+> | `/robe` | store-home markup, `landing-fade-up` **0** | **the landing page** — `landing-fade-up` 1, canonical `/robe`, title `robe · selliora16`, order form (inputs + wilaya select + submit) |
+> | `/category/watches` | **404** | **200** (empty listing — correct: `robe.categoryId` is null; the merchant never assigned it. Clickable cards are pinned by the suite's fixture test, and the HOME's card links `/robe`) |
+> | `/` | **307 → `/bebezzouar`** | **200**, home, 1 bare `/robe` card link, 0 platform-shaped links |
+> | `robots.txt` Sitemap | `…/bebezzouar/sitemap.xml` | **`https://selliora1.com/sitemap.xml`** |
+> | `/sitemap.xml` | (would 404) | **200**, bare absolute `<loc>`s |
+>
+> **Platform-host regression sweep after, all nine intact:** `/bebezzouar/robe`
+> still the landing page · bare `/robe` still 404 · root 307 → console ·
+> platform robots zero Sitemap lines + console Disallow · wilayas-404
+> `no-store` · console login 200 + `noindex` · the platform sitemap still
+> emits the PREFIXED shape (`storefrontHref` per host, as designed) · a
+> forged `X-Forwarded-Host` still cannot put a sitemap on the platform
+> robots · health green.
+>
+> No fixture was needed on production — every marker is public on the real
+> domain. (A local `manual-cd.test` fixture domain in `neondb` was created
+> and removed during diagnosis.)
+>
 > ### ✔ LB.42 + LB.43 + LB.44 ARE DEPLOYED — 15 Aug 2026 (evening)
 >
 > **`origin/main` is `4742554`** (`3fc1ade..4742554`, five commits: LB.42 the
@@ -513,6 +540,7 @@ remain the deep references.
 
 | Commit | What it is |
 |---|---|
+| `cc87b0b..0aa0eae` | **16 Aug 2026: LB.45** — a custom domain's paths are the shop's own (host-conditioned rewrites inserting a `__domain__` sentinel; sitemap + robots speak the bare shape via `storefrontHref`). One commit, no migration. Verified on the REAL domain `selliora1.com`: `/robe` flipped from store-home to the landing page with the order form, `/category/watches` 404→200, root 307→200, robots naming the bare sitemap; nine platform-host regression checks intact |
 | `3fc1ade..4742554` | **15 Aug 2026 (evening): LB.42 + LB.43 + LB.44** — write-panel i18n (+two guard fixes), server events carry `event_source_url`, and the storefront LCP fix (the whole-page framer fade deleted; CSS entrance; `fetchPriority="high"` hero; description images all lazy). Five commits, fast-forward, no migration (empty `migrate diff` against `landingos_prod` before the push). Verified by the PUBLIC LB.44 marker flips on the real page + a throwaway-fixture authed check of LB.42 + a real Lighthouse before/after (50→75, LCP 5.8→3.4s, Render Delay 2,479→34ms) |
 | `bd6d664..d6a56b1` | **13 Aug 2026 (late night): LB.31–LB.36 + LB.15 + LB.14a/b/c** — storefront branding, the editor's sticky-header offset, checkout field labels, archive/restore, per-page pixel selection, the brand scoping note, money inputs, storefront caching, duplicate completeness, the domain-refusal messages. Eighteen commits, fast-forward, no migration (proven by an empty `migrate diff` against `landingos_prod`). Confirmed by a public `Cache-Control` flip on the wilayas 404 — a marker needing no fixture — plus a throwaway tenant driven through the editor, a duplicate, an archive/restore and a real checkout |
 | `0f6d743..4f1b599` | **13 Aug 2026 (night): LB.30** — the store home, category and thank-you pages wear the store's theme (thank-you inherits its order's landing-page theme; home/category wear the default — a store-level theme field stays an open product decision). `e940f06` rebased onto the deploy-record commit; docs-only conflicts. No migration. Verified by a public content marker (the theme scope appearing on a real tenant's store home) + a throwaway tenant with two real API orders, themed and unthemed, under an emulated dark OS |
@@ -906,19 +934,14 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **ONE slice is queued to deploy: LB.45** — a custom domain's paths are
-   the shop's own (CHANGELOG §LB.45; the host-conditioned rewrites that make
-   `selliora1.com/robe` serve the landing page instead of the store home).
-   **No migration.** Suites green (storefront 74 incl. eight new raw-Host
-   tests, console-shell 20, hardening 13, tracking 15, builder-sections 74).
-   **Not deployed — the user asked to be asked first.** Markers, all PUBLIC
-   on `selliora1.com` once live: `/robe` serves `landing-fade-up` (today:
-   store-home markup, marker 0); `/category/watches` 200 (today 404); `/`
-   answers 200 (today 307 → `/bebezzouar`); `robots.txt` names
-   `https://selliora1.com/sitemap.xml` (today the `/bebezzouar/`-prefixed
-   form). LB.42–LB.44 DEPLOYED 15 Aug (evening) as `3fc1ade..4742554` — §1
-   has the record; Lighthouse on `/bebezzouar/robe` went 50 → 75, LCP 5.8s
-   → 3.4s, Render Delay 2,479ms → 34ms.
+4. **NOTHING is queued — LB.45 DEPLOYED 16 Aug as `cc87b0b..0aa0eae`; §1
+   has the record with every marker's before/after on the REAL custom
+   domain `selliora1.com`.** LB.42–LB.44 went the evening before
+   (`3fc1ade..4742554`). `git diff origin/main master -- apps packages` is
+   the check that nothing is waiting; no migration is pending. One data
+   note for the user: `/category/watches` lists empty because the `robe`
+   page has `categoryId: null` — assigning the page to the category in the
+   editor fills the listing; not a defect.
 
    **LB.41** (`94b6a40`) shipped on 14 Aug as `ce883f1..c3b1917`, and **LB.40** (`f1e38bf`) earlier the same day as
    `c89b19b..0286f99`. Neither carries a migration; both verified live — §1 has the records.

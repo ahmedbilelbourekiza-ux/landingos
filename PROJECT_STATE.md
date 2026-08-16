@@ -1,8 +1,9 @@
 # LandingOS — Project State
 
-**Last updated:** 15 August 2026 (evening) — everything through **LB.44**
-is **DEPLOYED**
-**Branch:** `master`, in sync with `origin/main` at `4742554` · **Everything
+**Last updated:** 16 August 2026 — everything through **LB.45**
+is **DEPLOYED**; **the first real custom domain (`selliora1.com`) serves
+end to end**
+**Branch:** `master`, in sync with `origin/main` at `0aa0eae` · **Everything
 through LB.44 is deployed:** LB.31–LB.36 + LB.15 + LB.14a/b/c as `d6a56b1`,
 **LB.37** (`fcbd1e5`) the storefront `<head>` fix, **LB.38** (`a70f588`)
 the Delete door, **LB.39** (`dbe1cf0`) the per-tenant sitemap, **LB.35b**

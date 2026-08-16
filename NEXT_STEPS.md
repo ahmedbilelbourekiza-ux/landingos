@@ -844,7 +844,7 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
-### LB.45 — DONE, NOT DEPLOYED. A custom domain's paths are the shop's own (16 Aug)
+### LB.45 — DONE + DEPLOYED (16 Aug). A custom domain's paths are the shop's own
 
 **The first REAL custom domain found it.** The moment `selliora1.com` passed
 Render's edge, its `/robe` rendered the store home (with a product card
