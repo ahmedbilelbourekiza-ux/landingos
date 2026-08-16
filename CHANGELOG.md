@@ -13,9 +13,9 @@ touched, any **migration**, and any **risk**.
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
 - **LB.54 — a slug must contain a letter: an Arabic title's digits can no
-  longer become the whole address** (16 August 2026 — **NOT DEPLOYED, NOT
-  PUSHED: local branch `claude/fix-digit-only-slugs`** off `1dbe119`, one
-  code commit; no migration).
+  longer become the whole address** (16 August 2026 — **DEPLOYED same day
+  (night), `1dbe119..c722050`**; no migration — re-proven against the
+  deployed tree with `prisma migrate diff`, both schemas empty).
 
   **The real 404 at `selliora1.com/0`, traced to its source and reproduced
   end to end** (on the local production build behind a verified fixture
@@ -59,9 +59,9 @@ touched, any **migration**, and any **risk**.
   letter-carrying happy path, pure `slugify`/`slugCharset`) ·
   builder-sections 74 · console-shell 20 · storefront 76 · i18n 22.
 - **LB.24 — the AI landing generator: merchant facts in, an
-  Algerian-dialect draft out** (16 August 2026 — **NOT DEPLOYED, NOT
-  PUSHED: local branch `claude/lb24-ai-generator`**, two commits
-  (`8ac6a58` + review pass `604cd09`); no migration).
+  Algerian-dialect draft out** (16 August 2026 — **DEPLOYED same day
+  (night), `1dbe119..c722050`**; no migration — the schema-file diff on
+  the range is empty, re-proven with `prisma migrate diff`).
 
   The slice FEATURE_PASS_AUG12 §5 scoped and deliberately held, built on
   the head start it named. **The register is the product:** the system

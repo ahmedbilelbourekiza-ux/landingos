@@ -15,6 +15,51 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.24 + LB.54 ARE DEPLOYED — 16 Aug 2026 (night): the AI landing generator and the digit-only-slug fix
+>
+> **`origin/main` is `c722050`** (`1dbe119..c722050`, five commits —
+> LB.24's three fast-forwarded, LB.54's two rebased on top with doc
+> conflicts resolved keep-both — **no migration**: zero `.prisma` diffs
+> in the range AND `prisma migrate diff` re-run against the deployed
+> tree's datamodels answered "empty migration" for BOTH schemas).
+> **Rollback point: `1dbe119`.** Pushed 23:36 UTC, user-approved.
+>
+> **Pre-push baselines** (captured from the deployed tree — this
+> environment has had no route to production all day, egress 403):
+> `ai-generate-panel`/`ai-generate-unavailable` testids: **zero
+> occurrences** in the deployed source; the letter rule on slugs:
+> **absent** (a digit-only slug was accepted — the /0 mechanism was
+> reproduced end to end earlier this session on the local production
+> build behind a verified fixture domain, including the domain sitemap
+> emitting `/0`).
+>
+> **The full battery on the exact merged tree, all green — sixteen
+> suites, 475 tests, every count at its recorded value:** storefront 76
+> · builder-sections 74 · builder-api **49** (was 42 — the digit-slug
+> refusals) · builder-ai **19** (new — includes the 16.5s slow-model
+> transaction test) · tracking 15 · console-shell 20 · hardening 13 ·
+> webhooks 10 · calc 28 · platform/domains 14 · platform/team 63 ·
+> platform/workspace 4 · platform/sessions 2 · erp/ai 31 · i18n 22 ·
+> packages/db 35. Local Postgres verified online at both ends of the
+> run (it had been reaped mid-battery once; that run was discarded and
+> re-run, not patched). Fixtures swept to zero tenants.
+>
+> **LIVE verification owed (whoever first has a browser on the domain):**
+> 1. `/console/builder/pages/new` shows the AI section — expect the
+>    `ai-generate-unavailable` notice, NOT the panel: production has no
+>    `AiProvider` row, so the generate route answers 501
+>    `NO_AI_PROVIDER` and **zero API spend is possible** until a key is
+>    deliberately configured at `/console/erp/ai`. No real generation
+>    was attempted anywhere — the suites exercise a local stub.
+> 2. Create a page titled Arabic + digit (e.g. «ساعة برو 0») leaving the
+>    address blank — expect the refusal message asking for an address
+>    with at least one letter, NOT a silent page at `/0`.
+> 3. Which real page carried the digit slug historically, and the
+>    already-distributed `/0` links decision (redirect slice vs
+>    re-pointing ads) — NEXT_STEPS §LB.54.
+> 4. Still owed from the afternoon: warm PSI after-numbers for
+>    LB.51–LB.53 (the API quota answered 429 all session, ~220 attempts).
+>
 > ### ✔ LB.51 + LB.52 + LB.53 ARE DEPLOYED — 16 Aug 2026 (afternoon): the TTFB census, the gallery-warming trade, the price contrast
 >
 > **`origin/main` is `d915c77`** (`831c48d..d915c77`, six commits — five
@@ -1041,7 +1086,7 @@ The exact first steps, in order:
    `uploads: r2`. If `isolation` is missing, an old build is serving; if
    `BYPASSED`, stop everything and tell the user to fix Render's
    `DATABASE_URL` (see §3).
-3. **Confirm `origin/main` still equals `d915c77`** (`git fetch && git log
+3. **Confirm `origin/main` still equals `c722050`** (`git fetch && git log
    --oneline origin/main -1`) — if it moved, someone else deployed; re-read
    the situation before assuming this document's state. **The check that
    tells you whether anything is waiting:
@@ -1053,7 +1098,9 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **NOTHING is queued — LB.51+LB.52+LB.53 DEPLOYED 16 Aug (afternoon) as
+4. **NOTHING is queued — LB.24+LB.54 DEPLOYED 16 Aug (night) as
+   `1dbe119..c722050` (§1's top block has the record and the owed live
+   checks), LB.51+LB.52+LB.53 earlier the same day (afternoon) as
    `831c48d..d915c77`; §1's top block has the record, including what is
    still OWED live (warm PSI after-numbers, the LB.35b subset re-check, a
    checkout e2e) because that deploy session had no route to production.
