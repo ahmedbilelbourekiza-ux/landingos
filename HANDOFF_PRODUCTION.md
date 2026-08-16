@@ -906,12 +906,19 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **NOTHING is queued — LB.42, LB.43 and LB.44 all DEPLOYED 15 Aug 2026
-   (evening) as `3fc1ade..4742554`; §1 has the record with every marker's
-   before/after.** The real Lighthouse comparison on `/bebezzouar/robe`:
-   performance 50 → 75, LCP 5.8s → 3.4s, Render Delay 2,479ms → 34ms.
-   `git diff origin/main master -- apps packages` is the check that nothing
-   is waiting; no migration is pending.
+4. **ONE slice is queued to deploy: LB.45** — a custom domain's paths are
+   the shop's own (CHANGELOG §LB.45; the host-conditioned rewrites that make
+   `selliora1.com/robe` serve the landing page instead of the store home).
+   **No migration.** Suites green (storefront 74 incl. eight new raw-Host
+   tests, console-shell 20, hardening 13, tracking 15, builder-sections 74).
+   **Not deployed — the user asked to be asked first.** Markers, all PUBLIC
+   on `selliora1.com` once live: `/robe` serves `landing-fade-up` (today:
+   store-home markup, marker 0); `/category/watches` 200 (today 404); `/`
+   answers 200 (today 307 → `/bebezzouar`); `robots.txt` names
+   `https://selliora1.com/sitemap.xml` (today the `/bebezzouar/`-prefixed
+   form). LB.42–LB.44 DEPLOYED 15 Aug (evening) as `3fc1ade..4742554` — §1
+   has the record; Lighthouse on `/bebezzouar/robe` went 50 → 75, LCP 5.8s
+   → 3.4s, Render Delay 2,479ms → 34ms.
 
    **LB.41** (`94b6a40`) shipped on 14 Aug as `ce883f1..c3b1917`, and **LB.40** (`f1e38bf`) earlier the same day as
    `c89b19b..0286f99`. Neither carries a migration; both verified live — §1 has the records.

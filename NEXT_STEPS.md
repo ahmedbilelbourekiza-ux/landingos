@@ -844,6 +844,29 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
+### LB.45 — DONE, NOT DEPLOYED. A custom domain's paths are the shop's own (16 Aug)
+
+**The first REAL custom domain found it.** The moment `selliora1.com` passed
+Render's edge, its `/robe` rendered the store home (with a product card
+linking to the URL already open — "not clickable"), `/category/watches`
+404'd, and the root redirected to `/bebezzouar`. The link layer has emitted
+bare custom-domain paths since LB.31; **no route ever served that shape**,
+and nothing could notice while every custom hostname died at Render's edge
+(LB.14c). This is the class of gap the LB.11 rule predicts: the last inch is
+only testable on the real thing.
+
+**The fix** is two host-conditioned rewrites in `next.config.ts` that
+re-insert a sentinel tenant segment for non-platform Hosts, landing bare
+paths on the same routes the platform shape uses. The sentinel's value is
+never read (domain-first resolution); forged `X-Forwarded-Host` cannot
+trigger it; the console/api/_next keep their paths on any host; sitemap and
+robots now emit the bare shape through `storefrontHref`. Eight raw-Host
+tests pin all of it. **Verify on `selliora1.com` right after deploy:**
+`/robe` must serve the landing page (order form, `landing-fade-up` in HTML),
+`/category/watches` must list with clickable cards, `/` must render (200,
+no redirect), `/sitemap.xml` must answer with bare `<loc>`s, and
+`robots.txt` must name `https://selliora1.com/sitemap.xml`.
+
 ### LB.44 — DONE + DEPLOYED (15 Aug evening). The storefront paints before it hydrates
 
 **Reported as** PageSpeed 75 / LCP 5.0s on the real page `/bebezzouar/robe`,

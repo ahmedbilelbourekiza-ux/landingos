@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { withTenant } from "@landingos/db";
 
-import { resolveStorefrontTenant, currentOrigin } from "@/lib/storefront/resolve-tenant";
+import { resolveStorefrontTenant, currentOrigin, storefrontHref } from "@/lib/storefront/resolve-tenant";
 
 export const dynamic = "force-dynamic";
 
@@ -40,13 +40,13 @@ export const dynamic = "force-dynamic";
  * `/{tenant}/sitemap.xml`, read through the same `withTenant` binding as every
  * other storefront query, so a bug here cannot reach another tenant's rows.
  *
- * CUSTOM DOMAINS ARE DELIBERATELY NOT SPECIAL-CASED. `currentOrigin()` is
- * whatever host the request arrived at, so this same route emits
- * `https://shop.acme.dz/acme/...` when reached through a linked domain — and
- * the tenant prefix is right there, because the root REDIRECTS a custom domain
- * to `/{slug}` rather than serving at `/` (`app/page.tsx`). Whether that prefix
- * should exist at all is LB.14a.2, "one front door per tenant identity", which
- * is scoped and unbuilt. A sitemap must describe the URLs that answer TODAY.
+ * CUSTOM DOMAINS SPEAK THEIR OWN SHAPE — LB.45. Every URL goes through
+ * `storefrontHref`, the same helper that writes the page links and canonicals,
+ * so a custom domain's sitemap says `https://shop.acme.dz/robe` (bare — the
+ * shape LB.45's rewrites serve and the pages declare canonical) while the
+ * platform host keeps `/{tenant}/...`. The prefix used to be hard-coded here
+ * with a comment noting it matched what answered at the time; LB.45 changed
+ * what answers, and a sitemap must describe the URLs that answer TODAY.
  *
  * `Cache-Control` is NOT set here on purpose: `next.config.ts`'s storefront
  * rule already matches this path and gives it `private, max-age=60,
@@ -105,7 +105,7 @@ export async function GET(
   // protocol has no way to say "I do not know"; that is a 404 too.
   if (!tenant || !origin) return xml(render([]), 404);
 
-  const base = `${origin}/${tenant.slug}`;
+  const href = (path = "") => `${origin}${storefrontHref(tenant, path)}`;
 
   const [pages, categories] = await withTenant(tenant.id, async (db) => [
     await (db as any).landingPage.findMany({
@@ -133,15 +133,15 @@ export async function GET(
   const entries: Entry[] = [
     // Highest, because it is the one URL that stays meaningful after a product
     // is retired.
-    { loc: base, lastmod: newest, changefreq: "daily", priority: "1.0" },
+    { loc: href(), lastmod: newest, changefreq: "daily", priority: "1.0" },
     ...categories.map((c: { slug: string; updatedAt: Date }) => ({
-      loc: `${base}/category/${c.slug}`,
+      loc: href(`/category/${c.slug}`),
       lastmod: c.updatedAt,
       changefreq: "weekly",
       priority: "0.5",
     })),
     ...pages.map((p: { slug: string; updatedAt: Date }) => ({
-      loc: `${base}/${p.slug}`,
+      loc: href(`/${p.slug}`),
       lastmod: p.updatedAt,
       // Price and availability are what move on a landing page, and they are
       // the same two things LB.14a refuses to let a shared cache hold.

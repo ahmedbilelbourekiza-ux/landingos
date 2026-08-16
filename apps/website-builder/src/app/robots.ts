@@ -31,10 +31,10 @@ export const dynamic = "force-dynamic";
  *   sitemap and nobody else's. This is the case LB.39 identified as the one
  *   where a root robots.txt is unambiguously worth having.
  *
- * The tenant prefix in that Sitemap URL is deliberate and matches LB.39: the
- * root REDIRECTS a custom domain to `/{slug}` rather than serving at `/`
- * (`app/page.tsx`), so `/{slug}/sitemap.xml` is the URL that answers today.
- * Whether the prefix should exist at all is LB.14a.2, scoped and unbuilt.
+ * The Sitemap URL is BARE (`/sitemap.xml`) since LB.45: a custom domain's
+ * paths are the shop's own — the rewrites serve the bare shape and the pages
+ * declare it canonical, so this file must name the same URL. (It used to be
+ * `/{slug}/sitemap.xml`, matching the pre-LB.45 root redirect.)
  *
  * `Disallow` AND the meta `noindex` are kept together on purpose, because they
  * are not the same instruction and neither replaces the other. A disallowed
@@ -66,7 +66,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   // Only a verified custom domain has exactly one shop behind it, and only
   // then is there a single sitemap this host may honestly name.
   if (tenant && origin) {
-    return { rules, sitemap: `${origin}/${tenant.slug}/sitemap.xml` };
+    return { rules, sitemap: `${origin}/sitemap.xml` };
   }
 
   return { rules };

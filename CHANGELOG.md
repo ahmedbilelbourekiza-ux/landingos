@@ -12,6 +12,61 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.45 — a custom domain's paths are the shop's own** (16 August 2026 —
+  **local; NOT deployed**; no migration).
+
+  **Found on the FIRST real linked domain** (`selliora1.com`, verified and
+  serving via Render that day): `/robe` rendered the store home — a
+  category-style listing whose one product card linked to `/robe`, the URL
+  the visitor was already on, so it "didn't go anywhere" — the "watches"
+  category chip 404'd, and the root 307'd to `/bebezzouar`, the platform's
+  internal shape leaking onto the merchant's hostname. Three symptoms, one
+  cause, and none of it was reachable before a hostname actually hit Render
+  (LB.14c's honest gap): **the link layer has spoken the bare custom-domain
+  shape since LB.31 (`storefrontHref` drops the tenant prefix), but no route
+  ever served that shape.** `/robe` matched `[tenant]` (home), `/category/x`
+  matched `[tenant]/[slug]` (a landing-page lookup for "x" → 404).
+
+  **The fix is a host-conditioned rewrite pair in `next.config.ts`**, not new
+  routes: requests whose REAL `Host` is not a platform surface get a sentinel
+  tenant segment re-inserted (`/robe` → `/__domain__/robe`), landing on the
+  exact routes the platform shape uses. The sentinel's value is never read —
+  every storefront surface resolves the tenant domain-first
+  (`resolveStorefrontTenant`), and on a platform host `__domain__` resolves
+  to no tenant: a plain 404. `has` sees only the real Host header, so a
+  forged `X-Forwarded-Host` cannot re-shape a platform request (pinned by
+  test). The root rule is `beforeFiles` (`/` is a filesystem page); the path
+  rule is `afterFiles` so public files and static-path pages (the console
+  among them) are served first and only would-be dynamic matches re-shape.
+
+  **One trap found by the suite, worth keeping:** afterFiles rules run
+  against the REWRITTEN path too, so the root rewrite's own output
+  (`/__domain__`) was re-rewritten into `/__domain__/__domain__` and the
+  custom-domain root 404'd. The sentinel is excluded from its own rule.
+
+  **Emitters updated to the shape that now serves:** the tenant sitemap
+  builds every `<loc>` through `storefrontHref` (bare on a custom domain,
+  prefixed on the platform), and robots.txt names the bare
+  `/sitemap.xml` on a verified domain — both files' comments had pinned the
+  prefixed form to "the URLs that answer today", and today changed.
+
+  **Deliberately unchanged:** the prefixed shape (`selliora1.com/bebezzouar/robe`)
+  still serves on a custom domain — existing shared links must not break —
+  with every canonical pointing at the bare form. An UNKNOWN hostname's root
+  is now a 404 rather than a redirect to the console (it was implicitly
+  "anything else → console"); an unrecognized host should not advertise the
+  platform.
+
+  **Verified** (raw-`host` requests, LB.40's convention, in eight new
+  storefront tests): root renders the home with bare card links; a bare page
+  slug serves the LANDING page (`landing-fade-up`, canonical `/shared-item`);
+  a bare category path lists with clickable cards; `/sitemap.xml` answers
+  with bare absolute `<loc>`s; the console keeps its paths on any host; the
+  platform host's bare slug stays 404; the forged-header and unknown-host
+  cases stay 404. storefront **74/74** · console-shell **20/20** · hardening
+  **13/13** · tracking **15/15** · builder-sections **74/74**. **Live
+  verification on `selliora1.com` itself awaits the deploy.**
+
 - **LB.44 — the storefront paints before it hydrates: the LCP fix** (15
   August 2026 — **DEPLOYED 15 Aug evening, `3fc1ade..4742554`**; no
   migration). **Live result on the real page:** Lighthouse 50→**75**, LCP

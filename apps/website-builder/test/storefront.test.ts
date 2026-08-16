@@ -1151,9 +1151,11 @@ describe('LB.40 — robots.txt answers for the host it was asked on', { skip }, 
     );
     const r = await robots(host);
     assert.equal(r.status, 200);
+    // BARE since LB.45 — the custom domain's own shape, the same URL the
+    // rewrites serve and the pages declare canonical.
     assert.match(
       r.body,
-      new RegExp(`^\\s*Sitemap:\\s*https://${host}/${slugA}/sitemap\\.xml\\s*$`, 'im'),
+      new RegExp(`^\\s*Sitemap:\\s*https://${host}/sitemap\\.xml\\s*$`, 'im'),
       `custom domain named the wrong sitemap:\n${r.body}`,
     );
     // And it does not stop being a console-protecting file.
@@ -1177,5 +1179,114 @@ describe('LB.40 — robots.txt answers for the host it was asked on', { skip }, 
       !/^\s*Sitemap:/im.test(r.body),
       'an unverified domain was treated as a shop',
     );
+  });
+});
+
+/* =============================================================================
+ * LB.45 — a custom domain's paths are the shop's own.
+ *
+ * The link layer has emitted the bare shape since LB.31 (`storefrontHref`
+ * drops the tenant prefix on a custom domain), but nothing SERVED it: `/robe`
+ * matched `[tenant]` and rendered the store home, `/category/x` 404'd, and
+ * the root redirected to `/{slug}` — measured live on the first real linked
+ * domain. The fix is a host-conditioned rewrite pair in next.config.ts that
+ * re-inserts a sentinel tenant segment, so these tests assert the SERVED
+ * response for each shape, through the same raw-`host` convention LB.40's
+ * tests established (fetch silently drops a `host` header).
+ * ========================================================================== */
+describe('LB.45 — a custom domain\'s paths are the shop\'s own', { skip }, () => {
+  const rawGet = (
+    path: string,
+    host?: string,
+    extra: Record<string, string> = {},
+  ): Promise<{ status: number; body: string; location?: string }> =>
+    new Promise((resolve, reject) => {
+      const url = new URL(BASE);
+      const req = httpRequest(
+        {
+          hostname: url.hostname,
+          port: url.port || 80,
+          path,
+          method: 'GET',
+          headers: { ...(host ? { host } : {}), ...extra },
+        },
+        (res) => {
+          let body = '';
+          res.on('data', (c) => (body += c));
+          res.on('end', () =>
+            resolve({
+              status: res.statusCode ?? 0,
+              body,
+              location: res.headers.location,
+            }),
+          );
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+
+  const host = `paths-${stamp}.test`;
+
+  before(async () => {
+    await withTenant(tenantA, (db) =>
+      (db as any).tenantDomain.create({
+        data: {
+          tenantId: tenantA, domain: host,
+          verificationToken: `tok3-${stamp}`, verifiedAt: new Date(),
+        },
+      }),
+    );
+  });
+
+  test('the root RENDERS the store home — no redirect into the platform shape', async () => {
+    const r = await rawGet('/', host);
+    assert.equal(r.status, 200, `root answered ${r.status} → ${r.location ?? ''}`);
+    assert.match(r.body, /href="\/shared-item"/, 'the home\'s product card links the bare path');
+    assert.ok(!r.body.includes(`href="/${slugA}/`), 'no platform-shaped link on the custom domain');
+  });
+
+  test('a bare page slug serves the LANDING page, not a listing', async () => {
+    const r = await rawGet('/shared-item', host);
+    assert.equal(r.status, 200);
+    assert.match(r.body, /landing-fade-up/, 'the purchase column is what marks the landing template');
+    assert.match(r.body, /rel="canonical" href="\/shared-item"/, 'canonical is the bare path');
+  });
+
+  test('a bare category path serves the listing, and its cards click through', async () => {
+    const r = await rawGet('/category/fixture-category', host);
+    assert.equal(r.status, 200, 'the category listing must answer on its bare path');
+    assert.match(r.body, /href="\/shared-item"/, 'the card links to the landing page\'s bare path');
+  });
+
+  test('the sitemap answers at /sitemap.xml with bare, absolute URLs', async () => {
+    const r = await rawGet('/sitemap.xml', host);
+    assert.equal(r.status, 200);
+    assert.match(r.body, new RegExp(`<loc>https://${host}/shared-item</loc>`));
+    assert.match(r.body, new RegExp(`<loc>https://${host}/category/fixture-category</loc>`));
+    assert.ok(!r.body.includes(`/${slugA}/`), 'no platform-shaped loc on a custom domain');
+  });
+
+  test('the console is NOT rewritten on a custom host', async () => {
+    const r = await rawGet('/console/login', host);
+    assert.equal(r.status, 200, 'the console must keep its real paths on any host');
+    assert.match(r.body, /login|password|mot de passe|كلمة/i);
+  });
+
+  test('the platform host is untouched: a bare slug stays a 404 there', async () => {
+    const r = await rawGet(`/shared-item`);
+    assert.equal(r.status, 404, 'a bare page slug is not a tenant on the platform host');
+  });
+
+  test('a forged X-Forwarded-Host cannot move a platform request into the shop shape', async () => {
+    // The rewrite keys on the REAL Host header only. A platform-host request
+    // claiming to be the custom domain must not be re-shaped by the claim.
+    const r = await rawGet('/shared-item', undefined, { 'x-forwarded-host': host });
+    assert.equal(r.status, 404, 'the forged header re-shaped a platform request');
+  });
+
+  test('an unknown hostname gets a 404, not another shop\'s pages', async () => {
+    const r = await rawGet('/shared-item', `unclaimed-${stamp}.test`);
+    assert.equal(r.status, 404);
   });
 });

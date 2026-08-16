@@ -2,6 +2,29 @@ import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import path from "node:path";
 
+/* LB.45 — which hosts get the custom-domain path shape.
+ *
+ * Anchored regex over the request's Host header (Next strips the port before
+ * matching): every host that is NOT one of the platform's own surfaces. The
+ * list mirrors `isPlatformHost` in lib/storefront/resolve-tenant.ts — the two
+ * must agree, or a host could be rewritten into the storefront tree here and
+ * then refused a tenant there (a 404), or vice versa (the platform shape on a
+ * merchant's domain). `has` sees only the REAL Host header, never
+ * X-Forwarded-Host — so a forged forwarded header cannot move a platform
+ * request into the rewritten space. */
+const CUSTOM_DOMAIN_HOST = [
+  "(?!localhost$)",
+  "(?!.*\\.localhost$)",
+  "(?!127\\.0\\.0\\.1$)",
+  "(?!0\\.0\\.0\\.0$)",
+  "(?!onrender\\.com$)",
+  "(?!.*\\.onrender\\.com$)",
+  ...[process.env.PUBLIC_HOST, process.env.RENDER_EXTERNAL_HOSTNAME]
+    .filter((h): h is string => Boolean(h))
+    .map((h) => `(?!${h.toLowerCase().replace(/\./g, "\\.")}$)`),
+  ".+",
+].join("");
+
 const nextConfig: NextConfig = {
   output: "standalone",
   // Pin the tracing root to the workspace root rather than letting Next infer
@@ -41,8 +64,47 @@ const nextConfig: NextConfig = {
   // URLs already stored in the database keep working either way.
   async rewrites() {
     return {
-      beforeFiles: [],
-      afterFiles: [{ source: "/uploads/:path*", destination: "/api/uploads/:path*" }],
+      /* LB.45 — a custom domain's paths are the shop's own.
+       *
+       * The link layer has spoken the bare shape since LB.31
+       * (`storefrontHref` drops the tenant prefix on a custom domain), but no
+       * route ever SERVED that shape: `/robe` matched `[tenant]` and rendered
+       * the store home, `/category/x` matched `[tenant]/[slug]` and 404'd,
+       * and the root redirected to `/<slug>` — the platform's internal shape
+       * leaking onto a merchant's hostname (measured live on the first real
+       * custom domain). These rewrites re-insert a sentinel tenant segment so
+       * bare paths land on the same routes the platform shape uses; the
+       * sentinel's VALUE is never read, because every storefront surface
+       * resolves the tenant domain-first (`resolveStorefrontTenant`), and on
+       * a platform host `__domain__` resolves to no tenant — a plain 404.
+       *
+       * The root rule must be beforeFiles (`/` is a filesystem page and would
+       * win first); the path rule is afterFiles ON PURPOSE — public/ files
+       * (logo.svg, sw.js, icons/…) and static-path pages are already served
+       * by then, so only would-be dynamic matches are re-shaped. `api`,
+       * `console` and `_next` are excluded because their DYNAMIC routes
+       * (`/_next/image`, `/api/storefront/...`, editor screens) resolve after
+       * afterFiles and must keep their real paths on any host. */
+      beforeFiles: [
+        {
+          source: "/",
+          has: [{ type: "host", value: CUSTOM_DOMAIN_HOST }],
+          destination: "/__domain__",
+        },
+      ],
+      afterFiles: [
+        { source: "/uploads/:path*", destination: "/api/uploads/:path*" },
+        {
+          // `__domain__` is excluded from its own rule: the root rewrite above
+          // lands here as `/__domain__`, and afterFiles rules run against the
+          // REWRITTEN path too — without the exclusion it became
+          // `/__domain__/__domain__`, a landing-page lookup for a slug that
+          // cannot exist (measured: the custom-domain root 404'd).
+          source: "/:path((?!api(?:/|$)|console(?:/|$)|_next(?:/|$)|uploads(?:/|$)|robots\\.txt$|__domain__(?:/|$)).+)",
+          has: [{ type: "host", value: CUSTOM_DOMAIN_HOST }],
+          destination: "/__domain__/:path",
+        },
+      ],
       fallback: [],
     };
   },
