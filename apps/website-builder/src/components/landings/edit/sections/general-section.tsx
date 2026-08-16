@@ -47,7 +47,10 @@ function buildGeneralSchema(t: (key: string) => string) {
     slug: z
       .string()
       .min(2, t("builder.editor.slugMin"))
-      .regex(/^[a-z0-9-]+$/, t("builder.editor.slugCharset")),
+      .regex(/^[a-z0-9-]+$/, t("builder.editor.slugCharset"))
+      // The digit-only-slug rule (see lib/landing/create.ts): "00" or "2024"
+      // is not an address a merchant meant, and the server refuses it too.
+      .regex(/[a-z]/, t("builder.editor.slugCharset")),
     description: z
       .string()
       .max(300, t("builder.editor.descriptionMax"))

@@ -271,6 +271,49 @@ describe('input is validated and pagination is bounded', { skip }, () => {
     assert.equal(r.status, 422);
   });
 
+  /* The selliora1.com/0 bug: slugify reduces an Arabic title to its DIGITS
+   * («ساعة برو 0» → "0"), the create form derived it silently, the page
+   * published at /0, the home card and the domain sitemap linked it — and
+   * renaming the slug 404'd every distributed link. A slug with no letter is
+   * refused at every write path, whatever digits it carries. */
+  test('a digit-only slug is refused — /0 must never be creatable (create)', async () => {
+    for (const slug of ['0', '2', '2024']) {
+      const r = await api('/api/builder/landings', tokens.ownerA, {
+        method: 'POST',
+        body: JSON.stringify({ title: 'ساعة برو 0', slug, price: 10 }),
+      });
+      assert.equal(r.status, 422, `slug "${slug}" must be refused`);
+      assert.match(r.body.error.message, /letter/i);
+    }
+  });
+
+  test('a digit-only slug is refused on rename too (general PATCH)', async () => {
+    const r = await api(`/api/builder/landings/${pageA}/general`, tokens.ownerA, {
+      method: 'PATCH',
+      body: JSON.stringify({ slug: '00' }),
+    });
+    assert.equal(r.status, 422);
+    assert.match(r.body.error.message, /letter/i);
+  });
+
+  test('a digit-CARRYING slug with a letter still works', async () => {
+    const r = await api('/api/builder/landings', tokens.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({ title: 'Promo', slug: `promo-2024-${stamp}`, price: 10 }),
+    });
+    assert.equal(r.status, 201);
+    assert.equal(r.body.data.slug, `promo-2024-${stamp}`);
+  });
+
+  test('a digit-only category slug is refused the same way', async () => {
+    const r = await api('/api/builder/categories', tokens.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'ساعات 2024', slug: '2024' }),
+    });
+    assert.equal(r.status, 422);
+    assert.match(r.body.error.message, /letter/i);
+  });
+
   test('an absurd page size is clamped rather than honoured', async () => {
     const r = await api('/api/builder/landings?pageSize=100000', tokens.ownerA);
     assert.equal(r.status, 200);
@@ -873,5 +916,41 @@ describe('a landing page links to its own Meta pixels (LB.35)', { skip }, () => 
     const html = await editorHtml();
     assert.match(html, /data-testid="tracking-none-warning"/, 'an empty selection gave no warning');
     await setSelection(null);
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * PURE — the slug derivation rule (no server, no DB).
+ *
+ * slugify's charset strip is lossy for Arabic: every Arabic letter is
+ * "non-alphanumeric" to it, so an Arabic title used to keep only its digits —
+ * the exact silent path that published a page at /0 on a real store. The rule
+ * now: a derivation without a latin letter is NO derivation.
+ * -------------------------------------------------------------------------- */
+
+import { slugify, slugCharset } from '../src/lib/landing/create.ts';
+
+describe('slugify refuses to reduce a title to a bare number (pure)', () => {
+  test('Arabic titles with digits derive empty, not the digits', () => {
+    assert.equal(slugify('ساعة برو 0'), '');
+    assert.equal(slugify('ساعة ذكية 2'), '');
+    assert.equal(slugify('عرض 2024'), '');
+    assert.equal(slugify('هاتف 0 فتحة'), '');
+  });
+
+  test('pure-Arabic and empty titles stay empty, latin ones still work', () => {
+    assert.equal(slugify('ساعة ذكية برو'), '');
+    assert.equal(slugify(''), '');
+    assert.equal(slugify('Pro Watch 5'), 'pro-watch-5');
+    assert.equal(slugify('Café Été'), 'cafe-ete');
+    assert.equal(slugify('promo-2024'), 'promo-2024');
+  });
+
+  test('the keystroke filter keeps typing a digit-first address possible', () => {
+    // The letter rule must NOT run per keystroke — "2024-promo" starts with
+    // four keystrokes that carry no letter yet.
+    assert.equal(slugCharset('2024'), '2024');
+    assert.equal(slugCharset('2024-promo'), '2024-promo');
+    assert.equal(slugCharset('Not A Slug!'), 'not-a-slug');
   });
 });

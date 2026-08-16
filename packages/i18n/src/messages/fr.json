@@ -110,7 +110,7 @@
       "priceLabel": "Prix",
       "titleRequired": "Un titre est obligatoire.",
       "priceInvalid": "Saisissez un prix supérieur ou égal à zéro.",
-      "slugInvalid": "Cette adresse ne peut pas être utilisée. Essayez des lettres, des chiffres et des tirets.",
+      "slugInvalid": "Cette adresse ne peut pas être utilisée. Il faut au moins une lettre latine — lettres, chiffres et tirets.",
       "slugTaken": "Vous avez déjà une page à cette adresse.",
       "ai": {
         "heading": "Générer avec l'IA",
@@ -213,7 +213,7 @@
       "titleMin": "Le titre doit contenir au moins 2 caractères.",
       "titleMax": "Le titre ne doit pas dépasser 120 caractères.",
       "slugMin": "L'adresse doit contenir au moins 2 caractères.",
-      "slugCharset": "Utilisez uniquement des minuscules, des chiffres et des tirets.",
+      "slugCharset": "Utilisez des minuscules latines, des chiffres et des tirets — avec au moins une lettre.",
       "descriptionMax": "La description ne doit pas dépasser 300 caractères.",
       "ctaRequired": "Le texte du bouton est obligatoire.",
       "priceLabel": "Prix actuel",

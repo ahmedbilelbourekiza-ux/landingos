@@ -8,7 +8,9 @@ type Params = { id: string };
 const Body = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   slug: z.string().trim().min(1).max(120)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "lowercase letters, numbers and hyphens only").optional(),
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "lowercase letters, numbers and hyphens only")
+    // At least one letter — the digit-only-slug rule; see the create route.
+    .regex(/[a-z]/, "the address needs at least one letter").optional(),
   description: z.string().trim().max(20000).optional().nullable(),
   announcement: z.string().trim().max(500).optional().nullable(),
   ctaButtonText: z.string().trim().max(120).optional().nullable(),

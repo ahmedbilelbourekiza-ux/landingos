@@ -22,7 +22,10 @@ const CreateCategory = z.object({
     .trim()
     .min(1)
     .max(120)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "lowercase letters, numbers and hyphens only"),
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "lowercase letters, numbers and hyphens only")
+    // At least one letter — the digit-only-slug rule; see the landings
+    // create route. «ساعات 2024» must not become /category/2024.
+    .regex(/[a-z]/, "the address needs at least one letter"),
   description: z.string().trim().max(500).optional().nullable(),
   icon: z.string().trim().max(80).optional().nullable(),
   sortOrder: z.coerce.number().int().optional(),

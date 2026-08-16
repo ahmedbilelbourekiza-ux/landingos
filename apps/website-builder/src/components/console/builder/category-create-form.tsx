@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useApiAction, ActionError } from "@/components/console/api-action";
 import type { ActionErrors } from "@/lib/console/action-errors";
 import { button } from "@/components/console/ui/styles";
+import { slugify, slugCharset } from "@/lib/landing/create";
 
 /* The create half of B3 (CAPABILITY_AUDIT): POST /api/builder/categories has
  * existed — validated, permission-gated, suite-covered — since the port, and
@@ -15,15 +16,12 @@ import { button } from "@/components/console/ui/styles";
  * hand — the same convention every CMS trains people on — and the API's
  * charset rule is applied while typing rather than quoted back as a 422. */
 
-// The API's charset (lowercase latin, digits, hyphens). An Arabic name
-// produces an empty suggestion rather than a mangled one — the merchant
-// types the address they want, exactly as the page slug field works.
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
+/* The slugify here was a SECOND local copy of the rule (D-LP.3), and its
+ * comment claimed "an Arabic name produces an empty suggestion rather than a
+ * mangled one" — false for any Arabic name carrying a digit, which kept ONLY
+ * the digits («ساعات 2024» → "2024"). The shared helper is now the one
+ * definition, and it enforces what this comment always intended: a
+ * derivation without a letter is empty, never a bare number. */
 
 export function CategoryCreateForm({
   labels,
@@ -75,7 +73,7 @@ export function CategoryCreateForm({
           value={slug}
           onChange={(e) => {
             setSlugTouched(true);
-            setSlug(slugify(e.target.value));
+            setSlug(slugCharset(e.target.value));
           }}
           required
           maxLength={120}

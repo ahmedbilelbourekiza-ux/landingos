@@ -56,7 +56,14 @@ const CreateLanding = z.object({
     .trim()
     .min(1)
     .max(120)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "lowercase letters, numbers and hyphens only"),
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "lowercase letters, numbers and hyphens only")
+    // At least one LETTER. slugify reduces an Arabic title to its digits
+    // («ساعة برو 0» → "0"), and a bare number silently became a published
+    // address — /0 linked from the home card and the sitemap, 404ing the
+    // moment the slug was fixed (see lib/landing/create.ts). The client
+    // derivation refuses these now; the route is the gate that holds
+    // whichever way the value arrives.
+    .regex(/[a-z]/, "the address needs at least one letter"),
   price: z.coerce.number().nonnegative(),
   categoryId: z.string().optional().nullable(),
 });

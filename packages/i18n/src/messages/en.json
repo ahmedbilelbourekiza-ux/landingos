@@ -110,7 +110,7 @@
       "priceLabel": "Price",
       "titleRequired": "A title is required.",
       "priceInvalid": "Enter a price of zero or more.",
-      "slugInvalid": "That address cannot be used. Try letters, numbers and hyphens.",
+      "slugInvalid": "That address cannot be used. It needs at least one latin letter — letters, numbers and hyphens.",
       "slugTaken": "You already have a page at that address.",
       "ai": {
         "heading": "Generate with AI",
@@ -213,7 +213,7 @@
       "titleMin": "The title must be at least 2 characters.",
       "titleMax": "The title must be at most 120 characters.",
       "slugMin": "The address must be at least 2 characters.",
-      "slugCharset": "Use lowercase letters, numbers and hyphens only.",
+      "slugCharset": "Use lowercase latin letters, numbers and hyphens — with at least one letter.",
       "descriptionMax": "The description must be at most 300 characters.",
       "ctaRequired": "The button text is required.",
       "priceLabel": "Current price",
