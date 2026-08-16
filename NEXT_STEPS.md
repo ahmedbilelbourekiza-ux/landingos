@@ -41,7 +41,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.31**~~ | ~~The storefront header shows "LandingOS" and links to the platform~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production on a real published page: header and footer name the merchant and link to its own root, zero platform strings in the body). Not preview-only: with no `StoreSettings` row the published page rendered the platform wordmark linking to `/` (307 → console), plus the platform's internal description and copyright. Both production tenants have exactly that null row — 0 published pages, so unseen, one publish away. `resolveStoreName` + deleted fallbacks; brand is a span in the preview drawer. storefront 36→38 |
 | **LB.36** | Brands — a store organised around brands instead of one flat shop | M–L | **SCOPED, NOT BUILT (13 Aug 2026; the scoping doc is merged to local `master`)** — a measurement + proposal pass only, like the store-theme question. Full write-up below; the decision is yours |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
-| **LB.24** | AI landing page generator | L | **ON HOLD, NOT STARTED** — deliberately. The `AiProvider`/`AiAgent` infrastructure exists and `ai/chat` is a deliberate 501; the scoping is in `FEATURE_PASS_AUG12.md` §5 |
+| **LB.24** | AI landing page generator | L | **FIRST SLICE BUILT, NOT DEPLOYED, NOT PUSHED (16 Aug, deploy session) — local branch `claude/lb24-ai-generator`**, two commits on top of `1dbe119`, no migration. Merchant facts + their own photos in → an Algerian-Darija DRAFT out (copy + LB.22 theme), reviewed in the ordinary editor. Adversarially reviewed (one BLOCKER found and fixed: the model call sat inside the 15s tenant transaction — now D-LP.5.1 three-phase, pinned by a 16.5s slow-model test). builder-ai **19** new. §LB.24 below has the record, the deliberate lines (no generated reviews, ever), and the open questions — **the push/deploy decision is yours** |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | **SPLIT INTO THREE, because they are three different risks.** LB.14a caching — **DONE 13 Aug 2026 (night), DEPLOYED the same night**; LB.14b version history and LB.14c custom domains — see their own rows below. Original scoping: handoff §13 |
 | ~~**LB.14c**~~ | ~~Custom-domain console flow~~ | S | **PREMISE FALSE — the flow already exists** (B5, 10 Aug, deployed): claim, per-row token, **real DNS TXT verification**, primary, unlink, screen, tests. Driven live to confirm. **What was wrong and is now fixed (13 Aug, night; DEPLOYED the same night):** the verify route distinguishes "no TXT record yet" from "wrong value" on purpose — the opposite instruction to a merchant mid-setup — and both arrived as "that didn't work", because one code carried both meanings and B5 mapped **none** of its five refusal codes in `action-errors.ts`. Split + six messages ×3 locales. platform/domains 13→14. **⚠ SCOPED, NOT BUILT — the part that needs infrastructure:** a verified domain still 403s until the OPERATOR adds the hostname to Render and it issues a certificate (proven: `x-render-routing` 403; no Render credential exists here). **Custom domains are therefore complete in the app and inert in production.** Three options + the `isPrimary`-has-no-reader finding written up below; the decision is yours |
 | **LB.14b** | Page version history / undo (M-02, = CAPABILITY_AUDIT B7) | M–L | **SCOPED, NOT BUILT (13 Aug 2026) — it needs a new table, therefore a production migration, and that was out of scope for the session that measured it.** Confirmed nothing exists: the whole schema has ONE history table and it is `SalesOrderStatusHistory`. Eleven separate section-save routes and no single write path to hook. A snapshot measured at 0.6–3.6 KB on real pages, so storage is not the argument — the three open questions are all product decisions (when a version is taken, what restore does to a page that has SOLD, whether restore may republish). Proposed shape + costs written up below; **RLS would move 49 → 50.** **Built instead, needing no migration: the `duplicate` completeness fix**, because until this exists a duplicate is the only way back a merchant has |
@@ -846,6 +846,71 @@ Switching to "choose" pre-selects **every active integration**, so the
 transition out of "inherit all" cannot silently reduce reporting — which is the
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
+
+### LB.24 — FIRST SLICE BUILT, NOT DEPLOYED, NOT PUSHED (16 Aug, deploy session): the AI landing generator speaks Darija
+
+**Local branch `claude/lb24-ai-generator`** (`8ac6a58` + review pass
+`604cd09` on top of `1dbe119`), **no migration** — the feature rides the
+`AiProvider` rows that already exist. **Per your instruction it is NOT
+pushed**; push and deploy are your call after review. CHANGELOG §LB.24 is
+the full record. The shape is FEATURE_PASS_AUG12 §5's, built:
+
+- **The merchant's half is FACTS, the model's half is WORDS.** Product
+  name, price, selling points, their own photos (existing upload
+  pipeline) in; headline, description, announcement, benefits, FAQs, SEO
+  pair out — in Algerian Darija by prompt design, validated against
+  bounds INSIDE both the section routes' and the editor's client zod
+  schemas, landed as a DRAFT via one nested create. Publishing stays the
+  separate human act. The theme is LB.22's deterministic palette on the
+  first photo — not the model's opinion.
+- **Images answered your open question:** merchants upload their own
+  product photos first; the AI writes around them. No generation, no
+  placeholders — the first photo is the hero and seeds the theme.
+- **Two lines drawn on purpose:** reviews are NEVER generated
+  (fabricated customers presented as real is manufactured social proof —
+  the merchant adds real ones), and the model may not invent logistics
+  facts (the prompt forbids coverage/duration claims absent from the
+  merchant's own selling points and tells it to hedge delivery/return
+  answers).
+- **Adversarially reviewed before it reaches you** (5 lenses). The
+  headline finding, reproduced empirically then fixed: the model call
+  sat inside `withTenant`'s 15-second transaction while generations are
+  allowed 30–120s — any honest model latency 500'd AFTER billing the
+  tenant's key. Restructured to D-LP.5.1's three phases; a 16.5s
+  slow-model test pins it. Also fixed: upstream errors reflect status
+  only (the merchant-set `baseUrl` SSRF rule), the photo-ownership check
+  is now exactly `readTenantImage`'s rule for EVERY photo, slug caps,
+  P2002 race → 409, `models/`-prefixed Gemini ids, panel i18n gaps, and
+  the Darija reviewer's prompt notes.
+- **Suites:** builder-ai **19** (new; wire shapes pure + the whole flow
+  against a stub the provider row's own baseUrl points at) · builder-api
+  42 · console-shell 20 · storefront 76 · erp/ai 31 · i18n 22 — all
+  green against the rebuilt standalone server. Fixtures swept to zero.
+
+**Open questions, yours:**
+
+1. **Who may spend AI money?** The route is gated
+  `website-builder:pages:write` (builder-only tenants have no
+  `erp:ai:use` surface at all), so any manager with page-write can bill
+  the tenant's key, and there is no per-tenant generation quota or rate
+  limit yet. Fine for a first slice behind your own testing; decide the
+  ceiling before real tenants get keys.
+2. **Provider setup for builder-only tenants:** generation reads the
+  tenant's `AiProvider` row, but the ONLY screen that creates one lives
+  in the ERP console (`/console/erp/ai`, `erp:settings:write`). A
+  builder-only tenant cannot reach it. Options: surface a minimal
+  provider form in builder settings, or platform-provision a default
+  provider — your call.
+3. **Scoped, not built** (the LB.36/LB.14b discipline): variants
+  generation (the merchant's SKU facts — needs its own form section),
+  per-section regenerate/refine controls in the editor, optional
+  `deliveryNote`/`returnPolicy` facts fields so the FAQ can state real
+  policies instead of hedging, streaming progress, and per-tenant spend
+  metering. Also noted: the i18n guard's component scan does not cover
+  `components/console/builder` (the panel's strings went through props
+  regardless), and the slug regex now has one more literal copy — both
+  pre-existing patterns, recorded here so they're chosen, not drifted
+  into.
 
 ### LB.51–LB.53 — DEPLOYED (16 Aug, afternoon session): the TTFB census, the gallery-warming trade, the price contrast
 

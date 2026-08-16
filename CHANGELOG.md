@@ -12,6 +12,59 @@ touched, any **migration**, and any **risk**.
 
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
+- **LB.24 — the AI landing generator: merchant facts in, an
+  Algerian-dialect draft out** (16 August 2026 — **NOT DEPLOYED, NOT
+  PUSHED: local branch `claude/lb24-ai-generator`**, two commits
+  (`8ac6a58` + review pass `604cd09`); no migration).
+
+  The slice FEATURE_PASS_AUG12 §5 scoped and deliberately held, built on
+  the head start it named. **The register is the product:** the system
+  prompt is written partly in Darija itself, anchors the persona to the
+  Algerian Facebook/Instagram COD seller, and seeds the shibboleths
+  (بصح، برك، بزاف، تاع) that exclude Egyptian/Gulf drift — Darija where a
+  seller sells, clear reassuring Darija where a buyer checks facts,
+  searchable Arabic for the SEO pair. Eastern numerals are transliterated
+  mechanically (the repo's latn convention), unknown benefit icons
+  degrade to the default, and every generated bound sits INSIDE both the
+  section routes' server schemas and the editor's client schemas — a
+  draft the editor refuses to re-save is a trap, not a head start (found
+  and fixed pre-commit: description capped at the editor's 300, not the
+  server's 20000).
+
+  **The merchant's half is facts; the model's half is words and only
+  words.** Photos are the merchant's own uploads (first = hero), the
+  theme is LB.22's deterministic palette on that hero, the price is not
+  the model's to change, and reviews are NEVER generated — fabricated
+  customers presented as real is manufactured social proof, not copy.
+  The model is asked before any row is written; a malformed answer
+  writes nothing (one nested create, the duplicate route's shape).
+
+  **Mechanics:** `lib/erp/ai-complete.ts` — the first inference call in
+  the new platform, the legacy trio ported (openai-compat / gemini /
+  anthropic, non-streaming), request builders and response readers
+  exported pure; `lib/landing/ai-generate.ts` — prompt + zod contract +
+  normalization, pure; `POST /api/builder/landings/generate` —
+  D-LP.5.1's three phases (validate/prove-ownership/load-provider in the
+  wrapper's transaction · read hero bytes + model call + palette in NO
+  transaction via `afterCommit` · slug de-clash + theme + page in one
+  fresh short transaction). The adversarial review caught the first
+  version holding the 15s tenant transaction across a 30–120s model
+  call — 500 after billing the tenant's key, connection pinned
+  throughout; a 16.5s slow-model test now pins the fix. 501
+  `NO_AI_PROVIDER` without a configured provider (the chat route's own
+  statement); upstream errors reflect status only; the photo-ownership
+  check is `readTenantImage`'s exact rule for every photo. Console: a
+  Generate-with-AI panel on the create screen behind a provider-presence
+  check, D-06.1 (no server action), 22 keys ×3 locales. `apiKey` is now
+  loaded by exactly TWO routes (this and the provider test), stated in
+  both.
+
+  **Open questions and the scoped remainder are NEXT_STEPS §LB.24** —
+  notably who may spend AI money (`pages:write` gates it; no quota yet)
+  and how a builder-only tenant configures a provider at all. Suites:
+  builder-ai **19** (new) · builder-api 42 · console-shell 20 ·
+  storefront 76 · erp/ai 31 · i18n 22.
+
 - **LB.53 — the old price becomes readable: surface colours stop being used
   as ink** (16 August 2026 — **DEPLOYED same day (afternoon), `831c48d..d915c77`**; no migration).
 
