@@ -13,8 +13,7 @@ touched, any **migration**, and any **risk**.
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
 - **LB.50 — CSS ships inside the document: `experimental.inlineCss`, its
-  own measured pass** (16 August 2026 — **local; NOT deployed**; no
-  migration).
+  own measured pass** (16 August 2026 — **DEPLOYED same day, `cf5c554..1067984`**; no migration).
 
   LB.47 flagged the candidate and deliberately did not flip it blind; this
   is the dedicated measurement. **With the flag** (same page, same method,
@@ -34,8 +33,7 @@ touched, any **migration**, and any **risk**.
   lives. storefront **76/76** · console-shell **20/20**.
 
 - **LB.49 — the storefront drops its animation library, because it kept
-  taking content hostage** (16 August 2026 — **local; NOT deployed**; no
-  migration).
+  taking content hostage** (16 August 2026 — **DEPLOYED same day, `cf5c554..1067984`**; no migration).
 
   **The JS-diet measurement came first** (the backlog LB.44 and LB.47 both
   named): the live product page ships 15 chunks, 1,306KB raw / 378.6KB gz,
@@ -72,7 +70,7 @@ touched, any **migration**, and any **risk**.
   untouched).
 
 - **LB.48 — the images a customer is about to ask for are already there**
-  (16 August 2026 — **local; NOT deployed**; no migration).
+  (16 August 2026 — **DEPLOYED same day, `cf5c554..1067984`**; no migration).
 
   **The real-phone report, measured on the live domain first.** Three
   complaints, three mechanisms:

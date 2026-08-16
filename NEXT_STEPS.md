@@ -844,7 +844,7 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
-### LB.50 — DONE, NOT DEPLOYED. inlineCss, measured then adopted (16 Aug)
+### LB.50 — DONE + DEPLOYED (16 Aug). inlineCss, measured then adopted
 
 The candidate LB.47 refused to flip blind, given its own pass on the
 framer-free build: **81→88, LCP 3.7→2.0s** for +78KB gz per document (the
@@ -853,7 +853,7 @@ revert is one config block. Follow-up scoped: the single 144KB CSS bundle
 carries console styles into every storefront document; splitting it is the
 next CSS win.
 
-### LB.49 — DONE, NOT DEPLOYED. The storefront drops its animation library (16 Aug)
+### LB.49 — DONE + DEPLOYED (16 Aug). The storefront drops its animation library
 
 The JS-diet backlog, finally measured: 378.6KB gz critical path, framer-motion
 the one heavy slimmable library. Both LazyMotion diets failed IN THE BROWSER
@@ -867,7 +867,7 @@ hydration-splitting below-fold sections (React lazy boundaries), a design
 change, not a flag. `experimental.inlineCss` gets its own measured pass —
 see the LB.50 note. **After deploy, re-run PageSpeed on `selliora1.com/dedima`.**
 
-### LB.48 — DONE, NOT DEPLOYED. Lookahead + post-load warms (16 Aug)
+### LB.48 — DONE + DEPLOYED (16 Aug). Lookahead + post-load warms
 
 The real-phone complaints, each traced to its mechanism on the live domain:
 swipe lag = only the active gallery image mounts full-size (the next image's

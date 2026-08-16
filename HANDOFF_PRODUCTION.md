@@ -15,6 +15,43 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.48 + LB.49 + LB.50 ARE DEPLOYED — 16 Aug 2026: the perf trio
+>
+> **`origin/main` is `1067984`** (`cf5c554..1067984`, three commits, **no
+> migration**). **Rollback point: `cf5c554`.** Live 2m48s after the push.
+> Markers all PUBLIC on `selliora1.com/dedima`, baselines captured BEFORE:
+>
+> | Marker | Before | After |
+> |---|---|---|
+> | stylesheet links / inline `<style>` (LB.50) | 2 / 0 | **0 / 1** |
+> | gallery CSS-fade div + framer `AnimatePresence` in served chunks (LB.49) | 0 / present | **1 / ZERO across every chunk** |
+> | `href="/__domain__"` brand link (LB.48) | 1 | **0** (brand links `/`) |
+>
+> **Live interactions verified in a real browser on the domain:** the
+> gallery neighbours' full-size images fetched with ZERO interaction
+> (lookahead working), the description image warmed post-load, and a
+> thumbnail click swapped the hero within 350ms from cache.
+>
+> **The Lighthouse story, honestly:** TBT 1,380 → **520–850ms** and SI 2.8
+> → **2.4–2.5s** across warm runs (the framer + inlineCss wins are real);
+> perf 68–77 vs 69 before, LCP 3.3–3.8s vs 3.0 — LCP on this page is
+> dominated by the Render dyno's TTFB (0.9–1.8s between runs), not by
+> anything the template does.
+>
+> **⚠ OPERATIONAL DISCOVERY, record-worthy: a deploy WIPES the
+> image-optimizer cache.** The first Lighthouse run after this deploy
+> scored **47 with LCP 10.6s — Load Time 8.8s on the hero** — because
+> every `/_next/image` variant re-transforms cold on the new container
+> (sharp over an 882KB source on a shared CPU), and warm reruns
+> immediately returned to 77/3.3s. **This is almost certainly what the
+> user's original PSI report (66/6.5s/10.2s) measured** — PSI runs once,
+> often shortly after a deploy. Judge production perf only on WARM runs,
+> and consider warming the real store's hero variants after each deploy.
+>
+> Regression sweep intact: absolute canonical + og:image on the domain ·
+> bare robots sitemap · platform host untouched · wilayas-404 `no-store` ·
+> root 307 · health green.
+>
 > ### ✔ LB.47 IS DEPLOYED — 16 Aug 2026: metadata URLs are absolute, og:image stops naming localhost
 >
 > **`origin/main` is `933f95b`** (`9acaf00..933f95b`, one commit, **no
@@ -981,21 +1018,15 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **THREE slices are queued to deploy: LB.48, LB.49, LB.50** (the
-   perceived-perf warms + the `/__domain__` brand-link fix, the framer
-   removal, and `experimental.inlineCss` — CHANGELOG has each record with
-   its measurements). **No migration in any.** Suites green on the final
-   build: storefront 76, console-shell 20, builder-sections 74. **Not
-   deployed — the user asked to be asked first.** Markers, all PUBLIC on
-   any product page: stylesheet links 2→0 with one inline `<style>`
-   (LB.50); zero `framer` signatures in the page's chunk set and the page
-   chunk ~95KB gz (LB.49); `landing-fade`/`landing-slide-up` classes in
-   CSS and no `href="/__domain__"` in any served page (LB.48). **After
-   deploy: re-run Lighthouse/PSI on `selliora1.com/dedima`** — local
-   same-method prediction is perf ~88 with LCP ~2s — and re-check the
-   real-phone feel (swipe the gallery, scroll to the description image).
-   LB.47 DEPLOYED 16 Aug as `9acaf00..933f95b`; LB.46, LB.45 and
-   LB.42–LB.44 earlier the same weekend; §1 has each record. LB.45
+4. **NOTHING is queued — LB.48+LB.49+LB.50 DEPLOYED 16 Aug as
+   `cf5c554..1067984`; §1 has the record, including the operational
+   discovery that a deploy wipes the image-optimizer cache (judge
+   production Lighthouse only on WARM runs — the cold first run after this
+   deploy scored 47/LCP 10.6s and the warm rerun 77/3.3s, which is also
+   the likely explanation of the user's original PSI 66/6.5s report).**
+   Everything LB.42–LB.50 shipped over the 15–16 Aug weekend; §1 has each
+   record. `git diff origin/main master -- apps packages` is the check
+   that nothing is waiting; no migration is pending. LB.45
    went earlier the same day (`cc87b0b..0aa0eae`), LB.42–LB.44 the evening
    before (`3fc1ade..4742554`). `git diff origin/main master -- apps
    packages` is the check that nothing is waiting; no migration is
