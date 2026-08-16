@@ -13,7 +13,10 @@ touched, any **migration**, and any **risk**.
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
 - **LB.46 — the console's View and Copy Link speak the tenant's own domain**
-  (16 August 2026 — **local; NOT deployed**; no migration).
+  (16 August 2026 — **DEPLOYED same day, `a8f871e..da971fb`**; no
+  migration. Verified live both ways with two prod fixtures — the
+  with-domain View door flipped to `https://<domain>/<slug>`, the
+  no-domain tenant unchanged; HANDOFF §1).
 
   **The handoff predicted this one.** `TenantDomain.isPrimary` was recorded
   as "a writer with no functional reader — deliberately NOT fixed: until a

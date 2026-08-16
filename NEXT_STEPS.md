@@ -844,7 +844,7 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
-### LB.46 — DONE, NOT DEPLOYED. View and Copy Link speak the tenant's domain (16 Aug)
+### LB.46 — DONE + DEPLOYED (16 Aug). View and Copy Link speak the tenant's domain
 
 The handoff's `isPrimary`-has-no-reader note, closed on schedule: once
 `selliora1.com` actually served (LB.45), the console's View door and the

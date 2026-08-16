@@ -15,6 +15,27 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.46 IS DEPLOYED — 16 Aug 2026: View and Copy Link speak the tenant's domain
+>
+> **`origin/main` is `da971fb`** (`a8f871e..da971fb`, one commit, **no
+> migration**). **Rollback point: `a8f871e`.** Live 2m28s after the push.
+> The marker is AUTHED, so two throwaway prod fixtures carried it, baselines
+> captured BEFORE pushing:
+>
+> | Fixture | Before | After |
+> |---|---|---|
+> | W — verified PRIMARY fake domain, published page | View href = platform path, domain href **0** | View href = **`https://<domain>/marker-page`**, platform href **0**; the editor's payload carries the same URL as `publicPath` |
+> | N — no domain, published page | platform path | **platform path, unchanged**, zero domain leakage |
+>
+> **Regression sweep intact:** `selliora1.com/robe` still the landing page ·
+> its robots still names the bare sitemap · platform `/bebezzouar/robe`
+> landing page · root 307 · wilayas-404 `no-store` · health green. Both
+> fixtures swept to zero remnants across all six row kinds; the three real
+> tenants and the one real domain row (`selliora1.com`, primary) untouched.
+>
+> The real store's console now shows View → `https://selliora1.com/robe`
+> and Copy Link copies the same — the user can see it directly.
+>
 > ### ✔ LB.45 IS DEPLOYED — 16 Aug 2026: the first custom domain works end to end
 >
 > **`origin/main` is `0aa0eae`** (`cc87b0b..0aa0eae`, one commit, **no
@@ -540,6 +561,7 @@ remain the deep references.
 
 | Commit | What it is |
 |---|---|
+| `a8f871e..da971fb` | **16 Aug 2026: LB.46** — the console's View and Copy Link speak the tenant's verified primary domain (`isPrimary` finally gets its reader; `lib/console/public-page-url.ts`). One commit, no migration. Verified with two prod fixtures: the with-domain screen flipped to the domain href (editor payload included), the no-domain screen unchanged, zero cross-tenant leakage |
 | `cc87b0b..0aa0eae` | **16 Aug 2026: LB.45** — a custom domain's paths are the shop's own (host-conditioned rewrites inserting a `__domain__` sentinel; sitemap + robots speak the bare shape via `storefrontHref`). One commit, no migration. Verified on the REAL domain `selliora1.com`: `/robe` flipped from store-home to the landing page with the order form, `/category/watches` 404→200, root 307→200, robots naming the bare sitemap; nine platform-host regression checks intact |
 | `3fc1ade..4742554` | **15 Aug 2026 (evening): LB.42 + LB.43 + LB.44** — write-panel i18n (+two guard fixes), server events carry `event_source_url`, and the storefront LCP fix (the whole-page framer fade deleted; CSS entrance; `fetchPriority="high"` hero; description images all lazy). Five commits, fast-forward, no migration (empty `migrate diff` against `landingos_prod` before the push). Verified by the PUBLIC LB.44 marker flips on the real page + a throwaway-fixture authed check of LB.42 + a real Lighthouse before/after (50→75, LCP 5.8→3.4s, Render Delay 2,479→34ms) |
 | `bd6d664..d6a56b1` | **13 Aug 2026 (late night): LB.31–LB.36 + LB.15 + LB.14a/b/c** — storefront branding, the editor's sticky-header offset, checkout field labels, archive/restore, per-page pixel selection, the brand scoping note, money inputs, storefront caching, duplicate completeness, the domain-refusal messages. Eighteen commits, fast-forward, no migration (proven by an empty `migrate diff` against `landingos_prod`). Confirmed by a public `Cache-Control` flip on the wilayas 404 — a marker needing no fixture — plus a throwaway tenant driven through the editor, a duplicate, an archive/restore and a real checkout |
@@ -934,16 +956,12 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **ONE slice is queued to deploy: LB.46** — the console's View and Copy
-   Link speak the tenant's verified primary domain (CHANGELOG §LB.46;
-   `isPrimary` finally gets its reader). **No migration.** Suites green
-   (builder-api 42, builder-sections 74, console-shell 20). **Not deployed —
-   the user asked to be asked first.** Marker (authed): selliora16's pages
-   list serves `href="https://selliora1.com/robe"` on the View door where
-   it serves the platform path today; any tenant without a domain keeps
-   `/{slug}/{page}`. LB.45 DEPLOYED 16 Aug as `cc87b0b..0aa0eae`;
-   LB.42–LB.44 the evening before (`3fc1ade..4742554`); §1 has the
-   records. One data note for the user: `/category/watches` lists empty
+4. **NOTHING is queued — LB.46 DEPLOYED 16 Aug as `a8f871e..da971fb`
+   (§1 has the record, verified both ways with two prod fixtures).** LB.45
+   went earlier the same day (`cc87b0b..0aa0eae`), LB.42–LB.44 the evening
+   before (`3fc1ade..4742554`). `git diff origin/main master -- apps
+   packages` is the check that nothing is waiting; no migration is
+   pending. One data note for the user: `/category/watches` lists empty
    because the `robe` page has `categoryId: null` — assigning the page to
    the category in the editor fills the listing; not a defect.
 
