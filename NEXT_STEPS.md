@@ -847,13 +847,42 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
-### LB.51–LB.53 — BUILT, NOT DEPLOYED (16 Aug, later session): the TTFB census, the gallery-warming trade, the price contrast
+### LB.51–LB.53 — DEPLOYED (16 Aug, afternoon session): the TTFB census, the gallery-warming trade, the price contrast
 
-**Five commits on branch `claude/perf-ttfb-images-2otrah`** (`047533d`,
-`42440de`, `aa50b56`, `f75eead`, `42b208e` on top of `831c48d`), **no
-migration** — LB.51's schema edit is a Prisma GENERATOR preview flag
-(`relationJoins`), invisible to `migrate diff`. CHANGELOG §LB.51–§LB.53 are
-the full records. **That session's environment could not reach production or
+**DEPLOYED as `831c48d..d915c77`, pushed 13:28 UTC 16 Aug** — a pure
+fast-forward of `claude/perf-ttfb-images-2otrah` onto main (merge-base
+verified = `831c48d`; rollback point `831c48d`). Before the push, the
+deploy session re-verified the range's ONLY schema diff is the generator
+preview flag (no migration) and re-ran ALL NINE suites green at recorded
+counts on the exact deployed tree, in a freshly built harness (local
+Postgres 16 + RLS roles + reference seed + the standalone production
+build): storefront 76 · builder-sections 74 · tracking 15 · builder-api
+42 · console-shell 20 · hardening 13 · platform/domains 14 ·
+platform/team 63 · packages/db 35. Local fixtures swept to zero tenants
+by the suites' own `deleteTenant` hooks; no production fixture was needed
+(every marker is public).
+
+**The deploy session's environment ALSO could not reach production**
+(egress 403 on `selliora1.com` and `onrender.com`, same policy as the
+build session), and the PageSpeed API — the one live-measurement channel,
+since Google fetches from its side — answered **429 (shared-IP anonymous
+quota exhausted) on every attempt across the session**, before and after
+the push. Consequences, stated plainly: no fresh pre-push PSI baseline
+was capturable — the standing-rule baseline for this deploy is the
+LB.48–50 record's live warm runs from the same morning (same build
+serving until this push: perf 68–77, LCP 3.3–3.8s, TBT 520–850ms, SI
+2.4–2.5s, image-delivery ~226KiB, accessibility 97) — and **the live
+AFTER numbers are still owed**, along with the LB.35b page-subset live
+re-check and a checkout end to end. The build-liveness marker for whoever
+runs PSI first: **accessibility 100** (LB.53's contrast fix) only exists
+on the new build. Judge WARM runs only — the deploy wiped the image
+cache again.
+
+**Five feature commits on branch `claude/perf-ttfb-images-2otrah`**
+(`047533d`, `42440de`, `aa50b56`, `f75eead`, `42b208e` on top of
+`831c48d`), **no migration** — LB.51's schema edit is a Prisma GENERATOR
+preview flag (`relationJoins`), invisible to `migrate diff`. CHANGELOG
+§LB.51–§LB.53 are the full records. **That session's environment could not reach production or
 Neon at all** (egress policy; even the PageSpeed API's anonymous quota was
 exhausted on the shared IP), so everything below was measured on the
 production BUILD served locally — a local Postgres 16 with

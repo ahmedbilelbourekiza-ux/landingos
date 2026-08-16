@@ -13,8 +13,7 @@ touched, any **migration**, and any **risk**.
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
 - **LB.53 — the old price becomes readable: surface colours stop being used
-  as ink** (16 August 2026 — **NOT DEPLOYED: local branch
-  `claude/perf-ttfb-images-2otrah`**; no migration).
+  as ink** (16 August 2026 — **DEPLOYED same day (afternoon), `831c48d..d915c77`**; no migration).
 
   Found by the general Lighthouse pass this session ran (all four
   categories, on a dedima-shaped local fixture): the contrast audit failed
@@ -48,8 +47,7 @@ touched, any **migration**, and any **risk**.
   builder-sections 74 (incl. LB.22's independent contrast assertions).
 
 - **LB.52 — the gallery stops betting two images of the customer's data on
-  every visit** (16 August 2026 — **NOT DEPLOYED: local branch
-  `claude/perf-ttfb-images-2otrah`**; no migration).
+  every visit** (16 August 2026 — **DEPLOYED same day (afternoon), `831c48d..d915c77`**; no migration).
 
   The "Improve image delivery ~226KiB" PageSpeed finding on the dedima
   page, diagnosed by REPRODUCTION rather than from the report: it is
@@ -79,9 +77,10 @@ touched, any **migration**, and any **risk**.
   `lib/landing/use-after-load.ts`. storefront 76, builder-sections 74.
 
 - **LB.51 — the TTFB investigation: one read per fact, one statement per
-  relation set** (16 August 2026 — **NOT DEPLOYED: local branch
-  `claude/perf-ttfb-images-2otrah`**, two commits; no migration — the
-  schema edit is a GENERATOR preview flag, `migrate diff` unaffected).
+  relation set** (16 August 2026 — **DEPLOYED same day (afternoon), `831c48d..d915c77`**,
+  two commits; no migration — the schema edit is a GENERATOR preview flag,
+  `migrate diff` unaffected, re-verified as the range's only schema diff
+  before the push).
 
   LB.14a.2's TTFB (0.79–1.8s observed run to run) got its measurement.
   **This session's environment cannot reach production** (egress policy

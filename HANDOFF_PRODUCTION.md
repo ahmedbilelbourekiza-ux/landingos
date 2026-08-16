@@ -15,6 +15,42 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.51 + LB.52 + LB.53 ARE DEPLOYED — 16 Aug 2026 (afternoon): the TTFB census, the gallery-warming trade, the price contrast
+>
+> **`origin/main` is `d915c77`** (`831c48d..d915c77`, six commits — five
+> feature commits fast-forwarded from `claude/perf-ttfb-images-2otrah`
+> plus that branch's records commit — **no migration**: the range's only
+> schema diff is the `relationJoins` generator preview flag, re-verified
+> before the push). **Rollback point: `831c48d`.** Pushed 13:28 UTC.
+>
+> **What WAS verified, honestly.** The deploy-session environment could
+> not reach production (egress 403 on `selliora1.com`/`onrender.com` —
+> the same policy that boxed in the build session), and the PageSpeed
+> API's shared-IP anonymous quota answered 429 on every attempt, before
+> and after the push. So this deploy's verification is: **all nine suites
+> green at recorded counts on the exact deployed tree** (storefront 76 ·
+> builder-sections 74 · tracking 15 · builder-api 42 · console-shell 20 ·
+> hardening 13 · platform/domains 14 · platform/team 63 · packages/db
+> 35), in a harness built from scratch in that container (local Postgres
+> 16, both databases, RLS roles verified NOBYPASSRLS, reference seed, the
+> standalone production build — the same artifact Render runs). Suite
+> reds along the way were harness knobs the code documents
+> (`CHECKOUT_RATE_LIMIT`, the tracking stub bases), not regressions.
+>
+> **What is OWED, live (first session that can reach PSI or the page):**
+> warm PSI runs on `selliora1.com/dedima` — expect image-delivery
+> ~226KiB → ~113KiB (ONE deliberate forward warm remains), **accessibility
+> 100** (this marker only exists on the new build — it doubles as the
+> deploy-liveness check), `server-response-time` shedding ≈12 × the
+> Render↔Neon RTT; judge WARM runs only (a deploy wipes the
+> image-optimizer cache — LB.48's discovery). Plus the LB.35b page-subset
+> behaviour re-checked live once (tracking resolution moved into the
+> page's own transaction — same functions, new call path) and one checkout
+> end to end. The pre-push baseline of record is the LB.48–50 block below
+> (same build, same morning). The three hosting-layer TTFB questions
+> (Render spin-down, Neon scale-to-zero, region pairing) remain the
+> user's — NEXT_STEPS §LB.51.
+>
 > ### ✔ LB.48 + LB.49 + LB.50 ARE DEPLOYED — 16 Aug 2026: the perf trio
 >
 > **`origin/main` is `1067984`** (`cf5c554..1067984`, three commits, **no
@@ -1005,25 +1041,28 @@ The exact first steps, in order:
    `uploads: r2`. If `isolation` is missing, an old build is serving; if
    `BYPASSED`, stop everything and tell the user to fix Render's
    `DATABASE_URL` (see §3).
-3. **Confirm `origin/main` still equals `d6a56b1`** (`git fetch && git log
+3. **Confirm `origin/main` still equals `d915c77`** (`git fetch && git log
    --oneline origin/main -1`) — if it moved, someone else deployed; re-read
-   the situation before assuming this document's state. **Local `master` is
-   in sync with `origin/main` at `ab24466` — LB.37 shipped too. The check that
+   the situation before assuming this document's state. **The check that
    tells you whether anything is waiting:
-   `git diff origin/main master -- apps packages`. Empty means no application
-   code is queued; non-empty means something is.** Do not trust the commit
+   `git diff origin/main <your local branch> -- apps packages`. Empty means no
+   application code is queued; non-empty means something is.** Do not trust the commit
    COUNT any
    handoff quotes — this one said "sixteen" and the real answer was eighteen
    by the time it was read. Derive it: `git rev-list --count origin/main..master`.
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **NOTHING is queued — LB.48+LB.49+LB.50 DEPLOYED 16 Aug as
-   `cf5c554..1067984`; §1 has the record, including the operational
-   discovery that a deploy wipes the image-optimizer cache (judge
-   production Lighthouse only on WARM runs — the cold first run after this
-   deploy scored 47/LCP 10.6s and the warm rerun 77/3.3s, which is also
-   the likely explanation of the user's original PSI 66/6.5s report).**
+4. **NOTHING is queued — LB.51+LB.52+LB.53 DEPLOYED 16 Aug (afternoon) as
+   `831c48d..d915c77`; §1's top block has the record, including what is
+   still OWED live (warm PSI after-numbers, the LB.35b subset re-check, a
+   checkout e2e) because that deploy session had no route to production.
+   LB.48+LB.49+LB.50 went the same morning as `cf5c554..1067984`; that
+   record holds the operational discovery that a deploy wipes the
+   image-optimizer cache (judge production Lighthouse only on WARM runs —
+   the cold first run after that deploy scored 47/LCP 10.6s and the warm
+   rerun 77/3.3s, which is also the likely explanation of the user's
+   original PSI 66/6.5s report).**
    Everything LB.42–LB.50 shipped over the 15–16 Aug weekend; §1 has each
    record. `git diff origin/main master -- apps packages` is the check
    that nothing is waiting; no migration is pending. LB.45
