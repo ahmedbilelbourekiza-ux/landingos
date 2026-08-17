@@ -536,6 +536,81 @@ describe('the public destination list only offers what works', { skip }, () => {
   test('an unknown store is a 404', async () => {
     assert.equal((await get(`/api/storefront/nope-${stamp}/wilayas`)).status, 404);
   });
+
+  test('FREE SHIPPING moves the quote and the charge together, or neither', async () => {
+    /* D-LB.20.1, the case that slipped past it. `freeShipping` used to be
+       applied by the checkout ALONE — two lines under the comment promising the
+       two could not differ — so a page with the switch on quoted the company's
+       rate in the destination dropdown and then charged nothing. Measured
+       before the fix: quote 500, charge 0.
+       It favours the customer, which is why nobody noticed, and it defeats the
+       feature: free shipping is a conversion lever and the storefront was
+       advertising a fee at the moment of choosing. */
+    const quoted = async () => {
+      const r = await get(`/api/storefront/${slugA}/wilayas?landingPageId=${publishedA}`);
+      return r.body.data.items.find((w: any) => w.id === wilayaId)?.homePrice;
+    };
+    const charged = async (who: string) => {
+      const r = await post(`/api/storefront/${slugA}/orders`, {
+        landingPageId: publishedA, customerName: who, phone: '0555000123',
+        wilayaId, baladiaName: 'Somewhere', quantity: 1, shippingMethod: 'HOME',
+      });
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+      const o = await withTenant(tenantA, (db) =>
+        (db as any).salesOrder.findFirst({
+          where: { customerName: who }, select: { shippingPrice: true },
+        }));
+      return String(o.shippingPrice);
+    };
+
+    const setFree = (on: boolean) =>
+      withTenant(tenantA, (db) =>
+        (db as any).landingSetting.upsert({
+          where: { landingPageId: publishedA },
+          update: { freeShipping: on },
+          create: { landingPageId: publishedA, tenantId: tenantA, freeShipping: on },
+        }));
+
+    try {
+      await setFree(false);
+      assert.equal(await quoted(), '500', 'the ordinary rate is quoted');
+      assert.equal(await charged(`FreeShip Off ${stamp}`), '500', 'and charged');
+
+      await setFree(true);
+      assert.equal(await quoted(), '0', 'the dropdown must stop advertising a fee');
+      assert.equal(await charged(`FreeShip On ${stamp}`), '0', 'and the order agrees');
+    } finally {
+      await setFree(false);
+    }
+  });
+
+  test('free shipping decides what delivery COSTS, never where it goes', async () => {
+    // The older rule this must not overturn: "an unpriced wilaya is
+    // undeliverable, not free." Zeroing prices must not add destinations.
+    await withTenant(tenantA, (db) =>
+      (db as any).landingSetting.upsert({
+        where: { landingPageId: publishedA },
+        update: { freeShipping: true },
+        create: { landingPageId: publishedA, tenantId: tenantA, freeShipping: true },
+      }));
+    try {
+      const r = await get(`/api/storefront/${slugA}/wilayas?landingPageId=${publishedA}`);
+      assert.equal(r.body.data.items.length, 1, 'still only the wilaya this shop priced');
+
+      const other = await post(`/api/storefront/${slugA}/orders`, {
+        landingPageId: publishedA, customerName: `FreeShip Undeliverable ${stamp}`,
+        phone: '0555000124', wilayaId: wilayaId === 1 ? 2 : 1,
+        baladiaName: 'Somewhere', quantity: 1, shippingMethod: 'HOME',
+      });
+      assert.equal(other.status, 422, 'an unpriced wilaya stays undeliverable');
+      assert.equal(other.body.error.code, 'UNDELIVERABLE');
+    } finally {
+      await withTenant(tenantA, (db) =>
+        (db as any).landingSetting.update({
+          where: { landingPageId: publishedA }, data: { freeShipping: false },
+        }));
+    }
+  });
 });
 
 describe('abandoned-checkout capture fails silently', { skip }, () => {

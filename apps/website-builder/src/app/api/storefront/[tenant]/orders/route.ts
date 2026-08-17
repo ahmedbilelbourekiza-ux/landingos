@@ -105,8 +105,11 @@ export async function POST(
       );
 
       const unitPrice = new Prisma.Decimal(page.price).plus(extras);
-      const freeShipping = setting?.freeShipping ?? false;
-      const shipping = freeShipping ? new Prisma.Decimal(0) : new Prisma.Decimal(shippingPrice);
+      /* Free shipping is applied by `deliveryPricesFor` now, not here. It used
+         to be a second step taken on this side only, which made the comment
+         above it false: the dropdown quoted the company's rate and this line
+         charged nothing. One resolver, one answer — D-LB.20.1. */
+      const shipping = new Prisma.Decimal(shippingPrice);
       const total = unitPrice.times(input.quantity).plus(shipping);
 
       const order = await (db as any).salesOrder.create({
