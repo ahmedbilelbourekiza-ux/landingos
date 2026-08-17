@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useApiAction, ActionError, ActionButton } from "@/components/console/api-action";
 import type { ActionErrors } from "@/lib/console/action-errors";
 import { slugify } from "@/lib/landing/create";
+import { readTypedMoney, MONEY_PATTERN } from "@/lib/landing/money-field";
 
 /* =============================================================================
  * The create-page form (LB.10's second half).
@@ -48,11 +49,16 @@ export function NewLandingForm({
     const form = new FormData(e.currentTarget);
     const title = String(form.get("title") ?? "").trim();
     const rawSlug = String(form.get("slug") ?? "").trim();
-    // The pattern advertises a comma; Number() does not read one.
-    const price = Number(String(form.get("price") ?? "").trim().replace(",", "."));
+    /* LB.15's ONE reader, not a second opinion. This form used to do
+       `Number(raw.replace(",", "."))`, which turns the French/Algerian «2,500»
+       — two thousand five hundred — into 2.5, and creates the page at 2.50 DA
+       without a word. `readTypedMoney` REFUSES a comma before three digits
+       rather than guessing, because it is a 1000x error either way, and this
+       is the screen where a price is set for the first time. */
+    const price = readTypedMoney(form.get("price"));
 
     if (!title) return setFieldError(messages.title);
-    if (!Number.isFinite(price) || price < 0) return setFieldError(messages.price);
+    if (price === null || price === undefined || price < 0) return setFieldError(messages.price);
     const slug = slugify(rawSlug || title);
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return setFieldError(messages.slug);
 
@@ -104,7 +110,7 @@ export function NewLandingForm({
             Decimal and a number input hands back a JS float (M-06 / D-06). */}
         <input
           id="price" name="price" type="text" inputMode="decimal"
-          pattern="[0-9]*[.,]?[0-9]*" required defaultValue="0"
+          pattern={MONEY_PATTERN} required defaultValue="0"
           className="ui-control tap w-full tabular-nums"
         />
       </div>

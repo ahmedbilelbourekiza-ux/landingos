@@ -6,6 +6,7 @@ import { Sparkles, X } from "lucide-react";
 
 import { useApiAction, ActionError, ActionButton } from "@/components/console/api-action";
 import type { ActionErrors } from "@/lib/console/action-errors";
+import { readTypedMoney, MONEY_PATTERN } from "@/lib/landing/money-field";
 
 /* =============================================================================
  * "Generate with AI" — the LB.24 control on the create screen.
@@ -101,9 +102,14 @@ export function GenerateLandingPanel({
 
     const form = new FormData(e.currentTarget);
     const productName = String(form.get("productName") ?? "").trim();
-    const price = Number(String(form.get("price") ?? "").trim().replace(",", "."));
-    const rawOldPrice = String(form.get("oldPrice") ?? "").trim().replace(",", ".");
-    const oldPrice = rawOldPrice ? Number(rawOldPrice) : null;
+    /* LB.15's ONE reader on both boxes. `Number(raw.replace(",", "."))` read
+       the French/Algerian «2,500» as 2.5 and would have generated a whole
+       landing page — copy, theme, images — around a price a thousand times
+       under the one the merchant typed. `readTypedMoney` refuses rather than
+       guesses; `undefined` means the optional box was left empty. */
+    const price = readTypedMoney(form.get("price"));
+    const oldPriceRead = readTypedMoney(form.get("oldPrice"));
+    const oldPrice = oldPriceRead === undefined ? null : oldPriceRead;
     const sellingPoints = String(form.get("sellingPoints") ?? "")
       .split("\n")
       .map((line) => line.trim().slice(0, 300))
@@ -111,8 +117,11 @@ export function GenerateLandingPanel({
       .slice(0, 8);
 
     if (productName.length < 2) return setFieldError(messages.productName);
-    if (!Number.isFinite(price) || price < 0) return setFieldError(messages.price);
-    if (oldPrice != null && (!Number.isFinite(oldPrice) || oldPrice <= price)) {
+    if (price === null || price === undefined || price < 0) return setFieldError(messages.price);
+    // `null` here is UNREADABLE (refuse); an empty box already became `null`
+    // via `undefined` above and is allowed, since the old price is optional.
+    if (oldPriceRead === null) return setFieldError(messages.oldPrice);
+    if (oldPrice != null && oldPrice <= price) {
       return setFieldError(messages.oldPrice);
     }
     if (!sellingPoints.length) return setFieldError(messages.sellingPoints);
@@ -177,7 +186,7 @@ export function GenerateLandingPanel({
             required
             type="text"
             inputMode="decimal"
-            pattern="[0-9]*[.,]?[0-9]*"
+            pattern={MONEY_PATTERN}
             className="w-full rounded-md border border-border bg-background px-3 py-2"
           />
         </label>
@@ -187,7 +196,7 @@ export function GenerateLandingPanel({
             name="oldPrice"
             type="text"
             inputMode="decimal"
-            pattern="[0-9]*[.,]?[0-9]*"
+            pattern={MONEY_PATTERN}
             placeholder={labels.oldPriceHint}
             className="w-full rounded-md border border-border bg-background px-3 py-2"
           />

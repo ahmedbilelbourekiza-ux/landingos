@@ -800,6 +800,37 @@ describe('the landing editor moved, not rewritten', { skip }, () => {
     );
   });
 
+  test('the CREATE screen reads a price the same way the editor does (LB.15)', async () => {
+    /* LB.15 established that ONE function must say what the characters in a
+       money box mean, and fixed the three boxes in the editor. The create
+       screen — where a price is set for the FIRST time — kept its own reader:
+       `Number(raw.replace(",", "."))`, which turns the French/Algerian «2,500»
+       into 2.5 and publishes the product at 2.50 DA. The AI panel beside it
+       had the same two lines, on price AND oldPrice.
+
+       Asserted on the SERVED screen rather than by importing the component,
+       because what matters is what a merchant's browser is handed. */
+    const r = await fetch(`${BASE}/console/builder/pages/new`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+
+    const tag = html.match(/<input[^>]*id="price"[^>]*>/)?.[0] ?? '';
+    assert.notEqual(tag, '', 'no price control on the create screen');
+    assert.ok(!/type="number"/.test(tag), `the create price rendered as ${tag}`);
+    assert.match(tag, /inputmode="decimal"/i, 'the create price offers no decimal keypad');
+    // The advertised pattern is the shared MONEY_PATTERN, so the box and the
+    // reader cannot describe different characters.
+    assert.match(tag, /pattern="\[0-9\]\*\[\.,\]\?\[0-9\]\*"/, `create price pattern: ${tag}`);
+
+    assert.equal(
+      (html.match(/<input[^>]*type="number"/g) ?? []).length,
+      0,
+      'a number input is rendered somewhere on the create screen',
+    );
+  });
+
   test("another tenant's page cannot be opened for editing", async () => {
     const r = await fetch(`${BASE}/console/builder/pages/${otherPageId}/edit`, {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
