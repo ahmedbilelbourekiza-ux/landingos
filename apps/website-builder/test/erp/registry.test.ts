@@ -88,6 +88,40 @@ describe('a customer record can be opened', () => {
     assert.equal(r.body.data.history.length, 3, 'a differently-typed number is the same customer');
   });
 
+  test('a number typed on an ARABIC keyboard is the same customer too', async () => {
+    // The audience this platform sells to types on Arabic keyboards, and
+    // `normalizePhone` only ever stripped `\s` — which is ASCII-blind. One
+    // customer ordering three times from three keyboards became THREE registry
+    // rows with their lifetime history split in thirds, silently: no error, no
+    // log line, and only noticeable when somebody asks why a repeat customer
+    // shows as new. That is the exact failure this module's own header opens by
+    // describing, arriving through a door it did not check.
+    //
+    // Its own customer, deliberately: the shared fixture's counters are what
+    // the neighbouring tests assert on, and a test that moves them is a test
+    // that breaks its neighbours.
+    const own = phone();
+    const arabicIndic = own.replace(/[0-9]/g, (d) => String.fromCodePoint(0x0660 + Number(d)));
+    assert.notEqual(arabicIndic, own, 'the second spelling really is a different script');
+
+    for (const [typed, product] of [
+      [own, 'ASCII keypad'],
+      [arabicIndic, 'Arabic keypad'],
+      // The invisible mark a paste out of RTL text carries. Not whitespace, so
+      // the `\s` strip never removed it and the key gained a character.
+      [`‏${own}`, 'RTL paste'],
+    ] as const) {
+      const r = await acme.manager.api('POST', '/api/erp/orders', {
+        client: 'Arabic Keyboard Customer', phone: typed, price: 100, product,
+      });
+      assert.equal(r.status, 201, `the ${product} order must be accepted`);
+    }
+
+    const list = await acme.manager.api('GET', `/api/erp/clients?search=${own}`);
+    assert.equal(list.body.data.items.length, 1, 'one customer, one registry row');
+    assert.equal(list.body.data.items[0].totalOrders, 3, 'all three orders on the one record');
+  });
+
   test('another tenant’s customer is a 404, not a 403', async () => {
     // Confirming a row exists elsewhere is itself information.
     const beta = await makeErpTenant(`reg-beta-${uid()}`);

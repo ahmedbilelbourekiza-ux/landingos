@@ -1,5 +1,9 @@
 import { createHash } from "crypto";
 
+// Relative, per this file's own rule below: the suite imports it directly and
+// `node --test` cannot resolve the app's `@/` alias.
+import { foldDigits } from "../digits.ts";
+
 /* =============================================================================
  * The canonical tracking vocabulary (LB.5).
  *
@@ -92,7 +96,7 @@ export function sha256Lower(value: string): string {
  * storefront cannot know whether a leading 0 means Algeria — guessing a
  * country code wrong poisons the match key silently. */
 export function sha256Phone(phone: string): string {
-  return sha256Lower(phone.replace(/[^\d]/g, ""));
+  return sha256Lower(foldDigits(phone).replace(/[^\d]/g, ""));
 }
 
 /**
@@ -105,9 +109,15 @@ export function sha256Phone(phone: string): string {
  * wilaya-addressed Algeria, so the prefix is a fact of the market rather than
  * a guess; anything that does not match the local shape stays raw-only, which
  * is exactly the old behaviour.
+ *
+ * `foldDigits` first, because `\d` is ASCII-only: a number typed on an Arabic
+ * keyboard stripped to the EMPTY string here, which returned no candidates at
+ * all, which shipped the Purchase with no `ph` match key whatsoever. Meta
+ * accepts that event and reports it, so the loss was invisible from this side —
+ * LB.10's "hashes that never matched local numbers", one keyboard further on.
  */
 export function phoneCandidates(phone: string): string[] {
-  const digits = phone.replace(/[^\d]/g, "");
+  const digits = foldDigits(phone).replace(/[^\d]/g, "");
   if (!digits) return [];
   const candidates = [digits];
   if (/^0\d{9}$/.test(digits)) candidates.push(`213${digits.slice(1)}`);

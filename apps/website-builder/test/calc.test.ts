@@ -8,6 +8,7 @@ import {
   computeBlock, totalsOf, recordLines, netProfitOf, grandTotal, type CalcInputs,
 } from '../src/lib/erp/calc.ts';
 import { normaliseTypedMoney, readTypedMoney } from '../src/lib/landing/money-field.ts';
+import { foldDigits } from '../src/lib/digits.ts';
 
 /* =============================================================================
  * test/calc.test.ts — LP.16d.
@@ -290,5 +291,45 @@ describe('LB.15 — a typed price is read once, by one function', () => {
     for (const n of [0, 1, 2990, 2990.5, 1999.9, 0.2]) {
       assert.equal(readTypedMoney(n), n, `${n} must survive the box`);
     }
+  });
+});
+
+describe('a digit is a digit, whatever keyboard typed it', () => {
+  test('both Arabic-Indic blocks fold to ASCII', () => {
+    // This platform sells to Algerian merchants and their customers, who type
+    // on Arabic keyboards. `\d` matches ASCII [0-9] and nothing else, so every
+    // comparison, key and hash on the platform read these as different values.
+    assert.equal(foldDigits('٠١٢٣٤٥٦٧٨٩'), '0123456789', 'Arabic-Indic U+0660–0669');
+    assert.equal(foldDigits('۰۱۲۳۴۵۶۷۸۹'), '0123456789', 'Eastern Arabic-Indic U+06F0–06F9');
+    assert.equal(foldDigits('٠٥٥٥١٢٣٤٥٦'), '0555123456', 'a real phone number');
+  });
+
+  test('invisible directional marks are dropped — they are not whitespace', () => {
+    // A paste out of RTL text carries these, and `\s` does not match them, so
+    // they survived every `.replace(/\s/g, "")` on the platform and lengthened
+    // the Client dedup key by one character that nothing could see.
+    assert.equal(foldDigits('‏0555123456'), '0555123456', 'RLM');
+    assert.equal(foldDigits('0555123456‎'), '0555123456', 'LRM');
+    assert.equal(foldDigits('؜0555123456'), '0555123456', 'ALM');
+    assert.equal(foldDigits('05​55123456'), '0555123456', 'zero-width space');
+    assert.equal(foldDigits('﻿0555123456'), '0555123456', 'BOM');
+  });
+
+  test('everything else is left exactly alone', () => {
+    // Deciding what a space, a `+` or a hyphen means is each caller's job.
+    // This function has one, and widening it would make it a second opinion.
+    assert.equal(foldDigits('+213 555-12-34-56'), '+213 555-12-34-56');
+    assert.equal(foldDigits('0555123456'), '0555123456');
+    assert.equal(foldDigits(''), '');
+    assert.equal(foldDigits('ساعة برو'), 'ساعة برو', 'Arabic LETTERS are not digits');
+  });
+
+  test('folding cannot merge two different numbers', () => {
+    // Each Arabic-Indic code point has exactly one ASCII counterpart, so unlike
+    // LB.15's comma there is nothing ambiguous to guess at — and no pair of
+    // distinct numbers can collide on the way through.
+    const a = foldDigits('٠٥٥٥١٢٣٤٥٦');
+    const b = foldDigits('٠٥٥٥١٢٣٤٥٧');
+    assert.notEqual(a, b, 'two different numbers stay different');
   });
 });

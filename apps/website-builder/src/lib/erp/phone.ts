@@ -1,5 +1,7 @@
 import "server-only";
 
+import { foldDigits } from "../digits";
+
 /* =============================================================================
  * Phone normalisation — the Client dedup key.
  *
@@ -26,10 +28,18 @@ import "server-only";
  * Whitespace goes first because customers, spreadsheets and storefront order
  * forms all put spaces in different places, and `+213 555 12 34 56` must be the
  * same customer as `0555123456`.
+ *
+ * `foldDigits` goes BEFORE that, for the same reason one step further out: this
+ * platform's customers type on Arabic keyboards, and `٠٥٥٥١٢٣٤٥٦` is the same
+ * number as `0555123456` to everyone except a `\s` regex. Until it was added,
+ * one customer ordering twice from two keyboards produced two Client records
+ * and split their history — the precise failure this file opens by describing.
+ * Invisible directional marks ride along on a paste out of RTL text and are not
+ * whitespace, so they survived the strip below and lengthened the key too.
  */
 export function normalizePhone(input: unknown): string {
   if (!input) return "";
-  const p = String(input).replace(/\s/g, "");
+  const p = foldDigits(String(input)).replace(/\s/g, "");
   if (p.startsWith("+213")) return "0" + p.slice(4);
   if (p.startsWith("213")) return "0" + p.slice(3);
   return p;

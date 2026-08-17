@@ -93,6 +93,28 @@ describe('phone match candidates (pure)', () => {
     assert.deepEqual(phoneCandidates(''), []);
   });
 
+  test('a number typed on an ARABIC keyboard produces the same candidates', () => {
+    // `\d` is ASCII-only, so before digits.ts these stripped to the empty string
+    // and phoneCandidates returned [] — the Purchase shipped to Meta with no
+    // `ph` match key at all, which is delivered-and-unmatched rather than a
+    // visible failure. This platform's customers type on Arabic keyboards.
+    assert.deepEqual(
+      phoneCandidates('٠٥٥٥١٢٣٤٥٦'),
+      ['0555123456', '213555123456'],
+      'Arabic-Indic ٠٥٥٥١٢٣٤٥٦ is the same number as 0555123456',
+    );
+    assert.deepEqual(
+      phoneCandidates('۰۵۵۵۱۲۳۴۵۶'),
+      ['0555123456', '213555123456'],
+      'Eastern Arabic-Indic ۰۵۵۵۱۲۳۴۵۶ too',
+    );
+    assert.deepEqual(
+      phoneCandidates('‏0555123456'),
+      ['0555123456', '213555123456'],
+      'a leading RTL mark from a paste is not part of the number',
+    );
+  });
+
   test('meta sends every candidate hash; tiktok sends the most specific one', () => {
     const local: ServerTrackingEvent = { ...EVENT, customer: { name: 'Karim Ben Ali', phone: '0555123456' } };
     const meta = buildMetaPayload(local, null) as any;
