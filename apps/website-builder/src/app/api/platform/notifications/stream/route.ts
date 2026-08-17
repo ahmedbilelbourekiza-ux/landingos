@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 
 import { withTenant } from "@landingos/db";
+import { can } from "@landingos/auth";
 
 import { apiError } from "@/lib/api/route";
 import { getConsoleSession } from "@/lib/console/session";
@@ -62,11 +63,29 @@ const POLL_MS = Math.max(1000, Number(process.env.NOTIFICATION_POLL_MS) || 5000)
 /** A comment frame, because proxies and mobile networks drop idle connections. */
 const KEEPALIVE_MS = 25_000;
 
+/**
+ * The permission its three siblings check. This route cannot use `tenantRoute`
+ * — that wrapper runs the handler INSIDE a tenant transaction and returns when
+ * it resolves, which is the opposite of a connection held open for hours — so
+ * it reproduces the preamble by hand, and reproduced three of the four gates.
+ *
+ * The missing one was `can()`, and it is the gate that reads `suspended`.
+ * Measured: after suspending a MEMBER, `GET /api/platform/notifications`
+ * correctly answered 403 while this route still answered 200
+ * `text/event-stream` — the whole point of server-side sessions (M-09) is that
+ * suspension takes effect on the next request, and this was the one door that
+ * did not ask.
+ */
+const STREAM_PERMISSION = "platform:notifications:read";
+
 export async function GET(req: NextRequest) {
   const session = await getConsoleSession();
   if (!session) return apiError(401, "UNAUTHENTICATED", "Sign in to continue.");
   if (!session.auth) {
     return apiError(403, "NO_ACTIVE_TENANT", "Choose a company before using this feature.");
+  }
+  if (!can(session.auth, STREAM_PERMISSION)) {
+    return apiError(403, "FORBIDDEN", "You do not have access to this.");
   }
 
   const tenantId = session.auth.tenantId;

@@ -354,6 +354,60 @@ describe('suspension takes effect on the very next request (M-09)', () => {
     assert.equal(after.status, 200);
   });
 
+  contractTest('the NOTIFICATION STREAM is refused too, like every other door', async () => {
+    /* The long-lived door, and the one that did not ask. `tenantRoute` cannot
+       wrap an SSE handler — it runs the handler inside a tenant transaction and
+       returns when it resolves, which is the opposite of a connection held open
+       for hours — so the stream reproduces the preamble by hand, and reproduced
+       three of its four gates. The missing one was `can()`, which is the gate
+       that reads `suspended`.
+
+       Measured before the fix: after suspension the JSON list answered 403
+       while the stream still answered 200 text/event-stream, so a suspended
+       member kept a live feed of the company's notifications while every other
+       door was shut. Both are asserted here, because the list flipping is what
+       proves the suspension actually took effect. */
+    const tenantId = await makeTenant('suspend-stream');
+    const [admin, member] = await Promise.all([
+      makeMember(tenantId, { role: 'ADMIN' }),
+      makeMember(tenantId, { role: 'MEMBER' }),
+    ]);
+
+    const openStream = async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2500);
+      try {
+        const res = await fetch(`${BASE}/api/platform/notifications/stream`, {
+          headers: { cookie: `${SESSION_COOKIE}=${member.token}` },
+          signal: controller.signal,
+        });
+        // An accepted SSE connection is held open, so read nothing — just take
+        // the status and let it go.
+        if (res.body) await res.body.cancel().catch(() => {});
+        return res.status;
+      } catch {
+        // Aborted while open: the server accepted it.
+        return 200;
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    assert.equal(await openStream(), 200, 'an active member may subscribe');
+    assert.equal((await member.api('GET', '/api/platform/notifications')).status, 200);
+
+    assert.equal(
+      (await admin.api('POST', `/api/platform/team/members/${member.userId}/suspend`)).status,
+      200,
+    );
+
+    assert.equal(
+      (await member.api('GET', '/api/platform/notifications')).status, 403,
+      'the list refuses a suspended member — the control for this test',
+    );
+    assert.equal(await openStream(), 403, 'and so must the stream');
+  });
+
   contractTest('and it is per company, not per person', async () => {
     // One human, two employers — the seeded consultant's case. Suspending them
     // here must not sign them out there, which is what destroying every session
