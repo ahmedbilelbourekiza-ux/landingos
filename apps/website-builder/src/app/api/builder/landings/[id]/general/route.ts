@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
 import { triggerProductWebhook } from "@/lib/webhooks/tenant-triggers";
+import { SLUG_HAS_LETTER, SLUG_NEEDS_LETTER } from "@/lib/landing/create";
 
 export const dynamic = "force-dynamic";
 type Params = { id: string };
@@ -10,7 +11,7 @@ const Body = z.object({
   slug: z.string().trim().min(1).max(120)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "lowercase letters, numbers and hyphens only")
     // At least one letter — the digit-only-slug rule; see the create route.
-    .regex(/[a-z]/, "the address needs at least one letter").optional(),
+    .regex(SLUG_HAS_LETTER, SLUG_NEEDS_LETTER).optional(),
   description: z.string().trim().max(20000).optional().nullable(),
   announcement: z.string().trim().max(500).optional().nullable(),
   ctaButtonText: z.string().trim().max(120).optional().nullable(),

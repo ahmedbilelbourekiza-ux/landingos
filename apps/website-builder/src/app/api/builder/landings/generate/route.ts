@@ -10,7 +10,7 @@ import {
   parseGeneratedCopy,
   GenerationParseError,
 } from "@/lib/landing/ai-generate";
-import { slugify } from "@/lib/landing/create";
+import { slugify, slugHasLetter, SLUG_HAS_LETTER, SLUG_NEEDS_LETTER } from "@/lib/landing/create";
 import { readTenantImage } from "@/lib/landing/image-bytes";
 import { themeFromImage } from "@/lib/landing/palette";
 
@@ -59,7 +59,10 @@ const Body = z.object({
   currency: z.string().trim().length(3).optional(),
   sellingPoints: z.array(z.string().trim().min(1).max(300)).min(1).max(8),
   category: z.string().trim().max(120).optional().nullable(),
-  slug: z.string().trim().max(100).regex(SLUG_RE).optional(),
+  /* Charset AND the letter rule — LB.54's gate, which this route was the one
+     write path never to carry. A merchant-supplied `"0"` used to publish a
+     page at `/0` here while the create form refused the identical value. */
+  slug: z.string().trim().max(100).regex(SLUG_RE).regex(SLUG_HAS_LETTER, SLUG_NEEDS_LETTER).optional(),
   imageUrls: z.array(z.string().trim().min(1).max(2000)).max(12).optional(),
 });
 
@@ -163,10 +166,19 @@ export const POST = tenantRoute("website-builder:pages:write", async ({ db, req,
     /* Slug: the merchant's word wins, then the latin product name, then the
      * model's transliteration. Bases are capped so the longest de-clash
      * suffix stays inside the 120 every other slug writer enforces. */
+    /* The MODEL's suggestion is checked for the letter rule too, and IGNORED
+       rather than refused when it fails. The merchant never typed it, so there
+       is nothing to ask them about — and throwing away a generation they paid
+       for because the model answered "2024" would be the worse trade. It falls
+       through to "page", which is letter-bearing, lands on a DRAFT, and is the
+       first thing the editor shows them. Measured before this: a model slug of
+       "0" produced /0-2 and "2024" produced /2024. */
+    const modelSlug =
+      copy.slug && SLUG_RE.test(copy.slug) && slugHasLetter(copy.slug) ? copy.slug : "";
     const base =
       body.slug ||
       slugify(body.productName).slice(0, 100).replace(/-+$/, "") ||
-      (copy.slug && SLUG_RE.test(copy.slug) ? copy.slug : "") ||
+      modelSlug ||
       "page";
 
     try {

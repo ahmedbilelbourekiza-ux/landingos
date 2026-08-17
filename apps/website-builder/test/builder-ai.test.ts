@@ -528,4 +528,48 @@ describe('POST /api/builder/landings/generate (end to end)', { skip }, () => {
     assert.equal(second.status, 201);
     assert.equal(second.body.data.slug, 'gen-clash-2');
   });
+
+  test('LB.54 — a caller-supplied letterless slug is REFUSED, not published', async () => {
+    /* This route was the ONE write path LB.54 never gated. Measured before the
+       fix, against this same build: `slug: "0"` with an Arabic product name
+       created a page at `/0` — the exact address whose 404 LB.54 was written
+       to close — while POST /api/builder/landings refused the identical value
+       with 422. Four write paths, one rule, one copy missing. */
+    behaviour.answer = JSON.stringify(VALID_COPY);
+    for (const slug of ['0', '2024', '0-1']) {
+      const r = await api('/api/builder/landings/generate', tokens.owner, generateBody({ slug }));
+      assert.equal(r.status, 422, `slug ${JSON.stringify(slug)} was accepted: ${JSON.stringify(r.body)}`);
+      assert.equal(r.body.error.code, 'INVALID_INPUT');
+      assert.match(r.body.error.message, /at least one letter/);
+    }
+    // The rule is about LETTERS, not about digits — a digit-carrying address
+    // that also has a letter is still perfectly typable and must survive.
+    const ok = await api('/api/builder/landings/generate', tokens.owner, generateBody({ slug: '2024-promo' }));
+    assert.equal(ok.status, 201, JSON.stringify(ok.body));
+    assert.equal(ok.body.data.slug, '2024-promo');
+  });
+
+  test("LB.54 — a letterless slug FROM THE MODEL is ignored, not refused", async () => {
+    /* The merchant never typed this one, so refusing would throw away a
+       generation they paid for over a word they did not choose. It falls
+       through to the letter-bearing default instead, on a DRAFT, which is the
+       first thing the editor shows them. Measured before the fix: a model
+       answering "0" produced /0-2 and "2024" produced /2024. */
+    for (const modelSlug of ['0', '2024']) {
+      behaviour.answer = JSON.stringify({ ...VALID_COPY, slug: modelSlug });
+      const r = await api('/api/builder/landings/generate', tokens.owner,
+        generateBody({ productName: 'ساعة برو' }));
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+      assert.match(r.body.data.slug, /[a-z]/,
+        `the model's ${JSON.stringify(modelSlug)} became the address: ${r.body.data.slug}`);
+      assert.ok(!/^0/.test(r.body.data.slug), `slug still starts from the model's digits: ${r.body.data.slug}`);
+    }
+    // And a GOOD model slug is still used — the guard must not throw the
+    // model's real contribution away with the bad one.
+    behaviour.answer = JSON.stringify({ ...VALID_COPY, slug: 'saa-pro-lux' });
+    const good = await api('/api/builder/landings/generate', tokens.owner,
+      generateBody({ productName: 'ساعة برو' }));
+    assert.equal(good.status, 201, JSON.stringify(good.body));
+    assert.equal(good.body.data.slug, 'saa-pro-lux', 'a letter-bearing model slug must still win');
+  });
 });

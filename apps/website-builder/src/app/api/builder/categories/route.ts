@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { SLUG_HAS_LETTER, SLUG_NEEDS_LETTER } from "@/lib/landing/create";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ const CreateCategory = z.object({
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "lowercase letters, numbers and hyphens only")
     // At least one letter — the digit-only-slug rule; see the landings
     // create route. «ساعات 2024» must not become /category/2024.
-    .regex(/[a-z]/, "the address needs at least one letter"),
+    .regex(SLUG_HAS_LETTER, SLUG_NEEDS_LETTER),
   description: z.string().trim().max(500).optional().nullable(),
   icon: z.string().trim().max(80).optional().nullable(),
   sortOrder: z.coerce.number().int().optional(),

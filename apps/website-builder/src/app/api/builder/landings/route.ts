@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { tenantRoute, apiOk, apiError, pagination } from "@/lib/api/route";
 import { triggerProductWebhook } from "@/lib/webhooks/tenant-triggers";
+import { SLUG_HAS_LETTER, SLUG_NEEDS_LETTER } from "@/lib/landing/create";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,7 @@ const CreateLanding = z.object({
     // moment the slug was fixed (see lib/landing/create.ts). The client
     // derivation refuses these now; the route is the gate that holds
     // whichever way the value arrives.
-    .regex(/[a-z]/, "the address needs at least one letter"),
+    .regex(SLUG_HAS_LETTER, SLUG_NEEDS_LETTER),
   price: z.coerce.number().nonnegative(),
   categoryId: z.string().optional().nullable(),
 });

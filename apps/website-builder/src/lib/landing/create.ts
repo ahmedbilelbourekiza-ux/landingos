@@ -35,7 +35,35 @@ export const CURRENCIES = [
 // one they never chose.
 export function slugify(input: string): string {
   const slug = slugCharset(input);
-  return /[a-z]/.test(slug) ? slug : "";
+  return SLUG_HAS_LETTER.test(slug) ? slug : "";
+}
+
+/* THE LETTER RULE, in one place, because it was written four times and one
+ * copy was missing.
+ *
+ * LB.54 gated three server write paths — create, the general PATCH, and the
+ * category create — each with its own inline `/[a-z]/`. The AI generate route
+ * (LB.24, shipped days earlier) validated slugs with the CHARSET half alone,
+ * so the rule that closed `/0` had a door it never covered: measured, a
+ * caller-supplied `slug:"0"` produced a page at `/0`, and a model answering
+ * `"0"` or `"2024"` produced `/0-2` and `/2024`, while the three gated routes
+ * refused the identical value with 422.
+ *
+ * A regex repeated four times is four chances to add a fifth writer that
+ * forgets it — this project's own rule, stated after the quote and the charge
+ * each built their own copy. One definition, imported by every path that
+ * accepts a slug. */
+export const SLUG_HAS_LETTER = /[a-z]/;
+
+/** The message every write path gives when a slug carries no letter. Shared
+ * for the same reason the regex is: a merchant should not get a different
+ * sentence depending on which door refused them. */
+export const SLUG_NEEDS_LETTER = "the address needs at least one letter";
+
+/** Is this an address a human can be given? Charset-valid AND letter-bearing.
+ * Takes an already-charset-filtered slug; use `slugify` to derive one. */
+export function slugHasLetter(slug: string): boolean {
+  return SLUG_HAS_LETTER.test(slug);
 }
 
 /** The charset half alone \u2014 what a slug INPUT applies per keystroke. The
