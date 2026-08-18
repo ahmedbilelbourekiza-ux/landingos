@@ -29,24 +29,38 @@ import type { SourceEvidenceInput, VisitBodyInput } from "@/lib/storefront/contr
  * customer's bundle and out of a spoofable request field.
  * ========================================================================== */
 
-const TOKEN_KEY = "landingos_visit_token";
+/** AN.2 — LOCALSTORAGE, not sessionStorage: the id must outlive the visit so
+ * distinct ids are unique VISITORS and a customer coming back next week reads
+ * as returning. Random and meaningless; first-party; single shop. */
+const VISITOR_ID_KEY = "landingos_visitor_id";
+/** Session-scoped verdict of "had we seen this visitor before THIS session
+ * started" — decided once at session start, then stable, so a returning
+ * customer's tenth page this session does not read as ten returns. */
+const RETURNING_KEY = "landingos_visit_returning";
 const SOURCE_KEY = "landingos_visit_source";
 
 function randomToken(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-function getOrCreateToken(): string {
+function visitorIdentity(): { id: string; isReturning: boolean } {
   try {
-    const existing = sessionStorage.getItem(TOKEN_KEY);
-    if (existing) return existing;
-    const token = randomToken();
-    sessionStorage.setItem(TOKEN_KEY, token);
-    return token;
+    const existing = localStorage.getItem(VISITOR_ID_KEY);
+    const id = existing ?? randomToken();
+    if (!existing) localStorage.setItem(VISITOR_ID_KEY, id);
+
+    // The verdict is per SESSION: sessionStorage empty means a session is
+    // just beginning, and "returning" is exactly "the id predates it".
+    const decided = sessionStorage.getItem(RETURNING_KEY);
+    if (decided !== null) return { id, isReturning: decided === "1" };
+    const isReturning = Boolean(existing);
+    sessionStorage.setItem(RETURNING_KEY, isReturning ? "1" : "0");
+    return { id, isReturning };
   } catch {
     // Private-browsing fallback: the view still counts; uniqueness degrades
-    // to per-page rather than per-session. Same trade the draft token makes.
-    return randomToken();
+    // to per-page and the visitor reads as new. Same trade the draft token
+    // makes.
+    return { id: randomToken(), isReturning: false };
   }
 }
 
@@ -124,11 +138,13 @@ export function VisitBeacon({
     if (firedRef.current) return;
     firedRef.current = true;
 
+    const { id, isReturning } = visitorIdentity();
     const body: VisitBodyInput = {
-      token: getOrCreateToken(),
+      token: id,
       pageKind,
       landingPageId,
       source: captureOrRecallEvidence() ?? undefined,
+      isReturning,
     };
 
     void fetch(endpoint, {

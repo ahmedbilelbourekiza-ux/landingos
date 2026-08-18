@@ -983,25 +983,33 @@ Google/WhatsApp/Telegram/Direct/Other, plus "no source recorded" for orders
 with no browser session), 7/30 days. Orders carry their channel from the
 same server-side derivation the views use, snapshotted at checkout.
 
-**Open questions, each a decision before or after deploy — none blocks it:**
+**The open questions were REVIEWED AND DECIDED by the user, 18 Aug (same
+night) — the first two are BUILT as AN.2 (CHANGELOG §AN.2, one commit on top
+of AN.1, and its `isReturning` column is folded into AN.1's SAME pre-deploy
+migration — still one `db push` + one `apply-rls`, 49 → 50, nothing extra):**
 
-1. **Retention/rollup.** Raw rows only. At ad-funnel volume (say 5k
-   views/day) that is ~1.8M rows/year — Postgres-fine with the
-   `(tenantId, createdAt)` index, but a daily rollup table + pruning of raw
-   rows older than N days is the obvious upgrade once real volume exists to
-   size it against. Decide N when the first real store has a month of data.
-2. **Unique visitors.** The visitor token (sessionStorage, per-visit) is
-   stored but not yet surfaced — `COUNT(DISTINCT visitorToken)` per window
-   is a heavier query worth designing WITH the rollup, not before it.
-3. **Funnel steps.** The vocabulary already exists client-side
-   (ViewContent → InitiateCheckout → Lead → Purchase, LB.5). The beacon
-   counts PageView only; adding funnel events is the same wire and table
-   (a `kind` column widening) — worth doing once the first slice proves
-   itself on the real store. Drafts (leads) and orders are already
-   first-party, so a views → leads → orders funnel is READ-side work today.
-4. **utm_campaign.** Only `utm_source` is derived. Campaign-level breakdown
-   means storing `utm_campaign` (one more bounded column in the evidence
-   bundle) — cheap, but wait for the first real "which creative" question.
+1. ~~**Retention.**~~ **DECIDED: one month. BUILT (AN.2).** Raw rows older
+   than 30 days are pruned by `lib/storefront/visit-retention.ts` — amortised
+   2% on beacon writes, on every Traffic-screen render, and in the worker
+   tick's per-tenant housekeeping (the tick half is inert until the worker
+   deploys; the other two run today, which is why they exist). The screen's
+   windows (7/30d) never exceed retention. A ROLLUP table remains unneeded
+   until real volume says otherwise.
+2. ~~**Unique visitors.**~~ **DECIDED: now. BUILT (AN.2).** The visitor id is
+   localStorage (outlives retention), `isReturning` is decided client-side
+   once per session, and the screen shows views · visitors · new · returning
+   with new + returning = visitors by construction.
+3. **Funnel steps — APPROVED by the user, deliberately NOT urgent; do not
+   build unprompted until picked up.** View → product view → checkout
+   started → completed. The client vocabulary exists (LB.5:
+   ViewContent/InitiateCheckout/Lead/Purchase); the shape is a `kind`
+   widening on the same beacon/table, and drafts + orders are already
+   first-party so the coarse views → leads → orders funnel is read-side
+   work whenever this starts.
+4. **utm_campaign — APPROVED by the user, deliberately NOT urgent; same
+   treatment.** One more bounded column in the evidence bundle + a campaign
+   breakdown on the screen, when the first real "which creative" question
+   arrives.
 5. **Merchant self-views count.** Stated on the screen rather than
    half-fixed. A real fix (exclude sessions that carry a console cookie) is
    possible and adds coupling between surfaces; decide if merchants complain.

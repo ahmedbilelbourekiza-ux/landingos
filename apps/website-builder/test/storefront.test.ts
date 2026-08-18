@@ -1562,3 +1562,109 @@ describe('first-party page views and their traffic source (AN.1)', { skip }, () 
     assert.ok(data.totals.orders >= 2);
   });
 });
+
+describe('visit retention and returning visitors (AN.2)', { skip }, () => {
+  test('the returning flag is stored, defaults to false, and junk is refused whole', async () => {
+    const returningToken = `visit-${stamp}-ret`;
+    await post(`/api/storefront/${slugA}/visits`, {
+      token: returningToken, pageKind: 'home', isReturning: true,
+    });
+    const newToken = `visit-${stamp}-new`;
+    await post(`/api/storefront/${slugA}/visits`, {
+      token: newToken, pageKind: 'home',
+    });
+    // A string is not a boolean: the parse fails and the beacon is dropped
+    // whole — a half-recorded row would lie about what the client said.
+    const junkToken = `visit-${stamp}-junk`;
+    await post(`/api/storefront/${slugA}/visits`, {
+      token: junkToken, pageKind: 'home', isReturning: 'yes',
+    });
+
+    const rows = await withTenant(tenantA, (db) =>
+      (db as any).storefrontVisit.findMany({
+        where: { visitorToken: { in: [returningToken, newToken, junkToken] } },
+        select: { visitorToken: true, isReturning: true },
+      }),
+    );
+    assert.equal(rows.length, 2, 'the junk beacon wrote nothing');
+    assert.equal(rows.find((r: any) => r.visitorToken === returningToken).isReturning, true);
+    assert.equal(rows.find((r: any) => r.visitorToken === newToken).isReturning, false);
+  });
+
+  test('rows older than 30 days are pruned; the 30-day line is exact', async () => {
+    const { pruneExpiredVisits, visitRetentionCutoff, VISIT_RETENTION_DAYS } =
+      await import('../src/lib/storefront/visit-retention.ts');
+    assert.equal(VISIT_RETENTION_DAYS, 30);
+
+    const day = 24 * 60 * 60 * 1000;
+    const oldToken = `visit-${stamp}-old`;
+    const keptToken = `visit-${stamp}-kept`;
+    await withTenant(tenantA, async (db) => {
+      // Explicit createdAt overrides the default — one row a day past the
+      // line, one a day inside it, so the boundary is pinned, not implied.
+      await (db as any).storefrontVisit.create({
+        data: {
+          tenantId: tenantA, pageKind: 'home', visitorToken: oldToken,
+          sourceChannel: 'direct', createdAt: new Date(Date.now() - 31 * day),
+        },
+      });
+      await (db as any).storefrontVisit.create({
+        data: {
+          tenantId: tenantA, pageKind: 'home', visitorToken: keptToken,
+          sourceChannel: 'direct', createdAt: new Date(Date.now() - 29 * day),
+        },
+      });
+    });
+
+    const pruned = await withTenant(tenantA, (db) => pruneExpiredVisits(db));
+    assert.ok(pruned >= 1, 'the expired row was counted by the prune');
+
+    const remaining = await withTenant(tenantA, (db) =>
+      (db as any).storefrontVisit.findMany({
+        where: { visitorToken: { in: [oldToken, keptToken] } },
+        select: { visitorToken: true },
+      }),
+    );
+    assert.deepEqual(remaining.map((r: any) => r.visitorToken), [keptToken]);
+
+    // The cutoff arithmetic itself, independently of the database.
+    const cutoff = visitRetentionCutoff(new Date('2026-08-31T00:00:00Z'));
+    assert.equal(cutoff.toISOString(), '2026-08-01T00:00:00.000Z');
+  });
+
+  test('the amortised dice is a 2% coin, injectable for exactly this assertion', async () => {
+    const { shouldAmortisedPrune } = await import('../src/lib/storefront/visit-retention.ts');
+    assert.equal(shouldAmortisedPrune(0.0199), true);
+    assert.equal(shouldAmortisedPrune(0.02), false);
+    assert.equal(shouldAmortisedPrune(0.9), false);
+  });
+
+  test('uniques count DISTINCT visitors and split new/returning without overlap', async () => {
+    // One visitor with two rows (second flagged returning — a second
+    // session), one visitor with one row: three rows, two visitors.
+    const twice = `visit-${stamp}-twice`;
+    const once = `visit-${stamp}-once`;
+    await post(`/api/storefront/${slugA}/visits`, { token: twice, pageKind: 'home' });
+    await post(`/api/storefront/${slugA}/visits`, { token: twice, pageKind: 'home', isReturning: true });
+    await post(`/api/storefront/${slugA}/visits`, { token: once, pageKind: 'home' });
+
+    const { storefrontAnalytics, analyticsRange } = await import('../src/lib/builder/analytics.ts');
+    const data = await withTenant(tenantA, (db) =>
+      storefrontAnalytics(db, analyticsRange('7')),
+    );
+
+    // Relative assertions — the suite's earlier fixtures share this tenant.
+    assert.ok(data.totals.visitors >= 2, `visitors ${data.totals.visitors}`);
+    assert.ok(data.totals.returningVisitors >= 1, 'the twice-seen visitor counts as returning');
+    assert.ok(
+      data.totals.views > data.totals.visitors,
+      'views keep counting rows while visitors count people',
+    );
+    // The split is a partition by construction: a visitor who was both new
+    // and returning inside the window lands on the returning side only.
+    assert.equal(
+      data.totals.newVisitors + data.totals.returningVisitors,
+      data.totals.visitors,
+    );
+  });
+});

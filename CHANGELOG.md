@@ -10,6 +10,78 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## AN.2 — visit rows learn to expire, and visitors learn to be people
+
+**Committed locally 18 August 2026 (same overnight session, after the user's
+review of AN.1's open questions) — NOT pushed, NOT deployed. ⚠ The schema
+grows `StorefrontVisit.isReturning Boolean @default(false)` — FOLDED INTO
+AN.1's pre-deploy migration: the table has never reached production, so
+AN.1+AN.2 remain ONE user-approved `db push` + ONE `apply-rls` (RLS 49 → 50),
+nothing extra. Dev pushed tonight (`ep-gentle-sky` confirmed), both clients
+regenerated.**
+
+- **Retention (user-decided: one month).** `lib/storefront/visit-retention.ts`
+  owns `VISIT_RETENTION_DAYS = 30` and `pruneExpiredVisits` — and WHERE it
+  runs was measured against what this deployment actually executes:
+  `services/worker` is not deployed in production and the tick fails closed
+  without `WORKER_SECRET`, so a scheduler-only prune would be dead code. The
+  prune therefore rides the paths traffic takes — a 2% amortised dice on
+  every accepted beacon write (the rate-limiter's own pattern; an active
+  store cleans itself in proportion to its traffic) and EVERY Traffic-screen
+  render (whoever reads analytics sweeps their own expired rows first) —
+  and it is ALSO in the worker tick's per-tenant housekeeping beside
+  `pruneNotifications`, so the day the worker deploys, retention stops
+  depending on traffic. One function, three callers, tenant-bound at each
+  (RLS decides what "expired rows" can possibly mean). The 30-day line and
+  the screen's 7/30-day windows agree by construction.
+
+- **Unique and returning visitors (user-decided: now).** The visitor id
+  moved from sessionStorage to LOCALSTORAGE (`landingos_visitor_id` —
+  random, meaningless, first-party, single-shop), so distinct ids in a
+  window are unique VISITORS, not unique sessions. "Returning" is decided
+  CLIENT-SIDE once per session — the id predating the session is exactly
+  what returning means — and stored per row as `isReturning`. Client-side
+  on purpose: localStorage outlives the 30-day row retention, so a customer
+  coming back in month three still reads as returning, which a server
+  lookup over pruned rows never could. The verdict is session-scoped
+  (sessionStorage), so a returning customer's tenth page this session is
+  not ten returns. Named `isReturning` because RETURNING is a SQL keyword
+  and the aggregate reads the column from raw SQL.
+
+- **The uniques aggregate is ONE raw `COUNT(DISTINCT)`** in
+  `storefrontAnalytics`, not a groupBy whose group list the process would
+  have to hold and count. Raw SQL is safe there because the caller is a
+  `withTenant` binding — the GUC rides the pinned transaction connection
+  and RLS applies to raw exactly as to the builder (this is also why the
+  screen switched from the `forTenant` proxy, which cannot carry a tagged
+  template). The lib's queries went SEQUENTIAL at the same time — the ERP
+  analytics route's own one-connection rule. The screen's strip now reads
+  views · visitors · new · returning · orders; new + returning = visitors
+  by construction (a visitor seen both ways inside the window lands on the
+  returning side only).
+
+- **Verified live in the browser, the actual mechanism:** storage cleared →
+  first visit wrote `isReturning: false` and created the localStorage id;
+  sessionStorage alone cleared (a new session, same person) → the next
+  visit wrote `isReturning: true` under the SAME visitor id; the Traffic
+  screen rendered **6 views · 3 visitors · 2 new · 1 returning** over the
+  night's real rows; and a planted 31-day-old row was DELETED by the
+  screen's own render (the read-path prune, observed: 1 → 0 rows).
+
+- **Tests:** storefront **90/90** (4 new: the flag stored/defaulted/junk
+  refused whole; the 31-vs-29-day boundary pinned with back-dated rows plus
+  the cutoff arithmetic; the amortised dice injectable and asserted at its
+  edges; uniques distinct-counted with the new/returning partition equal to
+  the total). console-shell 20/20 · builder-sections 75/75 · tracking 16/16
+  · i18n 22/22 (three new keys ×3 locales; the basis line now states the
+  30-day retention on the screen). Files: `visit-retention.ts` (new),
+  schema, `contract.ts`, `visit-beacon.tsx`, `visits/route.ts`,
+  `analytics.ts`, the analytics screen, `jobs/tick/route.ts`, catalogs ×3.
+
+- **Approved but deliberately NOT built (user-decided: not urgent), recorded
+  in NEXT_STEPS §AN.1:** the detailed funnel (view → product view →
+  checkout started → completed) and utm_campaign tracking.
+
 ## JS.1 — the storefront stops shipping the console's client machinery
 
 **Committed locally 18 August 2026 (overnight session) — NOT pushed, NOT

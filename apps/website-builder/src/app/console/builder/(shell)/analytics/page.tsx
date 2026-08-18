@@ -1,9 +1,10 @@
 import Link from "next/link";
 
-import { forTenant } from "@landingos/db";
+import { withTenant } from "@landingos/db";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { analyticsRange, storefrontAnalytics } from "@/lib/builder/analytics";
+import { pruneExpiredVisits } from "@/lib/storefront/visit-retention";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 
@@ -40,10 +41,15 @@ export default async function BuilderAnalyticsScreen({
   );
   const range = analyticsRange((await searchParams).days);
 
-  const data = await storefrontAnalytics(
-    forTenant(session.auth!.tenantId),
-    range,
-  );
+  /* `withTenant`, not `forTenant`: the uniques aggregate is raw SQL and needs
+   * the one bound transaction connection (the proxy cannot carry it). The
+   * prune runs FIRST, in the same transaction — AN.2's read-path retention:
+   * whoever looks at analytics sweeps their own expired rows, so this screen
+   * never reports over data the retention rule says should be gone. */
+  const data = await withTenant(session.auth!.tenantId, async (db) => {
+    await pruneExpiredVisits(db);
+    return storefrontAnalytics(db, range);
+  });
 
   const channelLabel = (channel: string) =>
     CHANNEL_BRANDS[channel] ?? t(`builder.analytics.channel.${channel}` as any);
@@ -66,10 +72,25 @@ export default async function BuilderAnalyticsScreen({
       <p className="text-sm text-muted-foreground">{t("builder.analytics.basis")}</p>
 
       <div className="flex items-center justify-between gap-4">
-        <div className="flex gap-4 text-sm" data-testid="analytics-totals">
+        <div className="flex flex-wrap gap-4 text-sm" data-testid="analytics-totals">
           <span>
             <span className="font-semibold tabular-nums">{data.totals.views}</span>{" "}
             <span className="text-muted-foreground">{t("builder.analytics.views")}</span>
+          </span>
+          {/* AN.2 — visitors split new/returning; the two halves sum to the
+              total by construction (returning = seen before their session
+              began; new = the remainder). */}
+          <span data-testid="analytics-visitors">
+            <span className="font-semibold tabular-nums">{data.totals.visitors}</span>{" "}
+            <span className="text-muted-foreground">{t("builder.analytics.visitors")}</span>
+          </span>
+          <span data-testid="analytics-new">
+            <span className="font-semibold tabular-nums">{data.totals.newVisitors}</span>{" "}
+            <span className="text-muted-foreground">{t("builder.analytics.newVisitors")}</span>
+          </span>
+          <span data-testid="analytics-returning">
+            <span className="font-semibold tabular-nums">{data.totals.returningVisitors}</span>{" "}
+            <span className="text-muted-foreground">{t("builder.analytics.returningVisitors")}</span>
           </span>
           <span>
             <span className="font-semibold tabular-nums">{data.totals.orders}</span>{" "}

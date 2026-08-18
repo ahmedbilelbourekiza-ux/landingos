@@ -131,11 +131,18 @@ export type DraftBodyInput = z.input<typeof DraftBody>;
  * Same tolerance rules as DraftBody: every refusal is a silent 204.
  */
 export const VisitBody = z.object({
+  /** AN.2 — the LONG-LIVED visitor id (localStorage), not a session token:
+   * distinct values in a window are unique visitors. */
   token: z.string().trim().min(8).max(120),
   pageKind: z.enum(["landing", "home", "category"]),
   /** Present exactly when pageKind is "landing". */
   landingPageId: z.string().min(1).optional(),
   source: SourceEvidenceBody.optional(),
+  /** AN.2 — true when the visitor id existed before this session began.
+   * Client-decided (localStorage outlives the 30-day row retention, so this
+   * stays honest past the prune horizon); a strict boolean, so junk fails
+   * the parse and the beacon is dropped whole rather than half-recorded. */
+  isReturning: z.boolean().optional().default(false),
 });
 
 export type VisitBodyInput = z.input<typeof VisitBody>;

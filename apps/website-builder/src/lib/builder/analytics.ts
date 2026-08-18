@@ -47,7 +47,18 @@ export interface ChannelRow {
 }
 
 export interface StorefrontAnalytics {
-  totals: { views: number; orders: number };
+  totals: {
+    views: number;
+    orders: number;
+    /** AN.2 — distinct visitor ids in the window. */
+    visitors: number;
+    /** Visitors seen in the window whose id predates their session — decided
+     * client-side against localStorage, so it stays honest past the 30-day
+     * row retention. */
+    returningVisitors: number;
+    /** visitors − returningVisitors: first-ever visitors, no overlap. */
+    newVisitors: number;
+  };
   byPage: PageTrafficRow[];
   byChannel: ChannelRow[];
 }
@@ -61,29 +72,48 @@ export async function storefrontAnalytics(
 ): Promise<StorefrontAnalytics> {
   const inWindow = { createdAt: { gte: range.since } };
 
-  const [viewGroups, orderGroups, channelViewGroups, channelOrderGroups] =
-    await Promise.all([
-      db.storefrontVisit.groupBy({
-        by: ["pageKind", "landingPageId"],
-        where: inWindow,
-        _count: { _all: true },
-      }),
-      db.salesOrder.groupBy({
-        by: ["landingPageId"],
-        where: inWindow,
-        _count: { _all: true },
-      }),
-      db.storefrontVisit.groupBy({
-        by: ["sourceChannel"],
-        where: inWindow,
-        _count: { _all: true },
-      }),
-      db.salesOrder.groupBy({
-        by: ["sourceChannel"],
-        where: inWindow,
-        _count: { _all: true },
-      }),
-    ]);
+  // SEQUENTIAL, not Promise.all — the caller is a `withTenant` binding, so
+  // every query here rides ONE pinned transaction connection (the ERP
+  // analytics route's stated rule; parallel dispatch at a single connection
+  // is how P2028 timeouts start).
+  const viewGroups = await db.storefrontVisit.groupBy({
+    by: ["pageKind", "landingPageId"],
+    where: inWindow,
+    _count: { _all: true },
+  });
+  const orderGroups = await db.salesOrder.groupBy({
+    by: ["landingPageId"],
+    where: inWindow,
+    _count: { _all: true },
+  });
+  const channelViewGroups = await db.storefrontVisit.groupBy({
+    by: ["sourceChannel"],
+    where: inWindow,
+    _count: { _all: true },
+  });
+  const channelOrderGroups = await db.salesOrder.groupBy({
+    by: ["sourceChannel"],
+    where: inWindow,
+    _count: { _all: true },
+  });
+
+  /* AN.2 — unique visitors, as ONE aggregate rather than a groupBy whose
+   * group list this process would have to hold and count: a busy month is
+   * tens of thousands of distinct ids, and shipping them across the wire to
+   * measure their length is the wrong shape. Raw SQL is safe HERE because
+   * the binding contract puts this on the transaction connection whose
+   * app.tenant_id is set — RLS applies to raw exactly as to the builder.
+   * (This is also why the caller must be `withTenant`, not the `forTenant`
+   * proxy — the proxy cannot carry a tagged template.) A returning visitor
+   * is counted from any isReturning row in the window; new is the
+   * remainder, so the two halves sum to the total by construction. */
+  const [uniques] = (await db.$queryRaw`
+    SELECT
+      COUNT(DISTINCT "visitorToken")::int AS "visitors",
+      COUNT(DISTINCT "visitorToken") FILTER (WHERE "isReturning")::int AS "returningVisitors"
+    FROM "StorefrontVisit"
+    WHERE "createdAt" >= ${range.since}
+  `) as [{ visitors: number; returningVisitors: number }];
 
   // Titles for the landing rows — including archived/unpublished pages, whose
   // historical views are still real events that happened.
@@ -151,6 +181,9 @@ export async function storefrontAnalytics(
     totals: {
       views: byPage.reduce((sum, row) => sum + row.views, 0),
       orders: orderGroups.reduce((sum: number, g: any) => sum + g._count._all, 0),
+      visitors: uniques.visitors,
+      returningVisitors: uniques.returningVisitors,
+      newVisitors: uniques.visitors - uniques.returningVisitors,
     },
     byPage,
     byChannel,

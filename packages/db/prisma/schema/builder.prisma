@@ -505,9 +505,11 @@ model DraftOrder {
  * No FK-less orphan risk: deleteTenant() enumerates scoped models from the
  * DMMF (LB.27), so this table is swept without being named anywhere.
  *
- * RETENTION IS AN OPEN QUESTION, recorded in NEXT_STEPS §AN.1: raw rows only
- * for the first slice; a daily rollup + prune is the upgrade path once real
- * volume exists to size it against.
+ * RETENTION (AN.2, user-decided): raw rows live 30 DAYS, then delete —
+ * `lib/storefront/visit-retention.ts` owns the constant and the prune, which
+ * runs amortised on the beacon write, on every Traffic-screen read, and in
+ * the worker tick's per-tenant housekeeping. The analytics windows (7/30d)
+ * never exceed retention, so the screen never silently under-reports.
  * ========================================================================== */
 model StorefrontVisit {
   id       String @id @default(cuid())
@@ -519,9 +521,17 @@ model StorefrontVisit {
   landingPage   LandingPage? @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
   pageKind      String // "landing" | "home" | "category"
 
-  // Per-visit token (sessionStorage), the draft-capture shape: distinct
-  // tokens approximate unique visitors without any cookie consent surface.
+  // AN.2 — the LONG-LIVED visitor id (localStorage, random and meaningless),
+  // so COUNT(DISTINCT) over a window is unique visitors, not unique
+  // sessions. First-party, single-shop, no cross-site anything.
   visitorToken String
+  // AN.2 — true when the visitor id existed BEFORE this session began,
+  // decided client-side at session start (localStorage outlives the 30-day
+  // raw-row retention, so "seen before" stays honest past the prune
+  // horizon; a server lookup could only see retained rows).
+  // Named isReturning, not "returning": RETURNING is a SQL keyword and the
+  // uniques aggregate reads this column from raw SQL.
+  isReturning Boolean @default(false)
 
   // Controlled vocabulary (facebook|tiktok|google|instagram|whatsapp|
   // telegram|direct|other) — validated at the route, so a console breakdown

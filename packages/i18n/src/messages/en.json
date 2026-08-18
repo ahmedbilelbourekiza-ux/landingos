@@ -104,8 +104,11 @@
       "colSeen": "Last activity"
     },
     "analytics": {
-      "basis": "Counted in your customers' browsers as pages are viewed. Search-engine crawlers and your own editor previews are not counted; your own visits to the published page are.",
+      "basis": "Counted in your customers' browsers as pages are viewed. Search-engine crawlers and your own editor previews are not counted; your own visits to the published page are. Detailed view records are kept for 30 days.",
       "views": "views",
+      "visitors": "visitors",
+      "newVisitors": "new",
+      "returningVisitors": "returning",
       "orders": "orders",
       "rangeLabel": "Time range",
       "range7": "7 days",

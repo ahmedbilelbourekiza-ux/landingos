@@ -6,6 +6,7 @@ import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
 import { allowRequest, clientIp, visitLimit } from "@/lib/storefront/rate-limit";
 import { VisitBody } from "@/lib/storefront/contract";
 import { deriveSource } from "@/lib/storefront/traffic-source";
+import { pruneExpiredVisits, shouldAmortisedPrune } from "@/lib/storefront/visit-retention";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ export async function POST(
   const parsed = VisitBody.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return new NextResponse(null, { status: 204 });
 
-  const { token, pageKind, landingPageId, source } = parsed.data;
+  const { token, pageKind, landingPageId, source, isReturning } = parsed.data;
   const derived = deriveSource(source ?? {});
 
   try {
@@ -72,10 +73,19 @@ export async function POST(
           landingPageId: pageId,
           pageKind,
           visitorToken: token,
+          isReturning,
           sourceChannel: derived.channel,
           sourceDetail: derived.detail,
         },
       });
+
+      // AN.2 — retention rides the traffic that creates the need for it: an
+      // active store prunes its own expired rows roughly every fifty views
+      // (the rate-limiter's amortised pattern). Tenant-bound, so RLS decides
+      // what "expired rows" can possibly mean.
+      if (shouldAmortisedPrune()) {
+        await pruneExpiredVisits(db);
+      }
     });
   } catch (error) {
     console.error("[storefront] visit beacon failed", error);

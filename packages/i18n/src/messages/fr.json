@@ -104,8 +104,11 @@
       "colSeen": "Dernière activité"
     },
     "analytics": {
-      "basis": "Compté dans le navigateur de vos clients à l'affichage des pages. Les robots des moteurs de recherche et vos aperçus dans l'éditeur ne comptent pas ; vos propres visites de la page publiée comptent.",
+      "basis": "Compté dans le navigateur de vos clients à l'affichage des pages. Les robots des moteurs de recherche et vos aperçus dans l'éditeur ne comptent pas ; vos propres visites de la page publiée comptent. Le détail des vues est conservé 30 jours.",
       "views": "vues",
+      "visitors": "visiteurs",
+      "newVisitors": "nouveaux",
+      "returningVisitors": "de retour",
       "orders": "commandes",
       "rangeLabel": "Période",
       "range7": "7 jours",

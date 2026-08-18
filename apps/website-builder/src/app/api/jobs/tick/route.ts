@@ -7,6 +7,7 @@ import { productRegistry } from "@landingos/product-registry";
 import { JOBS, runJob } from "@/lib/erp/jobs";
 import { hasProduct } from "@/lib/erp/from-sale";
 import { pruneNotifications } from "@/lib/platform/notifications";
+import { pruneExpiredVisits } from "@/lib/storefront/visit-retention";
 
 /** How many notifications a tenant keeps. The ERP's `NOTIFICATION_RETENTION`. */
 const RETENTION = Math.max(100, Number(process.env.NOTIFICATION_RETENTION) || 5000);
@@ -101,6 +102,16 @@ export async function POST(req: NextRequest) {
       await withTenant(tenant.id, (db) => pruneNotifications(db, RETENTION));
     } catch (error) {
       console.error(`[worker] notification prune failed for ${tenant.id}`, error);
+    }
+
+    // AN.2 — raw visit rows live 30 days. The same prune also runs amortised
+    // on the beacon write and on every Traffic-screen read, because THIS
+    // route only fires where a worker is deployed (it is not, in production
+    // today) — see lib/storefront/visit-retention.ts for the whole argument.
+    try {
+      await withTenant(tenant.id, (db) => pruneExpiredVisits(db));
+    } catch (error) {
+      console.error(`[worker] visit prune failed for ${tenant.id}`, error);
     }
 
     // THE ENTITLEMENT IS READ INSIDE THE BINDING, and this is the whole of the
