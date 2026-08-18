@@ -136,13 +136,26 @@
         "description": "photos below",
         "reviews": "reviews",
         "faq": "FAQ",
-        "footer": "end"
+        "footer": "end",
+        "gallery": "photos",
+        "benefits": "benefits",
+        "form": "order form",
+        "announcement": "announcement bar",
+        "general": "whole page"
       },
       "channel": {
         "direct": "Direct",
         "other": "Other",
         "unattributed": "No source recorded"
-      }
+      },
+      "insightHeading": "AI recommendations",
+      "insightIntro": "On-demand analysis of the aggregate numbers above — no visitor identities, on your own AI provider key. A fresh analysis is kept for a day before it can be regenerated.",
+      "insightAnalyze": "Analyze this page",
+      "insightAnalyzing": "Analyzing…",
+      "insightMeta": "{date} · {days}-day window · based on {views} views",
+      "insightNone": "No analysis yet.",
+      "insightInsufficient": "Not enough traffic to analyze yet ({views} of {needed} views in the window).",
+      "insightRefused": "The analysis could not be grounded in your numbers — nothing was stored. Try again."
     },
     "newPage": {
       "title": "New landing page",

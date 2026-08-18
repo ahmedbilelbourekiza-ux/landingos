@@ -1,12 +1,16 @@
 import Link from "next/link";
 
 import { withTenant } from "@landingos/db";
+import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+import { actionErrors } from "@/lib/console/action-errors";
 import { analyticsRange, storefrontAnalytics } from "@/lib/builder/analytics";
 import { pruneExpiredVisits } from "@/lib/storefront/visit-retention";
+import { INSIGHT_MIN_VIEWS, type InsightRecommendationData } from "@/lib/landing/ai-insight";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
+import { AnalyzePageButton } from "@/components/console/builder/analyze-page-button";
 
 export const dynamic = "force-dynamic";
 
@@ -35,10 +39,11 @@ export default async function BuilderAnalyticsScreen({
 }: {
   searchParams: Promise<{ days?: string }>;
 }) {
-  const { session, t } = await requireProduct(
+  const { session, locale: rawLocale, t } = await requireProduct(
     "website-builder",
     "/console/builder/analytics",
   );
+  const locale = isLocale(rawLocale) ? rawLocale : DEFAULT_LOCALE;
   const range = analyticsRange((await searchParams).days);
 
   /* `withTenant`, not `forTenant`: the uniques aggregate is raw SQL and needs
@@ -46,13 +51,43 @@ export default async function BuilderAnalyticsScreen({
    * prune runs FIRST, in the same transaction — AN.2's read-path retention:
    * whoever looks at analytics sweeps their own expired rows, so this screen
    * never reports over data the retention rule says should be gone. */
-  const data = await withTenant(session.auth!.tenantId, async (db) => {
+  const { data, insights } = await withTenant(session.auth!.tenantId, async (db) => {
     await pruneExpiredVisits(db);
-    return storefrontAnalytics(db, range);
+    const analytics = await storefrontAnalytics(db, range);
+    /* BH.3 — the newest stored analysis per measured page. DISTINCT ON is
+     * what this wants; Prisma's shape for it is one ordered findMany kept
+     * first-per-page here (the list is bounded by the behavior table). */
+    const insightRows = analytics.behaviorByPage.length
+      ? await (db as any).landingInsight.findMany({
+          where: { landingPageId: { in: analytics.behaviorByPage.map((r) => r.landingPageId) } },
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true, landingPageId: true, windowDays: true,
+            inputSummary: true, recommendations: true, createdAt: true,
+          },
+        })
+      : [];
+    const newestPerPage = new Map<string, (typeof insightRows)[number]>();
+    for (const row of insightRows) {
+      if (!newestPerPage.has(row.landingPageId)) newestPerPage.set(row.landingPageId, row);
+    }
+    return { data: analytics, insights: newestPerPage };
   });
 
   const channelLabel = (channel: string) =>
     CHANNEL_BRANDS[channel] ?? t(`builder.analytics.channel.${channel}` as any);
+
+  // The analyze control's refusal vocabulary — the AI-surface codes plus this
+  // route's own two, each named specifically because each names its fix.
+  const insightErrors = actionErrors(t);
+  insightErrors.NO_AI_PROVIDER = t("builder.newPage.ai.noProvider");
+  insightErrors.AI_UPSTREAM_ERROR = t("builder.newPage.ai.upstreamFailed");
+  insightErrors.AI_EMPTY_ANSWER = t("builder.newPage.ai.upstreamFailed");
+  insightErrors.AI_INVALID_OUTPUT = t("builder.analytics.insightRefused");
+  insightErrors.AI_QUOTA_EXCEEDED = t("builder.newPage.ai.quotaExceeded");
+  // INSUFFICIENT_DATA is unmapped on purpose: the button only renders at or
+  // above the floor, so the server-side refusal fires only in a prune race —
+  // the generic fallback covers it honestly.
 
   const pageLabel = (row: (typeof data.byPage)[number]) => {
     if (row.landingPageId) return row.title ?? "—";
@@ -213,6 +248,83 @@ export default async function BuilderAnalyticsScreen({
             },
           ]}
         />
+      )}
+
+      {/* BH.3 — AI recommendations, per measured page: on-demand, cooldown
+          re-shown, quota-gated (AQ.1), aggregates-only by construction. The
+          stored insight renders beside the button that made it; each claim
+          carries the number it rests on, because claims without numbers were
+          refused before storage. */}
+      {data.behaviorByPage.length > 0 && (
+        <section className="space-y-4" data-testid="analytics-insights">
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight">
+              {t("builder.analytics.insightHeading")}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t("builder.analytics.insightIntro")}
+            </p>
+          </div>
+          {data.behaviorByPage.map((row) => {
+            const insight = insights.get(row.landingPageId);
+            const views =
+              data.byPage.find((p) => p.landingPageId === row.landingPageId)?.views ?? 0;
+            const recommendations = (insight?.recommendations ?? []) as InsightRecommendationData[];
+            const summaryViews = (insight?.inputSummary as { views?: number } | null)?.views ?? 0;
+            return (
+              <div
+                key={row.landingPageId}
+                data-testid={`insight-${row.landingPageId}`}
+                className="rounded-lg border border-border bg-surface-raised p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <span className="font-medium">{row.title ?? "—"}</span>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {insight
+                        ? t("builder.analytics.insightMeta", {
+                            date: formatDate(insight.createdAt, locale),
+                            days: insight.windowDays,
+                            views: summaryViews,
+                          })
+                        : t("builder.analytics.insightNone")}
+                    </p>
+                  </div>
+                  {views < INSIGHT_MIN_VIEWS ? (
+                    <p className="text-xs text-muted-foreground" data-testid="insight-insufficient">
+                      {t("builder.analytics.insightInsufficient", {
+                        views,
+                        needed: INSIGHT_MIN_VIEWS,
+                      })}
+                    </p>
+                  ) : (
+                    <AnalyzePageButton
+                      landingPageId={row.landingPageId}
+                      labels={{
+                        analyze: t("builder.analytics.insightAnalyze"),
+                        analyzing: t("builder.analytics.insightAnalyzing"),
+                      }}
+                      errors={insightErrors}
+                    />
+                  )}
+                </div>
+                {recommendations.length > 0 && (
+                  <ul className="mt-3 space-y-3">
+                    {recommendations.map((rec, i) => (
+                      <li key={i} className="rounded-md border border-border p-3 text-sm">
+                        <span className="me-2 rounded bg-accent px-1.5 py-0.5 text-xs font-medium">
+                          {t(`builder.analytics.section.${rec.section}` as never)}
+                        </span>
+                        <span>{rec.finding}</span>
+                        <p className="mt-1 text-muted-foreground">{rec.suggestion}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </section>
       )}
 
       <DataTable

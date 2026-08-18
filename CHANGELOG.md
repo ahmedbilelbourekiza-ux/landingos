@@ -10,6 +10,73 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## BH.3 — the behavior numbers learn to explain themselves, without ever seeing a person
+
+**Committed locally 19 August 2026 (overnight session, immediately after
+AQ.1 — the piece that unblocked it) — NOT pushed, NOT deployed. ⚠ Schema:
+ONE new table `LandingInsight` (tenant-scoped; cascade from LandingPage).
+Applied to DEV in full (`ep-gentle-sky` confirmed; dev `apply-rls` now
+**52/52**). Production remains the user's separate approval — the
+HANDOFF §1 note about tonight's extra tables covers this one too.**
+
+Built exactly to §BH.3's decided design (NEXT_STEPS §BH.3), each rule
+enforced by construction rather than by care:
+
+- **The model sees AGGREGATES, never rows.** `buildInsightSummary`
+  (`lib/builder/insight-summary.ts`) is the single privacy enforcement
+  point: for one page it computes views/orders, the BH.2 behavior
+  aggregates (same predicates as `storefrontAnalytics` — measured =
+  `activeMs` non-null), the drafts funnel (started / left-a-phone,
+  COUNTS only), and per-question FAQ opens (Postgres unnests
+  `faqOpenedIds`; questions keyed `faq.q1..`, bounded ≤20, unopened
+  questions included — "nobody opens the delivery question" is as citable
+  as its opposite). Nothing row-shaped leaves the module; the suite
+  asserts the wire never carries a seeded phone number.
+- **A recommendation is a claim WITH its number, checked mechanically.**
+  The contract (`lib/landing/ai-insight.ts`, pure, the ai-generate
+  pattern): 1–6 items of `{section, finding, suggestion, metric, value}`
+  where `metric` must name a key in the flattened summary vocabulary AND
+  `value` must repeat its exact number. An item that fails grounding is
+  DROPPED in validation (never shown); zero survivors refuses the whole
+  answer (502 `AI_INVALID_OUTPUT`) and **stores nothing** — the suite
+  pins an invented `424242` never reaching the response, the store, or
+  the screen.
+- **On-demand with a cooldown; no scheduled runs exist anywhere.** The
+  route (`POST /api/builder/landings/[id]/analyze`, three-phase
+  D-LP.5.1) re-shows a stored analysis younger than 24h (`cached: true`,
+  zero spend, zero provider contact — suite-pinned), refuses below the
+  data floor (100 views in the window, 422 `INSUFFICIENT_DATA` — "not
+  enough signal yet" beats confident noise) BEFORE provider or quota are
+  touched, and **reserves through AQ.1** (`kind: "behavior_insight"`) —
+  the second spender the quota was built for, 429 on the same terms as
+  generation. Cooldown 24h / floor 100 are §BH.6.3's proposed defaults,
+  taken as reversible overnight choices and exported as named constants.
+- **Recommendations persist WITH their input** (`LandingInsight` keeps
+  `inputSummary` beside `recommendations`), so the merchant — and any
+  future eval — can see what the advice rested on after the raw rows'
+  30-day retention expires.
+- **The read surface is the Traffic screen** (§BH.6.5's proposed answer):
+  an "AI recommendations" section under the behavior table — per measured
+  page, the newest stored analysis (each claim rendered with its section
+  chip), an Analyze button (`analyze-page-button.tsx`, useApiAction —
+  its refresh re-reads the same rows the server stored), the data-floor
+  hint replacing the button below 100 views, and the AI-surface refusal
+  vocabulary mapped. i18n ×3.
+- **Files:** `packages/db/prisma/schema/builder.prisma` (LandingInsight) ·
+  `lib/landing/ai-insight.ts` (new, pure) ·
+  `lib/builder/insight-summary.ts` (new) ·
+  `api/builder/landings/[id]/analyze/route.ts` (new) ·
+  `components/console/builder/analyze-page-button.tsx` (new) ·
+  `console/builder/(shell)/analytics/page.tsx` · catalogs ×3 ·
+  `test/builder-insights.test.ts` (new).
+- **Suites at this tree:** builder-insights **13** (new — six pure
+  grounding tests + seven end-to-end: floor, whole-flow with a dropped
+  ungrounded item, cooldown re-show, ungrounded-stores-nothing, the AQ.1
+  429, permissions, the screen rendering) · builder-ai 29 · storefront
+  **95** (the 18 Aug handoff said 90 — that count was stale, the file
+  last grew in BH.1+BH.2 itself and is untouched tonight) · console-shell
+  20 · i18n 22 — all green against the rebuilt standalone server on dev.
+
 ## AQ.1 — AI spend gets a ceiling before it gets a second spender
 
 **Committed locally 19 August 2026 (overnight session) — NOT pushed, NOT

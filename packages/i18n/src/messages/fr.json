@@ -136,13 +136,26 @@
         "description": "photos en bas",
         "reviews": "avis",
         "faq": "FAQ",
-        "footer": "fin"
+        "footer": "fin",
+        "gallery": "photos",
+        "benefits": "avantages",
+        "form": "formulaire",
+        "announcement": "bandeau",
+        "general": "page entière"
       },
       "channel": {
         "direct": "Direct",
         "other": "Autre",
         "unattributed": "Sans source enregistrée"
-      }
+      },
+      "insightHeading": "Recommandations IA",
+      "insightIntro": "Analyse à la demande des chiffres agrégés ci-dessus — aucune identité de visiteur, sur la clé de votre propre fournisseur d'IA. Une analyse récente est conservée un jour avant de pouvoir être régénérée.",
+      "insightAnalyze": "Analyser cette page",
+      "insightAnalyzing": "Analyse en cours…",
+      "insightMeta": "{date} · fenêtre de {days} jours · basée sur {views} vues",
+      "insightNone": "Aucune analyse pour l'instant.",
+      "insightInsufficient": "Pas encore assez de trafic pour analyser ({views} vues sur {needed} dans la fenêtre).",
+      "insightRefused": "L'analyse n'a pas pu s'appuyer sur vos chiffres — rien n'a été enregistré. Réessayez."
     },
     "newPage": {
       "title": "Nouvelle page de vente",

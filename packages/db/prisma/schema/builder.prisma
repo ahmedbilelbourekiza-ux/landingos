@@ -113,6 +113,7 @@ model LandingPage {
   // company's. Absence means the company's price applies.
   deliveryPrices LandingDeliveryPrice[]
   visits         StorefrontVisit[]
+  insights       LandingInsight[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -585,6 +586,37 @@ model StorefrontVisit {
   createdAt DateTime @default(now())
 
   @@index([tenantId, createdAt])
+  @@index([tenantId, landingPageId, createdAt])
+}
+
+// BH.3 — one stored AI analysis of one landing page's aggregates. The INPUT
+// summary is persisted beside the output so a merchant (and any future eval)
+// can see what the advice rested on after the raw visit rows expire (30-day
+// retention); the recommendations are the zod-validated contract — every one
+// cites a metric key present in inputSummary, enforced at parse time, or the
+// whole answer was refused and this row never existed. Cascade: an insight is
+// ABOUT a page; only order-free pages can be deleted (LB.38), and advice
+// about a page that no longer exists advises nothing.
+model LandingInsight {
+  id       String @id @default(cuid())
+  tenantId String
+
+  landingPageId String
+  landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  // The analysis window (7 or 30 days) and the numbers the model saw.
+  windowDays   Int
+  inputSummary Json
+  // [{ section, finding, suggestion, metric, value }] — bounded, validated.
+  recommendations Json
+
+  // Snapshot of what produced it. Never the key.
+  provider String?
+  model    String?
+
+  createdAt DateTime @default(now())
+
+  // The cooldown read: the newest insight for a page.
   @@index([tenantId, landingPageId, createdAt])
 }
 

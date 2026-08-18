@@ -1004,7 +1004,7 @@ before first paint.
 |---|---|---|
 | **BH.1** | `viewId` + behavior columns, the collector module (piggyback counters + IO + one flush), the visits-route UPDATE path, tests incl. the flush contract | **S–M** |
 | **BH.2** | The read side, computed not generated (the ERP insights precedent): per-page section-reach funnel and engagement columns on the Traffic screen — also where AN.1's approved-not-urgent funnel display naturally lands, since form-reached + drafts + orders IS the coarse funnel | **S** |
-| **BH.3** | The AI slice: pure prompt + zod contract, the analyze route on the three-phase rule, `LandingInsight`, the on-demand button + cooldown + data floor, i18n ×3 | **M** |
+| **BH.3** | The AI slice: pure prompt + zod contract, the analyze route on the three-phase rule, `LandingInsight`, the on-demand button + cooldown + data floor, i18n ×3 — **BUILT 19 Aug overnight (CHANGELOG §BH.3), on AQ.1's quota; cooldown 24h / floor 100 views taken as the proposed defaults, revisitable** | **M** |
 
 BH.1/BH.2 ship without any AI dependency and are useful alone. BH.3 needs a
 configured provider to do anything (and its 501 path already exists).
