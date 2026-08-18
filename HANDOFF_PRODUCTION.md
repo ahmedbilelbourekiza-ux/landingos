@@ -48,6 +48,45 @@ remain the deep references.
 > carried `/0` all require `landingos_prod`, which is now off-limits. They are
 > **closed-unverified**, not pending.
 
+> ### 🛑 19 Aug 2026: PRODUCTION IS DOWN — Neon compute quota exhausted; THE MIGRATION IS PREPARED AND ON HOLD
+>
+> **Discovered ~00:45 UTC+1 on 19 Aug while starting the approved migration
+> (step 1 of the deploy).** The OLD Neon project (`ep-summer-shadow…`,
+> which holds `landingos_prod`) refuses ALL connections — owner included —
+> with: *"Your account or project has exceeded the compute time quota.
+> Upgrade your plan to increase limits."* Verified consequences: health
+> times out on both hosts, `robots.txt` times out (the entrypoint's DB
+> probe blocks boot — the app is not answering at all), and
+> **`selliora1.com/dedima` times out: customers cannot load storefronts or
+> place orders.** TCP to Render and Neon both accept — the failure is the
+> compute-quota refusal, nothing network. Tonight's dev work did not spend
+> this quota (every dev action was verified against `ep-gentle-sky`); the
+> 17 Aug split existed because this quota was near its edge, and
+> production's own usage since finished it.
+>
+> **THE FIX IS DASHBOARD-ONLY, the user's hands:** Neon → old project →
+> upgrade the plan (immediate) or wait for the quota reset (days —
+> unacceptable for a live store). After compute returns, the app recovers
+> as traffic arrives (worst case: manual Render restart); confirm with
+> `/api/health` green.
+>
+> **MIGRATION STATE: NOT APPLIED, ZERO WRITES MADE.** The one connection
+> attempted was the read-only `migrate diff` preview, refused at the door.
+> The owner credential was provided 19 Aug as a gitignored local file
+> (location in the project memory, the neon-dev precedent) and VALIDATED:
+> owner role, direct endpoint, `landingos_prod`. **Resume checklist, in
+> order, once health is green:** (1) preview `migrate diff --from-url
+> <prod owner> --to-schema-datamodel` — expect EXACTLY: CREATE
+> `StorefrontVisit` (incl. `viewId @unique`, `isReturning`, ten nullable
+> behavior columns, two indexes), ALTER `SalesOrder` + nullable
+> `sourceChannel`/`sourceDetail`, ALTER `LandingSetting` +
+> `behaviorTracking BOOLEAN NOT NULL DEFAULT false`; anything else =
+> drift, stop; (2) rollback reference: `db pull` introspection + reverse
+> diff script + RLS counts (expect 49/49 before); (3) `db push` with the
+> datasource confirmed `landingos_prod` in output; (4) `apply-rls` →
+> **49 → 50** all four checks; (5) report before/after; **the CODE deploy
+> stays a separate user approval after that.**
+>
 > ### ⚠ SEVEN LOCAL COMMITS ARE QUEUED, NOT PUSHED — 18 Aug 2026 (overnight session + the user's reviews), AND THE BATCH CARRIES ONE MIGRATION
 >
 > **`main` is now seven commits ahead of `origin/main` (`12d805e..`), all
