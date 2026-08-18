@@ -15,6 +15,75 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### 🛑 READ FIRST — 17 Aug 2026: DEV MOVED TO A SEPARATE NEON PROJECT, AND BOTH DATABASES ARE NAMED `neondb`
+>
+> **All local development, testing and audit work now goes to a NEW Neon
+> project. The old project — which holds `landingos_prod` — is SUSPENDED ON
+> ITS COMPUTE QUOTA and is off-limits to development activity, by the user's
+> explicit instruction.**
+>
+> | | Host prefix | Database | Use |
+> |---|---|---|---|
+> | **DEV** | `ep-gentle-sky-b1rahhl0` (direct) / `-pooler` (pooled) | `neondb` | Everything local: suites, fixtures, audits |
+> | **PROD — do not connect** | `ep-summer-shadow-a2ks6nf8` | `landingos_prod` (and the old dev `neondb`) | Production only; quota-suspended |
+>
+> **⚠️ The database NAME no longer distinguishes them — the old dev database
+> and the new dev database are both called `neondb`. Identify by HOST, always.**
+> Any older note in this file or in `PROJECT_STATE.md` saying "`neondb` is dev"
+> predates the split and is ambiguous; it means the OLD project's `neondb`.
+>
+> **The new dev database was set up fresh on 17 Aug** by the documented recipe
+> (`apps/website-builder/DEPLOY.md` §"Preparing a database"): `setup:roles` →
+> `push` → `rls` → `seed:reference`. Verified: **RLS 49/49** (enabled + FORCE +
+> policy + WITH CHECK, 5 expected unscoped tables), 58 wilayas / 537 baladias,
+> the full isolation preflight all-PASS, and local `/api/health` green with
+> `isolation: rls`. **It contains 0 tenants and 0 users — `seed:demo` was
+> deliberately NOT run**, so `owner@demo.test` and the `acme` tenant do not
+> exist there; build a fixture or run `seed:demo` before anything needing a
+> signed-in user. Production was confirmed healthy and unaffected at the time
+> of the switch (`database: ok`, 58 wilayas, `isolation: rls`, storefront 200).
+>
+> **Consequence for §1's outstanding live verifications:** the phone-dedup
+> order test, the two console-screen checks, and the identity of the page that
+> carried `/0` all require `landingos_prod`, which is now off-limits. They are
+> **closed-unverified**, not pending.
+
+> ### ✔ SEC.1–SEC.5 + SA.1 ARE DEPLOYED — 17 Aug 2026: the security-audit fixes, confirmed at Render on 18 Aug
+>
+> **`origin/main` is `d26074c`**, and **`d26074c` is the live deploy** —
+> Render deploy `dep-da1hn3u1egvs73a8digg`, created 14:32:47 UTC, **live
+> 14:35:35 UTC on 17 Aug 2026** (build 2m48s, trigger `new_commit`), with
+> every earlier deploy `deactivated`. Range **`c3d911d..d26074c`, six
+> commits**, 25 files. **Rollback point: `c3d911d`.** The local checkout's
+> HEAD is byte-identical to the deployed SHA (`d26074c1a0e164…`).
+>
+> **No migration**: zero `.prisma` diffs across the range. ⚠️ The
+> authoritative check — `prisma migrate diff` drift against the deployed
+> database — **was NOT run**, because `landingos_prod` is now off-limits
+> (see the block above). The file-level check plus the previous deploy's
+> verified-empty state is the basis for this claim; treat it as strong but
+> not the drift proof the last three records carried.
+>
+> **How liveness was established, and why it took the Render API.** This
+> range has **no publicly observable marker**: every one of the six commits
+> touches either a server-only module (`lib/digits.ts`, `lib/erp/phone.ts`,
+> `lib/tracking/events.ts`, `lib/storefront/delivery.ts`) or an
+> authenticated console surface (the create form, the notification stream,
+> the four builder write routes). No storefront chunk, header, or public
+> response differs between `c3d911d` and `d26074c`, and `/api/health`
+> reports only `version: 0.1.0` with no commit SHA. Chunk-hash comparison,
+> the free-shipping quote probe, and the notification-stream probe were all
+> tried and all fail for that structural reason. **Settled read-only via
+> `GET /v1/services/srv-d9jn1kkm0tmc73bb8nt0/deploys` with the user's
+> explicit permission.**
+>
+> **What is DEPLOYED but NOT verified end to end, and now cannot be here:**
+> the SEC.1 phone-dedup check (two orders, same number in two numeral
+> systems, confirming ONE `Client` row) is covered by unit tests but was
+> never run against a live page; the SEC.4 create-screen notice and the
+> SA.1 Arabic-title refusal are authenticated-console checks. All three
+> need `landingos_prod`. **Closed-unverified, not pending.**
+
 > ### ✔ LB.24 + LB.54 ARE DEPLOYED — 16 Aug 2026 (night): the AI landing generator and the digit-only-slug fix
 >
 > **`origin/main` is `c722050`** (`1dbe119..c722050`, five commits —
@@ -1086,7 +1155,7 @@ The exact first steps, in order:
    `uploads: r2`. If `isolation` is missing, an old build is serving; if
    `BYPASSED`, stop everything and tell the user to fix Render's
    `DATABASE_URL` (see §3).
-3. **Confirm `origin/main` still equals `c722050`** (`git fetch && git log
+3. **Confirm `origin/main` still equals `d26074c`** (`git fetch && git log
    --oneline origin/main -1`) — if it moved, someone else deployed; re-read
    the situation before assuming this document's state. **The check that
    tells you whether anything is waiting:
@@ -1094,11 +1163,25 @@ The exact first steps, in order:
    application code is queued; non-empty means something is.** Do not trust the commit
    COUNT any
    handoff quotes — this one said "sixteen" and the real answer was eighteen
-   by the time it was read. Derive it: `git rev-list --count origin/main..master`.
+   by the time it was read. Derive it: `git rev-list --count origin/main..main`.
+   **The local branch is now `main`, tracking `origin/main`** (renamed from
+   `master` on 17 Aug, so a plain `git pull` works — older notes here saying
+   `master` predate that).
+   **To confirm what is actually LIVE rather than merely pushed**, the
+   authority is the Render API, read-only:
+   `GET https://api.render.com/v1/services/srv-d9jn1kkm0tmc73bb8nt0/deploys?limit=5`
+   with `Authorization: Bearer <render key>` — the entry whose `status` is
+   `live` carries the deployed `commit.id`. **Use this whenever the range has
+   no public marker**, which is the normal case for server-only or
+   console-only work; `/api/health` cannot answer the question (no SHA).
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **NOTHING is queued — LB.24+LB.54 DEPLOYED 16 Aug (night) as
+4. **NOTHING is queued — SEC.1–SEC.5 + SA.1 DEPLOYED 17 Aug as
+   `c3d911d..d26074c`, live 14:35:35 UTC, confirmed at Render on 18 Aug
+   (§1's top block has the full record, including the three checks that are
+   now closed-UNVERIFIED because `landingos_prod` is off-limits).
+   LB.24+LB.54 DEPLOYED 16 Aug (night) as
    `1dbe119..c722050` (§1's top block has the record and the owed live
    checks), LB.51+LB.52+LB.53 earlier the same day (afternoon) as
    `831c48d..d915c77`; §1's top block has the record, including what is

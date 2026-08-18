@@ -22,7 +22,26 @@ of both markers is owed (egress unchanged): the create screen showing
 the AI panel/notice, and an Arabic+digit title refusing instead of
 minting a digit slug.** **The first real custom domain
 (`selliora1.com`) serves end to end and the console links it**
-**Branch:** `main`, in sync with `origin/main` at `d915c77` · **Everything
+**17–18 Aug 2026 — SEC.1–SEC.5 + SA.1 ARE DEPLOYED and the record is
+finally written.** `origin/main` = **`d26074c`**, live at Render
+14:35:35 UTC on 17 Aug (`c3d911d..d26074c`, six commits, 25 files,
+rollback `c3d911d`, no migration). SA.1 is a REAL REGRESSION closed: LB.54's
+letter rule had reached three write paths and the AI generate route was the
+fourth, so `slug:"0"` was refused at three doors and **accepted at the
+fourth** — the rule now lives once, in `lib/landing/create.ts`, imported by
+all four. **Liveness was confirmed read-only at the Render API, not from the
+outside: this range has NO public marker** (every commit is server-only or
+console-only, and `/api/health` carries no SHA), which is why it sat six
+commits deep with no doc for a day. **THREE checks are CLOSED-UNVERIFIED,
+not pending** — the SEC.1 two-order phone-dedup (unit-tested only), the
+SEC.4 create-screen notice, and the SA.1 Arabic-title refusal all need
+`landingos_prod`, which is inside the quota-suspended Neon project the user
+placed off-limits on 17 Aug. **Dev now runs on a separate Neon project
+(`ep-gentle-sky-b1rahhl0`) — see "Two Neon PROJECTS" below; both databases
+are named `neondb`, so identify by HOST.**
+
+**Branch:** `main`, tracking `origin/main` at `d26074c` (the local branch was
+renamed from `master` on 17 Aug so a plain `git pull` works) · **Everything
 through LB.44 is deployed:** LB.31–LB.36 + LB.15 + LB.14a/b/c as `d6a56b1`,
 **LB.37** (`fcbd1e5`) the storefront `<head>` fix, **LB.38** (`a70f588`)
 the Delete door, **LB.39** (`dbe1cf0`) the per-tenant sitemap, **LB.35b**
@@ -2219,6 +2238,21 @@ happens in server components and in the `tenantRoute` wrapper.
 
 Schema lives in `packages/db/prisma/schema/` — split into `main`, `platform`,
 `builder`, `erp` (multi-file schema, supported natively).
+
+### Two Neon PROJECTS — dev and prod, and both databases are named `neondb`
+
+**Since 17 Aug 2026, development and production live in different Neon
+projects.** Dev is `ep-gentle-sky-b1rahhl0` (database `neondb`); production is
+`landingos_prod` inside `ep-summer-shadow-a2ks6nf8`, which is **suspended on
+its compute quota and off-limits to development activity** by the user's
+instruction — dev work used to spend that project's compute, which is why the
+split exists.
+
+**⚠️ Identify a database by HOST, never by name.** The old dev database and the
+new one are both called `neondb`; anywhere in this file that says "`neondb`"
+without a host means the OLD project's dev database. The dev project was built
+fresh by the recipe in `apps/website-builder/DEPLOY.md` — RLS 49/49, 58 wilayas
+/ 537 baladias, preflight all-PASS, **0 tenants and 0 users (no `seed:demo`)**.
 
 ### Two database roles — this matters
 

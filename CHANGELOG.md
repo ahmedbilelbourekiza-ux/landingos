@@ -10,6 +10,155 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## Phase SEC/SA — the security audit's fixes, and the rule LB.54 left half-applied
+
+**All six DEPLOYED 17 August 2026, `c3d911d..d26074c`, live at 14:35:35 UTC
+(Render deploy `dep-da1hn3u1egvs73a8digg`, build 2m48s, trigger `new_commit`).
+Rollback point: `c3d911d`. No migration — zero `.prisma` diffs across the
+range.** 25 files, six commits.
+
+> **How liveness was established, 18 August:** the Render API, read-only, with
+> the user's explicit permission — `GET /v1/services/…/deploys` reports
+> `d26074c` as the single `live` deploy with every earlier one `deactivated`.
+> **This range has NO publicly observable marker**: every commit touches either
+> a server-only module or an authenticated console surface, so no storefront
+> chunk, header or public response differs between `c3d911d` and `d26074c`.
+> `/api/health` carries no commit SHA. An earlier attempt to settle it from
+> outside — chunk hashes, the free-shipping quote, the notification stream —
+> failed for that structural reason, not for want of trying. **The lesson for
+> next time: a range with no public marker needs its deploy confirmed at the
+> platform, and the record written the same day.**
+
+- **SA.1 — the letter rule reaches the fourth write path, and stops being four
+  copies** (17 August 2026 — **DEPLOYED same day, `d26074c`**; no migration).
+
+  **A real regression, reproduced live against the production build.** LB.54
+  closed `/0` three days earlier by gating three server write paths with
+  `/[a-z]/`. The AI generate route (LB.24, which shipped *in the same range*)
+  was the fourth, and validated slugs with the charset half alone — so the
+  identical value was refused at three doors and accepted at the fourth.
+  Measured before, with working controls in the same run: caller `slug:"0"` →
+  **201, page created at `"0"`**; model answers `"0"` → 201 at `"0-2"`; model
+  answers `"2024"` → 201 at `"2024"`; controls (no slug → `"page"`, latin name
+  → `"watch-pro"`) correct; contrast `POST /landings` and `POST /categories`
+  both **422**. That is the exact address whose real 404 — `selliora1.com/0` —
+  LB.54 exists to prevent.
+
+  **Two paths, treated differently on purpose.** The CALLER's slug is now gated
+  like the other three (422, same message): the merchant typed it, so the
+  merchant is asked. The MODEL's slug is checked and **ignored rather than
+  refused** — the merchant never typed it, and discarding a generation they
+  paid for over a word they did not choose is the worse trade; it falls through
+  to `"page"`, letter-bearing, on a DRAFT, and the first thing the editor shows
+  them. A letter-BEARING model slug still wins, pinned by a test so the guard
+  cannot quietly discard the model's real work.
+
+  **And the cause is gone, not just the symptom.** The rule was a regex written
+  out four times; a fifth writer would have forgotten it too. `SLUG_HAS_LETTER`
+  and `SLUG_NEEDS_LETTER` now live in `lib/landing/create.ts` beside `slugify`
+  (which composes the same constant), and all four routes import them — **no
+  inline `/[a-z]/` remains in the source.** Verified after, same probe: caller
+  `"0"` → 422; model `"0"`/`"2024"` → `"page"`/`"page-2"`; both controls
+  unchanged; both contrast routes still 422; and a digit-CARRYING address that
+  has a letter (`"2024-promo"`) still works. Files: `lib/landing/create.ts`,
+  `api/builder/landings/route.ts`, `…/landings/[id]/general/route.ts`,
+  `…/landings/generate/route.ts`, `api/builder/categories/route.ts`.
+  builder-ai +44 lines of tests.
+
+- **SEC.5 — the notification stream asks the question its three siblings ask**
+  (17 August 2026 — **DEPLOYED same day, `227d2ea`**; no migration).
+
+  This route cannot use `tenantRoute` — that wrapper runs its handler INSIDE a
+  tenant transaction and returns when it resolves, the opposite of a connection
+  held open for hours — so it reproduced the preamble by hand, and reproduced
+  **three of the four gates**. The missing one was `can()`, which is the gate
+  that reads `suspended`. **Measured: after suspending a MEMBER,
+  `GET /api/platform/notifications` correctly answered 403 while this route
+  still answered 200 `text/event-stream`.** The whole point of server-side
+  sessions (M-09) is that suspension takes effect on the next request, and this
+  was the one door that did not ask. Now checks
+  `platform:notifications:read`. Files:
+  `api/platform/notifications/stream/route.ts`. platform/team +54 lines.
+
+- **SEC.4 — the create screen reads a price the way LB.15 says, not its own
+  way** (17 August 2026 — **DEPLOYED same day, `516fa0e`**; no migration).
+
+  The create-page form did `Number(raw.replace(",", "."))`, which turns the
+  French/Algerian «2,500» — two thousand five hundred — into **2.5, creating
+  the page at 2.50 DA without a word.** LB.15 built ONE reader for exactly this
+  and this screen held a second opinion. Now `readTypedMoney`, which REFUSES a
+  comma before three digits rather than guessing (a 1000× error either way),
+  and the input's `pattern` comes from the shared `MONEY_PATTERN` instead of a
+  hand-written twin. This is the screen where a price is set for the first
+  time. Files: `components/console/builder/new-landing-form.tsx`,
+  `…/generate-landing-panel.tsx`. builder-sections +31 lines.
+
+- **SEC.3 — free shipping moves the quote and the charge together, or neither**
+  (17 August 2026 — **DEPLOYED same day, `9491805`**; no migration).
+
+  Free shipping was applied by the checkout alone, two lines below the comment
+  promising the quote and the charge could not differ — so a page with the
+  switch ON **quoted the company's rate in the destination dropdown and then
+  charged nothing. Measured: quote 500, charge 0.** Not theft (it favours the
+  customer) and worse than it sounds: free shipping is a CONVERSION lever, and
+  a storefront advertising 500 DA at the moment of choosing has already spent
+  the thing the merchant switched on. Zeroing now happens inside
+  `deliveryPricesFor`, which is what makes D-LB.20.1 true instead of merely
+  promised — every reader of that map gets the same answer, and a third caller
+  added later inherits it without knowing to ask. **Absence is still absence:**
+  a wilaya with no price stays OUT of the map, because free shipping decides
+  what delivery COSTS, never where the tenant will deliver. Files:
+  `lib/storefront/delivery.ts`, `api/storefront/[tenant]/orders/route.ts`.
+  storefront +75 lines.
+
+- **SEC.2 — delete `lib/draft-rate-limit.ts`: a second answer to a question one
+  module already answers** (17 August 2026 — **DEPLOYED same day, `e24eefd`**;
+  no migration; **no behaviour change — no route imported it**).
+
+  Found while auditing whether every public unauthenticated write has a
+  limiter. Confirmed unreachable three ways (LB.16's method): filename, the
+  exported SYMBOL `checkDraftRateLimit`, and the import graph. Deleted rather
+  than left, because it did not merely sit there — it was a **divergent** second
+  copy of a live rule, and the one a reader looking for "the draft limiter"
+  finds first: dead file said 40 requests/60s, the live
+  `storefront/rate-limit.ts` says 60/5min. Its header also cited
+  `src/lib/auth/rate-limit.ts` for its reasoning, and **there is no `lib/auth`
+  directory on this platform at all** — a stale record pointing at a stale
+  record. Files: `lib/draft-rate-limit.ts` (deleted, −36).
+
+- **SEC.1 — a phone number is the same customer whichever keyboard typed it**
+  (17 August 2026 — **DEPLOYED same day, `b61a86b`**; no migration).
+
+  This platform sells to Algerian merchants and their customers, who type on
+  Arabic keyboards. `٠٥٥٥١٢٣٤٥٦` and `0555123456` are the same number to every
+  human who reads them, and were two different values to every line of code
+  here — because JavaScript's `\d` matches ASCII `[0-9]` and nothing else, with
+  or without the `u` flag. **Two independent consequences, both silent:**
+  (1) `normalizePhone` is the UNIQUE KEY on `Client`, so one customer ordering
+  twice from an Arabic keyboard became **two customer records with their
+  lifetime history split in half**; (2) `phoneCandidates` strips non-`\d` before
+  hashing for Meta/TikTok advanced matching, so an Arabic-Indic number stripped
+  to the **empty string** and the conversion shipped with no phone match key at
+  all — not a worse match, no match, and a delivered event that looks like
+  success. New `lib/digits.ts` folds both Arabic-Indic blocks (U+0660–0669,
+  U+06F0–06F9) and drops the bidi/zero-width marks that ride along on a paste
+  out of RTL text and are **not** whitespace, so a `\s` strip left them in
+  place. Folding is not guessing — each codepoint has exactly one ASCII
+  counterpart, so unlike LB.15's comma there is nothing to be ambiguous about.
+  Files: `lib/digits.ts` (new), `lib/erp/phone.ts`, `lib/tracking/events.ts`.
+  calc +41, erp/registry +34, tracking +22.
+
+  **⚠️ Verified by unit tests, NOT end to end in production.** The tests pin
+  `foldDigits('٠٥٥٥١٢٣٤٥٦') === '0555123456'`, both digit blocks, RLM/LRM/ALM/
+  zero-width/BOM stripping, that non-digits are untouched, and that two
+  different numbers stay different. **What was never run is the real thing: two
+  orders on a live page with the same number in two numeral systems, confirming
+  ONE `Client` row.** That check needs `landingos_prod`, which is inside the
+  quota-suspended Neon project the user has placed off-limits — see
+  HANDOFF §1. It is closed-unverified, not pending.
+
+---
+
 ## Phase LB — the Landing Page Builder becomes a commercial product
 
 - **LB.54 — a slug must contain a letter: an Arabic title's digits can no

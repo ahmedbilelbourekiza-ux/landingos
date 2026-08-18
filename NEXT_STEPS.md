@@ -39,6 +39,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.33**~~ | ~~"Full name" looks invalid on a fresh form~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night — premise measured FALSE.** Fresh field is `aria-invalid="false"`, neutral border, no `required`, form `noValidate`, and the compiled variant is `[aria-invalid=true]`; the red state is genuine but post-submit only. The real defect found in the same component: `Field` derived `htmlFor` from label TEXT, so **no checkout field had a working label**. Fixed explicitly. storefront 38→40 |
 | ~~**LB.32**~~ | ~~The editor's sticky header overlaps the content~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (measured in production: header band `[0,56]` at every scroll position, anchored scroll landing a card at 96px with 40px clearance). Not z-index, not padding: `sticky top-16` cleared a shell header that is not above this screen (the editor mounts outside `ConsoleShell`). Sticky reserves no space for its offset, so content flowed from 56 while the header painted 64→120 — a permanent 64px overlap. `scroll-mt-24` corroborated the diagnosis. `top-0`; anchored-scroll clearance −24px→+40px |
 | ~~**LB.31**~~ | ~~The storefront header shows "LandingOS" and links to the platform~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production on a real published page: header and footer name the merchant and link to its own root, zero platform strings in the body). Not preview-only: with no `StoreSettings` row the published page rendered the platform wordmark linking to `/` (307 → console), plus the platform's internal description and copyright. Both production tenants have exactly that null row — 0 published pages, so unseen, one publish away. `resolveStoreName` + deleted fallbacks; brand is a span in the preview drawer. storefront 36→38 |
+| **LB.55** | Four contrast failures on the real storefront (a11y 97, not 100) | S | **SCOPED, NOT BUILT (17 Aug 2026) — measured on the live page, and it retires a marker the handoff relied on.** Three warm local Lighthouse runs on `selliora1.com/dedima`: **accessibility 97**, four `color-contrast` failures, **none in `PriceBlock`** — so LB.53's fix is not the issue (it IS live; `--theme-text-muted` + `--theme-accent-foreground` are in the served HTML). dedima has no old price, so LB.53's elements never render there. The failures are the specs `<dl>` (`dt` at `color:var(--theme-text);opacity:0.6` → **2.47:1**, `dd` → **3.98:1**) and the footer (`text-muted-foreground` → **3.93:1**). **HANDOFF §1's "accessibility 100 = deploy-liveness" marker is therefore VOID** — it was predicted from a fixture. Same class as LB.53 (theme ink over a themed surface), one component over; the `dt` should read the existing `--theme-text-muted` rather than applying its own opacity, and the footer's console token on a themed surface is an LB.26-shaped question worth confirming separately. Not urgent — readability on a specs table, no money or ordering impact — but on the live page and invisible to every suite, because no suite renders the theme. Full write-up below |
 | **LB.36** | Brands — a store organised around brands instead of one flat shop | M–L | **SCOPED, NOT BUILT (13 Aug 2026; the scoping doc is merged to local `master`)** — a measurement + proposal pass only, like the store-theme question. Full write-up below; the decision is yours |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **FIRST SLICE DEPLOYED 16 Aug (night) as part of `1dbe119..c722050`**, no migration. Merchant facts + their own photos in → an Algerian-Darija DRAFT out (copy + LB.22 theme), reviewed in the ordinary editor. Adversarially reviewed (one BLOCKER found and fixed: the model call sat inside the 15s tenant transaction — now D-LP.5.1 three-phase, pinned by a 16.5s slow-model test). builder-ai **19** new. §LB.24 below has the record, the deliberate lines (no generated reviews, ever), and the open questions — **the push/deploy decision is yours** |
@@ -846,6 +847,81 @@ Switching to "choose" pre-selects **every active integration**, so the
 transition out of "inherit all" cannot silently reduce reporting — which is the
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
+
+### LB.55 — SCOPED, NOT BUILT (17 Aug): four contrast failures LB.53 never saw, because the fixture had no data
+
+**Measured on the REAL page, not a fixture** — three warm local Lighthouse
+runs against `https://selliora1.com/dedima` on 17 Aug (PSI's anonymous
+shared-IP quota answered 429 again, so Lighthouse 12.8.2 was driven
+locally against the live URL). **Accessibility 97 on all three runs, four
+`color-contrast` failures, and NONE of them is the element LB.53 fixed.**
+
+**This retires a marker the handoff was relying on.** HANDOFF_PRODUCTION
+§1 offers "accessibility 100" as the LB.51–53 deploy-liveness check. That
+number came from a *dedima-shaped local fixture* on which the contrast
+audit failed on exactly two elements, both in `PriceBlock` — and LB.53
+took both to 100. The real page never had those two: **dedima has no old
+price at all**, so the crossed-out was-price and its badge do not render,
+and LB.53's fix — which IS live, see below — cannot show up in the score.
+What the real page has instead is four failures in two components the
+fixture's data never populated. **The marker is void; do not use a11y 100
+to decide whether a build is live.** The liveness check that DID work is
+`--theme-text-muted` and `--theme-accent-foreground` in the served HTML
+(LB.50 inlines the CSS into the document, so `curl | grep` reaches it) —
+both present, alongside 1 inline `<style>` and 0 stylesheet links.
+
+**The four, with their measured ratios** (WCAG AA wants 4.5:1 for text
+this size):
+
+| Element | Foreground / background | Ratio |
+|---|---|---|
+| `dl > div.flex > dt` (specs label) | `#3c3735` on `#7c716a` | **2.47:1** |
+| `dl > div.flex > dd.font-medium` (specs value) ×2 | `#111111` on `#7c716a` | **3.98:1** |
+| `footer p.text-xs.text-muted-foreground` | `#646464` on `#d6d2cf` | **3.93:1** |
+
+**It is the same class of defect as LB.53, one component over.** The `dt`
+carries `style="color:var(--theme-text);opacity:0.6"` — theme ink thinned
+by opacity over a themed surface, which is the "surface colours used as
+ink" mistake LB.53 named, arriving through a door LB.53 did not check.
+The fix should therefore be the same shape and NOT a hand-picked colour:
+`--theme-text-muted` already exists and already inherits the theme's
+text/background contrast headroom, so the specs list should read it
+instead of applying its own opacity. The footer is a separate question —
+`text-muted-foreground` there is a CONSOLE token on a themed storefront
+surface, which is the LB.26 bleed pattern rather than the LB.53 one, and
+worth confirming before assuming one fix covers both.
+
+**Deliberately not built here:** the session that measured it was a
+verification-and-reconciliation pass under an explicit no-push
+instruction. Nothing about this is urgent — it is a readability defect on
+a specs table, not a money or ordering defect — but it is real, it is on
+the live page a customer sees, and it will not be caught by any suite,
+because no suite renders the theme.
+
+**When it is built:** re-measure warm and **discard the first Lighthouse
+run** — mobile emulation requests different `/_next/image` width variants
+than the desktop HTML lists, so warming from the page's own URLs leaves
+the mobile run cold. Measured on this page minutes apart: run 1 **perf 44
+/ LCP 9.7s / SI 9.5s** cold, runs 2–3 **perf 68–71 / LCP 4.0–4.2s / SI
+2.8–3.4s** warm. Same URL, same session.
+
+**The 17 Aug batch was taken 37 minutes after a deploy, which nobody knew
+at the time** — the Render API later put `d26074c` live at 14:35:35 UTC
+and the first Lighthouse run began 15:12:34 UTC. That is the *cause* of
+the cold run 1, and it is a second independent sighting of "a deploy
+wipes the `/_next/image` cache". **Re-measured 18 Aug, ~24h after that
+deploy with none since, fully pre-warmed — the numbers hold:**
+
+| Batch | Perf | a11y | FCP | LCP | TBT | CLS | SI | Root TTFB | Images | contrast fails |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 17 Aug, warm (runs 2–3) | 68–71 | 97 | 1.9–2.0s | 4.0–4.2s | 610–630ms | 0 | 2.8–3.4s | 12–17ms | 306KiB | 4 |
+| **18 Aug, clean (runs 4–6)** | **64–74** | **97** | 1.9–2.1s | **3.3–4.3s** | 650–940ms | 0 | 2.3–3.6s | **9–12ms** | 306KiB | **4** |
+
+So the honest headline for LB.51–53 on the real page is **perf ~64–74
+warm, LCP ~3.3–4.3s, CLS 0, root TTFB ~10ms** (LB.51's census win is the
+unambiguous one), and **accessibility 97 — reproduced identically across
+six runs on two days, with the same four failing nodes each time.** The
+defect below is stable and real, not run-to-run noise.
 
 ### LB.54 — DEPLOYED (16 Aug, night, `1dbe119..c722050`): the /0 bug — a slug must contain a letter
 
