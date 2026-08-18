@@ -606,6 +606,43 @@ model AiProvider {
   @@index([tenantId, isDefault, active])
 }
 
+// One row per ATTEMPTED model call — the spend ledger (AQ.1). Every route
+// that spends a tenant's AI key reserves a row here BEFORE the call fires and
+// settles it after; the monthly quota is a count over this table, so the
+// enforcement and the usage a merchant sees are the same numbers by
+// construction. A row that stays `pending` (the process died mid-call) still
+// counts against the month: the money may have been spent, and a quota that
+// forgets crashed calls under-counts in exactly the runaway case it exists
+// for. Token counts are display-only (recorded when the provider reports
+// them, null when it does not) — the QUOTA unit is calls, because only calls
+// are knowable before the spend happens.
+model AiUsageEvent {
+  id       String @id @default(cuid())
+  tenantId String
+
+  // Which feature spent it: "landing_generation" (LB.24), "behavior_insight"
+  // (BH.3), ... A string, not an enum: a new spender is a new value, not a
+  // migration.
+  kind String
+
+  // Snapshot of what was asked, for the usage screen after a provider row is
+  // edited or deleted. Never the key.
+  provider String?
+  model    String?
+
+  // pending → ok | failed. `failed` still counts (an upstream 500 or timeout
+  // may still have billed); the usage card shows the split.
+  status String @default("pending")
+
+  promptTokens     Int?
+  completionTokens Int?
+
+  createdAt DateTime @default(now())
+
+  // The quota read: count by tenant inside the month window.
+  @@index([tenantId, createdAt])
+}
+
 // A role-configured assistant bound to a provider and model, carrying its own
 // prompt and permission set. The CRM core is agnostic to roles — they are data.
 model AiAgent {

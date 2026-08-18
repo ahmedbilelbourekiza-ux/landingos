@@ -33,7 +33,14 @@ export function GenerateLandingPanel({
   labels,
   messages,
   errors,
+  usageLine,
+  quotaExhausted,
 }: {
+  /** AQ.1 — "{used} of {limit} this month", prebuilt server-side. */
+  readonly usageLine?: string | null;
+  /** Set when the month's allowance is spent: shown instead of the submit
+   * button, so the refusal arrives before the form is filled, not after. */
+  readonly quotaExhausted?: string | null;
   readonly labels: {
     heading: string;
     intro: string;
@@ -150,6 +157,11 @@ export function GenerateLandingPanel({
           {labels.heading}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">{labels.intro}</p>
+        {usageLine ? (
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="ai-usage-line">
+            {usageLine}
+          </p>
+        ) : null}
       </div>
 
       {fieldError ? (
@@ -249,14 +261,23 @@ export function GenerateLandingPanel({
         ) : null}
       </div>
 
-      <ActionButton
-        type="submit"
-        pending={pending || uploading}
-        pendingLabel={labels.generating}
-        data-testid="ai-generate-submit"
-      >
-        {labels.submit}
-      </ActionButton>
+      {quotaExhausted ? (
+        <p
+          data-testid="ai-quota-exhausted"
+          className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
+        >
+          {quotaExhausted}
+        </p>
+      ) : (
+        <ActionButton
+          type="submit"
+          pending={pending || uploading}
+          pendingLabel={labels.generating}
+          data-testid="ai-generate-submit"
+        >
+          {labels.submit}
+        </ActionButton>
+      )}
     </form>
   );
 }

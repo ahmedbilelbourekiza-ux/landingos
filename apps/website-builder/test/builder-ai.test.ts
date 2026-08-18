@@ -11,8 +11,17 @@ import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } f
 import {
   buildCompletionRequest,
   readCompletionResponse,
+  readCompletionUsage,
   generationTimeoutMs,
 } from '../src/lib/erp/ai-complete.ts';
+import {
+  monthStartUtc,
+  nextMonthStartUtc,
+  parseLimitOverride,
+  DEFAULT_MONTHLY_AI_CALLS,
+  AI_QUOTA_PRODUCT,
+  AI_QUOTA_LIMIT_KEY,
+} from '../src/lib/erp/ai-quota.ts';
 import {
   buildGenerationMessages,
   parseGeneratedCopy,
@@ -135,6 +144,55 @@ describe('the three provider wire shapes (pure)', () => {
     assert.equal(generationTimeoutMs({ ...CFG, timeoutMs: 5_000 }), 30_000);
     assert.equal(generationTimeoutMs({ ...CFG, timeoutMs: 90_000 }), 90_000);
     assert.equal(generationTimeoutMs({ ...CFG, timeoutMs: 500_000 }), 120_000);
+  });
+
+  test('AQ.1 — usage readers pull token counts out of each provider shape, null when absent', () => {
+    assert.deepEqual(
+      readCompletionUsage('openai-compat', { usage: { prompt_tokens: 10, completion_tokens: 20 } }),
+      { promptTokens: 10, completionTokens: 20 },
+    );
+    assert.deepEqual(
+      readCompletionUsage('anthropic', { usage: { input_tokens: 5, output_tokens: 7 } }),
+      { promptTokens: 5, completionTokens: 7 },
+    );
+    assert.deepEqual(
+      readCompletionUsage('gemini', { usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 4 } }),
+      { promptTokens: 3, completionTokens: 4 },
+    );
+    // A provider that reports nothing costs nothing in accuracy: nulls, not NaN.
+    assert.deepEqual(readCompletionUsage('openai-compat', { choices: [] }), {
+      promptTokens: null,
+      completionTokens: null,
+    });
+    assert.deepEqual(readCompletionUsage('anthropic', { usage: { input_tokens: 'x' } }), {
+      promptTokens: null,
+      completionTokens: null,
+    });
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * PURE — the spend quota's window and limit rules (AQ.1)
+ * ------------------------------------------------------------------------ */
+
+describe('the spend quota window and limit (pure)', () => {
+  test('the window is the UTC calendar month, whatever the local clock says', () => {
+    const inside = new Date(Date.UTC(2026, 7, 19, 23, 59, 59));
+    assert.equal(monthStartUtc(inside).toISOString(), '2026-08-01T00:00:00.000Z');
+    assert.equal(nextMonthStartUtc(inside).toISOString(), '2026-09-01T00:00:00.000Z');
+    // December rolls into January of the NEXT year.
+    const dec = new Date(Date.UTC(2026, 11, 31, 12));
+    assert.equal(nextMonthStartUtc(dec).toISOString(), '2027-01-01T00:00:00.000Z');
+  });
+
+  test('a limit override must be a non-negative integer; anything else falls back', () => {
+    assert.equal(parseLimitOverride(50), 50);
+    // 0 is a real value: AI off for this tenant, not "use the default".
+    assert.equal(parseLimitOverride(0), 0);
+    for (const bad of [-1, 1.5, '200', true, null, undefined, {}, NaN]) {
+      assert.equal(parseLimitOverride(bad), null, `accepted ${JSON.stringify(bad)}`);
+    }
+    assert.ok(DEFAULT_MONTHLY_AI_CALLS > 0);
   });
 });
 
@@ -290,7 +348,11 @@ describe('POST /api/builder/landings/generate (end to end)', { skip }, () => {
           res.setHeader('content-type', 'application/json');
           res.end(
             behaviour.status === 200
-              ? JSON.stringify({ choices: [{ message: { content: behaviour.answer } }] })
+              ? JSON.stringify({
+                  choices: [{ message: { content: behaviour.answer } }],
+                  // What AQ.1's ledger should capture from an openai-compat answer.
+                  usage: { prompt_tokens: 101, completion_tokens: 202 },
+                })
               : JSON.stringify({ error: { message: 'stub says no' } }),
           );
         }, behaviour.delayMs);
@@ -571,5 +633,109 @@ describe('POST /api/builder/landings/generate (end to end)', { skip }, () => {
       generateBody({ productName: 'ساعة برو' }));
     assert.equal(good.status, 201, JSON.stringify(good.body));
     assert.equal(good.body.data.slug, 'saa-pro-lux', 'a letter-bearing model slug must still win');
+  });
+
+  /* -------------------------------------------------------------------------
+   * AQ.1 — the spend quota around this route
+   * ---------------------------------------------------------------------- */
+
+  const ledger = () =>
+    withTenant(tenantA, (tx) =>
+      (tx as any).aiUsageEvent.findMany({ orderBy: { createdAt: 'asc' } }),
+    );
+
+  test('AQ.1 — a successful generation lands ONE ledger row, settled ok with the token counts', async () => {
+    const before = await ledger();
+    behaviour.status = 200;
+    behaviour.answer = JSON.stringify(VALID_COPY);
+    const res = await api('/api/builder/landings/generate', tokens.owner, generateBody());
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+
+    const rows = await ledger();
+    assert.equal(rows.length, before.length + 1);
+    const row = rows.at(-1)!;
+    assert.equal(row.kind, 'landing_generation');
+    assert.equal(row.status, 'ok');
+    assert.equal(row.provider, 'openai-compat');
+    assert.equal(row.model, 'test-model');
+    assert.equal(row.promptTokens, 101);
+    assert.equal(row.completionTokens, 202);
+  });
+
+  test('AQ.1 — an upstream failure still counts, settled failed: the key may have been billed', async () => {
+    const before = await ledger();
+    behaviour.status = 500;
+    const res = await api('/api/builder/landings/generate', tokens.owner, generateBody());
+    assert.equal(res.status, 502);
+    behaviour.status = 200;
+
+    const rows = await ledger();
+    assert.equal(rows.length, before.length + 1);
+    assert.equal(rows.at(-1)!.status, 'failed');
+    assert.equal(rows.at(-1)!.promptTokens, null);
+  });
+
+  test('AQ.1 — a refusal BEFORE the provider is contacted releases its reservation', async () => {
+    // Passes the shape check (own-tenant path, safe filename) but no such
+    // file exists, so the hero read refuses inside the call phase — the one
+    // post-reservation, provably pre-call refusal the route has.
+    const before = await ledger();
+    const hitsBefore = hits.length;
+    const res = await api('/api/builder/landings/generate', tokens.owner, generateBody({
+      imageUrls: [`/uploads/tenants/${tenantA}/never-uploaded.png`],
+    }));
+    assert.equal(res.status, 422);
+    assert.equal(res.body.error.code, 'IMAGE_NOT_OWNED');
+    assert.equal(hits.length, hitsBefore, 'the model must not have been contacted');
+    assert.equal((await ledger()).length, before.length, 'the reservation must be released');
+  });
+
+  test('AQ.1 — over the limit: 429 with the numbers, the model never contacted, nothing written', async () => {
+    const used = (await ledger()).length;
+    // Clamp this tenant's allowance to exactly what it has already spent.
+    await withTenant(tenantA, (tx) =>
+      (tx as any).productSetting.create({
+        data: { tenantId: tenantA, product: AI_QUOTA_PRODUCT, key: AI_QUOTA_LIMIT_KEY, value: used },
+      }),
+    );
+    try {
+      const hitsBefore = hits.length;
+      const pagesBefore = await pageCount();
+      const res = await api('/api/builder/landings/generate', tokens.owner, generateBody());
+      assert.equal(res.status, 429, JSON.stringify(res.body));
+      assert.equal(res.body.error.code, 'AI_QUOTA_EXCEEDED');
+      assert.equal(res.body.error.used, used);
+      assert.equal(res.body.error.limit, used);
+      assert.ok(String(res.body.error.resetsAt).endsWith('T00:00:00.000Z'));
+      assert.equal(hits.length, hitsBefore, 'a refused call must never reach the provider');
+      assert.equal(await pageCount(), pagesBefore);
+      assert.equal((await ledger()).length, used, 'a refusal must not consume quota');
+
+      // The create screen says so up front: the notice replaces the submit.
+      const html = await fetch(BASE + '/console/builder/pages/new', {
+        headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+      }).then((r) => r.text());
+      assert.ok(html.includes('data-testid="ai-usage-line"'));
+      assert.ok(html.includes('data-testid="ai-quota-exhausted"'));
+      assert.ok(!html.includes('data-testid="ai-generate-submit"'));
+    } finally {
+      await withTenant(tenantA, (tx) =>
+        (tx as any).productSetting.deleteMany({
+          where: { product: AI_QUOTA_PRODUCT, key: AI_QUOTA_LIMIT_KEY },
+        }),
+      );
+    }
+  });
+
+  test('AQ.1 — under the limit again, the screen offers the button and a generation goes through', async () => {
+    behaviour.status = 200;
+    behaviour.answer = JSON.stringify(VALID_COPY);
+    const html = await fetch(BASE + '/console/builder/pages/new', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    }).then((r) => r.text());
+    assert.ok(html.includes('data-testid="ai-generate-submit"'));
+    assert.ok(!html.includes('data-testid="ai-quota-exhausted"'));
+    const res = await api('/api/builder/landings/generate', tokens.owner, generateBody());
+    assert.equal(res.status, 201, JSON.stringify(res.body));
   });
 });

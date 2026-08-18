@@ -176,7 +176,10 @@
         "invalidOutput": "La réponse de l'IA n'a pas pu être utilisée — réessayez.",
         "imageNotOwned": "Les photos doivent d'abord être téléversées dans cette boutique.",
         "removePhoto": "Retirer la photo",
-        "photosLimit": "12 photos au maximum."
+        "photosLimit": "12 photos au maximum.",
+        "usageLine": "{used} générations IA sur {limit} utilisées ce mois-ci.",
+        "quotaExhausted": "Le quota IA mensuel de cette boutique est épuisé ({used} sur {limit}). Il se réinitialise le {date}.",
+        "quotaExceeded": "Le quota IA mensuel de cette boutique est épuisé — il se réinitialise au début du mois prochain."
       }
     },
     "editor": {
@@ -1006,6 +1009,9 @@
       "insights": "Insights instantanés",
       "chat": "Chat",
       "chatUnavailable": "Les appels de modèle ne sont pas activés sur ce déploiement. Tout ce qui est au-dessus est calculé depuis vos propres données et n’a besoin d’aucun fournisseur ; une zone de chat qui échouerait toujours en dirait moins que cette phrase.",
+      "usageTitle": "Utilisation de l'IA ce mois-ci",
+      "usageLine": "{used} appels de modèle sur {limit} utilisés · {failed} en échec.",
+      "usageResets": "Réinitialisation le {date}.",
       "yourCeiling": "Ce qu’un assistant pourrait lire pour vous",
       "providers": "Fournisseurs de modèles",
       "provider": "Fournisseur",

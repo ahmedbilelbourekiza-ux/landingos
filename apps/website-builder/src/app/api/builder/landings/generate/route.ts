@@ -5,6 +5,7 @@ import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
 import { triggerProductWebhook } from "@/lib/webhooks/tenant-triggers";
 import { isSafeUploadFilename } from "@/lib/uploads";
 import { completeWithProvider, AiCallError } from "@/lib/erp/ai-complete";
+import { reserveAiCall, settleAiCall, releaseAiCall } from "@/lib/erp/ai-quota";
 import {
   buildGenerationMessages,
   parseGeneratedCopy,
@@ -110,6 +111,24 @@ export const POST = tenantRoute("website-builder:pages:write", async ({ db, req,
     return apiError(501, "NO_AI_PROVIDER", "No model provider is configured for this company.");
   }
 
+  /* AQ.1 — the quota gate, INSIDE the wrapper's transaction so the count and
+   * the reservation land together. Refusing here means the model is never
+   * contacted and the tenant's key is never billed. */
+  const reservation = await reserveAiCall(db, tenantId, "landing_generation", {
+    provider: provider.type,
+    model: provider.defaultModel,
+  });
+  if (!reservation.ok) {
+    const { used, limit, resetsAt } = reservation.usage;
+    return apiError(
+      429,
+      "AI_QUOTA_EXCEEDED",
+      `This store's monthly AI allowance is used up (${used} of ${limit} calls). It resets on ${resetsAt.toISOString().slice(0, 10)}.`,
+      { used, limit, resetsAt: resetsAt.toISOString() },
+    );
+  }
+  const usageEventId = reservation.eventId;
+
   const facts = {
     productName: body.productName,
     price: body.price,
@@ -130,6 +149,9 @@ export const POST = tenantRoute("website-builder:pages:write", async ({ db, req,
     if (imageUrls[0]) {
       heroBytes = await readTenantImage(imageUrls[0], tenantId);
       if (!heroBytes) {
+        // The provider was never contacted, so this reservation un-counts —
+        // the ONE refusal after the gate that is provably pre-call.
+        await releaseAiCall(tenantId, usageEventId);
         return apiError(422, "IMAGE_NOT_OWNED", "The first photo could not be read from this store's uploads.");
       }
     }
@@ -148,12 +170,22 @@ export const POST = tenantRoute("website-builder:pages:write", async ({ db, req,
         },
         buildGenerationMessages(facts),
       );
-      copy = parseGeneratedCopy(answer);
+      await settleAiCall(tenantId, usageEventId, {
+        ok: true,
+        promptTokens: answer.usage.promptTokens,
+        completionTokens: answer.usage.completionTokens,
+      });
+      copy = parseGeneratedCopy(answer.text);
     } catch (error) {
       if (error instanceof GenerationParseError) {
+        // The call happened and was billed; only the parse failed. The ledger
+        // row was already settled `ok` above, honestly: the spend is real.
         return apiError(502, "AI_INVALID_OUTPUT", error.message);
       }
       if (error instanceof AiCallError) {
+        // The provider was contacted (or contact was attempted); the spend
+        // may be real, so this settles `failed` rather than releasing.
+        await settleAiCall(tenantId, usageEventId, { ok: false });
         return apiError(502, error.code, error.message);
       }
       throw error;

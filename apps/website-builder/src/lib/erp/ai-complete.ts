@@ -153,6 +153,40 @@ export function buildCompletionRequest(
   }
 }
 
+/** What the provider says the call cost. Display-only (AQ.1's ledger); the
+ * quota's unit is calls, so a provider that reports nothing costs nothing in
+ * accuracy — the pair is simply null. */
+export interface AiUsageCounts {
+  readonly promptTokens: number | null;
+  readonly completionTokens: number | null;
+}
+
+export interface AiAnswer {
+  readonly text: string;
+  readonly usage: AiUsageCounts;
+}
+
+export function readCompletionUsage(type: string | null, json: unknown): AiUsageCounts {
+  const j = json as any;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  if (type === "anthropic") {
+    return {
+      promptTokens: num(j?.usage?.input_tokens),
+      completionTokens: num(j?.usage?.output_tokens),
+    };
+  }
+  if (type === "gemini") {
+    return {
+      promptTokens: num(j?.usageMetadata?.promptTokenCount),
+      completionTokens: num(j?.usageMetadata?.candidatesTokenCount),
+    };
+  }
+  return {
+    promptTokens: num(j?.usage?.prompt_tokens),
+    completionTokens: num(j?.usage?.completion_tokens),
+  };
+}
+
 export function readCompletionResponse(type: string | null, json: unknown): string {
   const j = json as any;
   if (type === "anthropic") {
@@ -173,7 +207,7 @@ export function readCompletionResponse(type: string | null, json: unknown): stri
 export async function completeWithProvider(
   cfg: AiCompletionConfig,
   messages: readonly AiMessage[],
-): Promise<string> {
+): Promise<AiAnswer> {
   const wire = buildCompletionRequest(cfg, messages);
 
   let res: Response;
@@ -211,5 +245,5 @@ export async function completeWithProvider(
 
   const answer = readCompletionResponse(cfg.type, json).trim();
   if (!answer) throw new AiCallError("AI_EMPTY_ANSWER", "The model returned an empty answer.");
-  return answer;
+  return { text: answer, usage: readCompletionUsage(cfg.type, json) };
 }

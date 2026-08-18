@@ -10,6 +10,77 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## AQ.1 — AI spend gets a ceiling before it gets a second spender
+
+**Committed locally 19 August 2026 (overnight session) — NOT pushed, NOT
+deployed. ⚠ Schema: ONE new table `AiUsageEvent` (tenant-scoped ledger).
+Applied to DEV in full (`ep-gentle-sky` confirmed in the push output; dev
+`apply-rls` now **51/51**, was 50/50). The production migration remains the
+user's separate approval — and note the resume-checklist consequence
+recorded in HANDOFF_PRODUCTION §1: a `migrate diff` taken from tonight's
+tree shows MORE than the approved AN.1+AN.2+BH.1 delta.**
+
+**Why now:** LB.24's open question 1 ("who may spend AI money — decide the
+ceiling before real tenants get keys") and BH.3's explicit block ("waits
+for a spend-quota system") converged on the same missing piece. This builds
+it once, around the ONE path that spends: `completeWithProvider`.
+
+- **The unit is CALLS, not tokens or money — because of enforcement
+  order.** The gate must refuse BEFORE the spend, and before the call
+  neither the token count nor the bill exists to measure. A call's cost is
+  already bounded by the existing machinery (prompt builders bound input,
+  `maxTokens` floors/caps output at 2048–), so N calls IS a spend ceiling.
+  Token counts are captured opportunistically from all three provider
+  response shapes (`readCompletionUsage`, pure, suite-pinned) for the usage
+  display only — never what the gate reads.
+- **The window is the UTC calendar month; the default is
+  `DEFAULT_MONTHLY_AI_CALLS = 200`.** Predictable ("resets on the 1st"),
+  no sliding-window bookkeeping. 200 × a bounded call is single-digit-to-
+  tens of dollars at worst on the tenant's own key — a runaway ceiling
+  that no honest merchant workload approaches (a heavy month of
+  generations plus daily per-page analyses stays well under it).
+- **Per-tenant override WITHOUT a merchant-editable screen:**
+  `ProductSetting(product "platform-ai", key "monthlyCallLimit")`,
+  deliberately NOT added to the ERP settings vocabulary — that schema
+  feeds a screen the merchant edits, and a ceiling the spender can raise
+  is not a ceiling. `0` is valid and means "AI off for this tenant".
+  Nothing in the console writes this row today; it is platform-set.
+- **The lifecycle is reserve → settle/release** (`lib/erp/ai-quota.ts`,
+  the module BH.3 will call too). Reserve = count + insert a `pending`
+  ledger row INSIDE the route wrapper's transaction (plan phase); over the
+  limit → **429 `AI_QUOTA_EXCEEDED`** naming used/limit/reset, model never
+  contacted. Settle marks ok/failed + token counts post-call. Release
+  (delete) is legal ONLY on provably pre-call refusals — the generate
+  route's unreadable-hero 422 is the one such path. **Failed calls COUNT**
+  (an upstream 500 may still have billed; and a failing provider cannot be
+  hammered for free). A row left `pending` by a crash counts — the money
+  may have been spent. Two racing reservations can overshoot by the burst
+  width; accepted and documented (a spend bound, not an accounting
+  invariant).
+- **Connection tests are exempt, deliberately:** two of three adapters call
+  a free models-list, the third a `max_tokens: 1` ping; `erp:settings:write`
+  gated and human-paced. Metering them would charge merchants quota for
+  checking their own credential.
+- **The merchant sees the numbers in both places they'd look:** the create
+  screen's AI panel carries "{used} of {limit} this month" and, when
+  exhausted, REPLACES the submit button with the reset date (refusal
+  before the form is filled, not after) — and `/console/erp/ai` gains an
+  "AI usage this month" card (used/limit/failed + reset), visible to every
+  `erp:ai:use` holder: an allowance you cannot see is one you discover by
+  being refused. i18n ×3 throughout.
+- **Files:** `packages/db/prisma/schema/erp.prisma` (AiUsageEvent) ·
+  `lib/erp/ai-quota.ts` (new) · `lib/erp/ai-complete.ts` (usage readers;
+  `completeWithProvider` returns `{text, usage}`) ·
+  `api/builder/landings/generate/route.ts` (gate + settle) ·
+  `console/builder/(shell)/pages/new/page.tsx` + `generate-landing-panel.tsx`
+  (usage line, exhausted state, error map) · `console/erp/ai/page.tsx`
+  (usage card) · catalogs ×3 · `test/builder-ai.test.ts`.
+- **Suites at this tree:** builder-ai **29** (was 19 — three pure quota/usage
+  tests + five end-to-end: ledger row settled with tokens, failed-counts,
+  pre-call release, the 429 with numbers + screen state, recovery under the
+  limit) · erp/ai 31 · console-shell 20 · i18n 22 · erp/screens 172 — all
+  green against the rebuilt standalone server on dev.
+
 ## BH.1 + BH.2 — a page learns what its visitors actually did, where its merchant opted in
 
 **Committed locally 18 August 2026 (after the user's §BH review: opt-in PER

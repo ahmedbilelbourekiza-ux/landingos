@@ -70,6 +70,20 @@ remain the deep references.
 > as traffic arrives (worst case: manual Render restart); confirm with
 > `/api/health` green.
 >
+> **⚠ 19 Aug (overnight, AFTER the block below was written): the LOCAL
+> schema has moved past the approved delta.** The overnight session added
+> dev-only migrations on local `main` (AQ.1's `AiUsageEvent`; any later
+> table tonight's commits add is listed in its own CHANGELOG entry). Dev
+> (`ep-gentle-sky`) carries them; production does NOT and the APPROVED
+> batch does not include them. **Consequence for the resume checklist's
+> step 1: run the `migrate diff` preview FROM THE APPROVED TREE
+> (`be020b0` / `0dd2214` — check out or `git worktree` it), not from
+> tonight's head — a diff from the current head will show the extra
+> tables and the "anything else = drift, stop" rule would false-alarm.
+> Alternatively, re-approve the LARGER delta deliberately.** The
+> apply-rls expectation for the approved batch stays **49 → 50**; each
+> additional table shipped later moves it by one more.
+>
 > **MIGRATION STATE: NOT APPLIED, ZERO WRITES MADE.** The one connection
 > attempted was the read-only `migrate diff` preview, refused at the door.
 > The owner credential was provided 19 Aug as a gitignored local file

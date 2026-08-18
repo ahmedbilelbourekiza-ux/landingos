@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 
 import { can } from "@landingos/auth";
 import { forTenant } from "@landingos/db";
+import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
+import { readAiUsage } from "@/lib/erp/ai-quota";
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
@@ -26,18 +28,23 @@ export const dynamic = "force-dynamic";
  * ========================================================================== */
 
 export default async function NewLandingPage() {
-  const { session, t } = await requireProduct("website-builder", "/console/builder/pages/new");
+  const { session, locale: rawLocale, t } = await requireProduct("website-builder", "/console/builder/pages/new");
   if (!can(session.auth!, "website-builder:pages:write")) notFound();
+  const locale = isLocale(rawLocale) ? rawLocale : DEFAULT_LOCALE;
 
   // LB.24 — the AI panel renders only when a model provider is configured;
   // without one it points at the AI settings screen instead of offering a
   // button that can only answer NO_AI_PROVIDER.
+  const db = forTenant(session.auth!.tenantId);
   const aiConfigured = Boolean(
-    await forTenant(session.auth!.tenantId).aiProvider.findFirst({
+    await db.aiProvider.findFirst({
       where: { active: true },
       select: { id: true },
     }),
   );
+  // AQ.1 — the same numbers the generate route's gate reads, shown BEFORE the
+  // merchant fills a whole form a 429 would then refuse.
+  const usage = aiConfigured ? await readAiUsage(db) : null;
 
   const errors = actionErrors(t);
   // SLUG_TAKEN is this route's own refusal; said specifically rather than as
@@ -48,6 +55,7 @@ export default async function NewLandingPage() {
   errors.AI_EMPTY_ANSWER = t("builder.newPage.ai.upstreamFailed");
   errors.AI_INVALID_OUTPUT = t("builder.newPage.ai.invalidOutput");
   errors.IMAGE_NOT_OWNED = t("builder.newPage.ai.imageNotOwned");
+  errors.AI_QUOTA_EXCEEDED = t("builder.newPage.ai.quotaExceeded");
 
   return (
     <>
@@ -79,6 +87,20 @@ export default async function NewLandingPage() {
 
       {aiConfigured ? (
         <GenerateLandingPanel
+          usageLine={
+            usage
+              ? t("builder.newPage.ai.usageLine", { used: usage.used, limit: usage.limit })
+              : null
+          }
+          quotaExhausted={
+            usage && usage.remaining === 0
+              ? t("builder.newPage.ai.quotaExhausted", {
+                  used: usage.used,
+                  limit: usage.limit,
+                  date: formatDate(usage.resetsAt, locale),
+                })
+              : null
+          }
           labels={{
             heading: t("builder.newPage.ai.heading"),
             intro: t("builder.newPage.ai.intro"),

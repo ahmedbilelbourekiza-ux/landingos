@@ -14,6 +14,7 @@ import {
   ProviderCreatePanel, ProviderRowActions, AgentCreatePanel, AgentRowActions,
 } from "@/components/console/erp/ai-write";
 import { ALL_AI_PERMISSIONS, ceilingFor } from "@/lib/erp/ai";
+import { readAiUsage } from "@/lib/erp/ai-quota";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,7 @@ export default async function ErpAiScreen() {
   const mayConfigure = can(session.auth, "erp:settings:write");
   const ceiling = ceilingFor(session);
 
-  const { insights, providers, agents } = await withTenant(session.auth.tenantId, async (db) => {
+  const { insights, providers, agents, usage } = await withTenant(session.auth.tenantId, async (db) => {
     // The same three counts `GET /api/erp/ai/insights` returns, and the same
     // rule about the money line: absent rather than zero when the caller may not
     // see it, because a zero is a lie that reads like a fact.
@@ -81,6 +82,10 @@ export default async function ErpAiScreen() {
 
     return {
       insights: { orders, pending, delivered, revenue },
+      // AQ.1 — the same numbers the spend gate reads. Visible to every
+      // `erp:ai:use` holder: an allowance you cannot see is one you discover
+      // by being refused.
+      usage: await readAiUsage(db),
       // `apiKey` is absent from both selects, not masked afterwards. A key never
       // loaded cannot leak through a logger or a field added later.
       providers: mayConfigure
@@ -135,6 +140,19 @@ export default async function ErpAiScreen() {
           </div>
         ))}
       </div>
+
+      {/* AQ.1 — the month's AI spend, the same numbers the quota gate
+          enforces. Counts only; no key, no cost figure the platform cannot
+          honestly know. */}
+      <section className="mt-6 rounded-lg border border-border bg-surface-raised p-4" data-testid="ai-usage">
+        <h2 className="text-sm font-semibold tracking-tight">{t("erp.ai.usageTitle")}</h2>
+        <p className="mt-1 text-sm text-muted-foreground" dir="auto">
+          {t("erp.ai.usageLine", { used: usage.used, limit: usage.limit, failed: usage.failed })}
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {t("erp.ai.usageResets", { date: formatDate(usage.resetsAt, locale) })}
+        </p>
+      </section>
 
       {/* The absence, stated on the page rather than discovered by pressing a
           button. `ai/chat` and `ai/insights/deep` answer 501 by design. */}

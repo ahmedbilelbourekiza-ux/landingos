@@ -855,19 +855,23 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
-### BH — REVIEWED AND DECIDED 18 Aug (same day). BH.1+BH.2 BUILT; BH.3 blocked on a spend quota
+### BH — REVIEWED AND DECIDED 18 Aug (same day). BH.1+BH.2 BUILT; BH.3 UNBLOCKED 19 Aug by AQ.1
 
 **The user's decisions on the proposal below:** (1) opt-in **PER PAGE** — a
 toggle per landing page, default off — BUILT into BH.1 as a
 `LandingSetting` flag with the editor's Display-section control, enforced
 client-side AND server-side; (2) **WhatsApp taps are NOT conversions** —
 BUILT as their own honestly-labelled column; (3) **BH.3 waits for a
-spend-quota system** — NOT built, and it stays here as designed, not
-removed. **The spend quota is now a shared need: LB.24's generator ("who
-may spend AI money") and BH.3 both require it — scope it as its own piece
-of work when it is picked up.** BH.1+BH.2 shipped as one local commit
-(CHANGELOG §BH.1+BH.2); their schema folded into the queued AN.1/AN.2
-migration, which therefore stays ONE db push + ONE apply-rls (49→50).
+spend-quota system** — that system now EXISTS: **AQ.1 (19 Aug overnight,
+CHANGELOG §AQ.1)** built the per-tenant monthly call quota around
+`completeWithProvider` with the reserve→settle ledger (`AiUsageEvent`,
+dev RLS 51/51), the 429 refusal and the two usage surfaces. BH.3's
+analyze route reserves `kind: "behavior_insight"` through the same
+`lib/erp/ai-quota.ts` — nothing quota-shaped remains to invent.
+BH.1+BH.2 shipped as one local commit (CHANGELOG §BH.1+BH.2); their
+schema folded into the queued AN.1/AN.2 migration (still 49→50 for the
+APPROVED batch — AQ.1's table is a LATER, separate delta, see
+HANDOFF §1).
 
 *(The original proposal follows, kept for the record — its §2 signal table
 and §3 AI design are what BH.1 implemented and BH.3 will implement.)*
@@ -1351,12 +1355,16 @@ the full record. The shape is FEATURE_PASS_AUG12 §5's, built:
 
 **Open questions, yours:**
 
-1. **Who may spend AI money?** The route is gated
-  `website-builder:pages:write` (builder-only tenants have no
-  `erp:ai:use` surface at all), so any manager with page-write can bill
-  the tenant's key, and there is no per-tenant generation quota or rate
-  limit yet. Fine for a first slice behind your own testing; decide the
-  ceiling before real tenants get keys.
+1. **Who may spend AI money?** ~~no per-tenant generation quota or rate
+  limit yet~~ — **ANSWERED 19 Aug by AQ.1 (CHANGELOG §AQ.1):** 200 model
+  calls per tenant per UTC month (default; per-tenant override via a
+  platform-set ProductSetting row, `0` = AI off), enforced BEFORE the
+  call with a 429 naming used/limit/reset, ledgered in `AiUsageEvent`,
+  usage visible on the create screen and `/console/erp/ai`. Dev-only
+  migration so far. What REMAINS yours: whether the permission gate
+  should also narrow (the route still accepts any
+  `website-builder:pages:write` holder — the quota bounds the spend, not
+  WHO spends it), and whether 200 is the right default.
 2. **Provider setup for builder-only tenants:** generation reads the
   tenant's `AiProvider` row, but the ONLY screen that creates one lives
   in the ERP console (`/console/erp/ai`, `erp:settings:write`). A

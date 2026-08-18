@@ -176,7 +176,10 @@
         "invalidOutput": "The AI answer could not be used — try again.",
         "imageNotOwned": "Photos must be uploaded to this store first.",
         "removePhoto": "Remove photo",
-        "photosLimit": "Up to 12 photos."
+        "photosLimit": "Up to 12 photos.",
+        "usageLine": "{used} of {limit} AI generations used this month.",
+        "quotaExhausted": "This store's monthly AI allowance is used up ({used} of {limit}). It resets on {date}.",
+        "quotaExceeded": "The monthly AI allowance for this store is used up — it resets at the start of next month."
       }
     },
     "editor": {
@@ -1006,6 +1009,9 @@
       "insights": "Instant insights",
       "chat": "Chat",
       "chatUnavailable": "Model calls are not enabled on this deployment. Everything above is computed from your own data and needs no provider; a chat box that always failed would say less than this sentence does.",
+      "usageTitle": "AI usage this month",
+      "usageLine": "{used} of {limit} model calls used · {failed} failed.",
+      "usageResets": "Resets on {date}.",
       "yourCeiling": "What an assistant could read for you",
       "providers": "Model providers",
       "provider": "Provider",
