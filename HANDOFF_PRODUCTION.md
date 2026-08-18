@@ -48,9 +48,9 @@ remain the deep references.
 > carried `/0` all require `landingos_prod`, which is now off-limits. They are
 > **closed-unverified**, not pending.
 
-> ### ⚠ FIVE LOCAL COMMITS ARE QUEUED, NOT PUSHED — 18 Aug 2026 (overnight session + the user's AN.1 review), AND THE BATCH CARRIES ONE MIGRATION
+> ### ⚠ SIX LOCAL COMMITS ARE QUEUED, NOT PUSHED — 18 Aug 2026 (overnight session + the user's AN.1 review), AND THE BATCH CARRIES ONE MIGRATION
 >
-> **`main` is now five commits ahead of `origin/main` (`12d805e..`), all
+> **`main` is now six commits ahead of `origin/main` (`12d805e..`), all
 > local, per the session's explicit no-push instruction. The push/deploy
 > decision is the user's.** In order:
 >
@@ -60,7 +60,8 @@ remain the deep references.
 > | `7b57bcd` | **AN.1** — first-party page views + traffic-source attribution (beacon → server-derived channel → order snapshot → the console "Traffic" screen). Optional env `VISIT_RATE_LIMIT` (default 120/5min/IP) |
 > | `85ba416` | **JS.1** — the storefront stops shipping next-intl/ICU, both toasters and next-themes (they moved to `console/layout.tsx`); dead `category-product-grid.tsx` deleted. **Modern-phone payload 296→261KB gz, HTML 565→481KB.** No migration |
 > | `f24f094` | The night's records + the **LB.14a.2 proposal** (front-door split, linchpin proven empirically — NEXT_STEPS §LB.14a.2; deliberately not built, decision is the user's) |
-> | *(AN.2)* | **AN.2** — the user's decisions on AN.1's open questions: 30-day visit retention (amortised on writes + on the Traffic-screen read + the worker tick) and unique/returning visitors (localStorage id, session-scoped verdict, raw COUNT(DISTINCT)). Funnel + utm_campaign approved-not-urgent, recorded in NEXT_STEPS §AN.1 |
+> | `3da5b55` | **AN.2** — the user's decisions on AN.1's open questions: 30-day visit retention (amortised on writes + on the Traffic-screen read + the worker tick) and unique/returning visitors (localStorage id, session-scoped verdict, raw COUNT(DISTINCT)). Funnel + utm_campaign approved-not-urgent, recorded in NEXT_STEPS §AN.1 |
+> | *(docs)* | **§BH scoping** — deep in-page behavior tracking + AI recommendations, measured and proposed at the user's request, NOT built (NEXT_STEPS §BH: signals weighed one by one, no-events-table design on the AN.1 row, aggregates-only AI on LB.24's rails filling the `insights/deep` 501 slot, migration folding flagged, seven open questions for the user) |
 >
 > **⚠ THE ONE MIGRATION, for AN.1+AN.2 TOGETHER** (the table never reached
 > production, so the two slices are one schema delta): production `db push`
@@ -1210,11 +1211,12 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **FIVE LOCAL COMMITS ARE QUEUED as of 18 Aug (overnight + the AN.1
-   review) — see the ⚠ block at the top of §1: LB.55, AN.1, JS.1, the
-   night's docs, and AN.2. ⚠ ONE migration for the batch (AN.1+AN.2
-   together): db push + apply-rls 49→50 BEFORE the app deploy. The push is
-   the user's decision.** Before that batch: SEC.1–SEC.5 + SA.1
+4. **SIX LOCAL COMMITS ARE QUEUED as of 18 Aug (overnight + the AN.1
+   review + the BH scoping) — see the ⚠ block at the top of §1: LB.55,
+   AN.1, JS.1, the night's docs, AN.2, and the §BH scoping (docs only).
+   ⚠ ONE migration for the batch (AN.1+AN.2 together): db push +
+   apply-rls 49→50 BEFORE the app deploy. The push is the user's
+   decision.** Before that batch: SEC.1–SEC.5 + SA.1
    DEPLOYED 17 Aug as
    `c3d911d..d26074c`, live 14:35:35 UTC, confirmed at Render on 18 Aug
    (§1's top block has the full record, including the three checks that are

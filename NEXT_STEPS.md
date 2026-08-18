@@ -40,6 +40,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | ~~**LB.32**~~ | ~~The editor's sticky header overlaps the content~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (measured in production: header band `[0,56]` at every scroll position, anchored scroll landing a card at 96px with 40px clearance). Not z-index, not padding: `sticky top-16` cleared a shell header that is not above this screen (the editor mounts outside `ConsoleShell`). Sticky reserves no space for its offset, so content flowed from 56 while the header painted 64→120 — a permanent 64px overlap. `scroll-mt-24` corroborated the diagnosis. `top-0`; anchored-scroll clearance −24px→+40px |
 | ~~**LB.31**~~ | ~~The storefront header shows "LandingOS" and links to the platform~~ | S | **DONE 13 Aug 2026; DEPLOYED the same night** (verified in production on a real published page: header and footer name the merchant and link to its own root, zero platform strings in the body). Not preview-only: with no `StoreSettings` row the published page rendered the platform wordmark linking to `/` (307 → console), plus the platform's internal description and copyright. Both production tenants have exactly that null row — 0 published pages, so unseen, one publish away. `resolveStoreName` + deleted fallbacks; brand is a span in the preview drawer. storefront 36→38 |
 | ~~**LB.55**~~ | ~~Four contrast failures on the real storefront (a11y 97, not 100)~~ | S | **DONE 18 Aug 2026 (overnight), committed locally — NOT deployed; the push is the user's.** The measurement went one step past the scoping: the `dd` at FULL theme text also fails (3.98:1), so the surface itself was the defect, not just the opacity — the theme contract guarantees nothing about `muted`, and on extracted themes it is a mid-tone. Fixed at the token layer: `mutedPairFor` (color-math) derives a muted surface + ink pair by WCAG arithmetic (surface tinted toward the background until full text holds AA; ink strengthened from LB.53's 78% until AA on that surface); provider unifies the TWO muted-ink definitions (60% vs 78%) into one and remaps `--muted`/`--secondary`/`--accent` to the safe surface. Verified live on a dedima-palette fixture: **2.47→7.16, 3.98→12.11, 3.93→9.46**. New pure suite theme-contrast 10/10; storefront 78/78 (LB.26 scope test re-pinned); builder-sections 75/75. Expect a11y **100** on a WARM run after deploy. CHANGELOG §LB.55 is the record. *(The 17 Aug scoping below is kept for history.)* **SCOPED 17 Aug 2026 — measured on the live page, and it retires a marker the handoff relied on.** Three warm local Lighthouse runs on `selliora1.com/dedima`: **accessibility 97**, four `color-contrast` failures, **none in `PriceBlock`** — so LB.53's fix is not the issue (it IS live; `--theme-text-muted` + `--theme-accent-foreground` are in the served HTML). dedima has no old price, so LB.53's elements never render there. The failures are the specs `<dl>` (`dt` at `color:var(--theme-text);opacity:0.6` → **2.47:1**, `dd` → **3.98:1**) and the footer (`text-muted-foreground` → **3.93:1**). **HANDOFF §1's "accessibility 100 = deploy-liveness" marker is therefore VOID** — it was predicted from a fixture. Same class as LB.53 (theme ink over a themed surface), one component over; the `dt` should read the existing `--theme-text-muted` rather than applying its own opacity, and the footer's console token on a themed surface is an LB.26-shaped question worth confirming separately. Not urgent — readability on a specs table, no money or ordering impact — but on the live page and invisible to every suite, because no suite renders the theme. Full write-up below |
+| **BH.1–3** | Deep in-page behavior tracking + AI-generated page recommendations | S–M / S / M | **SCOPED, NOT BUILT (18 Aug 2026, on the user's request)** — extends AN.1/AN.2's beacon and row rather than inventing a second pipeline; the AI slice fills the deliberate 501 slot `insights/deep` reserved. Signals weighed one by one (several declined with reasons); the AI layer sees AGGREGATES only, never raw rows and never customer PII; on-demand trigger only while no spend quota exists. **Schema flag: BH.1's columns FOLD into AN.1/AN.2's still-unshipped migration if built before it ships; BH.3's table is additive either way.** Full write-up below — §BH; the open questions are the user's |
 | **LB.36** | Brands — a store organised around brands instead of one flat shop | M–L | **SCOPED, NOT BUILT (13 Aug 2026; the scoping doc is merged to local `master`)** — a measurement + proposal pass only, like the store-theme question. Full write-up below; the decision is yours |
 | **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **FIRST SLICE DEPLOYED 16 Aug (night) as part of `1dbe119..c722050`**, no migration. Merchant facts + their own photos in → an Algerian-Darija DRAFT out (copy + LB.22 theme), reviewed in the ordinary editor. Adversarially reviewed (one BLOCKER found and fixed: the model call sat inside the 15s tenant transaction — now D-LP.5.1 three-phase, pinned by a 16.5s slow-model test). builder-ai **19** new. §LB.24 below has the record, the deliberate lines (no generated reviews, ever), and the open questions — **the push/deploy decision is yours** |
@@ -852,6 +853,168 @@ Switching to "choose" pre-selects **every active integration**, so the
 transition out of "inherit all" cannot silently reduce reporting — which is the
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
+
+### BH — SCOPED, NOT BUILT (18 Aug): deep in-page behavior + AI recommendations, on AN.1/AN.2's rails
+
+**A measurement + proposal pass only, at the user's request — no code, no
+schema change. Decisions at the end are the user's.**
+
+#### 1. What already exists, measured (so this builds on rails, not beside them)
+
+**The AN.1/AN.2 pipeline (built this session, queued, NOT deployed):** one
+narrow `StorefrontVisit` row per page view, written by a client beacon that
+is silent (every refusal a 204), rate-limited per IP, crawler-immune (no JS,
+no row), and validated inside the tenant binding. The visitor id is
+localStorage (unique visitors + returning detection), source evidence is
+captured once per session and derived server-side, orders snapshot their
+channel, retention is 30 days via ONE prune with three callers, and the
+aggregates live in `lib/builder/analytics.ts`, exercised directly by the
+suite. **Because the migration has not shipped, this proposal's row changes
+can still fold into it.** Two more facts matter here:
+
+- **Form engagement is ALREADY captured.** `useDraftCapture` debounces every
+  purchase-form keystroke into `DraftOrder` and fires Lead on the first
+  phone number. "Started the form" and "left a phone" are answerable TODAY
+  by joining drafts — deep tracking must not re-record what drafts know.
+- **Every interesting interaction already has a handler to piggyback on:**
+  the gallery's `goTo`/`prev`/`next`/swipe, the FAQ's `onToggle`, variant
+  `select`, the sticky-buy click, the WhatsApp button. Counting them adds a
+  function call to existing handlers, not new listeners.
+
+**The performance constraints are project law, measured over five slices:**
+nothing between server HTML and first paint may depend on JS (LB.44); no
+runtime animation/observation library (LB.49 — every shortcut there hid
+content); the customer bundle just got 35KB gz LIGHTER (JS.1) and must not
+win it back. And the beacon being client-side is what keeps counting
+compatible with the LB.14a.2 ISR proposal — behavior capture inherits that
+property only if it stays on the same beacon.
+
+**The AI layer (LB.24), measured:** `completeWithProvider` is a one-shot
+completion against the TENANT's own key (three provider types, bounded
+timeout, zero platform spend possible until a provider row exists — the
+route answers 501 `NO_AI_PROVIDER`). `ai-generate.ts` is the pattern an
+analysis call must copy: a PURE prompt builder + a zod contract on the
+model's answer with bounds aligned to the consuming surface, testable
+without a model; the route wraps it in the three-phase rule (D-LP.5.1: read
+in a transaction, model call OUTSIDE any transaction, write in a new one —
+pinned by a 16.5s slow-model test). The ERP's `insights` route is the
+computed-not-generated precedent (works with no provider), and
+**`/api/erp/ai/insights/deep` is a deliberate 501 stub — "Model-generated
+analysis. Gated now; wired up when a provider is configured." The slot for
+exactly this feature already exists.** What does NOT exist: any spend
+quota/ledger (LB.24's own open question, still open).
+
+#### 2. The signals, weighed one by one (capture cost vs. what a merchant can DO with it)
+
+| Signal | Capture cost | Actionable value | Verdict |
+|---|---|---|---|
+| **Furthest section reached** (hero → description → reviews → FAQ → footer, + "form seen") | One IntersectionObserver over section roots, passive, mounted after `load` | **HIGH** — "70% never scroll past the gallery" is a direct instruction: move the form up, shorten the description | **v1** |
+| **Gallery engagement** (image-change count, deepest index seen) | Zero new listeners — count inside existing handlers | **HIGH** — which photos are seen decides photo order; merchants ask this | **v1** |
+| **FAQ opens** (count + WHICH questions, ids bounded ≤20) | Zero new listeners — count inside `onToggle` | **MEDIUM-HIGH** — opened questions are customer DOUBTS, the single best input the AI layer gets | **v1** |
+| **Sticky-buy click / WhatsApp click** | Zero new listeners | **HIGH** — intent signals; a WhatsApp tap is a conversion for chat-first buyers | **v1** |
+| **Variant interaction count** | Zero new listeners | MEDIUM — interest depth | **v1** (one counter) |
+| **Active time on page** (one number, visibility-gated) | Two timestamps + the `visibilitychange` handler the draft flush already registers | MEDIUM — bounce quality; noisy on phones | **v1** (single number; accept the noise) |
+| **Time per SECTION** | Per-section visibility bookkeeping, interval maths, background-tab edge cases | MEDIUM, high noise | **DEFER** — cost exceeds signal until v1 proves demand |
+| **Scroll-depth percentage** (continuous) | Scroll listener + rAF throttling | LOW over "furthest section" — a percentage of a page whose length varies per phone is less actionable than a named section | **DECLINE** — furthest-section subsumes it |
+| **Rage clicks / repeated element taps** | Global click capture + clustering | LOW here — a single-product page has almost no dead UI to rage at; high noise | **DECLINE**, revisit only if support tickets suggest it |
+| **Form field-level analytics** (which field loses people) | Per-field focus/blur listeners | MEDIUM | **DECLINE for now** — drafts already say who started and who left a phone; field-level is a v2 question |
+
+**How v1 travels and is stored — the load-bearing design choice: NO events
+table.** The page-view row stays the unit. The initial beacon gains a
+client-generated `viewId` (the `DraftOrder.token` pattern — the established
+way an unauthenticated client addresses its own row later); behavior
+accumulates client-side in one small module (piggyback counters + the
+IntersectionObserver) and flushes ONCE via `navigator.sendBeacon` on
+`pagehide`/`visibilitychange: hidden` — the draft capture's exact flush
+mechanism — as an UPDATE to that row (nullable columns: `furthestSection`,
+`sawForm`, `galleryChanges`, `galleryDeepestIndex`, `faqOpens`,
+`faqOpenedIds Json?`, `variantChanges`, `stickyBuyClicked`,
+`whatsappClicked`, `activeMs`). Consequences, each deliberate: row volume
+does NOT multiply (still one row per view); the 30-day retention prunes
+behavior for free (same rows); aggregation is `AVG`/`COUNT` over columns the
+existing lib already groups; the beacon count per view goes from one
+request to two; and a visitor whose browser kills the page before the flush
+leaves NULLs — which read as "not measured", never as zeros. Client cost:
+~1–2KB gz added to the module JS.1 just built, no new library, nothing
+before first paint.
+
+#### 3. The AI layer — what it sees, what it says, when it runs
+
+- **It sees AGGREGATES, never raw rows and never a customer.** The input is
+  the per-page summary the Traffic screen already computes, plus the v1
+  behavior aggregates and the drafts/orders funnel — ~1–2KB of numbers.
+  Raw-row analysis was considered and declined for v1: a busy page's month
+  is megabytes of tokens per call (real money for marginal lift), and
+  aggregates keep a hard privacy line — **no name, phone, address or
+  order detail ever reaches a model provider.** The raw rows still exist
+  (30 days) if a v2 ever wants deeper passes; nothing is foreclosed.
+- **A recommendation is a claim WITH its number.** The output contract
+  (zod, the `GeneratedCopy` pattern) is a bounded list of
+  `{ target-section, finding, suggestion }` where `finding` must cite
+  metrics present in the input — the "no invented facts" rule pointed at
+  analysis: a suggestion that cannot name its supporting number is refused
+  in validation, not shown. Refusal below a data floor (e.g. <100 views in
+  the window) — "not enough signal yet" beats confident noise, the LB.22
+  white-image principle.
+- **On-demand only, with a cooldown — because there is no quota system.**
+  A button on the page's analytics ("Analyze this page"), gated on a
+  permission, billing the tenant's own key, 501 without a provider (the
+  slot's existing behavior). A stored analysis younger than a cooldown
+  (say 24h) is RE-SHOWN rather than re-billed. Scheduled/automatic analysis
+  is explicitly out until the quota question (LB.24 §open) is settled —
+  a nightly model call per page is an unbounded bill nobody approved.
+- **Recommendations persist** (a merchant returns to them; regeneration
+  costs money): one additive table — `LandingInsight` (id, tenantId,
+  landingPageId, windowDays, inputSummary Json, recommendations Json,
+  model/provider snapshot, createdAt). Persisting the INPUT summary beside
+  the output is what lets a merchant (and a future eval) see what the
+  advice was based on after the raw rows expire.
+
+#### 4. Migration flag — asked explicitly, answered explicitly
+
+- **BH.1's behavior columns:** widen `StorefrontVisit`, whose migration is
+  QUEUED BUT UNSHIPPED. Built before the AN.1/AN.2 batch deploys, they
+  **fold into that same one migration** (still one `db push` + one
+  `apply-rls`, 49 → 50, nothing extra). Built after it ships, they are a
+  small additive `db push` with **no** RLS change (no new table).
+- **BH.3's `LandingInsight` table:** additive either way; **RLS 50 → 51**
+  (or 49 → 51 if everything ships together). `deleteTenant` sweeps it
+  automatically (DMMF enumeration, LB.27).
+
+#### 5. Slices
+
+| Slice | What | Size |
+|---|---|---|
+| **BH.1** | `viewId` + behavior columns, the collector module (piggyback counters + IO + one flush), the visits-route UPDATE path, tests incl. the flush contract | **S–M** |
+| **BH.2** | The read side, computed not generated (the ERP insights precedent): per-page section-reach funnel and engagement columns on the Traffic screen — also where AN.1's approved-not-urgent funnel display naturally lands, since form-reached + drafts + orders IS the coarse funnel | **S** |
+| **BH.3** | The AI slice: pure prompt + zod contract, the analyze route on the three-phase rule, `LandingInsight`, the on-demand button + cooldown + data floor, i18n ×3 | **M** |
+
+BH.1/BH.2 ship without any AI dependency and are useful alone. BH.3 needs a
+configured provider to do anything (and its 501 path already exists).
+
+#### 6. Open questions — the user's decisions, not assumptions
+
+1. **Opt-in or default-on?** This is the most data-intensive capture yet
+   (still first-party, still no PII, still 30-day retention — but
+   interaction detail, not just a view count). A per-tenant toggle costs
+   one `ProductSetting` declaration (the `financeEnabled` mechanism,
+   LB.18 — the screen builds itself). Default-on with the toggle offered,
+   default-off, or no toggle?
+2. **How much reasoning does the merchant see?** Recommendation + its
+   supporting number (proposed), or the model's fuller reasoning? The
+   contract shape depends on it.
+3. **Cooldown and data floor values** — 24h / 100 views proposed; both are
+   product knobs, not engineering ones.
+4. **Does BH.3 wait for a spend quota?** On-demand + cooldown + the
+   tenant's own key is the proposed guard. If any scheduled/automatic
+   analysis is ever wanted, the LB.24 quota question must be built FIRST.
+5. **Where do recommendations live** — the page's Traffic view (proposed)
+   or inside the editor beside the sections they talk about?
+6. **Does a WhatsApp tap count as a conversion** in the funnel display, or
+   as its own column? (It is an off-platform sale the order table never
+   sees.)
+7. **FAQ opened-question IDS in v1** (proposed, bounded ≤20, feeds the AI
+   its best signal) — or counts only?
 
 ### LB.14a.2 — PROPOSED 18 Aug (overnight): the front-door split, measured to its exact mechanism, with the linchpin proven empirically
 
