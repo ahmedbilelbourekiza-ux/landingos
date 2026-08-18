@@ -20,16 +20,23 @@ export function OrderSummary({
   ];
 
   return (
+    /* --theme-muted-surface, NOT --theme-muted: on an extracted theme the raw
+     * muted is a MID-TONE from the photograph, and this card carries the
+     * price. Full-strength it measured 3.98:1 under the values and 2.47:1
+     * under the opacity-thinned labels on the live page (LB.55); the surface
+     * token is tinted until theme text holds AA on it. */
     <dl className="space-y-2 p-4 text-sm" style={{
       borderRadius: "var(--theme-card-radius)",
       borderWidth: "1px",
       borderStyle: "solid",
       borderColor: "var(--theme-border)",
-      backgroundColor: "var(--theme-muted)",
+      backgroundColor: "var(--theme-muted-surface)",
     }} dir="rtl">
       {rows.map((row) => (
         <div key={row.label} className="flex items-center justify-between">
-          <dt style={{ color: "var(--theme-text)", opacity: 0.6 }}>{row.label}</dt>
+          {/* Muted by the derived ink, never by opacity — thinning theme text
+           * over a themed surface is how the 2.47:1 label shipped. */}
+          <dt style={{ color: "var(--theme-text-muted)" }}>{row.label}</dt>
           <dd className="font-medium tabular-nums">{row.value}</dd>
         </div>
       ))}

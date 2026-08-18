@@ -205,10 +205,25 @@ describe("a landing page wears its OWN theme, never the viewer's dark mode", { s
       '--card:#FFFFFF',
       '--foreground:#111827',
       '--border:#E5E7EB',
-      '--muted:#F3F4F6',
+      // LB.55: `--muted` is no longer raw theme.muted but the derived SAFE
+      // tint (muted pulled toward the background until full text holds AA on
+      // it) — on the default theme's already-light muted the tint is a hair
+      // off the raw value. Pinned exactly so a silent formula change, or a
+      // regression back to the raw mid-tone, shows up here.
+      '--muted:#f8f8f6',
     ]) {
       assert.ok(style.includes(decl), `${decl} missing — the console/visitor theme can leak in`);
     }
+
+    // LB.55's muted pair, both halves. ONE surface definition serves the
+    // theme vocabulary and the console remap, and ONE ink definition serves
+    // `--theme-text-muted` (LB.53's token) and `--muted-foreground` — the
+    // live defect was precisely these existing as two different strengths.
+    const readVar = (name: string) =>
+      style.match(new RegExp(`${name}:(#[0-9a-fA-F]{6})`))?.[1] ?? '';
+    assert.equal(readVar('--theme-muted-surface'), readVar('--muted'), 'two muted surface definitions');
+    assert.notEqual(readVar('--theme-text-muted'), '', 'muted ink is not a concrete hex');
+    assert.equal(readVar('--theme-text-muted'), readVar('--muted-foreground'), 'two muted ink strengths');
 
     // next-themes also writes `color-scheme: dark` on <html>; unoverridden,
     // the purchase form's NATIVE widgets render dark chrome in a light page.

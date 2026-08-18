@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { LandingThemeData } from "@/types/theme";
 import { DEFAULT_THEME } from "@/types/theme";
-import { readableTextOnHex } from "@/lib/landing/color-math";
+import { mutedPairFor, readableTextOnHex } from "@/lib/landing/color-math";
 
 const ThemeContext = React.createContext<LandingThemeData>(DEFAULT_THEME);
 
@@ -40,11 +40,22 @@ export function useLandingTheme(): LandingThemeData {
  * widgets inside the purchase form (selects, date pickers) render dark
  * chrome inside a light-themed page.
  *
- * The console's `--accent` (a subtle hover surface) maps to the theme's MUTED
- * surface, not to `theme.accent` — the theme's accent is decorative ("gold:
+ * The console's `--accent` (a subtle hover surface) maps to the theme's muted
+ * SURFACE, not to `theme.accent` — the theme's accent is decorative ("gold:
  * icons and accents only, never buttons") and would make every hover garish.
- * `--muted-foreground` has no theme field; it is mixed from the theme's own
- * text and background so secondary text mutes WITHIN the page's palette.
+ *
+ * THE MUTED PAIR (LB.55). The theme contract guarantees contrast for
+ * text↔background and the button pair, and says nothing about `muted` — which
+ * on an extracted theme is routinely a MID-TONE lifted from the photograph.
+ * Painting it full-strength under theme ink measured 2.47–3.98:1 on the live
+ * page (the order summary), and the footer's 60% muted-ink mix measured
+ * 3.93:1 on its tinted band — while LB.53's `--theme-text-muted` sat one
+ * definition over at 78%. One rule now serves every muted use, chosen by
+ * WCAG arithmetic in `mutedPairFor` rather than assumed: a SURFACE tinted
+ * toward the background until full text holds AA on it, and an INK
+ * strengthened from the 78% mix until it holds AA on that surface. The raw
+ * `--theme-muted` remains available, but it is a decorative colour — nothing
+ * that carries text may paint it full-strength.
  * ========================================================================== */
 export function ThemeProvider({
   theme,
@@ -59,6 +70,12 @@ export function ThemeProvider({
   className?: string;
   children: React.ReactNode;
 }) {
+  /* The muted surface/ink pair, derived with a contrast guarantee (the block
+   * comment above; the arithmetic and its argument live in color-math). A
+   * concrete hex rather than a CSS color-mix() so the served HTML carries an
+   * assertable value and older WebViews are not asked to know color-mix. */
+  const mutedPair = mutedPairFor(theme);
+
   const style: React.CSSProperties = {
     "--theme-primary": theme.primary,
     "--theme-primary-foreground": theme.primaryForeground,
@@ -69,13 +86,14 @@ export function ThemeProvider({
      * (LB.51, flagged by the contrast audit). Chosen by the same
      * readable-foreground rule LB.22 uses for buttons, not assumed. */
     "--theme-accent-foreground": readableTextOnHex(theme.accent),
-    /* Muted TEXT within the theme's own palette (the crossed-out old price).
-     * `--theme-muted` is a SURFACE colour — order-summary paints backgrounds
-     * with it — so using it as a text colour put near-background ink on the
-     * background: measured 1.05:1 on a light theme, 1.6:1 on the dark
-     * fixture theme. A 78% mix of the theme's text keeps the muted reading
-     * while inheriting the text/background pair's contrast headroom. */
-    "--theme-text-muted": `color-mix(in oklab, ${theme.text} 78%, ${theme.background})`,
+    /* Muted TEXT within the theme's own palette (the crossed-out old price,
+     * the order summary's labels). LB.53's 78% mix, now strengthened by
+     * mutedPairFor whenever 78% cannot hold AA on the muted surface. */
+    "--theme-text-muted": mutedPair.ink,
+    /* The muted SURFACE that may carry text — `theme.muted` tinted toward the
+     * background until full text holds AA on it. The order summary paints
+     * this; raw `--theme-muted` below is decorative-only. */
+    "--theme-muted-surface": mutedPair.surface,
     "--theme-background": theme.background,
     "--theme-card": theme.card,
     "--theme-text": theme.text,
@@ -96,11 +114,19 @@ export function ThemeProvider({
     "--popover-foreground": theme.text,
     "--primary": theme.primary,
     "--primary-foreground": theme.primaryForeground,
-    "--secondary": theme.muted,
+    /* The console's surface tokens map to the SAFE tint, not raw theme.muted:
+     * the template writes `bg-muted`, `hover:bg-accent` and their /NN
+     * variants under text, and a full-strength mid-tone there is the exact
+     * defect the muted pair exists to close. On an already-light muted the
+     * tint is visually the same surface. */
+    "--secondary": mutedPair.surface,
     "--secondary-foreground": theme.text,
-    "--muted": theme.muted,
-    "--muted-foreground": `color-mix(in oklab, ${theme.text} 60%, ${theme.background})`,
-    "--accent": theme.muted,
+    "--muted": mutedPair.surface,
+    /* ONE definition of muted ink — this was a second, weaker 60% mix, and
+     * the footer wearing it over `bg-muted/30` measured 3.93:1 on the live
+     * page while `--theme-text-muted` passed one component over. */
+    "--muted-foreground": mutedPair.ink,
+    "--accent": mutedPair.surface,
     "--accent-foreground": theme.text,
     "--border": theme.border,
     "--input": theme.border,

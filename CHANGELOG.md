@@ -10,6 +10,75 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## LB.55 — the muted palette gets the contrast guarantee the theme contract never gave it
+
+**Committed locally 18 August 2026 (overnight session) — NOT pushed, NOT
+deployed; the push decision is the user's.** No migration.
+
+- **The four live contrast failures, closed at the token layer** (LB.55 —
+  scoped 17 Aug in NEXT_STEPS, measured on `selliora1.com/dedima`:
+  accessibility 97 across six Lighthouse runs on two days, the same four
+  `color-contrast` nodes each time).
+
+  **The mechanism, measured to the hundredth before touching anything.** The
+  theme CONTRACT (builder-sections' extraction test) guarantees AA for
+  text↔background and the button pair and says NOTHING about `muted` — and on
+  an extracted theme, `muted` is routinely a MID-TONE lifted from the
+  photograph (dedima's is `#7c716a`). Two doors let it under ink: the order
+  summary painted it full-strength as a card surface (labels thinned to
+  `opacity:0.6` → **2.47:1**, values at full theme text → **3.98:1** — even
+  unthinned ink fails on that surface), and the footer wore the theme
+  provider's `--muted-foreground`, a **second, weaker 60% mix** of muted ink
+  that existed one definition over from LB.53's 78% `--theme-text-muted` →
+  **3.93:1** on the `bg-muted/30` band. A scratchpad script reproducing the
+  token arithmetic predicted all three measured ratios exactly (2.47 / 3.98 /
+  3.93), which is what confirmed the mechanism rather than the symptom.
+
+  **The fix is ONE derived pair, chosen by WCAG arithmetic rather than
+  assumed** (`mutedPairFor` in `lib/landing/color-math.ts`, LB.22's rule
+  applied to the muted palette): a muted SURFACE that starts as a 30% oklab
+  tint of `muted` over the background and backs off toward the background
+  until full text holds AA on it, and a muted INK that starts at LB.53's 78%
+  mix and strengthens toward full text until it holds AA on that surface.
+  Both loops terminate at values the theme contract itself guarantees, so a
+  theme with no contrast budget degrades to plain readable rather than pretty
+  and unreadable. The provider now maps `--theme-text-muted` AND
+  `--muted-foreground` to the one ink, `--muted`/`--secondary`/`--accent` to
+  the one surface (the template writes `bg-muted`, `hover:bg-accent` under
+  text — the same defect class latent in the avatar circle, the gallery
+  placeholder and every hover, all closed by the remap with no component
+  edits), and a new `--theme-muted-surface` token that the order summary
+  paints instead of raw `--theme-muted` (kept, decorative-only). The labels
+  read the ink token; **nothing thins theme text with opacity any more.**
+
+  **LB.53's color-mix() became JS-computed hex on the way, same arithmetic.**
+  `mixOklabHex` implements the CSS `color-mix(in oklab, …)` blend, so the
+  served HTML now carries concrete assertable hex (a curl-greppable deploy
+  marker, the technique the 17 Aug session proved), older Android WebViews
+  are not asked to know `color-mix()`, and the contract suite can hold the
+  result to numbers. On the DEFAULT theme the derived surface is `#f8f8f6`
+  against the raw `#F3F4F6` — visually the same page; the derivation only
+  moves themes that were shipping the defect.
+
+  **Verified live against the running build** on a throwaway tenant carrying
+  the exact dedima palette (mid-tone muted no suite fixture has), computed
+  styles read from the rendered page: labels **2.47 → 7.16:1**, values
+  **3.98 → 12.11:1**, footer **3.93 → 9.46:1** — each within 0.03 of the
+  script's prediction. Fixture swept with `deleteTenant`, zero rows behind.
+  **Expected on the real page after deploy: accessibility 100 on a WARM run**
+  (the four nodes were the only failures; discard run 1 — the image cache).
+
+  **Tests:** `test/theme-contrast.test.ts` (NEW, pure suite, 10) — AA held on
+  every palette including a barely-AA theme (degrades to full text on plain
+  background, pinned), a muted==text degenerate, malformed hex tolerance, and
+  the oklab midpoint pinned against the sRGB-average and CIELAB wrong-space
+  answers; storefront **78/78** (the LB.26 scope test re-pinned: `--muted` is
+  now the derived tint, plus new one-surface/one-ink equality assertions);
+  builder-sections **75/75**. Files: `lib/landing/color-math.ts`,
+  `components/landing/theme-provider.tsx`,
+  `components/landing/sections/order-summary.tsx`,
+  `test/theme-contrast.test.ts`, `test/storefront.test.ts`.
+
 ## Phase SEC/SA — the security audit's fixes, and the rule LB.54 left half-applied
 
 **All six DEPLOYED 17 August 2026, `c3d911d..d26074c`, live at 14:35:35 UTC
