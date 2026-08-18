@@ -725,7 +725,12 @@ first (a cached page and a server-side price are the same divergence as
 before, only now with a TTL). **Not started.** *(16 Aug, later session: the
 OTHER half of the force-dynamic TTFB — per-render database cost — was
 measured and cut 34→10 statements as LB.51, on its own branch; see §LB.51.
-This front-door split remains exactly as scoped here.)*
+This front-door split remains exactly as scoped here.)* *(18 Aug, overnight:
+investigated to a full proposal — mechanism pinned to the exact `headers()`
+call sites, the host-capture rewrite linchpin PROVEN empirically on this
+Next version, the price-staleness question answered, blast radius
+enumerated. See §LB.14a.2 near the top of this file. Still deliberately not
+built — architectural, the decision is the user's.)*
 
 **Verified live across nine paths** against the running build; console screens
 and `/_next/static/*` (still `public, max-age=31536000, immutable`) are outside
@@ -847,6 +852,92 @@ Switching to "choose" pre-selects **every active integration**, so the
 transition out of "inherit all" cannot silently reduce reporting — which is the
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
+
+### LB.14a.2 — PROPOSED 18 Aug (overnight): the front-door split, measured to its exact mechanism, with the linchpin proven empirically
+
+**Deliberately NOT built — this is architectural and the decision is the
+user's. But the investigation moved it from "scoped" to "proposal with its
+core assumption proven on this exact Next version".**
+
+**The mechanism, precisely.** Storefront pages are `force-dynamic` because
+`resolveStorefrontTenant` asks `tenantByDomain()` FIRST (D2: a custom domain
+wins), `tenantByDomain` calls `currentHost()`, and that reads `headers()` —
+a Dynamic API. One `headers()` call anywhere in a render makes `revalidate`
+inert-while-looking-deliberate (LB.14a measured it: the build still says
+`ƒ (Dynamic)`, no warning). `currentOrigin()` (canonical, og:image, sitemap)
+reads the same headers. So EVERY storefront render pays a full server pass +
+database round trips, even for the ad-burst case of thousands of visitors
+hitting one unchanged landing page.
+
+**The key discovery: LB.45 already built half the front door.** The
+host-conditioned rewrites in `next.config.ts` ALREADY classify every request
+by the REAL Host header (spoof-proof — `has` never sees X-Forwarded-Host)
+and already move custom-domain requests into the `/[tenant]/...` shape. The
+only reason pages must re-ask "which host?" is that the rewrite inserts a
+VALUELESS sentinel (`__domain__`) instead of carrying the identity.
+
+**The proposal: the rewrite carries the hostname, and pages render from
+params alone.**
+
+1. The custom-domain rewrites capture the host into the path:
+   `shop.acme.dz/x` → `/_dh/shop.acme.dz/x` (named capture in the host
+   condition). **PROVEN TONIGHT on Next 16.2.12/Turbopack**: a temporary
+   rewrite `source /__hosttest, has host (?<dh>.+), destination
+   /api/storefront/:dh/wilayas` answered a `Host: demo` request with demo's
+   actual wilaya JSON — the capture interpolates. (Experiment reverted.)
+2. A parallel route tree `app/(storefront)/_dh/[host]/...` renders custom-
+   domain storefronts. It resolves the tenant BY THE HOST PARAM — a
+   `cache()`d, param-keyed query against verified `TenantDomain` rows — so
+   no `headers()` anywhere. "viaCustomDomain" becomes a fact of WHICH TREE
+   is rendering; the absolute origin for canonicals is
+   `https://${params.host}` in the domain tree and the env-known platform
+   host (`PUBLIC_HOST`/`RENDER_EXTERNAL_HOSTNAME`) in the path tree —
+   `currentOrigin()`'s header read disappears from pages entirely.
+3. The path tree (`/[tenant]/[slug]`) drops `tenantByDomain()` and resolves
+   by slug alone. Both trees share the existing page bodies/`LandingTemplate`
+   — the split is resolution + metadata, not rendering.
+4. Both trees export `revalidate = 60` — ISR becomes REAL. Cache keys are
+   paths, and paths now fully determine content.
+5. **Write-path invalidation is what makes 60s honest:** the builder's save/
+   publish/archive routes call `revalidatePath()` for the page's platform
+   path and (when a verified primary domain exists) its `/_dh/<host>/…`
+   path. An edit shows within seconds; the 60s is only the ceiling for
+   traffic that raced an edit. This also fixes LB.14a's recorded 404-cached-
+   for-60s merchant annoyance — publish revalidates the path.
+
+**The price-staleness question LB.14a demanded be answered first — answer:**
+a cached PAGE can show a ≤60s-stale price, but the CHARGE is computed
+server-side from live rows at checkout (quote=charge, D-LB.20.1 — the quote
+API stays `no-store`). That divergence window already exists and was
+accepted: LB.14a gave browsers `private, max-age=60` on these same pages.
+ISR is the SAME 60 seconds, now shared and actively purged on writes —
+strictly better than the browser copy nobody can purge. LB.14a's argument
+against `public`/`s-maxage` (a merchant's own CDN we cannot purge) does not
+apply to ISR: it is OUR cache, and `revalidatePath` is the purge.
+
+**What stays dynamic, deliberately:** the thank-you page (per-order), every
+`/api/storefront/*` money path (`no-store`, unchanged), the root `/` (its
+meaning depends on Host; already excluded from LB.14a's rules), and the
+console. Tracking configs resolved into cached pages go ≤60s stale on save —
+same class as the price, purged the same way.
+
+**Blast radius, measured, why this is NOT an overnight job:** ~7 readers of
+`resolveStorefrontTenant`/`currentOrigin` across the four storefront routes,
+layout metadata, sitemap and robots; the LB.45 rewrite tests (8 raw-Host
+tests) and LB.14a's header tests re-pinned; the `next.config.ts` header
+rules vs ISR's own Cache-Control need reconciling (headers() rules override
+— the `private, max-age=60` rule likely stays as the browser-facing header
+while ISR handles the server side); a direct-access guard for `/_dh/...` on
+platform hosts (a static host-conditioned rewrite to a 404 path — no
+`headers()` needed); and CAPI's `event_source_url` (LB.43) which uses
+`currentOrigin` in API routes — untouched, API routes stay dynamic. Estimate
+M–L, one attended session, no migration.
+
+**What it buys:** the ad-funnel case — a burst on one landing page — becomes
+ONE render per minute per page instead of one per visitor: TTFB for cached
+hits drops from LB.51's ~10-statement render to static-file service, and the
+Neon compute bill for storefront traffic approaches zero between edits. This
+plus JS.1/LB.49-52 is the whole remaining performance story.
 
 ### JS.1 — DONE 18 Aug (overnight, local commit; NOT deployed). The storefront JS diet's safe slice, and what the diet has left
 

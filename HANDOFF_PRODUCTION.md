@@ -48,6 +48,30 @@ remain the deep references.
 > carried `/0` all require `landingos_prod`, which is now off-limits. They are
 > **closed-unverified**, not pending.
 
+> ### ⚠ FOUR LOCAL COMMITS ARE QUEUED, NOT PUSHED — 18 Aug 2026 (overnight session), AND ONE CARRIES A MIGRATION
+>
+> **`main` is now four commits ahead of `origin/main` (`12d805e..`), all
+> local, per the session's explicit no-push instruction. The push/deploy
+> decision is the user's.** In order:
+>
+> | Commit | What |
+> |---|---|
+> | `00d446a` | **LB.55** — the muted surface/ink pair, chosen by WCAG arithmetic (the four live contrast failures: 2.47/3.98/3.93 → 7.16/12.11/9.46, verified on a dedima-palette fixture). Expect **a11y 100 on a WARM run** after deploy. No migration |
+> | `7b57bcd` | **AN.1** — first-party page views + traffic-source attribution (beacon → server-derived channel → order snapshot → the console "Traffic" screen). **⚠ MIGRATION: `StorefrontVisit` table + 2 nullable `SalesOrder` columns → production `db push` + `apply-rls` (RLS 49→50) BEFORE the app deploy, in the LB.20 order, each user-approved.** Applied to DEV tonight (host `ep-gentle-sky` confirmed in push output; dev RLS 50/50). Optional env `VISIT_RATE_LIMIT` (default 120/5min/IP) |
+> | `85ba416` | **JS.1** — the storefront stops shipping next-intl/ICU, both toasters and next-themes (they moved to `console/layout.tsx`); dead `category-product-grid.tsx` deleted. **Modern-phone payload 296→261KB gz, HTML 565→481KB.** No migration |
+> | *(docs)* | The night's records + the **LB.14a.2 proposal** (front-door split, linchpin proven empirically — NEXT_STEPS §LB.14a.2; deliberately not built, decision is the user's) |
+>
+> Suites at the final tree: storefront **86** · builder-sections **75** ·
+> console-shell **20** · erp/screens **172** · tracking **16** · i18n **22**
+> · theme-contrast **10** (new) · traffic-source **14** (new). The dev DB
+> now holds the seeded `demo` tenant (`seed:demo` run 18 Aug — the fresh
+> project had no users; `owner@demo.test`/devpassword123 works again) plus
+> a published `demo-landing` page as permanent dev furniture. **The "216
+> historical test tenants" cleanup item is CLOSED-IMPOSSIBLE:** they live
+> only in the old quota-suspended project (off-limits); the new dev DB was
+> measured at exactly 1 tenant (`demo`) after the night's suite runs — the
+> LB.27 hooks are doing their job.
+>
 > ### ✔ SEC.1–SEC.5 + SA.1 ARE DEPLOYED — 17 Aug 2026: the security-audit fixes, confirmed at Render on 18 Aug
 >
 > **`origin/main` is `d26074c`**, and **`d26074c` is the live deploy** —
@@ -1177,7 +1201,11 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **NOTHING is queued — SEC.1–SEC.5 + SA.1 DEPLOYED 17 Aug as
+4. **FOUR LOCAL COMMITS ARE QUEUED as of 18 Aug (overnight) — see the ⚠
+   block at the top of §1: LB.55, AN.1 (⚠ carries a migration: db push +
+   apply-rls 49→50 BEFORE the app deploy), JS.1, and the night's docs. The
+   push is the user's decision.** Before that batch: SEC.1–SEC.5 + SA.1
+   DEPLOYED 17 Aug as
    `c3d911d..d26074c`, live 14:35:35 UTC, confirmed at Render on 18 Aug
    (§1's top block has the full record, including the three checks that are
    now closed-UNVERIFIED because `landingos_prod` is off-limits).
