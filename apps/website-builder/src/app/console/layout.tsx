@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
+import { NextIntlClientProvider } from "next-intl";
 
+import { Providers } from "@/app/providers";
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegistration } from "@/components/console/service-worker";
 import { DensityScript } from "@/components/console/density-script";
 
@@ -30,13 +34,24 @@ export const viewport: Viewport = {
 
 export default function ConsoleLayout({ children }: { children: React.ReactNode }) {
   return (
-    <>
-      {/* Before `children`, so the density attribute is on <html> before the
-          first table's CSS is evaluated against it. Console-only: a shopper on
-          a tenant's storefront has no tables and no preference. */}
-      <DensityScript />
-      <ServiceWorkerRegistration />
-      {children}
-    </>
+    /* The client providers live HERE, not in the root layout — JS.1, the
+       manifest's own argument one paragraph up: the root also serves the
+       storefront, and a provider mounted there ships its runtime to every
+       customer phone. The console is the surface that actually translates
+       client-side (next-intl + ICU), toggles dark mode (next-themes writes
+       document.documentElement, so mounting deeper changes nothing), and
+       raises toasts. */
+    <NextIntlClientProvider>
+      <Providers>
+        {/* Before `children`, so the density attribute is on <html> before the
+            first table's CSS is evaluated against it. Console-only: a shopper on
+            a tenant's storefront has no tables and no preference. */}
+        <DensityScript />
+        <ServiceWorkerRegistration />
+        {children}
+      </Providers>
+      <Toaster />
+      <SonnerToaster />
+    </NextIntlClientProvider>
   );
 }

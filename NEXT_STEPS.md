@@ -848,6 +848,32 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
+### JS.1 — DONE 18 Aug (overnight, local commit; NOT deployed). The storefront JS diet's safe slice, and what the diet has left
+
+**The customer-phone payload dropped ~120KB per landing view** (−35KB gz JS,
+−84.5KB HTML): the root layout was mounting next-intl's client runtime + the
+ICU engine, BOTH toast systems (with their radix portal machinery) and
+next-themes on every storefront page, and the storefront uses none of them —
+they moved to `console/layout.tsx` (the Phase 6.6e manifest precedent). The
+LB.44-flagged dead `category-product-grid.tsx` is deleted. Modern-phone JS is
+now **945KB raw / 261KB gz across 11 module chunks** (the 112KB
+`noModule` polyfill chunk is never downloaded by modern browsers — earlier
+"1.29MB" readings counted it). CHANGELOG §JS.1 is the record.
+
+**The diet's honest remainder, ranked:**
+1. **Hydration-splitting below-fold sections** (LB.49's scoped next lever) —
+   React lazy boundaries around reviews/FAQ/description so the buy box
+   hydrates first. A design change with LB.49's proven failure mode (every
+   shortcut there HID CONTENT); needs an attended session with real-browser
+   verification.
+2. **The 377KB app chunk** carries zod + react-hook-form for the one
+   checkout form. Replacing either is a rewrite of the money path — only
+   worth it bundled with (1).
+3. **The 144KB single CSS bundle** (LB.50 follow-up): console styles ride
+   into every storefront document via inlineCss. Splitting the globals into
+   console/storefront layers is the CSS half of this diet.
+4. react-dom + router (~365KB raw) are the framework floor; nothing to do.
+
 ### AN.1 — DONE 18 Aug (overnight, local commit; NOT deployed). First-party analytics: the first slice, and the questions it deliberately left
 
 **⚠ THIS SLICE CARRIES A MIGRATION — the first since LB.35.** One additive

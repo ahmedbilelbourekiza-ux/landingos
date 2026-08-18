@@ -1,12 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { NextIntlClientProvider } from "next-intl";
 import { getLocale } from "next-intl/server";
 import { directionOf, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 import "./globals.css";
-import { Providers } from "./providers";
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { siteConfig } from "@/config/site";
 
 const geistSans = Geist({
@@ -50,11 +46,18 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground`}
       >
-        <NextIntlClientProvider>
-          <Providers>{children}</Providers>
-          <Toaster />
-          <SonnerToaster />
-        </NextIntlClientProvider>
+        {/* NO client providers here — JS.1, the same reason the PWA manifest
+            moved to the console layout (Phase 6.6e): this layout also serves
+            the public STOREFRONT, and every provider mounted here rides to a
+            customer's phone. Measured before the move: next-intl's client
+            runtime + the ICU message-format chunk, next-themes, and BOTH
+            toast systems were shipping on every landing page, while the
+            storefront uses none of them — zero client translation calls,
+            zero toasts, and next-themes' `.dark` stamping is the exact
+            behaviour LB.26/LB.30 built theme scopes to defeat. They mount in
+            `console/layout.tsx` now; a future provider belongs there unless
+            a CUSTOMER-facing surface genuinely consumes it. */}
+        {children}
       </body>
     </html>
   );

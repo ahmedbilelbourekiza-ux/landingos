@@ -10,6 +10,62 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## JS.1 — the storefront stops shipping the console's client machinery
+
+**Committed locally 18 August 2026 (overnight session) — NOT pushed, NOT
+deployed.** No migration.
+
+- **The measurement first, on the served page** (local production build,
+  `/demo/demo-landing`): 15 script chunks, 1,172KB raw / 335KB gz — but one
+  112KB chunk carries `noModule` and is never downloaded by any modern
+  browser, so the honest modern-phone payload was **1,060KB raw / ~296KB
+  gz**, plus **565KB of HTML** (mostly LB.50's deliberate inlined CSS).
+  Fingerprinting the chunks found four riders the storefront never uses:
+  next-intl's client runtime with the **ICU message-format engine** (~40KB
+  raw chunk), **both toast systems** with their radix Portal/Presence
+  machinery (~75KB raw across two chunks), and **next-themes**. Grep
+  confirmed the whole `(storefront)` tree has ZERO client translation
+  calls, ZERO toasts, and next-themes' `.dark` stamping is the exact
+  behaviour LB.26/LB.30 built theme scopes to defeat.
+
+- **The fix is the manifest's own precedent (Phase 6.6e), applied to client
+  providers:** the root layout serves the STOREFRONT too, so nothing may
+  mount there unless a customer surface consumes it. `NextIntlClientProvider`,
+  `Providers` (next-themes) and both Toasters moved from the root layout
+  into `console/layout.tsx` — the tree that actually translates, toggles
+  dark mode and raises toasts. next-themes writes
+  `document.documentElement`, so mounting it deeper changes console
+  behaviour not at all (verified: `.dark` still stamped under a dark-OS
+  browser, both toasters mounted, i18n rendering).
+
+- **On the customer side this is strictly safer, not just lighter:** the
+  storefront `<html>` now carries NO theme class at all under a dark-OS
+  visitor — nothing stamps it — while every theme scope still redefines the
+  console tokens exactly as LB.26 pinned, so the defence stays for anything
+  that ever re-introduces a stamp.
+
+- **Also deleted: `category-product-grid.tsx`** — LB.44 flagged it mounted
+  by nothing and linking the legacy `/l/` path; re-confirmed unreachable by
+  filename AND by exported symbols (the LB.16 rule) before `git rm`.
+
+- **After, same measurement:** 12 chunks, modern-phone payload **945KB raw
+  / 261KB gz (−115KB raw, −35KB gz)**, HTML **481KB (−84.5KB)** — about
+  **−120KB total gz+HTML** per landing view on a customer phone, with the
+  console byte-identical in behaviour. Verified: storefront theme canvas +
+  purchase form + AN.1 beacon all live; console dark mode, toasters, nav,
+  i18n all live; storefront **86/86**, console-shell **20/20**,
+  builder-sections **75/75**, erp/screens re-run (see record).
+
+- **What remains, honestly, and deliberately NOT tonight:** react-dom + the
+  router runtime (~365KB raw) are the floor LB.49 named; the 377KB app
+  chunk carries the buy box's own zod + react-hook-form + next/image
+  client — load-bearing for checkout, not safely rewritable unattended.
+  The next real lever stays LB.49's scoped hydration-splitting of
+  below-fold sections (a design change), and the 144KB single CSS bundle
+  (LB.50's follow-up) is the CSS half of the same story. Files:
+  `app/layout.tsx`, `app/console/layout.tsx`,
+  `components/landing/category-product-grid.tsx` (deleted).
+
 ## AN.1 — the platform learns to count its own traffic
 
 **Committed locally 18 August 2026 (overnight session) — NOT pushed, NOT
