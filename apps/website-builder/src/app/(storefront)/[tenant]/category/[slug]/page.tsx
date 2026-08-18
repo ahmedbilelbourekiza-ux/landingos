@@ -8,6 +8,7 @@ import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 import { resolveStorefrontTenant, storefrontHref } from "@/lib/storefront/resolve-tenant";
 import { ThemeProvider } from "@/components/landing/theme-provider";
 import { StorefrontTracking } from "@/components/landing/storefront-tracking";
+import { VisitBeacon } from "@/components/landing/visit-beacon";
 import { DEFAULT_THEME } from "@/types/theme";
 
 export const dynamic = "force-dynamic";
@@ -104,6 +105,8 @@ export default async function StorefrontCategoryPage({
       {/* LB.35 — the tenant's whole active set; a category is a listing, not
           one product. */}
       <StorefrontTracking tenantId={tenant.id} />
+      {/* AN.1 — a category view counts as store traffic, page-less. */}
+      <VisitBeacon endpoint={`/api/storefront/${tenant.slug}/visits`} pageKind="category" />
       <main className="mx-auto max-w-6xl px-4 py-10" data-tenant={tenant.slug}>
         <h1 className="text-2xl font-semibold">{category.name}</h1>
         {category.description ? (

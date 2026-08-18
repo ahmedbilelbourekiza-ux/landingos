@@ -43,6 +43,10 @@ export const websiteBuilder: ProductManifest = {
     { id: 'templates', titleKey: 'builder.nav.templates', path: 'templates', icon: 'palette', group: 'builder.navGroup.content' },
     { id: 'orders', titleKey: 'builder.nav.orders', path: 'orders', icon: 'package', permission: 'website-builder:orders:read', group: 'builder.navGroup.selling' },
     { id: 'abandoned', titleKey: 'builder.nav.abandoned', path: 'abandoned', icon: 'phone-missed', permission: 'website-builder:orders:read', group: 'builder.navGroup.selling' },
+    // AN.1 — first-party traffic. Behind orders:read because the screen shows
+    // order counts beside the views; a role that may not read orders may not
+    // read how many there were either.
+    { id: 'analytics', titleKey: 'builder.nav.analytics', path: 'analytics', icon: 'bar-chart-3', permission: 'website-builder:orders:read', group: 'builder.navGroup.selling' },
     { id: 'delivery-prices', titleKey: 'builder.nav.deliveryPrices', path: 'delivery-prices', icon: 'truck', permission: 'website-builder:settings:write', group: 'builder.navGroup.selling' },
   ],
   status: 'stable',

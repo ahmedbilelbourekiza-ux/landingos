@@ -16,6 +16,7 @@ import { LandingTemplate } from "@/components/landing/landing-template";
 import { StorefrontApiProvider } from "@/lib/storefront/api-base";
 import { ViewContentTracker } from "@/components/landing/tracking-scripts";
 import { StorefrontTracking } from "@/components/landing/storefront-tracking";
+import { VisitBeacon } from "@/components/landing/visit-beacon";
 
 export const dynamic = "force-dynamic";
 
@@ -221,6 +222,14 @@ export default async function StorefrontLandingPage({
           contentName={found.page.title}
           value={Number(found.page.price)}
           currency={found.page.currency}
+        />
+        {/* AN.1 — the first-party view count, same public-route-only rule.
+            Unconditional on purpose: a merchant with no pixel configured
+            still gets to know how many people saw their page. */}
+        <VisitBeacon
+          endpoint={`/api/storefront/${found.tenant.slug}/visits`}
+          pageKind="landing"
+          landingPageId={found.page.id}
         />
         {/* toLandingPageData, not toPreviewState: the latter is the EDITOR's
             shape and the template takes the public one. Passing the wrong

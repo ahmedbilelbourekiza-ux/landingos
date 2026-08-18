@@ -17,6 +17,7 @@
       "templates": "Templates",
       "orders": "Orders",
       "abandoned": "Abandoned carts",
+      "analytics": "Traffic",
       "deliveryPrices": "Delivery prices"
     },
     "navGroup": {
@@ -101,6 +102,27 @@
     },
     "abandoned": {
       "colSeen": "Last activity"
+    },
+    "analytics": {
+      "basis": "Counted in your customers' browsers as pages are viewed. Search-engine crawlers and your own editor previews are not counted; your own visits to the published page are.",
+      "views": "views",
+      "orders": "orders",
+      "rangeLabel": "Time range",
+      "range7": "7 days",
+      "range30": "30 days",
+      "colPage": "Page",
+      "colViews": "Views",
+      "colOrders": "Orders",
+      "colChannel": "Traffic source",
+      "storeHome": "Store home",
+      "categoryPages": "Category pages",
+      "emptyPages": "No page views recorded yet. Views start counting from the moment this feature is live — share a page link to see the first ones.",
+      "emptyChannels": "No traffic recorded yet.",
+      "channel": {
+        "direct": "Direct",
+        "other": "Other",
+        "unattributed": "No source recorded"
+      }
     },
     "newPage": {
       "title": "New landing page",

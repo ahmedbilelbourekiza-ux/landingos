@@ -24,6 +24,7 @@ import {
 } from "@/lib/landing/mock-order-form";
 import type { ShippingMethod } from "@/types/landing";
 import { useStorefrontApi, useStorefrontHref } from "@/lib/storefront/api-base";
+import { readVisitSource } from "@/components/landing/visit-beacon";
 import type { CheckoutBodyInput, CheckoutSuccess, WilayaItem } from "@/lib/storefront/contract";
 
 // The customer-facing checkout.
@@ -315,6 +316,9 @@ export function PurchaseForm({
         ttp: ttp ?? undefined,
         gaClientId: gaClientId ?? undefined,
         draftToken: draft.token ?? undefined,
+        // AN.1 — the SESSION's stored source evidence, not this page's URL:
+        // by checkout time the ad click's params are navigations behind us.
+        visitSource: readVisitSource() ?? undefined,
       };
       const res = await fetch(api("/orders"), {
         method: "POST",

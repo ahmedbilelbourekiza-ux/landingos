@@ -1418,3 +1418,147 @@ describe('LB.45 — a custom domain\'s paths are the shop\'s own', { skip }, () 
     assert.equal(r.status, 404);
   });
 });
+
+describe('first-party page views and their traffic source (AN.1)', { skip }, () => {
+  const visitToken = `visit-${stamp}-1`;
+
+  test('a landing view with ad evidence lands as ONE row with the channel derived', async () => {
+    const r = await post(`/api/storefront/${slugA}/visits`, {
+      token: visitToken,
+      pageKind: 'landing',
+      landingPageId: publishedA,
+      source: { utmSource: 'facebook', referrer: 'https://l.facebook.com/l.php' },
+    });
+    assert.equal(r.status, 204, 'the beacon answers 204 whatever happens');
+
+    const rows = await withTenant(tenantA, (db) =>
+      (db as any).storefrontVisit.findMany({ where: { visitorToken: visitToken } }),
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].landingPageId, publishedA);
+    assert.equal(rows[0].pageKind, 'landing');
+    assert.equal(rows[0].sourceChannel, 'facebook');
+    assert.equal(rows[0].sourceDetail, 'facebook');
+  });
+
+  test('a home view counts page-less; a junk body and an unknown store count nothing', async () => {
+    const homeToken = `visit-${stamp}-home`;
+    assert.equal(
+      (await post(`/api/storefront/${slugA}/visits`, { token: homeToken, pageKind: 'home' })).status,
+      204,
+    );
+    const rows = await withTenant(tenantA, (db) =>
+      (db as any).storefrontVisit.findMany({ where: { visitorToken: homeToken } }),
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].landingPageId, null);
+    assert.equal(rows[0].sourceChannel, 'direct');
+
+    assert.equal((await post(`/api/storefront/${slugA}/visits`, {})).status, 204);
+    assert.equal((await post(`/api/storefront/nope-${stamp}/visits`, { token: homeToken, pageKind: 'home' })).status, 204);
+  });
+
+  test("another tenant's page id records NOTHING — not even a page-less row", async () => {
+    const strayToken = `visit-${stamp}-stray`;
+    const r = await post(`/api/storefront/${slugA}/visits`, {
+      token: strayToken,
+      pageKind: 'landing',
+      landingPageId: publishedB, // tenant B's page, posted at tenant A's door
+    });
+    assert.equal(r.status, 204, 'refusals are silent — this must not be a probe');
+    const rows = await withTenant(tenantA, (db) =>
+      (db as any).storefrontVisit.findMany({ where: { visitorToken: strayToken } }),
+    );
+    assert.equal(rows.length, 0, 'a row lying about what was seen is worse than none');
+  });
+
+  test('an unpublished draft view records nothing either', async () => {
+    const draftViewToken = `visit-${stamp}-draft`;
+    await post(`/api/storefront/${slugA}/visits`, {
+      token: draftViewToken, pageKind: 'landing', landingPageId: draftA,
+    });
+    const rows = await withTenant(tenantA, (db) =>
+      (db as any).storefrontVisit.findMany({ where: { visitorToken: draftViewToken } }),
+    );
+    assert.equal(rows.length, 0);
+  });
+
+  test('the client cannot smuggle a channel name — only evidence is accepted', async () => {
+    const forgedToken = `visit-${stamp}-forged`;
+    // `sourceChannel` is not a field of VisitBody; zod strips unknown keys, so
+    // the write derives from the (absent) evidence and stores DIRECT.
+    await post(`/api/storefront/${slugA}/visits`, {
+      token: forgedToken, pageKind: 'home', sourceChannel: 'facebook',
+    });
+    const rows = await withTenant(tenantA, (db) =>
+      (db as any).storefrontVisit.findMany({ where: { visitorToken: forgedToken } }),
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].sourceChannel, 'direct');
+  });
+
+  test('a checkout carrying the session evidence snapshots the channel onto the order', async () => {
+    const r = await post(`/api/storefront/${slugA}/orders`, {
+      landingPageId: publishedA,
+      customerName: 'Attributed Buyer',
+      phone: '0555000333',
+      wilayaId,
+      baladiaName: 'Somewhere',
+      quantity: 1,
+      shippingMethod: 'HOME',
+      visitSource: { ttclid: 'tt-click-1' },
+    });
+    assert.equal(r.status, 201);
+    const order = await withTenant(tenantA, (db) =>
+      (db as any).salesOrder.findUnique({ where: { id: r.body.data.id } }),
+    );
+    assert.equal(order.sourceChannel, 'tiktok');
+    assert.equal(order.sourceDetail, 'ttclid');
+  });
+
+  test('a checkout with no evidence stays UNATTRIBUTED — null, not a guessed channel', async () => {
+    const r = await post(`/api/storefront/${slugA}/orders`, {
+      landingPageId: publishedA,
+      customerName: 'Untagged Buyer',
+      phone: '0555000444',
+      wilayaId,
+      baladiaName: 'Somewhere',
+      quantity: 1,
+      shippingMethod: 'HOME',
+    });
+    assert.equal(r.status, 201);
+    const order = await withTenant(tenantA, (db) =>
+      (db as any).salesOrder.findUnique({ where: { id: r.body.data.id } }),
+    );
+    assert.equal(order.sourceChannel, null);
+  });
+
+  test('the aggregates the console screen renders come from these same rows', async () => {
+    // The one query builder (lib/builder/analytics), exercised directly over
+    // the fixture rows this suite just wrote — the screen is rendering, not
+    // arithmetic, so THIS is where the numbers are pinned.
+    const { storefrontAnalytics, analyticsRange } = await import('../src/lib/builder/analytics.ts');
+    const data = await withTenant(tenantA, (db) =>
+      storefrontAnalytics(db, analyticsRange('7')),
+    );
+
+    const pageRow = data.byPage.find((row: any) => row.landingPageId === publishedA);
+    assert.ok(pageRow, 'the viewed page has a row');
+    assert.ok(pageRow.views >= 1);
+    assert.ok(pageRow.orders >= 2, 'orders in the window count beside the views');
+    assert.equal(pageRow.title, 'Product A');
+
+    const facebook = data.byChannel.find((row: any) => row.channel === 'facebook');
+    assert.ok(facebook && facebook.views >= 1, 'the facebook view is in the breakdown');
+    const tiktok = data.byChannel.find((row: any) => row.channel === 'tiktok');
+    assert.ok(tiktok && tiktok.orders >= 1, 'the attributed order is under its channel');
+    const unattributed = data.byChannel.find((row: any) => row.channel === 'unattributed');
+    assert.ok(
+      unattributed && unattributed.orders >= 1,
+      'a console/import order shows as unattributed, never folded into direct',
+    );
+
+    assert.ok(data.totals.views >= 2);
+    assert.ok(data.totals.orders >= 2);
+  });
+});

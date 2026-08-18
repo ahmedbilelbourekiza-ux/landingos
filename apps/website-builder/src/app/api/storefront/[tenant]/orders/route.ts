@@ -5,6 +5,7 @@ import { Prisma, withTenant } from "@landingos/db";
 import { tenantBySlug, currentOrigin, storefrontHref } from "@/lib/storefront/resolve-tenant";
 import { allowRequest, clientIp, checkoutLimit } from "@/lib/storefront/rate-limit";
 import { CheckoutBody } from "@/lib/storefront/contract";
+import { deriveSource } from "@/lib/storefront/traffic-source";
 import { deliveryPricesFor, priceForMethod } from "@/lib/storefront/delivery";
 import { triggerOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 import { dispatchTrackingEvent } from "@/lib/tracking/dispatch";
@@ -131,6 +132,17 @@ export async function POST(
           totalPrice: total,
           shippingMethod: input.shippingMethod,
           status: "NEW",
+          // AN.1 — attribution snapshot, derived server-side from the
+          // session's evidence with the SAME function the visit beacon uses,
+          // so an order and the views that led to it cannot name different
+          // channels. Absent evidence stores null (unattributed), never a
+          // guessed channel.
+          ...(input.visitSource
+            ? (() => {
+                const derived = deriveSource(input.visitSource);
+                return { sourceChannel: derived.channel, sourceDetail: derived.detail };
+              })()
+            : {}),
         },
         select: { id: true },
       });

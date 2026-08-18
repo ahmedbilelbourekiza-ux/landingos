@@ -10,6 +10,93 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## AN.1 — the platform learns to count its own traffic
+
+**Committed locally 18 August 2026 (overnight session) — NOT pushed, NOT
+deployed. ⚠ CARRIES A MIGRATION: one additive table (`StorefrontVisit`) and
+two nullable columns on `SalesOrder` (`sourceChannel`, `sourceDetail`), so
+the deploy needs a user-approved production `db push` + `apply-rls` run
+(RLS 49 → 50) BEFORE the app deploy, in the LB.20 order. Applied to the DEV
+database only tonight (`ep-gentle-sky` host confirmed in the push output;
+dev RLS now 50/50 all four checks).**
+
+- **The measurement: the platform recorded NO first-party traffic at all.**
+  `PageView` fired only to third-party pixels (only when the merchant had
+  one configured), the checkout received click ids and forwarded them to
+  CAPI without persisting them, and neither `SalesOrder` nor `DraftOrder`
+  carried any attribution. "How many people saw this page" and "Facebook or
+  TikTok" were questions only Meta could answer, about the merchant's own
+  shop.
+
+- **The first slice, end to end:** a narrow `StorefrontVisit` row per page
+  view (kind, optional page id, visitor token, derived channel + raw
+  evidence), written by a client beacon on the three public page kinds —
+  landing, home, category, deliberately not the thank-you (a confirmation
+  is the end of an order, not traffic) and deliberately not the editor's
+  preview (the ViewContentTracker rule). Client-side counting is a design
+  choice, twice over: crawlers that never execute the beacon never count,
+  and the count keeps working when LB.14a.2 makes the pages cacheable —
+  a server-render write would tally cache misses, not visitors.
+
+- **ONE derivation, server-side** (`lib/storefront/traffic-source.ts`, pure,
+  no imports): utm_source (the merchant's own explicit tag, aliases mapped,
+  unknown values honestly OTHER with the raw string kept) → click ids
+  (fbclid/ttclid/gclid) → referrer host (label-suffix matched, so
+  `l.facebook.com` matches and `notfacebook.com` cannot) → DIRECT. The
+  client captures the evidence bundle once per session (sessionStorage,
+  the draft-token shape), every later page reuses it, and a new arrival
+  with explicit evidence overwrites — attribution follows the latest
+  click. The checkout forwards the same stored bundle, and the orders
+  route derives with the same function onto the order — **a view and the
+  order it produced cannot name different channels.** Null on an order
+  means "no browser session" (console, import, webhook) and renders as
+  its own "unattributed" bucket, never folded into direct.
+
+- **The write door** (`POST /api/storefront/[tenant]/visits`) is the draft
+  route's shape verbatim: every refusal a silent 204, per-IP sliding
+  window (`VISIT_RATE_LIMIT`, default 120/5min), page-id validated inside
+  the tenant binding (another tenant's page, or an unpublished draft,
+  records NOTHING — a row lying about what was seen is worse than none),
+  and zod strips any smuggled channel field, pinned by test.
+
+- **The read surface:** `/console/builder/analytics` ("Traffic", nav'd in
+  the selling group behind `orders:read`), 7/30-day windows: views and
+  orders per page (store home and category traffic as their own rows) and
+  per channel, side by side — either count alone invites the wrong
+  conclusion. All arithmetic in `lib/builder/analytics.ts`, which the
+  contract suite exercises DIRECTLY over the fixture rows it wrote through
+  the real endpoints (D-LB.19.1: the screen and the test cannot disagree).
+  The counting basis is stated on the screen itself, including the honest
+  limitation that the merchant's own storefront visits count.
+
+- **Verified live against the running build:** a browser visit to the demo
+  page with `?utm_source=facebook&fbclid=…` wrote the landing row; the
+  next internal navigation (no params) wrote the home row with the SAME
+  channel and token via the stored evidence; the console screen rendered
+  both tables and the totals in en; nav shows Traffic between Abandoned
+  carts and Delivery prices. (`seed:demo` was run into the DEV database
+  for this — the fresh dev project had no users; a published
+  `demo-landing` page was added to the demo tenant as permanent dev
+  furniture.)
+
+- **Tests:** `test/traffic-source.test.ts` (NEW, pure, 14) — alias battery,
+  precedence, lookalike-host refusal, junk-referrer honesty, bounds,
+  vocabulary; storefront **86/86** (8 NEW: row written with derived
+  channel, page-less home, cross-tenant and draft refusals writing
+  nothing, channel-smuggling stripped, checkout attribution stored,
+  no-evidence null, and the aggregates over the same fixture rows);
+  builder-sections 75/75 · tracking 16/16 · console-shell 20/20 ·
+  i18n 22/22 (keys ×3 locales).
+
+- **Open questions, deliberately not decided tonight — NEXT_STEPS §AN.1:**
+  retention/rollup (raw rows only for now), unique-visitor counts, funnel
+  steps (ViewContent → InitiateCheckout → Lead), utm_campaign, and the
+  merchant-self-view limitation. Files: schema `builder.prisma`,
+  `traffic-source.ts` + `visit-beacon.tsx` + `visits/route.ts` +
+  `analytics.ts` + the analytics screen (new); `contract.ts`,
+  `rate-limit.ts`, `orders/route.ts`, `purchase-form.tsx`, the three
+  storefront pages, `manifests.ts`, three locale catalogs.
+
 ## LB.55 — the muted palette gets the contrast guarantee the theme contract never gave it
 
 **Committed locally 18 August 2026 (overnight session) — NOT pushed, NOT

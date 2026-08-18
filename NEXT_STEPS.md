@@ -848,6 +848,49 @@ transition out of "inherit all" cannot silently reduce reporting — which is th
 same safety argument the request made from the other direction. Fixture swept
 with `deleteTenant`.
 
+### AN.1 — DONE 18 Aug (overnight, local commit; NOT deployed). First-party analytics: the first slice, and the questions it deliberately left
+
+**⚠ THIS SLICE CARRIES A MIGRATION — the first since LB.35.** One additive
+table (`StorefrontVisit`) + two nullable `SalesOrder` columns
+(`sourceChannel`, `sourceDetail`). **The deploy therefore needs, in the LB.20
+order and each user-approved: production `db push` (preview with
+`migrate diff` first) → `apply-rls` (RLS 49 → 50) → the app deploy.** Applied
+to the DEV database tonight (`ep-gentle-sky` confirmed in the push output,
+dev RLS 50/50). Optional env: `VISIT_RATE_LIMIT` (default 120/5min/IP).
+CHANGELOG §AN.1 is the full record; the storefront suite (86) and the pure
+`traffic-source` suite (14) pin it.
+
+**What a merchant gets:** `/console/builder/analytics` — "Traffic" in the
+nav — views and orders per page and per channel (Facebook/Instagram/TikTok/
+Google/WhatsApp/Telegram/Direct/Other, plus "no source recorded" for orders
+with no browser session), 7/30 days. Orders carry their channel from the
+same server-side derivation the views use, snapshotted at checkout.
+
+**Open questions, each a decision before or after deploy — none blocks it:**
+
+1. **Retention/rollup.** Raw rows only. At ad-funnel volume (say 5k
+   views/day) that is ~1.8M rows/year — Postgres-fine with the
+   `(tenantId, createdAt)` index, but a daily rollup table + pruning of raw
+   rows older than N days is the obvious upgrade once real volume exists to
+   size it against. Decide N when the first real store has a month of data.
+2. **Unique visitors.** The visitor token (sessionStorage, per-visit) is
+   stored but not yet surfaced — `COUNT(DISTINCT visitorToken)` per window
+   is a heavier query worth designing WITH the rollup, not before it.
+3. **Funnel steps.** The vocabulary already exists client-side
+   (ViewContent → InitiateCheckout → Lead → Purchase, LB.5). The beacon
+   counts PageView only; adding funnel events is the same wire and table
+   (a `kind` column widening) — worth doing once the first slice proves
+   itself on the real store. Drafts (leads) and orders are already
+   first-party, so a views → leads → orders funnel is READ-side work today.
+4. **utm_campaign.** Only `utm_source` is derived. Campaign-level breakdown
+   means storing `utm_campaign` (one more bounded column in the evidence
+   bundle) — cheap, but wait for the first real "which creative" question.
+5. **Merchant self-views count.** Stated on the screen rather than
+   half-fixed. A real fix (exclude sessions that carry a console cookie) is
+   possible and adds coupling between surfaces; decide if merchants complain.
+6. **The `sourceDetail` vocabulary may grow.** Raw evidence is kept per row,
+   so re-deriving under a better mapping is possible retroactively.
+
 ### LB.55 — DONE 18 Aug (overnight, local commit; NOT deployed). The scoping below is the 17 Aug measurement it was built from
 
 **Built as scoped, with one correction the build's own measurement added: the

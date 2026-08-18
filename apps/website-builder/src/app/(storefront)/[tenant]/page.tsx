@@ -8,6 +8,7 @@ import { formatMoney, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 import { resolveStorefrontTenant, storefrontHref } from "@/lib/storefront/resolve-tenant";
 import { ThemeProvider } from "@/components/landing/theme-provider";
 import { StorefrontTracking } from "@/components/landing/storefront-tracking";
+import { VisitBeacon } from "@/components/landing/visit-beacon";
 import { DEFAULT_THEME } from "@/types/theme";
 
 export const dynamic = "force-dynamic";
@@ -82,6 +83,8 @@ export default async function StorefrontHome({
       {/* LB.35 — the tenant's whole active set: a store home is not one
           product, so it has no per-page selection to make. */}
       <StorefrontTracking tenantId={tenant.id} />
+      {/* AN.1 — home traffic counts too, page-less. */}
+      <VisitBeacon endpoint={`/api/storefront/${tenant.slug}/visits`} pageKind="home" />
       <main className="mx-auto max-w-6xl px-4 py-10" data-tenant={tenant.slug}>
         <h1 className="text-2xl font-semibold">{tenant.name}</h1>
 

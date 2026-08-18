@@ -17,6 +17,7 @@
       "templates": "Modèles",
       "orders": "Commandes",
       "abandoned": "Paniers abandonnés",
+      "analytics": "Trafic",
       "deliveryPrices": "Tarifs de livraison"
     },
     "navGroup": {
@@ -101,6 +102,27 @@
     },
     "abandoned": {
       "colSeen": "Dernière activité"
+    },
+    "analytics": {
+      "basis": "Compté dans le navigateur de vos clients à l'affichage des pages. Les robots des moteurs de recherche et vos aperçus dans l'éditeur ne comptent pas ; vos propres visites de la page publiée comptent.",
+      "views": "vues",
+      "orders": "commandes",
+      "rangeLabel": "Période",
+      "range7": "7 jours",
+      "range30": "30 jours",
+      "colPage": "Page",
+      "colViews": "Vues",
+      "colOrders": "Commandes",
+      "colChannel": "Source de trafic",
+      "storeHome": "Accueil de la boutique",
+      "categoryPages": "Pages de catégorie",
+      "emptyPages": "Aucune vue enregistrée pour l'instant. Le comptage démarre dès la mise en ligne de cette fonction — partagez le lien d'une page pour voir les premières vues.",
+      "emptyChannels": "Aucun trafic enregistré pour l'instant.",
+      "channel": {
+        "direct": "Direct",
+        "other": "Autre",
+        "unattributed": "Sans source enregistrée"
+      }
     },
     "newPage": {
       "title": "Nouvelle page de vente",

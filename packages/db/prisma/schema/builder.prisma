@@ -112,6 +112,7 @@ model LandingPage {
   // LB.20 — this product's own delivery prices, where they differ from the
   // company's. Absence means the company's price applies.
   deliveryPrices LandingDeliveryPrice[]
+  visits         StorefrontVisit[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -394,6 +395,14 @@ model SalesOrder {
   shippingMethod ShippingMethod   @default(HOME)
   status         SalesOrderStatus @default(NEW)
 
+  /* AN.1 — where this order's visit came from, snapshotted at checkout with
+   * the same derivation StorefrontVisit uses. Nullable: console-created,
+   * imported and webhook orders have no browser session to derive from, and
+   * null reads as "unattributed", never as a guessed channel. Kept ON the
+   * order so "sales by source" survives any future pruning of raw visits. */
+  sourceChannel String?
+  sourceDetail  String?
+
   landingPage   LandingPage              @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
   statusHistory SalesOrderStatusHistory[]
 
@@ -471,6 +480,61 @@ model DraftOrder {
   @@index([tenantId, createdAt])
   @@index([tenantId, landingPageId])
   @@index([tenantId, convertedOrderId])
+}
+
+/* =============================================================================
+ * AN.1 — first-party page views with a derived traffic source.
+ *
+ * Until this table, the platform recorded NO first-party traffic at all: the
+ * storefront's PageView reached third-party pixels only (and only when the
+ * merchant had configured one), so "how many people saw this page" and "did
+ * they come from Facebook or TikTok" were questions only Meta could answer,
+ * about the merchant's own shop.
+ *
+ * One narrow row per page view, written by a client-side beacon (the
+ * draft-capture pattern: silent, rate-limited, best-effort). Client-side on
+ * purpose, twice over: most crawlers never execute the beacon, and a
+ * server-render write would both stop working the day storefront pages become
+ * cacheable (LB.14a.2) and count every cache MISS rather than every visitor.
+ *
+ * The source channel is DERIVED AT WRITE TIME (lib/storefront/traffic-source)
+ * from utm_source / click ids / referrer, because the raw evidence is
+ * ephemeral — the URL params are gone on the next navigation. `sourceDetail`
+ * keeps the raw evidence string for debugging and future re-mapping.
+ *
+ * No FK-less orphan risk: deleteTenant() enumerates scoped models from the
+ * DMMF (LB.27), so this table is swept without being named anywhere.
+ *
+ * RETENTION IS AN OPEN QUESTION, recorded in NEXT_STEPS §AN.1: raw rows only
+ * for the first slice; a daily rollup + prune is the upgrade path once real
+ * volume exists to size it against.
+ * ========================================================================== */
+model StorefrontVisit {
+  id       String @id @default(cuid())
+  tenantId String
+
+  // Null for store-level pages (home, category); the page kind still says
+  // WHAT was viewed so home traffic is not invisible.
+  landingPageId String?
+  landingPage   LandingPage? @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+  pageKind      String // "landing" | "home" | "category"
+
+  // Per-visit token (sessionStorage), the draft-capture shape: distinct
+  // tokens approximate unique visitors without any cookie consent surface.
+  visitorToken String
+
+  // Controlled vocabulary (facebook|tiktok|google|instagram|whatsapp|
+  // telegram|direct|other) — validated at the route, so a console breakdown
+  // can GROUP BY it without a normalisation pass.
+  sourceChannel String
+  // The raw evidence: utm_source as sent, or the referrer host. Bounded at
+  // the contract; for labels and for re-deriving if the mapping grows.
+  sourceDetail  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, landingPageId, createdAt])
 }
 
 model Category {

@@ -19,6 +19,23 @@ import { z } from "zod";
  * instead of the customer.
  * ========================================================================== */
 
+/**
+ * The traffic-source EVIDENCE bundle (AN.1) — raw browser facts, captured at
+ * session start and forwarded verbatim. The channel is derived SERVER-SIDE
+ * (`lib/storefront/traffic-source.ts`) on every path that stores one, so the
+ * client never carries the mapping and the vocabulary cannot be spoofed into
+ * the database — only evidence arrives, bounded like every anonymous input.
+ */
+export const SourceEvidenceBody = z.object({
+  utmSource: z.string().trim().max(200).optional().nullable(),
+  fbclid: z.string().trim().max(500).optional().nullable(),
+  ttclid: z.string().trim().max(500).optional().nullable(),
+  gclid: z.string().trim().max(500).optional().nullable(),
+  referrer: z.string().trim().max(500).optional().nullable(),
+});
+
+export type SourceEvidenceInput = z.input<typeof SourceEvidenceBody>;
+
 /** POST /api/storefront/[tenant]/orders — the checkout body. */
 export const CheckoutBody = z.object({
   landingPageId: z.string().min(1),
@@ -52,6 +69,13 @@ export const CheckoutBody = z.object({
   ttclid: z.string().trim().max(500).optional(),
   ttp: z.string().trim().max(500).optional(),
   gaClientId: z.string().trim().max(200).optional(),
+  /**
+   * AN.1 — the session's traffic-source evidence, as the visit beacon stored
+   * it. The route derives the channel and snapshots it onto the order, so
+   * "sales by source" needs no join against raw visits. Optional: an order is
+   * never refused over missing attribution.
+   */
+  visitSource: SourceEvidenceBody.optional(),
 });
 
 export type CheckoutBodyInput = z.input<typeof CheckoutBody>;
@@ -97,6 +121,24 @@ export const DraftBody = z.object({
 });
 
 export type DraftBodyInput = z.input<typeof DraftBody>;
+
+/**
+ * POST /api/storefront/[tenant]/visits — the first-party page-view beacon
+ * (AN.1). Fired once per rendered storefront page by a client effect, which
+ * is deliberate twice over: crawlers that never execute JS never count, and
+ * the count keeps working the day the pages themselves become cacheable
+ * (LB.14a.2) — a server-render write would tally cache misses, not visitors.
+ * Same tolerance rules as DraftBody: every refusal is a silent 204.
+ */
+export const VisitBody = z.object({
+  token: z.string().trim().min(8).max(120),
+  pageKind: z.enum(["landing", "home", "category"]),
+  /** Present exactly when pageKind is "landing". */
+  landingPageId: z.string().min(1).optional(),
+  source: SourceEvidenceBody.optional(),
+});
+
+export type VisitBodyInput = z.input<typeof VisitBody>;
 
 /** One destination row from GET /api/storefront/[tenant]/wilayas. */
 export interface WilayaItem {

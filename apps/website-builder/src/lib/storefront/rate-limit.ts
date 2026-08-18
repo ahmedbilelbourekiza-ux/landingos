@@ -81,3 +81,9 @@ export function checkoutLimit(): number {
 export function draftLimit(): number {
   return Number(process.env.DRAFT_RATE_LIMIT ?? 60);
 }
+/** AN.1 — the page-view beacon. Looser than drafts: a real visitor bouncing
+ * around a store is many views in minutes, and each accepted row is one
+ * narrow insert with no third-party fan-out behind it. */
+export function visitLimit(): number {
+  return Number(process.env.VISIT_RATE_LIMIT ?? 120);
+}
