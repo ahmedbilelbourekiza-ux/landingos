@@ -10,6 +10,84 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## BH.1 + BH.2 — a page learns what its visitors actually did, where its merchant opted in
+
+**Committed locally 18 August 2026 (after the user's §BH review: opt-in PER
+PAGE, WhatsApp taps are NOT conversions, BH.3 waits for a spend quota) —
+NOT pushed, NOT deployed. ⚠ Schema: BH.1's columns FOLD into the still-
+unshipped AN.1/AN.2 migration — `StorefrontVisit` gains `viewId @unique` +
+ten nullable behavior columns, `LandingSetting` gains
+`behaviorTracking @default(false)` — so the whole queued batch remains ONE
+production `db push` + ONE `apply-rls` (49 → 50; BH.1 adds no table). Dev
+pushed (`ep-gentle-sky` confirmed; the `--accept-data-loss` prompt it
+raised is the generic nullable-unique warning and is dev-only — production
+creates the table whole, no prompt).**
+
+- **BH.1, the capture — on AN.1's rails, one row per view, no events
+  table.** The arrival beacon now carries a client-generated `viewId` (the
+  `DraftOrder.token` pattern: how an unauthenticated exit beacon addresses
+  the row its arrival made). Behavior accumulates in the beacon's own
+  module — the collector ARMS ONLY when the page opted in, and unarmed
+  every `record*` call is a null-check and a return — and flushes via
+  `sendBeacon` on `pagehide`/visibility-hidden (draft capture's exact exit
+  mechanism), change-deduped and re-flushable: counters are monotonic, so
+  a later flush only ever knows more. Signals, each at its cheapest
+  honest mechanism: furthest section via ONE IntersectionObserver over
+  `data-bh-section` landmarks the server already renders; `sawForm` from
+  the CTA button (the sticky bar's own "form seen" element); gallery
+  through `goTo` — the single funnel all four navigation paths share; FAQ
+  opens (with ids, ≤20) in `onToggle`, opens only — closing records
+  nothing; variants and sticky-buy in their existing handlers; WhatsApp
+  via a delegated listener so `FloatingWhatsapp` STAYS a server component;
+  visible-time as one visibility-gated number. NULL means "not measured",
+  never zero.
+
+- **The opt-in is enforced twice.** `behaviorTracking` lives on
+  `LandingSetting` (per page, default off — the user's decision), edited
+  as a sixth toggle in the editor's Display section (same save route the
+  B2 toggles have always used, keys ×3 locales, the description stating
+  the anonymity and the 30-day retention). Client-side it decides whether
+  the collector arms at all; server-side `/visits/behavior` re-reads the
+  page's own flag and refuses the update without it — a hand-rolled
+  beacon cannot opt a merchant's page in from the outside. Store-level
+  views (home/category) take no behavior: they have no per-page opt-in to
+  grant.
+
+- **BH.2, the read side — computed, no AI, the ERP-insights precedent.**
+  `storefrontAnalytics` gains `behaviorByPage` over MEASURED views only
+  (`activeMs` non-null — the collector always sends it when armed):
+  measured count, saw-form count, furthest-section distribution,
+  engagement sums, sticky/WhatsApp taps, average active time. The Traffic
+  screen renders it as a table that appears only once something was
+  measured; rates carry their denominator ("1 (100%)") so three views
+  cannot masquerade as knowledge; **WhatsApp taps are their own column,
+  deliberately NOT folded into orders or conversion** (user decision — a
+  WhatsApp sale never touches the checkout).
+
+- **Verified live through the real UI, both halves:** the editor's new
+  toggle ticked and saved (row read back `behaviorTracking: true` through
+  the real route); then a customer session on the enriched demo page —
+  two thumbnail clicks, FAQ interaction, scroll to footer, back to the
+  form, navigate away — flushed exactly the truth: `furthestSection:
+  footer`, `sawForm: true`, `galleryChanges: 2` (deepest 2), `faqOpens: 1`
+  with one id — one, not two, because the first FAQ starts OPEN and
+  clicking it CLOSED it, which the design says records nothing — untouched
+  signals `null`, `activeMs` 32.7s. The Traffic screen then rendered
+  `Measured 1 · Saw the form 1 (100%) · end 1 · photos 2 · FAQ 1 · 33s`.
+
+- **Tests:** storefront **95/95** (5 new: viewId stored + opt-in refusal
+  server-side; the opted-in flush with junk-refused-whole and the
+  monotonic re-flush; home views take no behavior + negative counters
+  refused; cross-tenant viewId updates nothing under RLS; the aggregates
+  measured-only with rate ≤ denominator and absent-not-zero pages).
+  builder-sections 75/75 · builder-api 49/49 (one documented Neon
+  transient, green alone) · console-shell 20/20 · tracking 16/16 · i18n
+  22/22. Files: schema, `contract.ts`, `visits/route.ts`,
+  `visits/behavior/route.ts` (new), `visit-beacon.tsx` (collector),
+  five section components + the template landmarks, `order-form/route.ts`,
+  `display-section.tsx`, `preview.ts`, `mappers.ts`, `analytics.ts`, the
+  Traffic screen, catalogs ×3.
+
 ## AN.2 — visit rows learn to expire, and visitors learn to be people
 
 **Committed locally 18 August 2026 (same overnight session, after the user's

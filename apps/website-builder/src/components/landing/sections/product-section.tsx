@@ -18,6 +18,7 @@ export function ProductSection({
   return (
     <section
       id="product"
+      data-bh-section="hero"
       className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10"
     >
       <div className="grid gap-6 lg:grid-cols-2 lg:gap-10">

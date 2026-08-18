@@ -49,7 +49,7 @@ export function SiteFooter({ store }: { store?: StorefrontStoreData | null }) {
     : [];
 
   return (
-    <footer data-testid="storefront-footer" className="border-t bg-muted/30">
+    <footer data-testid="storefront-footer" data-bh-section="footer" className="border-t bg-muted/30">
       <div className="mx-auto flex max-w-7xl flex-col items-center gap-4 px-4 py-10 text-center sm:px-6">
         {store && <span className="font-semibold">{store.name}</span>}
         {store?.description && (

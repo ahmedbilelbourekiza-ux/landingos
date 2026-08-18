@@ -143,9 +143,43 @@ export const VisitBody = z.object({
    * stays honest past the prune horizon); a strict boolean, so junk fails
    * the parse and the beacon is dropped whole rather than half-recorded. */
   isReturning: z.boolean().optional().default(false),
+  /** BH.1 — the per-view id the exit beacon will address this row by (the
+   * DraftOrder.token pattern). Optional: a view still counts without one. */
+  viewId: z.string().trim().min(8).max(120).optional(),
 });
 
 export type VisitBodyInput = z.input<typeof VisitBody>;
+
+/** The template's section landmarks, deepest-last — the vocabulary the
+ * furthest-section signal speaks. Shared with the collector so the client
+ * cannot invent a landmark the aggregates would then group by. */
+export const BH_SECTIONS = ["hero", "description", "reviews", "faq", "footer"] as const;
+
+/**
+ * POST /api/storefront/[tenant]/visits/behavior — BH.1's exit beacon.
+ *
+ * One flush per page-view lifecycle (re-flushes allowed; counters are
+ * monotonic client-side, so a later flush only ever knows more), addressed
+ * by the arrival beacon's viewId. Every count is bounded because this
+ * arrives from an anonymous client and lands in columns the Traffic screen
+ * averages — one absurd value would poison a mean.
+ */
+export const VisitBehaviorBody = z.object({
+  viewId: z.string().trim().min(8).max(120),
+  furthestSection: z.enum(BH_SECTIONS).optional(),
+  sawForm: z.boolean().optional(),
+  galleryChanges: z.number().int().min(0).max(5000).optional(),
+  galleryDeepestIndex: z.number().int().min(0).max(500).optional(),
+  faqOpens: z.number().int().min(0).max(5000).optional(),
+  faqOpenedIds: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
+  variantChanges: z.number().int().min(0).max(5000).optional(),
+  stickyBuyClicked: z.boolean().optional(),
+  whatsappClicked: z.boolean().optional(),
+  /** Visibility-gated. Capped at 24h — beyond that is a forgotten tab. */
+  activeMs: z.number().int().min(0).max(86_400_000).optional(),
+});
+
+export type VisitBehaviorInput = z.input<typeof VisitBehaviorBody>;
 
 /** One destination row from GET /api/storefront/[tenant]/wilayas. */
 export interface WilayaItem {

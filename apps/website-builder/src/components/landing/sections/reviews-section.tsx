@@ -44,7 +44,7 @@ export function ReviewsSection({ reviews }: { reviews: LandingReviewData[] }) {
   if (reviews.length === 0) return null;
 
   return (
-    <section id="reviews" className="border-t bg-muted/20">
+    <section id="reviews" data-bh-section="reviews" className="border-t bg-muted/20">
       <div className="mx-auto w-full max-w-7xl px-4 py-14 sm:px-6 sm:py-20">
         <div className="mb-10 flex flex-col gap-2 text-center">
           <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">

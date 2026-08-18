@@ -37,6 +37,8 @@ const Body = z.object({
   showReviews: z.boolean().optional(),
   showFAQ: z.boolean().optional(),
   showFeatures: z.boolean().optional(),
+  /** BH.1 — per-page behavior-tracking opt-in (default off in the schema). */
+  behaviorTracking: z.boolean().optional(),
   /** The editor's shape: field configs at the top level plus a render order. */
   ...fieldKeys,
   order: z.array(z.string().trim().max(40)).max(20).optional(),
@@ -56,7 +58,7 @@ export const PATCH = tenantRoute<Params>("website-builder:pages:write", async ({
 
   const { buttonText, fields: legacyFields, order,
     countdownEnabled, stickyBuyButton, floatingWhatsapp,
-    showReviews, showFAQ, showFeatures, ...topLevelFields } = parsed.data;
+    showReviews, showFAQ, showFeatures, behaviorTracking, ...topLevelFields } = parsed.data;
 
   // One merged field map whichever shape arrived.
   const fields: Record<string, z.infer<typeof Field>> = {};
@@ -74,7 +76,7 @@ export const PATCH = tenantRoute<Params>("website-builder:pages:write", async ({
     }
   }
 
-  const flags = { countdownEnabled, stickyBuyButton, floatingWhatsapp, showReviews, showFAQ, showFeatures };
+  const flags = { countdownEnabled, stickyBuyButton, floatingWhatsapp, showReviews, showFAQ, showFeatures, behaviorTracking };
   // Stored as the VALUE `parseOrderFormConfig` reads: field configs by key
   // plus the order array. Never a serialized string — the column is Json.
   const config = Object.keys(fields).length > 0 || order

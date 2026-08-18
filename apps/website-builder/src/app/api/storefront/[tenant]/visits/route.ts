@@ -47,7 +47,7 @@ export async function POST(
   const parsed = VisitBody.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return new NextResponse(null, { status: 204 });
 
-  const { token, pageKind, landingPageId, source, isReturning } = parsed.data;
+  const { token, pageKind, landingPageId, source, isReturning, viewId } = parsed.data;
   const derived = deriveSource(source ?? {});
 
   try {
@@ -76,6 +76,8 @@ export async function POST(
           isReturning,
           sourceChannel: derived.channel,
           sourceDetail: derived.detail,
+          // BH.1 — the address the exit beacon will update this row by.
+          viewId: viewId ?? null,
         },
       });
 

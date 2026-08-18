@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Eye, Star, HelpCircle, Sparkles, MousePointerClick, MessageCircle } from "lucide-react";
+import { Activity, Eye, Star, HelpCircle, Sparkles, MousePointerClick, MessageCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
@@ -56,6 +56,16 @@ const TOGGLES = [
     icon: MessageCircle,
     titleKey: "builder.editor.floatingWhatsapp",
     descriptionKey: "builder.editor.floatingWhatsappDesc",
+  },
+  /* BH.1 — not a visual toggle like its five neighbours, but it IS a
+   * LandingSetting flag saved by the same route, and "what this page does"
+   * is what this section lists. Opt-in per page, default off (user
+   * decision, §BH). */
+  {
+    key: "behaviorTracking" as const,
+    icon: Activity,
+    titleKey: "builder.editor.behaviorTracking",
+    descriptionKey: "builder.editor.behaviorTrackingDesc",
   },
 ];
 

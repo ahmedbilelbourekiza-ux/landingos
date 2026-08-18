@@ -237,6 +237,11 @@ model LandingSetting {
   showReviews      Boolean @default(true)
   showFAQ          Boolean @default(true)
   showFeatures     Boolean @default(true)
+  /* BH.1 — deep behavior capture is OPT-IN PER PAGE (user-decided), default
+   * off. Enforced twice: the collector never arms client-side without it,
+   * and the behavior route refuses the update server-side without it — a
+   * beacon cannot opt a page in from the outside. */
+  behaviorTracking Boolean @default(false)
   shipping         Decimal @default(0)
   freeShipping     Boolean @default(false)
   orderFormConfig  Json?
@@ -540,6 +545,42 @@ model StorefrontVisit {
   // The raw evidence: utm_source as sent, or the referrer host. Bounded at
   // the contract; for labels and for re-deriving if the mapping grows.
   sourceDetail  String?
+
+  /* ---------------------------------------------------------------------------
+   * BH.1 — in-page behavior, flushed ONCE-per-view-lifecycle onto the SAME
+   * row (no events table: volume does not multiply, the 30-day prune covers
+   * behavior for free, and aggregation is column arithmetic). All nullable:
+   * NULL means "not measured" — the page had not opted in, the view was not
+   * a landing page, or the browser killed the page before the flush — and
+   * must never be read as zero. Only rows with a non-null activeMs are
+   * "measured" (the collector always sends it when armed).
+   * ------------------------------------------------------------------------- */
+
+  // Client-generated per-view id, the DraftOrder.token pattern: how an
+  // unauthenticated exit beacon addresses the row its arrival beacon made.
+  // Globally unique; nullable so pre-BH rows and store-level views need none.
+  viewId String? @unique
+
+  // The deepest landmark meaningfully entered: hero|description|reviews|faq|footer.
+  furthestSection String?
+  // The buy button became visible — the funnel's hinge.
+  sawForm Boolean?
+
+  galleryChanges      Int?
+  galleryDeepestIndex Int?
+  faqOpens            Int?
+  // WHICH questions were opened (bounded ≤20): customer doubts, by id.
+  faqOpenedIds   Json?
+  variantChanges Int?
+
+  stickyBuyClicked Boolean?
+  // NOT a conversion (user-decided) — its own signal, surfaced as its own
+  // column, because the order that follows a WhatsApp chat never touches
+  // the checkout and must not be double-guessed into the funnel.
+  whatsappClicked Boolean?
+
+  // Visibility-gated time on page, ms. The "measured" marker (see above).
+  activeMs Int?
 
   createdAt DateTime @default(now())
 

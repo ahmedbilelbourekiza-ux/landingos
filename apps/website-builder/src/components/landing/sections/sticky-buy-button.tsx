@@ -5,6 +5,7 @@ import { ShoppingBag } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { formatPrice } from "@/lib/landing/format";
+import { recordStickyBuyClick } from "@/components/landing/visit-beacon";
 import type { LandingOrderStore } from "@/lib/landing/store";
 import { useOrderTotals } from "@/lib/landing/store";
 
@@ -50,6 +51,8 @@ export function StickyBuyButton({
   }, []);
 
   const scrollToForm = () => {
+    // BH.1 — the sticky bar earning its keep; no-op unless opted in.
+    recordStickyBuyClick();
     targetRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 

@@ -4,6 +4,7 @@ import * as React from "react";
 import { ChevronDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { recordFaqOpen } from "@/components/landing/visit-beacon";
 import type { LandingFAQData } from "@/types/landing";
 
 // Custom accordion built on a single open-item pattern. Native <button> +
@@ -69,7 +70,7 @@ export function FAQSection({ faqs }: { faqs: LandingFAQData[] }) {
   if (faqs.length === 0) return null;
 
   return (
-    <section id="faq" className="border-t">
+    <section id="faq" data-bh-section="faq" className="border-t">
       <div className="mx-auto w-full max-w-3xl px-4 py-14 sm:px-6 sm:py-20">
         <div className="mb-10 flex flex-col gap-2 text-center">
           <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -85,9 +86,14 @@ export function FAQSection({ faqs }: { faqs: LandingFAQData[] }) {
               key={faq.id}
               faq={faq}
               isOpen={openId === faq.id}
-              onToggle={() =>
-                setOpenId((prev) => (prev === faq.id ? null : faq.id))
-              }
+              onToggle={() => {
+                // BH.1 — an OPENED question is a customer doubt, by id.
+                // Closing one records nothing; no-op unless opted in. Outside
+                // the updater: an updater must stay pure (strict mode
+                // double-invokes it).
+                if (openId !== faq.id) recordFaqOpen(faq.id);
+                setOpenId((prev) => (prev === faq.id ? null : faq.id));
+              }}
             />
           ))}
         </div>

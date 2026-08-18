@@ -48,9 +48,9 @@ remain the deep references.
 > carried `/0` all require `landingos_prod`, which is now off-limits. They are
 > **closed-unverified**, not pending.
 
-> ### ⚠ SIX LOCAL COMMITS ARE QUEUED, NOT PUSHED — 18 Aug 2026 (overnight session + the user's AN.1 review), AND THE BATCH CARRIES ONE MIGRATION
+> ### ⚠ SEVEN LOCAL COMMITS ARE QUEUED, NOT PUSHED — 18 Aug 2026 (overnight session + the user's reviews), AND THE BATCH CARRIES ONE MIGRATION
 >
-> **`main` is now six commits ahead of `origin/main` (`12d805e..`), all
+> **`main` is now seven commits ahead of `origin/main` (`12d805e..`), all
 > local, per the session's explicit no-push instruction. The push/deploy
 > decision is the user's.** In order:
 >
@@ -61,15 +61,20 @@ remain the deep references.
 > | `85ba416` | **JS.1** — the storefront stops shipping next-intl/ICU, both toasters and next-themes (they moved to `console/layout.tsx`); dead `category-product-grid.tsx` deleted. **Modern-phone payload 296→261KB gz, HTML 565→481KB.** No migration |
 > | `f24f094` | The night's records + the **LB.14a.2 proposal** (front-door split, linchpin proven empirically — NEXT_STEPS §LB.14a.2; deliberately not built, decision is the user's) |
 > | `3da5b55` | **AN.2** — the user's decisions on AN.1's open questions: 30-day visit retention (amortised on writes + on the Traffic-screen read + the worker tick) and unique/returning visitors (localStorage id, session-scoped verdict, raw COUNT(DISTINCT)). Funnel + utm_campaign approved-not-urgent, recorded in NEXT_STEPS §AN.1 |
-> | *(docs)* | **§BH scoping** — deep in-page behavior tracking + AI recommendations, measured and proposed at the user's request, NOT built (NEXT_STEPS §BH: signals weighed one by one, no-events-table design on the AN.1 row, aggregates-only AI on LB.24's rails filling the `insights/deep` 501 slot, migration folding flagged, seven open questions for the user) |
+> | `5d81b0f` | **§BH scoping** — deep in-page behavior tracking + AI recommendations, measured and proposed at the user's request (NEXT_STEPS §BH) |
+> | *(BH.1+2)* | **BH.1+BH.2** — the user's §BH decisions built: per-page opt-in behavior capture (viewId + ten nullable columns on the visit row, `LandingSetting.behaviorTracking`, the collector + exit beacon, server-enforced opt-in) and the computed behavior table on the Traffic screen. WhatsApp taps are NOT conversions. **BH.3 (the AI slice) is BLOCKED on a spend-quota system by the user's decision** — the quota is now a shared need with LB.24's generator, worth scoping as its own piece |
 >
-> **⚠ THE ONE MIGRATION, for AN.1+AN.2 TOGETHER** (the table never reached
-> production, so the two slices are one schema delta): production `db push`
-> (preview with `migrate diff` first — expect `StorefrontVisit` incl.
-> `isReturning`, plus 2 nullable `SalesOrder` columns) → `apply-rls`
-> (RLS **49 → 50**) → the app deploy, in the LB.20 order, each step
-> user-approved. Applied to DEV in full (host `ep-gentle-sky` confirmed in
-> every push output; dev RLS 50/50).
+> **⚠ THE ONE MIGRATION, for AN.1+AN.2+BH.1 TOGETHER** (nothing has reached
+> production, so the three slices are one schema delta): production
+> `db push` (preview with `migrate diff` first — expect `StorefrontVisit`
+> incl. `isReturning`, `viewId @unique` and the ten behavior columns; 2
+> nullable `SalesOrder` columns; `LandingSetting.behaviorTracking`) →
+> `apply-rls` (RLS **49 → 50** — BH.1 adds no table) → the app deploy, in
+> the LB.20 order, each step user-approved. Applied to DEV in full (host
+> `ep-gentle-sky` confirmed in every push output; dev RLS 50/50). The
+> `--accept-data-loss` prompt dev raised is the generic nullable-unique
+> warning on an EXISTING table — production creates the table whole and
+> will not prompt.
 >
 > Suites at the final tree: storefront **90** · builder-sections **75** ·
 > console-shell **20** · erp/screens **172** · tracking **16** · i18n **22**
@@ -1211,12 +1216,12 @@ The exact first steps, in order:
    The stale worktree at `.claude/worktrees/interesting-herschel-ceeb8f` sits
    at `fecc4ff`, an ancestor of master — fully merged, and it still holds its
    own stale copies of these docs saying "not deployed". It can be removed.
-4. **SIX LOCAL COMMITS ARE QUEUED as of 18 Aug (overnight + the AN.1
-   review + the BH scoping) — see the ⚠ block at the top of §1: LB.55,
-   AN.1, JS.1, the night's docs, AN.2, and the §BH scoping (docs only).
-   ⚠ ONE migration for the batch (AN.1+AN.2 together): db push +
-   apply-rls 49→50 BEFORE the app deploy. The push is the user's
-   decision.** Before that batch: SEC.1–SEC.5 + SA.1
+4. **SEVEN LOCAL COMMITS ARE QUEUED as of 18 Aug — see the ⚠ block at the
+   top of §1: LB.55, AN.1, JS.1, the night's docs, AN.2, the §BH scoping,
+   and BH.1+BH.2. ⚠ ONE migration for the batch (AN.1+AN.2+BH.1
+   together): db push + apply-rls 49→50 BEFORE the app deploy. BH.3 is
+   blocked on a spend-quota system by the user's decision. The push is
+   the user's decision.** Before that batch: SEC.1–SEC.5 + SA.1
    DEPLOYED 17 Aug as
    `c3d911d..d26074c`, live 14:35:35 UTC, confirmed at Render on 18 Aug
    (§1's top block has the full record, including the three checks that are

@@ -31,6 +31,10 @@ export interface DisplayPreviewValues {
   showReviews: boolean;
   showFAQ: boolean;
   showFeatures: boolean;
+  /** BH.1 — per-page behavior-tracking opt-in. Not a visual toggle: the
+   * preview renders identically either way; it rides this section because
+   * it is a LandingSetting flag saved by the same route. */
+  behaviorTracking: boolean;
 }
 
 export interface PreviewState {

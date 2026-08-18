@@ -225,11 +225,14 @@ export default async function StorefrontLandingPage({
         />
         {/* AN.1 — the first-party view count, same public-route-only rule.
             Unconditional on purpose: a merchant with no pixel configured
-            still gets to know how many people saw their page. */}
+            still gets to know how many people saw their page. BH.1 — the
+            behavior collector arms only when THIS page opted in (per-page,
+            default off; the server enforces it again). */}
         <VisitBeacon
           endpoint={`/api/storefront/${found.tenant.slug}/visits`}
           pageKind="landing"
           landingPageId={found.page.id}
+          collectBehavior={found.page.setting?.behaviorTracking ?? false}
         />
         {/* toLandingPageData, not toPreviewState: the latter is the EDITOR's
             shape and the template takes the public one. Passing the wrong

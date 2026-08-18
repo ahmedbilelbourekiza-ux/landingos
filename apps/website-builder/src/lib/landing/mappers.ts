@@ -234,6 +234,9 @@ export function toPreviewState(page: LandingWithRelations): PreviewState {
       showReviews: page.setting?.showReviews ?? true,
       showFAQ: page.setting?.showFAQ ?? true,
       showFeatures: page.setting?.showFeatures ?? true,
+      // BH.1 — opt-in, so the absent-row default is OFF, unlike the show*
+      // toggles whose absence means "shown".
+      behaviorTracking: page.setting?.behaviorTracking ?? false,
     },
   };
 }

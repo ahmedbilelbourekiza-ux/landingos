@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useWarmupAllowed } from "@/lib/landing/use-after-load";
+import { recordGalleryChange } from "@/components/landing/visit-beacon";
 import type { LandingMediaData } from "@/types/landing";
 
 // Product gallery carousel. Supports:
@@ -24,7 +25,12 @@ export function ProductGallery({ media }: { media: LandingMediaData[] }) {
   const goTo = React.useCallback(
     (index: number) => {
       if (count === 0) return;
-      setActive(((index % count) + count) % count);
+      const wrapped = ((index % count) + count) % count;
+      // BH.1 — every navigation path (thumbs, arrows, keys, swipe) funnels
+      // through here, so one call counts them all. No-op unless the page
+      // opted into behavior tracking.
+      recordGalleryChange(wrapped);
+      setActive(wrapped);
     },
     [count],
   );

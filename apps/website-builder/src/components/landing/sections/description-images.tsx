@@ -26,6 +26,7 @@ export function DescriptionImages({ images }: { images: LandingMediaData[] }) {
   return (
     <section
       id="description-images"
+      data-bh-section="description"
       className="mx-auto w-full max-w-6xl px-4 pb-10 sm:px-6"
       dir="rtl"
     >

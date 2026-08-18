@@ -1668,3 +1668,136 @@ describe('visit retention and returning visitors (AN.2)', { skip }, () => {
     );
   });
 });
+
+describe('in-page behavior lands on the view row, only where the page opted in (BH.1/BH.2)', { skip }, () => {
+  const arrive = async (viewId: string, pageId: string = publishedA) => {
+    await post(`/api/storefront/${slugA}/visits`, {
+      token: `bh-${stamp}-visitor`, pageKind: 'landing', landingPageId: pageId, viewId,
+    });
+  };
+  const rowOf = (viewId: string) =>
+    withTenant(tenantA, (db) =>
+      (db as any).storefrontVisit.findFirst({ where: { viewId } }),
+    );
+
+  test('the arrival beacon stores the viewId; behavior is REFUSED while the page has not opted in', async () => {
+    const viewId = `bhview-${stamp}-optout`;
+    await arrive(viewId);
+    const before = await rowOf(viewId);
+    assert.ok(before, 'the view row exists');
+    assert.equal(before.viewId, viewId);
+
+    const r = await post(`/api/storefront/${slugA}/visits/behavior`, {
+      viewId, sawForm: true, faqOpens: 3, activeMs: 5000,
+    });
+    assert.equal(r.status, 204, 'refusals are silent');
+    const after = await rowOf(viewId);
+    assert.equal(after.activeMs, null, 'no behavior landed — opt-in is server-enforced');
+    assert.equal(after.sawForm, null);
+  });
+
+  test('with the page opted in, a flush lands, junk is refused whole, and a re-flush only knows more', async () => {
+    await withTenant(tenantA, (db) =>
+      (db as any).landingSetting.upsert({
+        where: { landingPageId: publishedA },
+        update: { behaviorTracking: true },
+        create: { landingPageId: publishedA, tenantId: tenantA, behaviorTracking: true },
+      }),
+    );
+
+    const viewId = `bhview-${stamp}-optin`;
+    await arrive(viewId);
+
+    await post(`/api/storefront/${slugA}/visits/behavior`, {
+      viewId, furthestSection: 'reviews', sawForm: true,
+      galleryChanges: 4, galleryDeepestIndex: 2,
+      faqOpens: 2, faqOpenedIds: ['faq-a', 'faq-b'],
+      variantChanges: 1, activeMs: 12000,
+    });
+    let row = await rowOf(viewId);
+    assert.equal(row.furthestSection, 'reviews');
+    assert.equal(row.sawForm, true);
+    assert.equal(row.galleryChanges, 4);
+    assert.deepEqual(row.faqOpenedIds, ['faq-a', 'faq-b']);
+    assert.equal(row.activeMs, 12000);
+    assert.equal(row.whatsappClicked, null, 'unsent fields stay unmeasured, not false');
+
+    // A landmark outside the vocabulary fails the parse — the whole flush is
+    // dropped, because half a flush would lie about what the client said.
+    await post(`/api/storefront/${slugA}/visits/behavior`, {
+      viewId, furthestSection: 'sidebar', activeMs: 99000,
+    });
+    row = await rowOf(viewId);
+    assert.equal(row.activeMs, 12000, 'the junk flush changed nothing');
+
+    // The tab came back and interacted more: monotonic counters, fuller row.
+    await post(`/api/storefront/${slugA}/visits/behavior`, {
+      viewId, furthestSection: 'footer', sawForm: true,
+      galleryChanges: 6, galleryDeepestIndex: 3, faqOpens: 2,
+      faqOpenedIds: ['faq-a', 'faq-b'], variantChanges: 1,
+      whatsappClicked: true, activeMs: 30000,
+    });
+    row = await rowOf(viewId);
+    assert.equal(row.furthestSection, 'footer');
+    assert.equal(row.galleryChanges, 6);
+    assert.equal(row.whatsappClicked, true);
+    assert.equal(row.activeMs, 30000);
+  });
+
+  test('a home view takes no behavior, and negative counters are refused whole', async () => {
+    const homeView = `bhview-${stamp}-home`;
+    await post(`/api/storefront/${slugA}/visits`, {
+      token: `bh-${stamp}-visitor`, pageKind: 'home', viewId: homeView,
+    });
+    await post(`/api/storefront/${slugA}/visits/behavior`, {
+      viewId: homeView, activeMs: 1000,
+    });
+    const homeRow = await rowOf(homeView);
+    assert.equal(homeRow.activeMs, null, 'store-level views have no opt-in to grant');
+
+    const optIn = `bhview-${stamp}-neg`;
+    await arrive(optIn);
+    await post(`/api/storefront/${slugA}/visits/behavior`, {
+      viewId: optIn, galleryChanges: -5, activeMs: 1000,
+    });
+    assert.equal((await rowOf(optIn)).activeMs, null, 'a negative counter drops the flush whole');
+  });
+
+  test("a viewId presented at ANOTHER tenant's door updates nothing", async () => {
+    const viewId = `bhview-${stamp}-cross`;
+    await arrive(viewId);
+    const r = await post(`/api/storefront/${slugB}/visits/behavior`, {
+      viewId, sawForm: true, activeMs: 7000,
+    });
+    assert.equal(r.status, 204);
+    const row = await rowOf(viewId);
+    assert.equal(row.activeMs, null, "tenant B's binding cannot see tenant A's row — RLS");
+  });
+
+  test('the behavior aggregates the screen renders come from these rows, measured-only', async () => {
+    const { storefrontAnalytics, analyticsRange } = await import('../src/lib/builder/analytics.ts');
+    const data = await withTenant(tenantA, (db) =>
+      storefrontAnalytics(db, analyticsRange('7')),
+    );
+
+    const row = data.behaviorByPage.find((b: any) => b.landingPageId === publishedA);
+    assert.ok(row, 'the opted-in page has a behavior row');
+    // Only the flushed views count as measured — the opt-out and junk views
+    // above must not inflate the denominator.
+    assert.ok(row.measured >= 1);
+    assert.ok(row.sawForm >= 1);
+    assert.ok(row.sawForm <= row.measured, 'a rate can never exceed its denominator');
+    assert.ok(row.faqOpens >= 2);
+    assert.ok(row.galleryChanges >= 6);
+    assert.ok(row.whatsappClicks >= 1);
+    assert.ok(row.avgActiveMs > 0);
+    assert.equal(
+      Object.values(row.furthest as Record<string, number>).reduce((a: number, b: number) => a + b, 0) <= row.measured,
+      true,
+      'furthest counts are a partition of measured views',
+    );
+
+    // Pages that never opted in are ABSENT, not zero rows.
+    assert.ok(!data.behaviorByPage.some((b: any) => b.landingPageId === publishedB));
+  });
+});

@@ -46,6 +46,25 @@ export interface ChannelRow {
   orders: number;
 }
 
+/** BH.2 — per-page behavior aggregates, over MEASURED views only (a view is
+ * measured when its exit flush landed: activeMs non-null; the collector
+ * always sends it when armed). Pages with zero measured views are absent —
+ * the screen renders that as "not tracked", never as zeros. */
+export interface PageBehaviorRow {
+  landingPageId: string;
+  title: string | null;
+  measured: number;
+  sawForm: number;
+  faqOpens: number;
+  galleryChanges: number;
+  variantChanges: number;
+  stickyBuyClicks: number;
+  whatsappClicks: number;
+  avgActiveMs: number;
+  /** How many measured views got EXACTLY as deep as each landmark. */
+  furthest: Record<string, number>;
+}
+
 export interface StorefrontAnalytics {
   totals: {
     views: number;
@@ -61,6 +80,7 @@ export interface StorefrontAnalytics {
   };
   byPage: PageTrafficRow[];
   byChannel: ChannelRow[];
+  behaviorByPage: PageBehaviorRow[];
 }
 
 /** `db` is a tenant-scoped Prisma client (forTenant / a withTenant binding).
@@ -177,6 +197,56 @@ export async function storefrontAnalytics(
   }));
   byChannel.sort((a, b) => b.views - a.views || b.orders - a.orders);
 
+  /* BH.2 — behavior, still sequential on the one connection. `measured` is
+   * the denominator for every rate the screen shows, so it is counted from
+   * the same predicate every sum uses (activeMs non-null), never inferred. */
+  const measuredWhere = { ...inWindow, activeMs: { not: null } };
+  const behaviorGroups = await db.storefrontVisit.groupBy({
+    by: ["landingPageId"],
+    where: measuredWhere,
+    _count: { _all: true },
+    _avg: { activeMs: true },
+    _sum: { faqOpens: true, galleryChanges: true, variantChanges: true },
+  });
+  const boolCount = async (field: "sawForm" | "stickyBuyClicked" | "whatsappClicked") =>
+    db.storefrontVisit.groupBy({
+      by: ["landingPageId"],
+      where: { ...measuredWhere, [field]: true },
+      _count: { _all: true },
+    });
+  const sawFormGroups = await boolCount("sawForm");
+  const stickyGroups = await boolCount("stickyBuyClicked");
+  const whatsappGroups = await boolCount("whatsappClicked");
+  const furthestGroups = await db.storefrontVisit.groupBy({
+    by: ["landingPageId", "furthestSection"],
+    where: { ...measuredWhere, furthestSection: { not: null } },
+    _count: { _all: true },
+  });
+
+  const countFor = (groups: any[], pageId: string | null): number =>
+    groups.find((g) => g.landingPageId === pageId)?._count._all ?? 0;
+
+  const behaviorByPage: PageBehaviorRow[] = behaviorGroups
+    .filter((g: any) => g.landingPageId)
+    .map((g: any) => ({
+      landingPageId: g.landingPageId,
+      title: titles.get(g.landingPageId) ?? null,
+      measured: g._count._all,
+      sawForm: countFor(sawFormGroups, g.landingPageId),
+      faqOpens: g._sum.faqOpens ?? 0,
+      galleryChanges: g._sum.galleryChanges ?? 0,
+      variantChanges: g._sum.variantChanges ?? 0,
+      stickyBuyClicks: countFor(stickyGroups, g.landingPageId),
+      whatsappClicks: countFor(whatsappGroups, g.landingPageId),
+      avgActiveMs: Math.round(g._avg.activeMs ?? 0),
+      furthest: Object.fromEntries(
+        furthestGroups
+          .filter((f: any) => f.landingPageId === g.landingPageId)
+          .map((f: any) => [f.furthestSection, f._count._all]),
+      ),
+    }));
+  behaviorByPage.sort((a, b) => b.measured - a.measured);
+
   return {
     totals: {
       views: byPage.reduce((sum, row) => sum + row.views, 0),
@@ -187,5 +257,6 @@ export async function storefrontAnalytics(
     },
     byPage,
     byChannel,
+    behaviorByPage,
   };
 }

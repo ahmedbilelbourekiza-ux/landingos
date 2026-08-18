@@ -139,6 +139,82 @@ export default async function BuilderAnalyticsScreen({
         ]}
       />
 
+      {/* BH.2 — behavior, over MEASURED views only (pages that opted in via
+          the editor's Display section AND whose visitors' exit flush landed).
+          Rates render with their denominator so a 100% from three views
+          cannot masquerade as knowledge. */}
+      {data.behaviorByPage.length > 0 && (
+        <DataTable
+          testId="analytics-behavior"
+          empty={t("builder.analytics.behaviorEmpty")}
+          rows={data.behaviorByPage}
+          rowKey={(row) => row.landingPageId}
+          columns={[
+            { id: "page", header: t("builder.analytics.colPage"), cell: (row) => row.title ?? "—" },
+            {
+              id: "measured",
+              header: t("builder.analytics.colMeasured"),
+              align: "end",
+              numeric: true,
+              cell: (row) => row.measured,
+            },
+            {
+              id: "sawForm",
+              header: t("builder.analytics.colSawForm"),
+              align: "end",
+              numeric: true,
+              cell: (row) =>
+                `${row.sawForm} (${Math.round((row.sawForm / row.measured) * 100)}%)`,
+            },
+            {
+              id: "reached",
+              header: t("builder.analytics.colReached"),
+              cell: (row) => (
+                <span className="text-xs text-muted-foreground" dir="ltr">
+                  {["hero", "description", "reviews", "faq", "footer"]
+                    .filter((s) => row.furthest[s])
+                    .map((s) => `${t(`builder.analytics.section.${s}` as never)} ${row.furthest[s]}`)
+                    .join(" · ") || "—"}
+                </span>
+              ),
+            },
+            {
+              id: "engagement",
+              header: t("builder.analytics.colEngagement"),
+              cell: (row) => (
+                <span className="text-xs text-muted-foreground" dir="ltr">
+                  {[
+                    row.galleryChanges ? `${t("builder.analytics.gallery")} ${row.galleryChanges}` : null,
+                    row.faqOpens ? `FAQ ${row.faqOpens}` : null,
+                    row.variantChanges ? `${t("builder.analytics.variants")} ${row.variantChanges}` : null,
+                    row.stickyBuyClicks ? `${t("builder.analytics.stickyTaps")} ${row.stickyBuyClicks}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
+                </span>
+              ),
+            },
+            {
+              id: "whatsapp",
+              // NOT folded into orders/conversion (user decision §BH): a
+              // WhatsApp sale never touches the checkout, so it stays its
+              // own honestly-labelled column.
+              header: t("builder.analytics.colWhatsapp"),
+              align: "end",
+              numeric: true,
+              cell: (row) => row.whatsappClicks,
+            },
+            {
+              id: "time",
+              header: t("builder.analytics.colAvgTime"),
+              align: "end",
+              numeric: true,
+              cell: (row) => `${Math.round(row.avgActiveMs / 1000)}s`,
+            },
+          ]}
+        />
+      )}
+
       <DataTable
         testId="analytics-channels"
         empty={t("builder.analytics.emptyChannels")}
