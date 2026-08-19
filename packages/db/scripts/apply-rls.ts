@@ -48,6 +48,10 @@ const EXPECTED_UNSCOPED = new Set([
   'Session', // looked up by token hash, before a tenant is known
   'Wilaya',  // platform reference data, shared by every tenant
   'Baladia', // platform reference data, shared by every tenant
+  // The OPERATOR's own secrets (encrypted at rest), not any tenant's — a
+  // tenant-scoped policy would be unsatisfiable, and no route ever selects
+  // the value column into a response (LB.14c option b).
+  'PlatformCredential',
 ]);
 
 const prisma = new PrismaClient({ datasources: { db: { url: process.env.MIGRATE_DATABASE_URL } } });

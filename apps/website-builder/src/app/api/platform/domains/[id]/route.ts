@@ -1,4 +1,5 @@
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { ensureRenderDomain } from "@/lib/platform/render-domains";
 
 export const dynamic = "force-dynamic";
 type Params = { id: string };
@@ -12,10 +13,10 @@ export const DELETE = tenantRoute<Params>("platform:domains:manage", async ({ db
   return apiOk({ id: params.id });
 });
 
-export const PATCH = tenantRoute<Params>("platform:domains:manage", async ({ db, params }) => {
+export const PATCH = tenantRoute<Params>("platform:domains:manage", async ({ db, params, session, afterCommit }) => {
   const row = await (db as any).tenantDomain.findUnique({
     where: { id: params.id },
-    select: { id: true, verifiedAt: true },
+    select: { id: true, domain: true, verifiedAt: true },
   });
   if (!row) return apiError(404, "NOT_FOUND", "That domain is not linked here.");
   // Primary means "the hostname canonical links use" — an unverified one
@@ -27,5 +28,13 @@ export const PATCH = tenantRoute<Params>("platform:domains:manage", async ({ db,
   // One primary per tenant; the binding scopes the sweep to this tenant.
   await (db as any).tenantDomain.updateMany({ data: { isPrimary: false }, where: {} });
   await (db as any).tenantDomain.updateMany({ where: { id: params.id }, data: { isPrimary: true } });
+
+  /* LB.14c option (b) — VERIFIED (checked above) + now PRIMARY: the hosting
+   * automation's transition. Post-commit; silent when unconfigured. */
+  const tenantId = session.auth!.tenantId;
+  afterCommit(async () => {
+    await ensureRenderDomain(tenantId, { id: row.id, domain: row.domain });
+  });
+
   return apiOk({ id: params.id, isPrimary: true });
 });

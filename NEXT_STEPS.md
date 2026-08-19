@@ -510,33 +510,42 @@ and their domain will still 403. Nobody is affected yet — `landingos_prod` hel
 **0 `TenantDomain` rows** at the last measurement — but the first merchant who
 tries will get no explanation.
 
-**Three options, for the decision that is yours:**
+**Three options — you chose (b), and it is BUILT STUBBED 19 Aug 2026
+(overnight; CHANGELOG §LB.14c.b):** the encrypted `PlatformCredential`
+row, the verified+primary trigger in both routes, the bounded certificate
+poll, the recorded per-domain state, and a 7-test suite against a local
+stub. **⚠ NO live Render call has ever been made and NO real credential
+exists in any database. TWO STEPS REMAIN AND BOTH ARE YOURS, ATTENDED:**
 
-- **(a) Manual/support step, documented.** After a merchant verifies, the
-  operator adds the hostname in Render. Cheapest and honest. Needs the screen
-  to SAY so — today "Vérifié" implies done, and the merchant has no way to know
-  a step remains. **Recommended**, and it is the only one buildable without
-  credentials.
-- **(b) Automate through Render's API.** A `RENDER_API_KEY` + service id, a call
-  to add a custom domain on verify, and polling for certificate issuance. Real
-  work, and it puts a deploy-platform credential inside the app — worth
-  weighing against how many merchants will ever use this.
-- **(c) Terminate TLS somewhere the platform controls** (a proxy in front of
-  Render with on-demand certificates). Largest change, removes the manual step
-  entirely, and is an infrastructure decision rather than a code one.
+1. **Install the real credential** (a Render API key with permission to
+   manage custom domains on the service, and the service id):
+   `cd apps/website-builder && RENDER_API_KEY=… RENDER_SERVICE_ID=srv-d9jn1kkm0tmc73bb8nt0 node --env-file=.env --experimental-strip-types scripts/set-render-credential.ts`
+   — against the PRODUCTION database env when you deploy this. The key is
+   encrypted at rest (AUTH_SECRET-derived AES-256-GCM); deleting the row
+   disables the automation and the manual step stands again.
+2. **One live test on a real hostname you control** — claim, verify,
+   mark primary, then confirm the hostname appears on the Render service
+   and its certificate issues (the row's `renderState` should walk
+   pending → added → certificate_issued).
 
-**One defect that waits on the same decision, recorded so it is not
-rediscovered: `isPrimary` is written and has no functional reader.** The PATCH
-route's own comment says "Primary means the hostname canonical links use", and
-nothing uses it that way — the storefront's `canonical` is deliberately
-path-only, `storefrontHref` branches on `viaCustomDomain` rather than on
-primary, and **the editor's Copy Link builds its URL from
-`window.location.origin`, which is the CONSOLE's host.** So a merchant with a
-verified primary domain still copies a `landingos.onrender.com` link. That is
-the platform's most-caught defect class (a column with a writer and no reader,
-nine times before) — and it must NOT be "fixed" until (a), (b) or (c) is
-chosen, because pointing Copy Link at a domain that 403s would replace a link
-that works with one that does not.
+*(The original options, for the record:)*
+- **(a) Manual/support step, documented.** The fallback that remains the
+  behavior whenever the credential row is absent. The screen still does
+  not SAY a step remains — worth doing regardless.
+- **(b) Automate through Render's API** — CHOSEN, built as above.
+- **(c) Terminate TLS somewhere the platform controls** (a proxy in front
+  of Render with on-demand certificates). Largest change, removes the
+  manual step entirely, and is an infrastructure decision rather than a
+  code one.
+
+**The `isPrimary`-reader defect this section recorded is PARTLY STALE and
+kept corrected (19 Aug):** LB.46 (deployed 16 Aug) gave `isPrimary` its
+functional reader — View / Copy Link speak the verified primary domain via
+`primaryPublicOrigin`. What REMAINS true: until the automation above runs
+live (or the operator adds the hostname by hand), that copied domain link
+403s at Render's edge — which is exactly why option (b) was built. The
+right order for going live: install the credential → live-test one
+hostname → only then point real merchants at the feature.
 
 ### LB.14b — SCOPED, NOT BUILT. Page version history (13 Aug, night)
 

@@ -1,6 +1,7 @@
 import { resolveTxt } from "node:dns/promises";
 
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { ensureRenderDomain } from "@/lib/platform/render-domains";
 
 export const dynamic = "force-dynamic";
 type Params = { id: string };
@@ -28,10 +29,10 @@ type Params = { id: string };
  * what makes the distinction reach the person who has to act on it.
  */
 
-export const POST = tenantRoute<Params>("platform:domains:manage", async ({ db, params }) => {
+export const POST = tenantRoute<Params>("platform:domains:manage", async ({ db, params, session, afterCommit }) => {
   const row = await (db as any).tenantDomain.findUnique({
     where: { id: params.id },
-    select: { id: true, domain: true, verificationToken: true, verifiedAt: true },
+    select: { id: true, domain: true, verificationToken: true, verifiedAt: true, isPrimary: true },
   });
   if (!row) return apiError(404, "NOT_FOUND", "That domain is not linked here.");
   if (row.verifiedAt) return apiOk({ id: row.id, verifiedAt: row.verifiedAt });
@@ -62,5 +63,16 @@ export const POST = tenantRoute<Params>("platform:domains:manage", async ({ db, 
     where: { id: row.id },
     data: { verifiedAt },
   });
+
+  /* LB.14c option (b) — a domain that is now VERIFIED and already PRIMARY is
+   * the transition the hosting automation keys on. Post-commit (it talks to
+   * somebody else's server), and unconfigured it does nothing at all. */
+  if (row.isPrimary) {
+    const tenantId = session.auth!.tenantId;
+    afterCommit(async () => {
+      await ensureRenderDomain(tenantId, { id: row.id, domain: row.domain });
+    });
+  }
+
   return apiOk({ id: row.id, verifiedAt });
 });

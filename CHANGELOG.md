@@ -10,6 +10,67 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## LB.14c.b — the hosting step stops being a manual secret: Render domain automation, built stubbed
+
+**Committed locally 19 August 2026 (overnight session) — NOT pushed, NOT
+deployed. ⚠ Schema: ONE new UNSCOPED table `PlatformCredential` (added to
+apply-rls EXPECTED_UNSCOPED with its reason) and three nullable
+`TenantDomain` columns (`renderState`/`renderDetail`/`renderSyncedAt`).
+Applied to DEV (`ep-gentle-sky` confirmed; dev RLS still **54/54**
+scoped, six unscoped by design). ⚠ NO LIVE RENDER CALL WAS MADE and NO
+REAL CREDENTIAL EXISTS ANYWHERE — the suite runs against a local stub,
+and installing the real key + the first live test is the user's ATTENDED
+decision (NEXT_STEPS §LB.14c).**
+
+Option (b) of the LB.14c scoping, on the user's instruction: automate the
+step that made custom domains "complete in the application and INERT in
+production" — the operator adding each verified hostname to the Render
+service by hand.
+
+- **The credential is a real, encrypted app credential** — not an env
+  read: `PlatformCredential(key "render-domains")` holds an AES-256-GCM
+  encrypted JSON `{apiKey, serviceId, apiBase?}` using the meta/crypto
+  pattern (key derived from AUTH_SECRET). It is the OPERATOR's secret:
+  the table is deliberately unscoped (a tenant-scoped policy on it would
+  be unsatisfiable), no route selects the value into a response, and the
+  one reader decrypts server-side. The attended writer is
+  `scripts/set-render-credential.ts` (env of one invocation, prints only
+  the masked tail; deleting the row disables the automation).
+- **The trigger is exactly the proposal's transition — VERIFIED +
+  PRIMARY:** the verify route fires it when the row was already primary;
+  the set-primary route fires it for an already-verified row. Both
+  post-commit (somebody else's server), both non-fatal by construction —
+  a merchant's action can never fail over an operator-side problem, and
+  UNCONFIGURED is a first-class silent state in which the documented
+  manual step stands unchanged.
+- **The call path:** pure wire builders (the ai-complete rule —
+  bearer-keyed `POST /v1/services/{id}/custom-domains`, then the
+  per-domain GET), a **bounded certificate poll** (3 attempts × 1.5s;
+  "certificate_pending" is an honest resting state a later attempt may
+  advance), 409-means-already-there, failures recorded as status-only
+  detail (never a body echo). The outcome lands on the TenantDomain row
+  so a future screen can show progress and a failure is a fact, not a
+  log line.
+- **The suite proves the whole path with zero external calls** (the
+  config row's own `apiBase` points at an ephemeral local stub — the
+  AiProvider/ZR-carrier pattern): the credential stored encrypted
+  (iv:tag:ciphertext, plaintext absent) and read back whole; the
+  set-primary transition firing add+poll with the decrypted bearer key;
+  the pending-certificate resting state; the unconfigured silence; the
+  unverified-cannot-be-primary gate still holding.
+- **What remains the user's, recorded in NEXT_STEPS §LB.14c:** install
+  the real credential (attended, via the script), one live test on a
+  real hostname, and the `isPrimary`-reader defect (Copy Link vs domain)
+  that was deliberately left until the automation makes domains serve.
+- **Files:** `packages/db/prisma/schema/platform.prisma` ·
+  `packages/db/scripts/apply-rls.ts` (EXPECTED_UNSCOPED) ·
+  `lib/platform/render-domains.ts` (new) ·
+  `scripts/set-render-credential.ts` (new) ·
+  `api/platform/domains/[id]/{route,verify/route}.ts` ·
+  `test/platform/render-automation.test.ts` (new).
+- **Suites at this tree:** render-automation **7** (new) ·
+  platform/domains 14 — green against the rebuilt standalone server.
+
 ## LB.36 — a page learns to sell under a brand's name, everywhere it shows one
 
 **Committed locally 19 August 2026 (overnight session) — NOT pushed, NOT

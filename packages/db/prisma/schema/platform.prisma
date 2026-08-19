@@ -68,6 +68,17 @@ model TenantDomain {
   verifiedAt        DateTime?
   isPrimary         Boolean   @default(false)
 
+  /* LB.14c option (b) — where the HOSTING side of this hostname stands.
+   * A verified row in this table does not make the name serve (Render answers
+   * 403 for an unconfigured hostname); these columns record what the
+   * automation did about that. Null = the automation never ran (not
+   * configured, or the row predates it) — the manual operator step remains
+   * the documented fallback. States: pending | added | certificate_pending |
+   * certificate_issued | failed. */
+  renderState    String?
+  renderDetail   String?
+  renderSyncedAt DateTime?
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
@@ -269,6 +280,20 @@ enum SubscriptionStatus {
 //
 // No UPDATE or DELETE path exists for this table, matching the ERP's existing
 // discipline for its append-only tables.
+// LB.14c option (b) — PLATFORM-OPERATOR credentials, encrypted at rest.
+// Deliberately UNSCOPED (no tenantId): these are the OPERATOR's secrets (the
+// Render API key that adds custom domains to the service), not any tenant's,
+// and a tenant-scoped policy on them would be unsatisfiable. No route selects
+// `value` into a response; the one reader decrypts server-side and hands the
+// config to the automation. Listed in apply-rls EXPECTED_UNSCOPED with this
+// reason. `value` carries the meta/crypto AES-256-GCM shape
+// (iv:tag:ciphertext, key derived from AUTH_SECRET) over a JSON config.
+model PlatformCredential {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 model AuditEvent {
   id       String  @id @default(cuid())
   tenantId String
