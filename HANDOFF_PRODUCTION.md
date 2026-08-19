@@ -101,11 +101,30 @@ remain the deep references.
 > **49 → 50** all four checks; (5) report before/after; **the CODE deploy
 > stays a separate user approval after that.**
 >
-> ### ⚠ SEVEN LOCAL COMMITS ARE QUEUED, NOT PUSHED — 18 Aug 2026 (overnight session + the user's reviews), AND THE BATCH CARRIES ONE MIGRATION
+> ### ⚠ THIRTEEN LOCAL COMMITS ARE QUEUED, NOT PUSHED — updated 19 Aug 2026 (second overnight session)
 >
-> **`main` is now seven commits ahead of `origin/main` (`12d805e..`), all
-> local, per the session's explicit no-push instruction. The push/deploy
-> decision is the user's.** In order:
+> **`main` is now THIRTEEN commits ahead of `origin/main` (`12d805e..`),
+> all local, per both sessions' explicit no-push instruction. The
+> push/deploy decision is the user's.** The 19 Aug overnight session added
+> SIX commits on top of the seven below (its schema is DEV-ONLY —
+> **dev `apply-rls` is now 54/54**, was 49/49 at the last deploy; the
+> resume-checklist consequence is the 🛑 note above):
+>
+> | Commit (19 Aug) | What |
+> |---|---|
+> | `971811c` | **AQ.1** — the AI spend quota (calls/UTC-month, default 200, platform-set override, reserve→settle ledger `AiUsageEvent`, 429 refusal, usage on the create screen + `/console/erp/ai`). Unblocks BH.3; answers LB.24 §open-1 |
+> | `ee2efcb` | **BH.3** — the AI behavior analysis (aggregates only — no PII by construction; every recommendation must cite its exact metric or is dropped; 24h cooldown re-shown; 100-view floor; `LandingInsight`; the Traffic screen's recommendations section) |
+> | `f8d4589` | **LB.56** — the preset-wide contrast sweep: 4 fixes (variant-chip hint 2.98–4.07 on 4/6 palettes; shipping-toggle price 3.39–3.81 on 3/6; announcement-bar hardcoded white; benefit-description opacity), `mutedInkOn` + `--theme-primary-foreground-muted`; theme-contrast suite 10→21 |
+> | `1a6a12b` | **LB.36** — Brands, to the user's decisions: replaces the store name EVERYWHERE (title/og/favicon-context/footer/thank-you/preview), MULTI-category join; screen + picker + routes; public listing page still deliberately unbuilt |
+> | `cbfd17b` | **LB.14c.b** — Render domain automation STUBBED: encrypted `PlatformCredential`, verified+primary trigger, bounded cert poll, recorded state. **NO live call ever made, NO real credential exists — installing it + one live test are the user's attended steps (NEXT_STEPS §LB.14c has the command)** |
+> | `2065f80` | **LB.6.d** — the bug-hunt: duplicate's copy list caught up (brandId + behaviorTracking — the LB.20/LB.35 drift class again), demo-merchant drive clean, one analyze-button reachability proposal recorded |
+>
+> Suites at the 19 Aug final tree, all green on the rebuilt standalone
+> server: builder-ai 29 · builder-insights 13 (new) · builder-brands 13
+> (new) · render-automation 7 (new) · theme-contrast 21 · builder-api 49 ·
+> builder-sections 75 · storefront 95 · console-shell 20 · hardening 13 ·
+> erp/ai 31 · erp/screens 172 · platform/domains 14 · product-registry 36
+> · i18n 22. (The 18 Aug session's original seven, in order:)
 >
 > | Commit | What |
 > |---|---|
