@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { apiOk, apiError } from "@/lib/api/route";
+import { landingWriteRoute } from "@/lib/api/landing-write";
 
 export const dynamic = "force-dynamic";
 type Params = { id: string };
@@ -29,7 +30,7 @@ const Body = z.object({
  * because media[0] of the GALLERY is the hero image — mixing the two lists
  * would silently change which picture a customer sees first.
  */
-export const PUT = tenantRoute<Params>("website-builder:pages:write", async ({ db, req, params, session }) => {
+export const PUT = landingWriteRoute<Params>("website-builder:pages:write", async ({ db, req, params, session }) => {
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");
 

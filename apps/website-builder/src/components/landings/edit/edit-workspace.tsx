@@ -15,6 +15,7 @@ import { PreviewPanel } from "./preview-panel";
 import { PreviewDrawer } from "./preview-drawer";
 import { PublishDialog } from "./publish-dialog";
 import { LeaveWarningDialog } from "./leave-warning-dialog";
+import { VersionHistoryDialog } from "./version-history-dialog";
 import { useBuilderApi } from "@/lib/builder/api-base";
 
 export function EditWorkspace({
@@ -61,6 +62,7 @@ export function EditWorkspace({
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = React.useState(false);
   const [previewDrawerOpen, setPreviewDrawerOpen] = React.useState(false);
+  const [historyOpen, setHistoryOpen] = React.useState(false);
 
   const publishedRef = React.useRef(initialStatus === "PUBLISHED");
 
@@ -143,6 +145,7 @@ export function EditWorkspace({
         publishStatus={publishStatus}
         hasUnsavedChanges={hasUnsavedChanges}
         onPreview={() => setPreviewDrawerOpen(true)}
+        onHistory={() => setHistoryOpen(true)}
         onPublish={() => setPublishDialogOpen(true)}
         onCopyLink={handleCopyLink}
         onOpenLanding={handleOpenLanding}
@@ -181,6 +184,11 @@ export function EditWorkspace({
         isPublishing={publishStatus === "PUBLISHING"}
         isUpdate={publishStatus === "PUBLISHED"}
         onConfirm={handlePublishConfirm}
+      />
+      <VersionHistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        landingId={landingId}
       />
       <LeaveWarningDialog
         open={leaveDialogOpen}

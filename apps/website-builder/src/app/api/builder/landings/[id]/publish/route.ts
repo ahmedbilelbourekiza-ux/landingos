@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { apiOk, apiError } from "@/lib/api/route";
+import { landingWriteRoute } from "@/lib/api/landing-write";
 import { triggerProductWebhook } from "@/lib/webhooks/tenant-triggers";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ const Body = z.object({ published: z.boolean().optional() });
  * one edit with a public consequence, and it carries its own permission —
  * someone may be trusted to draft a page without being trusted to put it live.
  */
-export const POST = tenantRoute<Params>("website-builder:pages:publish", async ({ db, req, params, session, afterCommit }) => {
+export const POST = landingWriteRoute<Params>("website-builder:pages:publish", async ({ db, req, params, session, afterCommit }) => {
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   const publish = parsed.success ? parsed.data.published ?? true : true;
 

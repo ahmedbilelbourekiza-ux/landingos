@@ -47,7 +47,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | **LB.24** | AI landing page generator | L | **FIRST SLICE DEPLOYED 16 Aug (night) as part of `1dbe119..c722050`**, no migration. Merchant facts + their own photos in → an Algerian-Darija DRAFT out (copy + LB.22 theme), reviewed in the ordinary editor. Adversarially reviewed (one BLOCKER found and fixed: the model call sat inside the 15s tenant transaction — now D-LP.5.1 three-phase, pinned by a 16.5s slow-model test). builder-ai **19** new. §LB.24 below has the record, the deliberate lines (no generated reviews, ever), and the open questions — **the push/deploy decision is yours** |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | **SPLIT INTO THREE, because they are three different risks.** LB.14a caching — **DONE 13 Aug 2026 (night), DEPLOYED the same night**; LB.14b version history and LB.14c custom domains — see their own rows below. Original scoping: handoff §13 |
 | ~~**LB.14c**~~ | ~~Custom-domain console flow~~ | S | **PREMISE FALSE — the flow already exists** (B5, 10 Aug, deployed): claim, per-row token, **real DNS TXT verification**, primary, unlink, screen, tests. Driven live to confirm. **What was wrong and is now fixed (13 Aug, night; DEPLOYED the same night):** the verify route distinguishes "no TXT record yet" from "wrong value" on purpose — the opposite instruction to a merchant mid-setup — and both arrived as "that didn't work", because one code carried both meanings and B5 mapped **none** of its five refusal codes in `action-errors.ts`. Split + six messages ×3 locales. platform/domains 13→14. **⚠ SCOPED, NOT BUILT — the part that needs infrastructure:** a verified domain still 403s until the OPERATOR adds the hostname to Render and it issues a certificate (proven: `x-render-routing` 403; no Render credential exists here). **Custom domains are therefore complete in the app and inert in production.** Three options + the `isPrimary`-has-no-reader finding written up below; the decision is yours |
-| **LB.14b** | Page version history / undo (M-02, = CAPABILITY_AUDIT B7) | M–L | **SCOPED, NOT BUILT (13 Aug 2026) — it needs a new table, therefore a production migration, and that was out of scope for the session that measured it.** Confirmed nothing exists: the whole schema has ONE history table and it is `SalesOrderStatusHistory`. Eleven separate section-save routes and no single write path to hook. A snapshot measured at 0.6–3.6 KB on real pages, so storage is not the argument — the three open questions are all product decisions (when a version is taken, what restore does to a page that has SOLD, whether restore may republish). Proposed shape + costs written up below; **RLS would move 49 → 50.** **Built instead, needing no migration: the `duplicate` completeness fix**, because until this exists a duplicate is the only way back a merchant has |
+| **LB.14b** | Page version history / undo (M-02, = CAPABILITY_AUDIT B7) | M–L | **DONE 19 Aug 2026 (overnight), committed locally — NOT pushed, NOT deployed. MIGRATION APPLIED TO DEV ONLY (`LandingPageVersion`; dev RLS 54 → 55).** Built to the three decisions the 13 Aug scoping held it for: a version per EDITING SESSION (not per save, not per publish), past orders untouched (they already snapshot their own prices), and a restore that lands as a DRAFT (LB.34's precedent). The scoping note's own warning — *"any design that hooks eleven routes will be missing the twelfth within a month"* — is answered by ONE hook (`landingWriteRoute`) plus two drift guards that were verified to bite. **Production does not have the table**; migrating it there is a separate user decision and is NOT part of the approved AN.1+AN.2+BH.1 batch. Write-up below
 | ~~**LB.14a**~~ | ~~Storefront caching (P-01)~~ | S–M | **DONE 13 Aug 2026 (night); DEPLOYED the same night — and the finding inverted the premise.** Confirmed in production across five header paths plus two controls; the wilayas 404's flip from *no header at all* was the deploy's own marker. The pages were sending `no-store` (the strictest header there is); the **delivery quote was sending no `Cache-Control` at all**, and RFC 9111 lets a shared cache invent freshness for exactly that. The rule settled on: *a response may be reused by a shared cache only if a stale copy cannot cost somebody money or expose somebody's order* — stricter than "changes rarely", because a storefront is reachable through a MERCHANT's own hostname and this platform cannot purge their CDN. Public pages → `private, max-age=60, must-revalidate` (the one real win: `no-store` forbade even a back-button redisplay); quote, pixel configs and thank-you → `private, no-store`. **ISR measured UNAVAILABLE, not declined** — `revalidate = 60` still built as `ƒ (Dynamic)` with no warning, because a custom domain wins over a path prefix and so every render reads the Host header. storefront 40→48 |
 | ~~**LB.15**~~ | ~~Editor money inputs off `type="number"` (pricing section)~~ | S | **DONE 13 Aug 2026 (night); DEPLOYED the same night — and the measurement found data loss, not style residue.** Re-measured live in production after the deploy: two ArrowUp presses left 2990.50 unchanged, and a French `2990,75` saved and read back as Decimal 2990.75. Three boxes: `price`, `oldPrice`, and every variant option's supplement. `step="1"` made any sub-unit price `stepMismatch` (the browser calling it invalid while `aria-invalid` said fine) and **two ArrowUp presses on 2990.50 stored 2992** — the control discarding the centimes. All three are now text + `inputMode="decimal"` + `dir="ltr"`, and ONE reader (`lib/landing/money-field.ts`) serves the schema, the preview strip and the save body. A comma is a decimal separator; `1,000` is REFUSED rather than guessed (a 1000× error either way), while a dot with three places is deliberately allowed because that is what a stored `Decimal` returns. New key `builder.editor.priceUnreadable` ×3 locales. calc 20→28, builder-sections 73→74 |
 | ~~LB.10~~ | ~~`website-builder:orders:write`~~ | — | **DONE in the LB.10 commit** (B-08 closed, console writes rerouted through the API, webhooks fire from console changes) |
@@ -547,88 +547,79 @@ live (or the operator adds the hostname by hand), that copied domain link
 right order for going live: install the credential → live-test one
 hostname → only then point real merchants at the feature.
 
-### LB.14b — SCOPED, NOT BUILT. Page version history (13 Aug, night)
+### LB.14b — DONE. Page version history (built 19 Aug, night; scoped 13 Aug)
 
-**No code, deliberately: it needs a new table, therefore a production
-migration, and this session was explicitly not to require one.** What follows
-is the measurement and the proposal, so the decision can be made rather than
-discovered halfway through building.
+**Committed locally, NOT pushed, NOT deployed. The migration is applied to DEV
+ONLY.** The 13 Aug scoping deliberately stopped at a proposal because the three
+open questions were product decisions, not engineering ones. They were decided
+on 19 Aug and the answers are what this is:
 
-**What exists today — confirmed, not assumed.** Nothing. No `*Version`,
-`*History` or `*Snapshot` model exists on `LandingPage`; the whole schema
-contains exactly one history table, `SalesOrderStatusHistory`, which is about
-an order's status and nothing else. Every one of the editor's saves is a
-destructive overwrite.
+| The question, as scoped | The decision | Where it lives |
+|---|---|---|
+| When is a version taken? | **Before the first edit of each session** — the closest thing to undo. Not per section save, not per publish | `ensureSessionCheckpoint`, `versions.ts` |
+| What does restore do to a page that has SOLD? | **Nothing.** Past orders keep the price they were taken at, which needed no new code — `SalesOrder` already snapshots its own prices at checkout | asserted as behaviour in `builder-versions.test.ts` |
+| Does restoring change `published`/`status`? | **It lands as a DRAFT**, LB.34's archive-restore precedent, so republishing stays deliberate | `restoreVersion`, which forces the status rather than reading it |
 
-**The write surface a snapshot would have to hook — measured: eleven routes**
-under `/api/builder/landings/[id]/`: `general`, `pricing`, `shipping`,
-`order-form`, `media`, `variants`, `features`, `reviews`, `faqs`,
-`delivery-prices`, `publish` — plus `archive`, the top-level `[id]` PATCH, and
-`duplicate`. They are separate on purpose (a section saves explicitly, which
-`BUILDER_AUDIT.md` M-02 itself calls "fine as a model"), and that is exactly
-what makes a snapshot hook awkward: **there is no single write path to hang it
-on.** Any design that hooks eleven routes will be missing the twelfth within a
-month — which is precisely the drift that had already happened to `duplicate`
-(fixed in the commit before this one).
+**"A session" had to be defined, and the definition is measured.** Auth sessions
+live **14 days** here, so keying on the session id alone would have produced
+about one version a fortnight. An editing session is the session id **plus** a
+30-minute idle gap (`SESSION_IDLE_MINUTES`): three straight hours of editing is
+one version, coming back after lunch starts the next. The probe is by SESSION
+rather than "newest version on the page", so two people editing alternately keep
+their own marks instead of resetting each other's.
 
-**What a snapshot must contain.** `LandingPage` plus seven owned relations:
-`media`, `variants`, `features`, `reviews`, `faqs`, `setting`,
-`deliveryPrices` — and now `trackingIntegrationIds`. `duplicate` is the one
-piece of code that already knows this list, which is both the reason it is the
-right starting point and the reason it is dangerous: it is the same list, and
-it has already gone stale twice.
+**The hard part was the one the scoping note named.** It predicted that hooking
+eleven routes would miss the twelfth within a month, on the evidence of
+`duplicate` — which has now gone stale **four** times (LB.20, LB.35, LB.36,
+BH.1). The answers:
 
-**How big one is — measured on real dev pages** (whole page + all relations,
-as JSON): 595 B for an empty page, **1.4–3.6 KB** for pages with 1–3 images and
-up to 6 variants. A rich page with a photo gallery and fifteen variants is
-plausibly 10–20 KB. At one snapshot per section save, a merchant editing hard
-for a day writes a few hundred KB. **That is small enough that the storage is
-not the argument** — the arguments are all about correctness.
+1. **One hook, not twelve.** `src/lib/api/landing-write.ts` wraps `tenantRoute`;
+   each route changed by one word. Twelve routes are wrapped; four mutating
+   endpoints are exempt ON THE RECORD (`duplicate`, `analyze`, `[id]` DELETE,
+   and `restore`, which takes its own unconditional checkpoint).
+2. **No column is ever named.** Scalars come from Prisma's DMMF, so a column
+   added later is snapshotted and restored with no code change — the explicit
+   difference from `duplicate`'s hand-written list. Only the RELATION split is
+   written down, because "content" vs "history" is a judgement no schema makes.
+3. **Two drift guards, both proven to bite** (each was checked by temporarily
+   breaking what it guards, not merely by being written): un-hooking `faqs`
+   failed with `faqs/route.ts:PUT uses tenantRoute`; dropping `deliveryPrices`
+   from the snapshot list failed with *"LandingPage grew a relation nobody
+   decided about"*.
 
-**The three questions that are product decisions, not engineering ones:**
+**Measured:** a whole snapshot of the real dev page is **2,688 B** (3 media, 2
+FAQs), inside the 1.4–3.6 KB the scoping measured. Capped at **50 versions
+per page**, pruned as new ones are taken.
 
-1. **When is a version taken?** Per section save is the honest reading of "no
-   way back" and produces a version list dominated by trivia (eleven entries
-   for one afternoon's work on one page). Per publish is a much better list and
-   does not help the case M-02 actually describes — a mis-save on a page that
-   is not republished. A third option, "snapshot the state BEFORE the first
-   save of a session and label it", is closer to undo than to history.
-2. **What does restore do to a page that has SOLD?** `SalesOrder` rows point at
-   `landingPageId`, and LB.30's thank-you page reads `order.landingPage` to
-   theme itself. Restoring a price is therefore visible on the confirmation
-   page of an order taken at the OTHER price. LB.34 already settled the
-   neighbouring question — a page that sold something may not be hard-deleted —
-   and restore needs the same kind of answer stated up front.
-3. **Does restoring change `published`/`status`?** LB.34's precedent says
-   restore-from-archive lands on DRAFT so nothing republishes itself. A version
-   restore that silently re-publishes a page would be worse.
+**Suite:** `builder-versions.test.ts`, **28/28**.
 
-**The shape recommended, if it is built.** One additive table:
+#### ⚠ What production still owes this feature
 
-```
-LandingPageVersion
-  id, tenantId, landingPageId, actorUserId?, reason (save|publish|restore),
-  snapshot Json,          // the page + its seven relations, duplicate's list
-  createdAt
-  @@index([tenantId, landingPageId, createdAt])
-```
+`LandingPageVersion` exists in **dev only**. Deploying the code without the
+table would make the editor's history control and every page write 500, because
+the checkpoint runs before the handler. So:
 
-A Json snapshot rather than shadow tables, for LB.35's reason on
-`trackingIntegrationIds`: the value is small, always read whole, and never
-queried from the other side. Restore rebuilds by DELETING the owned relation
-rows and recreating them inside `withTenant`'s existing transaction — the same
-shape `variants`'s PUT already uses, so it is a known-safe pattern here.
+- The migration is **one additive table**, previewed as exactly one CREATE
+  TABLE + one CREATE INDEX + one FK. `apply-rls` on production would move
+  **49 → 50** for this table alone (dev is at 55 because dev also carries the
+  four tables listed in `HANDOFF_PRODUCTION.md` §1's drift note).
+- It is **NOT** part of the already-approved AN.1+AN.2+BH.1 batch on hold.
+  Approving that batch does not approve this one; they are separate deltas and
+  the "anything else = drift, stop" rule applies to each.
+- Production is currently **down** on a Neon compute-quota exhaustion. Nothing
+  here can be applied there until that is resolved from the user's dashboard.
 
-**Cost:** **M–L. One additive table → a production `db push` → an `apply-rls`
-run moving 49 → 50.** That is the whole reason it is not in this session:
-`CAPABILITY_AUDIT.md` B7 said the same thing in different words, and it has
-been true every time it was re-measured.
+#### Still open, deliberately not built
 
-**What was built instead, because it needed no migration and was the same
-finding:** `duplicate` was quietly dropping the two parts the page grew after
-LB.6 wrote it. Until version history exists, duplicating a page before a risky
-edit is the only way back a merchant has, and a lossy copy is worse than no
-copy because it looks like a backup. See the commit and the CHANGELOG entry.
+- **No diff view.** The list shows when and who, and restores whole. Showing
+  *what changed* between two versions is a real feature and a much larger one;
+  the snapshots are stored ordered specifically so a diff has something stable
+  to compare when somebody wants it.
+- **`duplicate` still names its columns by hand.** This slice proves the
+  DMMF-swept approach works; pointing `duplicate` at the same helper would end
+  a drift class that has now cost four separate bugs. Not done here because it
+  changes a route this slice otherwise does not touch.
+- **No restore from the pages LIST**, only from inside the editor.
 
 ### LB.14a — DONE. The storefront caching story, and what it refuses (13 Aug, night)
 

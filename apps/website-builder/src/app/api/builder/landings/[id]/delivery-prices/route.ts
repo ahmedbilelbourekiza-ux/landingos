@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { landingWriteRoute } from "@/lib/api/landing-write";
 
 export const dynamic = "force-dynamic";
 type Params = { id: string };
@@ -43,7 +44,7 @@ const Body = z.object({
   items: z.array(Row).max(64),
 });
 
-export const PUT = tenantRoute<Params>(
+export const PUT = landingWriteRoute<Params>(
   "website-builder:pages:write",
   async ({ db, req, params, session }) => {
     const parsed = Body.safeParse(await req.json().catch(() => ({})));

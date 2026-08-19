@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { apiOk, apiError } from "@/lib/api/route";
+import { landingWriteRoute } from "@/lib/api/landing-write";
 import { ALL_FIELD_KEYS } from "@/lib/landing/mock-order-form";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +50,7 @@ const Body = z.object({
 /** Fields the checkout cannot function without, whatever the config says. */
 const REQUIRED_FIELDS = ["customerName", "phone", "wilaya", "baladia"] as const;
 
-export const PATCH = tenantRoute<Params>("website-builder:pages:write", async ({ db, req, params, session }) => {
+export const PATCH = landingWriteRoute<Params>("website-builder:pages:write", async ({ db, req, params, session }) => {
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");
 

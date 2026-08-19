@@ -72,9 +72,10 @@ remain the deep references.
 >
 > **⚠ 19 Aug (overnight, AFTER the block below was written): the LOCAL
 > schema has moved past the approved delta.** The overnight session added
-> dev-only migrations on local `main` (AQ.1's `AiUsageEvent`; any later
-> table tonight's commits add is listed in its own CHANGELOG entry). Dev
-> (`ep-gentle-sky`) carries them; production does NOT and the APPROVED
+> dev-only migrations on local `main` (AQ.1's `AiUsageEvent`; LB.36's
+> `Brand` + `BrandCategory`; BH.3's `LandingInsight`; LB.14c.b's
+> `PlatformCredential`; and — added 19 Aug, LB.14b — **`LandingPageVersion`**).
+> Dev (`ep-gentle-sky`) carries them; production does NOT and the APPROVED
 > batch does not include them. **Consequence for the resume checklist's
 > step 1: run the `migrate diff` preview FROM THE APPROVED TREE
 > (`be020b0` / `0dd2214` — check out or `git worktree` it), not from
@@ -83,6 +84,14 @@ remain the deep references.
 > Alternatively, re-approve the LARGER delta deliberately.** The
 > apply-rls expectation for the approved batch stays **49 → 50**; each
 > additional table shipped later moves it by one more.
+>
+> **⚠ 19 Aug, LB.14b adds a SECOND, SEPARATE migration production owes.**
+> `LandingPageVersion` (one additive table, one index, one FK — previewed
+> and applied to DEV ONLY, dev RLS 54 → 55). It is **not** in the approved
+> AN.1+AN.2+BH.1 delta, and approving that batch does not approve this one.
+> **The LB.14b CODE must not deploy without its table**: the checkpoint runs
+> before every landing-page write handler, so the twelve wrapped routes and
+> the editor's history control would 500 against a database that lacks it.
 >
 > **MIGRATION STATE: NOT APPLIED, ZERO WRITES MADE.** The one connection
 > attempted was the read-only `migrate diff` preview, refused at the door.
@@ -101,14 +110,39 @@ remain the deep references.
 > **49 → 50** all four checks; (5) report before/after; **the CODE deploy
 > stays a separate user approval after that.**
 >
-> ### ⚠ THIRTEEN LOCAL COMMITS ARE QUEUED, NOT PUSHED — updated 19 Aug 2026 (second overnight session)
+> ### ⚠ SIXTEEN LOCAL COMMITS ARE QUEUED, NOT PUSHED — updated 19 Aug 2026 (third overnight session)
 >
-> **`main` is now THIRTEEN commits ahead of `origin/main` (`12d805e..`),
-> all local, per both sessions' explicit no-push instruction. The
-> push/deploy decision is the user's.** The 19 Aug overnight session added
-> SIX commits on top of the seven below (its schema is DEV-ONLY —
-> **dev `apply-rls` is now 54/54**, was 49/49 at the last deploy; the
-> resume-checklist consequence is the 🛑 note above):
+> **`main` is SIXTEEN commits ahead of `origin/main` (`12d805e..`), all
+> local, per every session's explicit no-push instruction. The push/deploy
+> decision is the user's.**
+>
+> **⚠ CORRECTION — the "THIRTEEN" this block said before was wrong, and
+> wrong in a way this file has been wrong before** (see the commit-count
+> entry in the project memory's builder-launch-state). Thirteen was the
+> count of FEATURE/SCOPING slices; it was written as "commits ahead of
+> `origin/main`", which was already FIFTEEN, because two of the queued
+> commits are records-only (`f24f094` 18 Aug, `4c31a18` 19 Aug). **Verify
+> with `git rev-list --count origin/main..HEAD`, never by counting the
+> tables below.** As of LB.14b: **16 commits ahead = 14 slices + 2
+> records-only commits.**
+>
+> A third 19 Aug session added LB.14b on top of the thirteen slices below
+> (its schema is DEV-ONLY — **dev `apply-rls` is now 55/55**, was 49/49 at
+> the last deploy; the resume-checklist consequence is the 🛑 note above):
+>
+> | Commit (19 Aug, third session) | What |
+> |---|---|
+> | `LB.14b` | **Page version history** — closes BUILDER_AUDIT M-02 /
+> CAPABILITY_AUDIT B7, to the user's three decisions: one version per EDITING
+> SESSION (session id + 30-min idle gap, because auth sessions live 14 days),
+> past orders untouched (they already snapshot their own prices), restore
+> lands as a DRAFT (LB.34 precedent). ONE hook (`landingWriteRoute`) over
+> twelve write routes rather than twelve hooks; scalars swept from Prisma
+> DMMF so no column is named; two drift guards verified to BITE. **Migration
+> `LandingPageVersion` — DEV ONLY, dev RLS 54 → 55.** Suite
+> `builder-versions` 28/28 |
+>
+> The six from the second session:
 >
 > | Commit (19 Aug) | What |
 > |---|---|
@@ -120,11 +154,25 @@ remain the deep references.
 > | `2065f80` | **LB.6.d** — the bug-hunt: duplicate's copy list caught up (brandId + behaviorTracking — the LB.20/LB.35 drift class again), demo-merchant drive clean, one analyze-button reachability proposal recorded |
 >
 > Suites at the 19 Aug final tree, all green on the rebuilt standalone
-> server: builder-ai 29 · builder-insights 13 (new) · builder-brands 13
-> (new) · render-automation 7 (new) · theme-contrast 21 · builder-api 49 ·
-> builder-sections 75 · storefront 95 · console-shell 20 · hardening 13 ·
-> erp/ai 31 · erp/screens 172 · platform/domains 14 · product-registry 36
-> · i18n 22. (The 18 Aug session's original seven, in order:)
+> server: **builder-versions 28 (new, LB.14b)** · builder-ai 29 ·
+> builder-insights 13 · builder-brands 13 · render-automation 7 ·
+> theme-contrast 21 · builder-api 49 · builder-sections 75 · storefront 95 ·
+> console-shell 20 · hardening 13 · erp/ai 31 · erp/screens 172 ·
+> platform/domains 14 · product-registry 36 · i18n 22.
+>
+> **⚠ ONE SUITE IS RED AT HEAD AND HAS BEEN SINCE 18–19 AUG:**
+> `npm test --workspace @landingos/db` is **31 pass / 4 fail**. It is NOT in
+> the list above because no session had been running it — that is the gap
+> worth noting. Confirmed pre-existing on 19 Aug by stashing all working-tree
+> changes and re-running at HEAD. All four are MISSING ALLOW-LIST ENTRIES in
+> `packages/db/test/constraints.test.ts`, not defects in the tables:
+> `PlatformCredential` (LB.14c.b) is absent from `NOT_TENANT_SCOPED`, from the
+> tenantId-index list and from the layer-3 expected-unscoped list — although
+> `apply-rls.ts` already carries it in its OWN `EXPECTED_UNSCOPED` with a
+> written reason — and `StorefrontVisit.viewId` (AN.1) is a bare `@unique`
+> never added to `GLOBAL_UNIQUES`. The convention is to add each with its
+> reason in `packages/db/CONSTRAINTS.md`. **Deliberately left for its own
+> commit** so LB.14b stayed one subject. `apply-rls` itself is green (55/55). (The 18 Aug session's original seven, in order:)
 >
 > | Commit | What |
 > |---|---|

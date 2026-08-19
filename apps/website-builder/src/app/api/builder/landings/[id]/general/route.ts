@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { apiOk, apiError } from "@/lib/api/route";
+import { landingWriteRoute } from "@/lib/api/landing-write";
 import { triggerProductWebhook } from "@/lib/webhooks/tenant-triggers";
 import { SLUG_HAS_LETTER, SLUG_NEEDS_LETTER } from "@/lib/landing/create";
 
@@ -32,7 +33,7 @@ const Body = z.object({
   trackingIntegrationIds: z.array(z.string()).max(50).optional().nullable(),
 });
 
-export const PATCH = tenantRoute<Params>("website-builder:pages:write", async ({ db, req, params, session, afterCommit }) => {
+export const PATCH = landingWriteRoute<Params>("website-builder:pages:write", async ({ db, req, params, session, afterCommit }) => {
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");
 

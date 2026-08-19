@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { apiOk, apiError } from "@/lib/api/route";
+import { landingWriteRoute } from "@/lib/api/landing-write";
 import { triggerProductWebhook } from "@/lib/webhooks/tenant-triggers";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ const Body = z.object({ archived: z.boolean().optional() });
  * filters on `published: true AND status: PUBLISHED` — setting one without the
  * other would leave a row that is archived in the console and still on sale.
  * ========================================================================== */
-export const POST = tenantRoute<Params>(
+export const POST = landingWriteRoute<Params>(
   "website-builder:pages:publish",
   async ({ db, req, params, session, afterCommit }) => {
     const parsed = Body.safeParse(await req.json().catch(() => ({})));

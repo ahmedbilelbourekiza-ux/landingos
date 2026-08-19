@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { apiOk, apiError } from "@/lib/api/route";
+import { landingWriteRoute } from "@/lib/api/landing-write";
 import { triggerProductWebhook } from "@/lib/webhooks/tenant-triggers";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ const Body = z.object({
   buttonText: z.string().trim().max(120).optional(),
 });
 
-export const PATCH = tenantRoute<Params>("website-builder:pages:write", async ({ db, req, params, session, afterCommit }) => {
+export const PATCH = landingWriteRoute<Params>("website-builder:pages:write", async ({ db, req, params, session, afterCommit }) => {
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");
 

@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Eye,
   Globe,
+  History,
   Loader2,
   Link2,
   ExternalLink,
@@ -26,6 +27,7 @@ export function EditWorkspaceHeader({
   publishStatus,
   hasUnsavedChanges,
   onPreview,
+  onHistory,
   onPublish,
   onCopyLink,
   onOpenLanding,
@@ -35,6 +37,7 @@ export function EditWorkspaceHeader({
   publishStatus: PublishStatus;
   hasUnsavedChanges: boolean;
   onPreview: () => void;
+  onHistory: () => void;
   onPublish: () => void;
   onCopyLink: () => void;
   onOpenLanding: () => void;
@@ -105,6 +108,21 @@ export function EditWorkspaceHeader({
         >
           <Eye className="size-4" />
           <span className="hidden sm:inline">{t("builder.editor.preview")}</span>
+        </Button>
+
+        {/* LB.14b — the way back. Sits beside Preview because both are ways of
+            LOOKING at the page rather than changing it; restoring is behind a
+            confirmation inside the dialog. Icon-only below `sm` with an
+            unconditional aria-label, the same rule the mobile audit imposed on
+            the two buttons either side of it. */}
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={t("builder.editor.history")}
+          onClick={onHistory}
+        >
+          <History className="size-4" />
+          <span className="hidden lg:inline">{t("builder.editor.history")}</span>
         </Button>
 
         {isPublished && (

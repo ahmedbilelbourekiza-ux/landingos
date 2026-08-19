@@ -10,6 +10,143 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## LB.14b — a page gets a way back: version history, one per sitting
+
+**Committed locally 19 August 2026 (overnight session) — NOT pushed, NOT
+deployed. MIGRATION: one additive table, applied to DEV ONLY.** Closes
+`BUILDER_AUDIT.md` M-02 and `CAPABILITY_AUDIT.md` B7, scoped 13 Aug and held
+since for the three product decisions it could not make for itself. Those
+decisions arrived with this session and are what the code encodes:
+
+1. **A version is taken before the first edit of each SESSION** — not per
+   section save, not per publish. Per-save produces eleven entries for one
+   afternoon and a list made of trivia; per-publish misses the mis-save M-02
+   actually describes, which happens on a page nobody republishes.
+2. **Restoring an old price does not touch orders already taken.** Nothing in
+   the restore path had to enforce this, and that is the finding: `SalesOrder`
+   snapshots `productPrice`/`shippingPrice`/`totalPrice` and the chosen
+   `variants` at checkout and never reads them back off the page. Verified as
+   behaviour, not assumed — an order placed at 5,000 was still 5,000 after
+   its page was restored to a different price.
+3. **A restore lands as a DRAFT**, LB.34's archive-restore precedent. For a
+   live page that means it leaves the storefront until it is published again;
+   the console says so in those words before the merchant presses it, because
+   discovering it afterwards is the worse surprise.
+
+**What "a session" is, measured rather than assumed.** Auth sessions here live
+**14 days** (`SESSION_TTL_HOURS`, default `24*14`), so keying on the session id
+alone would have meant roughly one version per fortnight — history, not
+undo. An editing session is therefore the session id PLUS a gap: the same
+sitting until it has left the page alone for `SESSION_IDLE_MINUTES` (30). Three
+straight hours of editing is one version; coming back after lunch starts the
+next. The probe is BY SESSION rather than "newest version", so two people
+editing one page alternately keep their own marks instead of resetting each
+other's.
+
+**The design problem the scoping note named, and how it is answered.** It said:
+*"any design that hooks eleven routes will be missing the twelfth within a
+month"* — and it said so because `duplicate`, the one other piece of code
+that knows what a whole page is, had already gone stale twice. It has gone
+stale **four** times now (LB.20 `deliveryPrices`, LB.35
+`trackingIntegrationIds`, LB.36 `brandId`, BH.1 `behaviorTracking`). So this
+slice does not repeat that shape:
+
+- **The hook lives in ONE file.** `src/lib/api/landing-write.ts` wraps
+  `tenantRoute`; the twelve mutating page routes changed by one word each.
+- **No column is ever named.** Scalars are swept from Prisma's DMMF, so a
+  column added tomorrow is snapshotted and restored with no edit to this code
+  — the deliberate difference from `duplicate`'s hand-written list.
+  `Prisma.DbNull` is used for null JSON columns, the exact trap `duplicate`
+  documents on `trackingIntegrationIds`.
+- **Two drift guards, both verified to BITE** by temporarily breaking the thing
+  they guard: (a) every mutating export under `landings/[id]/` must use
+  `landingWriteRoute` or appear in a NAMED exemption list — un-hooking
+  `faqs` produced `faqs/route.ts:PUT uses tenantRoute`; (b) every relation on
+  `LandingPage` must be classified into exactly one of four lists — dropping
+  `deliveryPrices` produced *"LandingPage grew a relation nobody decided
+  about"*. A twelfth route or an eighth relation cannot be forgotten quietly,
+  only exempted on purpose.
+
+**Not wrapped, each on the record in the suite's `EXEMPT` map:** `duplicate`
+(writes a NEW page, nothing here to undo), `analyze` (writes a `LandingInsight`;
+advice about a page is not a change to it), `[id]` DELETE (versions cascade from
+the page, so the checkpoint would delete itself — and LB.33 already refuses
+to delete a page that has ever sold), and `versions/[versionId]/restore` (takes
+its own UNCONDITIONAL `restore` checkpoint, which the session rule would have
+skipped — so a restore pressed by mistake is as recoverable as the edits it
+replaced).
+
+**What a restore cannot trust the snapshot about, because the world moved on:**
+the **slug** may have been claimed by another page since (the page keeps its
+current one and the response says `slugRestored: false`, rather than refusing
+the whole restore over an address), and a **category, theme or brand** may have
+been deleted since (the reference is dropped, which is the answer the schema
+itself gives those three columns — `onDelete: SetNull` — instead of
+failing the constraint and losing everything). `trackingIntegrationIds` needs no
+guard: its stated contract is already that unresolvable ids are ignored at read
+time.
+
+**Storage, measured on the real dev page:** a whole snapshot is **2,688 B** (3
+media, 2 FAQs) — inside the 1.4–3.6 KB the scoping note measured. Capped
+at **50 versions per page**, pruned as new ones are taken, which at one per
+sitting is months of history and bounds a Json column that would otherwise grow
+for the life of the page.
+
+**MIGRATION — DEV ONLY, and production does not have it.** One additive
+table, `LandingPageVersion` (tenantId, landingPageId, actorUserId, actorName,
+sessionId, reason, snapshot Json, lastEditAt, createdAt;
+`@@index([tenantId, landingPageId, createdAt])`; Cascade from `LandingPage`).
+`migrate diff` previewed EXACTLY one CREATE TABLE, one CREATE INDEX and one FK
+— no drift, nothing destructive — before `db push` against
+`ep-gentle-sky-b1rahhl0` (**dev**, never `landingos_prod`, which is
+quota-suspended and off-limits). `apply-rls` moved **54 → 55**, all four
+checks 55/55, exactly as the scoping note predicted for this table.
+
+**Verified live on the rebuilt standalone server**, driven as the demo merchant:
+the editor renders the history control (Arabic `سجل النسخ`); an untouched page lists no
+versions; the first edit takes exactly one, tagged `edit` and carrying the actor
+name; a second edit in the same sitting adds none; restoring returned
+`status: DRAFT, published: false, slugRestored: true, droppedReferences: []`,
+put the announcement back to its pre-edit value and rebuilt the owned relations
+(3 media, 2 FAQs) intact. The demo page was republished afterwards and its
+storefront still serves 200.
+
+**Suites:** `builder-versions` **28/28 new** (5 pure session-rule, 6 pure
+column-sweep, 6 drift-guard, 11 end-to-end). Green alongside: builder-api 49,
+builder-sections 75, builder-brands 13, builder-insights 13, i18n 22 (twelve
+keys added in all three locales; the editor's no-hardcoded-English rule caught
+an internal `throw new Error(...)` and it was restructured away).
+
+**⚠ FOUND, NOT FIXED — unrelated and pre-existing:** `npm test --workspace
+@landingos/db` is **RED at HEAD, 31 pass / 4 fail**, and was already red before
+this work (proven by stashing everything and re-running). All four are missing
+allow-list entries from the previous two sessions' tables, not defects in them:
+`PlatformCredential` (LB.14c.b) is absent from `constraints.test.ts`'s
+`NOT_TENANT_SCOPED`, its tenantId-index list and its layer-3 expected-unscoped
+list — though `apply-rls.ts` already carries it in its own `EXPECTED_UNSCOPED`
+with a written reason — and `StorefrontVisit.viewId` (AN.1) is a bare
+`@unique` never added to `GLOBAL_UNIQUES`. Left alone deliberately so this
+commit stays one subject; `HANDOFF_PRODUCTION.md` §1 and `NEXT_STEPS.md`
+record it.
+
+**Files:** `packages/db/prisma/schema/builder.prisma` (+`LandingPageVersion`,
++`LandingPage.versions`), `apps/website-builder/src/lib/landing/versions.ts`
+(new), `apps/website-builder/src/lib/api/landing-write.ts` (new),
+`apps/website-builder/src/app/api/builder/landings/[id]/versions/route.ts`
+(new), `.../versions/[versionId]/restore/route.ts` (new), the twelve wrapped
+routes, `src/components/landings/edit/version-history-dialog.tsx` (new),
+`edit-workspace.tsx`, `edit-workspace-header.tsx`,
+`packages/i18n/src/messages/{en,fr,ar}.json`,
+`apps/website-builder/test/builder-versions.test.ts` (new).
+
+**Risk:** low and additive. No existing column changed, no existing route's
+contract changed, and the checkpoint runs inside the request's own tenant
+transaction — an edit that throws takes its checkpoint down with it.
+Production is unaffected until the table is migrated there, which is a separate,
+user-approved step and is NOT part of the already-approved AN.1+AN.2+BH.1 batch.
+
+---
+
 ## LB.6.d — the duplicate's copy list catches up with the week (the bug-hunt pass)
 
 **Committed locally 19 August 2026 (overnight session, the closing

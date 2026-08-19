@@ -119,6 +119,9 @@ model LandingPage {
   deliveryPrices LandingDeliveryPrice[]
   visits         StorefrontVisit[]
   insights       LandingInsight[]
+  // LB.14b — the way back. Cascade, like every other thing that is ABOUT a
+  // page: history of a page that no longer exists is history of nothing.
+  versions       LandingPageVersion[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -265,6 +268,83 @@ model LandingSetting {
   updatedAt DateTime @updatedAt
 
   @@index([tenantId])
+}
+
+/* LB.14b — one snapshot of one landing page, taken BEFORE an editing session
+ * changed it. The merchant's way back, and the answer to BUILDER_AUDIT M-02.
+ *
+ * WHEN ONE IS TAKEN is the decision that shaped this table. Not per section
+ * save — eleven routes save separately and that produces a list of eleven
+ * entries for one afternoon, dominated by trivia. Not per publish either —
+ * the mis-save M-02 actually describes happens on a page nobody republishes.
+ * One per EDITING SESSION, taken lazily before the first write of that
+ * session, which is the closest thing to "undo" a save-per-section editor can
+ * honestly offer: it restores the page to how it looked when you sat down.
+ *
+ * An editing session is `sessionId` plus a gap: the same auth session still
+ * counts as the same sitting until it has left this page alone for
+ * SESSION_IDLE_MINUTES. `lastEditAt` carries that clock and is bumped by every
+ * subsequent write, so a merchant editing for three straight hours gets ONE
+ * version, and coming back after lunch starts a new one. Auth sessions live 14
+ * days here, so `sessionId` alone would have meant roughly one version a
+ * fortnight — which is history, not undo.
+ *
+ * `snapshot` is the whole page plus its seven owned relations as Json, for
+ * LB.35's reason on `trackingIntegrationIds`: small, always read whole, never
+ * queried from the other side. It is written by SPREADING the row rather than
+ * naming its columns — the deliberate difference from `duplicate`, whose
+ * hand-written copy list has now gone stale four separate times (LB.20,
+ * LB.35, LB.36, BH.1). A column added tomorrow is captured and restored by
+ * this table with no code change at all; only the RELATION list is enumerated,
+ * and a test asserts that list against the schema so the twelfth relation
+ * cannot be forgotten quietly.
+ *
+ * What is NOT in it: orders, drafts, visits and insights. Those are what
+ * HAPPENED to the page, not what the page IS, and restoring must not rewrite
+ * them — a past order keeps the price it was actually taken at, because
+ * `SalesOrder` snapshots its own `productPrice`/`shippingPrice`/`totalPrice`
+ * at checkout and reads nothing back off the page.
+ */
+model LandingPageVersion {
+  id       String @id @default(cuid())
+  tenantId String
+
+  landingPageId String
+  landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  /* Who was editing, and what it should say in the list. The name is a
+   * SNAPSHOT, not a join: `User` is a platform table with no tenant policy,
+   * and a version list is a tenant-scoped read that should not have to reach
+   * across that boundary to render a row. A renamed user keeps the name they
+   * had when they made the change, which is what an audit line should say. */
+  actorUserId String?
+  actorName   String?
+
+  /* The auth session this sitting belongs to. Nullable so a version taken by
+   * anything other than a signed-in editor is still storable rather than
+   * unrepresentable. */
+  sessionId String?
+
+  /* Why it was taken. "edit" — the ordinary session-start checkpoint. Also
+   * "restore": restoring is itself destructive, so the state it overwrites is
+   * captured first and ALWAYS, bypassing the session rule, so a restore
+   * pressed by mistake is as recoverable as the edit that preceded it.
+   * A String, not an enum, on AN.1's precedent for `sourceChannel`: the value
+   * is displayed, never joined or constrained on. */
+  reason String @default("edit")
+
+  snapshot Json
+
+  /* Last write of this editing session — the clock the session rule reads.
+   * Deliberately separate from createdAt: createdAt says when the page looked
+   * like this, lastEditAt says when the sitting that changed it ended. */
+  lastEditAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  // The list read and the session probe are the same shape: this page,
+  // newest first.
+  @@index([tenantId, landingPageId, createdAt])
 }
 
 // -----------------------------------------------------------------------------
