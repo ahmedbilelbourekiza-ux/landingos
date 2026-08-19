@@ -506,7 +506,17 @@ export function PurchaseForm({
                   <Icon className="size-4" />
                   <span>{method === "DESK" ? "مكتب التوصيل" : "التوصيل للمنزل"}</span>
                   {price !== null && price !== undefined && (
-                    <span className="text-xs tabular-nums opacity-80">
+                    /* Derived inks, not opacity: primaryForeground@80 over the
+                       primary measured 3.39–3.81:1 on three shipped palettes
+                       when active (19 Aug sweep — the LB.55 class again). */
+                    <span
+                      className="text-xs tabular-nums"
+                      style={{
+                        color: active
+                          ? "var(--theme-primary-foreground-muted)"
+                          : "var(--theme-text-muted)",
+                      }}
+                    >
                       {formatPrice(price, currency)}
                     </span>
                   )}

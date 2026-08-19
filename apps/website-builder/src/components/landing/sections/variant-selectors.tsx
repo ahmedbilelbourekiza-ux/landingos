@@ -52,11 +52,18 @@ export function VariantSelectors({
                   {isSelected && <Check className="size-3.5" aria-hidden />}
                   <span>{option.value}</span>
                   {option.extraPrice > 0 && (
+                    /* The softened GUARANTEED foreground, never the background
+                       at partial opacity: background@70 over the primary is an
+                       unguaranteed pair that measured 2.98–4.07:1 on four of
+                       the six shipped palettes (19 Aug sweep — the LB.55 rule
+                       applied to the chip). */
                     <span
-                      className={cn(
-                        "text-xs",
-                        isSelected ? "text-background/70" : "text-muted-foreground",
-                      )}
+                      className={cn("text-xs", !isSelected && "text-muted-foreground")}
+                      style={
+                        isSelected
+                          ? { color: "var(--theme-primary-foreground-muted)" }
+                          : undefined
+                      }
                     >
                       +{formatPrice(option.extraPrice, currency)}
                     </span>

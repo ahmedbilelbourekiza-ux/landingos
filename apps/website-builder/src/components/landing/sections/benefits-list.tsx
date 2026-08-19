@@ -43,7 +43,15 @@ export function BenefitsList({ features = [] }: { features?: LandingFeatureData[
               <span className="min-w-0">
                 <span className="block truncate">{f.title}</span>
                 {f.description && (
-                  <span className="block truncate text-xs font-normal opacity-70">
+                  /* The derived muted ink, not opacity-70 over inherited text:
+                     opacity on theme ink is the LB.53/LB.55 defect class — it
+                     passes the shipped presets (6.57:1 here) and silently
+                     breaks on an extracted theme whose text↔card headroom is
+                     thin. The ink's guarantee travels with the theme. */
+                  <span
+                    className="block truncate text-xs font-normal"
+                    style={{ color: "var(--theme-text-muted)" }}
+                  >
                     {f.description}
                   </span>
                 )}

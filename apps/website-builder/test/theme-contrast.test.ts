@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { mutedPairFor, mixOklabHex } from '../src/lib/landing/color-math.ts';
+import { mutedPairFor, mutedInkOn, mixOklabHex, readableTextOnHex } from '../src/lib/landing/color-math.ts';
 import { DEFAULT_THEME } from '../src/types/theme.ts';
 
 /* =============================================================================
@@ -113,6 +113,82 @@ describe('the muted pair holds AA wherever the template puts it', () => {
     const pair = mutedPairFor({ text: '#111111', background: '#ffffff', muted: 'nope' });
     assert.equal(pair.surface.toLowerCase(), '#ffffff');
     assert.ok(contrast(pair.ink, pair.surface) >= 4.5);
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * The 19 Aug preset sweep — every SHIPPED palette, every pair the template
+ * actually paints. This is the sweep that found the two defects it now pins:
+ * the selected chip's `text-background/70` over the primary (2.98–4.07:1 on
+ * four of six palettes) and the announcement bar's hardcoded white (passes
+ * every current preset; fails by construction on a light extracted primary).
+ * -------------------------------------------------------------------------- */
+
+/** The five seeded presets (prisma/seed-themes.ts) + the default + the live
+ *  extracted palette. Copied as DATA on purpose: seed-themes imports the
+ *  legacy db client, and a preset edit should consciously re-run this sweep. */
+const PRESETS = {
+  luxuryCrimson: { primary: '#991B1B', primaryForeground: '#FFFFFF', accent: '#D4AF37', background: '#FAF9F6', card: '#FFFFFF', text: '#111827', muted: '#F3F4F6' },
+  midnightBlack: { primary: '#111827', primaryForeground: '#FFFFFF', accent: '#F59E0B', background: '#FFFFFF', card: '#FFFFFF', text: '#111827', muted: '#F3F4F6' },
+  modernTech:    { primary: '#DC2626', primaryForeground: '#FFFFFF', accent: '#1F2937', background: '#FFFFFF', card: '#FFFFFF', text: '#111827', muted: '#F3F4F6' },
+  freshGreen:    { primary: '#15803D', primaryForeground: '#FFFFFF', accent: '#FACC15', background: '#F8FFF8', card: '#FFFFFF', text: '#111827', muted: '#F0FDF4' },
+  rosePink:      { primary: '#DB2777', primaryForeground: '#FFFFFF', accent: '#F472B6', background: '#FFF7FB', card: '#FFFFFF', text: '#111827', muted: '#FDF2F8' },
+  default:       { primary: DEFAULT_THEME.primary, primaryForeground: DEFAULT_THEME.primaryForeground, accent: DEFAULT_THEME.accent, background: DEFAULT_THEME.background, card: DEFAULT_THEME.card, text: DEFAULT_THEME.text, muted: DEFAULT_THEME.muted },
+  liveDedima:    { primary: '#8a4223', primaryForeground: '#ffffff', accent: '#c9a227', background: '#f7f3ef', card: '#ffffff', text: '#2b2320', muted: '#7c716a' },
+} as const;
+
+describe('every shipped palette holds AA on every pair the template paints', () => {
+  for (const [name, p] of Object.entries(PRESETS)) {
+    test(`${name}: the full surface matrix`, () => {
+      const pair = mutedPairFor(p);
+      const rows: Array<[string, string, string]> = [
+        ['body text on the canvas', p.text, p.background],
+        ['text on a card', p.text, p.card],
+        ['the buy button pair', p.primaryForeground, p.primary],
+        ['the announcement bar (primaryForeground, not white)', p.primaryForeground, p.primary],
+        ['the discount badge (derived foreground)', readableTextOnHex(p.accent), p.accent],
+        ['muted ink on the muted surface', pair.ink, pair.surface],
+        ['muted ink on the canvas', pair.ink, p.background],
+        ['muted ink on a card (review quotes)', pair.ink, p.card],
+        ['the chip price hint (softened foreground on primary)', mutedInkOn(p.primary, p.primaryForeground), p.primary],
+      ];
+      for (const [what, fg, bg] of rows) {
+        assert.ok(
+          contrast(fg, bg) >= 4.5,
+          `${name} — ${what}: ${contrast(fg, bg).toFixed(2)}:1`,
+        );
+      }
+    });
+  }
+
+  test('the defect the sweep found, reproduced: background@70 over primary fails shipped palettes', () => {
+    // The chip hint's OLD pair. Pinned failing so nobody "simplifies" the fix
+    // back to borrowing the background — these are the shipped palettes, not
+    // adversarial constructions.
+    const failures = (['modernTech', 'freshGreen', 'rosePink'] as const).map((name) => {
+      const p = PRESETS[name];
+      return contrast(mixOklabHex(p.background, p.primary, 0.7), p.primary);
+    });
+    for (const ratio of failures) assert.ok(ratio < 4.5, `expected the old pair to fail, got ${ratio.toFixed(2)}`);
+  });
+});
+
+describe('mutedInkOn — the softened half of a guaranteed pair', () => {
+  test('softens where headroom exists, and the soft ink is not the full ink', () => {
+    const soft = mutedInkOn('#111827', '#FFFFFF'); // midnightBlack's button pair, 17.7:1
+    assert.notEqual(soft.toLowerCase(), '#ffffff');
+    assert.ok(contrast(soft, '#111827') >= 4.5);
+  });
+
+  test('a pair that barely clears AA degrades to (near) full ink, not below it', () => {
+    // rosePink's button pair is 4.60:1 — almost no budget to spend.
+    const soft = mutedInkOn('#DB2777', '#FFFFFF');
+    assert.ok(contrast(soft, '#DB2777') >= 4.5, contrast(soft, '#DB2777').toFixed(2));
+  });
+
+  test('malformed input degrades to a readable constant, not a crash', () => {
+    assert.match(mutedInkOn('nope', '#ffffff'), /^#[0-9a-f]{6}$/i);
+    assert.ok(contrast(mutedInkOn('#111827', 'nope'), '#111827') >= 4.5);
   });
 });
 

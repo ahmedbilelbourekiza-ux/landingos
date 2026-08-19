@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { LandingThemeData } from "@/types/theme";
 import { DEFAULT_THEME } from "@/types/theme";
-import { mutedPairFor, readableTextOnHex } from "@/lib/landing/color-math";
+import { mutedPairFor, mutedInkOn, readableTextOnHex } from "@/lib/landing/color-math";
 
 const ThemeContext = React.createContext<LandingThemeData>(DEFAULT_THEME);
 
@@ -79,6 +79,11 @@ export function ThemeProvider({
   const style: React.CSSProperties = {
     "--theme-primary": theme.primary,
     "--theme-primary-foreground": theme.primaryForeground,
+    /* De-emphasized text ON the primary surface (the selected variant chip's
+     * price hint). The guaranteed foreground softened by mutedInkOn — never
+     * the background borrowed at partial opacity, which measured 2.98–4.07:1
+     * on four of the six shipped palettes (19 Aug sweep). */
+    "--theme-primary-foreground-muted": mutedInkOn(theme.primary, theme.primaryForeground),
     "--theme-accent": theme.accent,
     /* Text ON the accent (the discount badge). The badge hardcoded
      * `text-white`, which fails WCAG the moment a theme's accent is light —

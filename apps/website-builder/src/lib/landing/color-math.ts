@@ -186,3 +186,33 @@ export function readableTextOnHex(surface: string): string {
   if (!/^#[0-9a-fA-F]{6}$/.test(surface)) return "#ffffff";
   return rgbToHex(readableOn(parseHex(surface)));
 }
+
+/**
+ * A SOFTENED ink for text that sits on `surface` beside stronger text wearing
+ * `ink` full-strength — the de-emphasized half of a pair the theme contract
+ * already guarantees (the selected variant chip's "+price" hint beside its
+ * label, both on the primary surface).
+ *
+ * The ink half of `mutedPairFor`'s rule, generalized to any guaranteed pair:
+ * start at the 78% mix toward the surface and STRENGTHEN back toward the full
+ * ink until AA holds on that surface. Terminates at the full ink, whose
+ * contrast the theme contract itself guarantees — so "softened" can never
+ * mean "unreadable", it degrades to plain full-strength instead.
+ *
+ * Found by the 19 Aug preset sweep: the chip hint was `text-background/70`
+ * over the primary — an UNGUARANTEED pair that measured 2.98–4.07:1 on four
+ * of the six shipped palettes. Softening the guaranteed ink instead of
+ * borrowing the background is the same move LB.55 made for muted text.
+ */
+export function mutedInkOn(surface: string, ink: string): string {
+  if (!HEX_RE.test(surface) || !HEX_RE.test(ink)) {
+    return readableTextOnHex(HEX_RE.test(surface) ? surface : "#000000");
+  }
+  let weight = 0.78;
+  let out = mixOklabHex(ink, surface, weight);
+  while (weight < 1 && contrastRatio(parseHex(out), parseHex(surface)) < 4.5) {
+    weight = Math.min(1, weight + 0.02);
+    out = mixOklabHex(ink, surface, weight);
+  }
+  return out;
+}

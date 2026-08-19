@@ -10,6 +10,80 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## LB.56 — the contrast sweep LB.53 and LB.55 kept promising: every palette, every surface, one arithmetic
+
+**Committed locally 19 August 2026 (overnight session) — NOT pushed, NOT
+deployed. No migration.** LB.53 fixed the price block, LB.55 the muted
+pair — both found their defect bigger than its first scope once measured.
+This pass measured EVERY pair the storefront template paints against
+EVERY shipped palette (the five seeded presets + the default + the live
+dedima extraction), with the app's own `color-math` as the instrument,
+and swept every storefront surface for hardcoded colours and
+opacity-thinned theme ink.
+
+**Found and fixed — two failures measured on shipped palettes, two
+defects-by-class:**
+
+- **The selected variant chip's price hint** was `text-background/70`
+  over the primary — an unguaranteed pair that measured **2.98–4.07:1 on
+  four of the six shipped palettes** (Rose Pink worst). Now
+  `--theme-primary-foreground-muted`: the GUARANTEED button foreground,
+  softened by the new `mutedInkOn` (color-math) — LB.55's
+  strengthen-until-AA ink loop generalized to any guaranteed pair, so it
+  terminates at full foreground and "softened" can never mean
+  "unreadable".
+- **The shipping-method toggle's price** wore `opacity-80` — active,
+  that is primaryForeground@80 over primary: **3.39–3.81:1 on three of
+  six shipped palettes**. Now the same derived inks
+  (`--theme-primary-foreground-muted` active, `--theme-text-muted`
+  inactive).
+- **The announcement bar hardcoded `text-white`** over
+  `--theme-primary`. Passes every CURRENT preset (all ship dark
+  primaries) — but it is the LB.51 badge defect one component over: an
+  extracted theme with a light primary gets a near-black
+  `primaryForeground` chosen for it and the bar would have stayed white.
+  Now `--theme-primary-foreground`, the contract pair.
+- **The benefit description** wore `opacity-70` over inherited theme ink
+  on a card — passes the presets at 6.57:1, but opacity-on-ink is
+  exactly the LB.53/LB.55 class and its guarantee does not travel to
+  extracted themes. Now `--theme-text-muted`.
+
+**Measured clean, for the record:** text↔background 13.9–17.7 across all
+palettes · text↔card 15.4–17.7 · the button pair 4.60–17.7 (Rose Pink is
+the thinnest at 4.60 — above AA, no action) · the derived badge
+foreground 7.13–14.7 · muted ink on surface/background/card 5.26–10.1.
+After the fixes, **zero hardcoded colour classes and zero opacity-on-ink
+remain anywhere under `components/landing` or the storefront route
+tree** (the greps are re-runnable; `opacity-0` animation states and the
+gallery's photo-overlay pill excepted, next item).
+
+**Reviewed and left, as questions rather than silent skips:**
+1. **The floating WhatsApp button** (white glyph on brand green
+   `#25D366`, ≈1.9:1) — deliberate per its own comment ("recognisable or
+   it is pointless"), arguably under WCAG's brand/logotype exemption.
+   Change it and it stops being WhatsApp; keep it and it is technically
+   sub-AA non-text. Your call; left as shipped.
+2. **Decorative accent icons** (the truck on the announcement bar, the
+   benefit icons) are `aria-hidden` beside text that carries the meaning
+   — exempt as decoration (gold-on-crimson ≈2.9:1 would fail were they
+   load-bearing). If any icon ever becomes the sole carrier of meaning
+   it needs the badge's derived-foreground treatment.
+3. **The gallery's image-count pill** sits over arbitrary PHOTOS
+   (`bg-background/80` + backdrop-blur + `text-foreground`) — no
+   arithmetic can guarantee text over a photograph; the tint+blur is the
+   standard mitigation and was left as is.
+
+- **Files:** `lib/landing/color-math.ts` (`mutedInkOn`) ·
+  `components/landing/theme-provider.tsx` (the new variable) ·
+  `sections/variant-selectors.tsx` · `sections/purchase-form.tsx` ·
+  `sections/announcement-bar.tsx` · `sections/benefits-list.tsx` ·
+  `test/theme-contrast.test.ts`.
+- **Suites at this tree:** theme-contrast **21** (was 10 — the per-preset
+  nine-pair matrix, the reproduced old-pair failure pinned so the fix
+  cannot be "simplified" back, and `mutedInkOn`'s three contracts) ·
+  builder-sections 75 · storefront 95 — all green against the rebuilt
+  standalone server.
+
 ## BH.3 — the behavior numbers learn to explain themselves, without ever seeing a person
 
 **Committed locally 19 August 2026 (overnight session, immediately after
