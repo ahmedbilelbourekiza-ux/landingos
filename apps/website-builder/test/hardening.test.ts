@@ -255,13 +255,25 @@ describe('a page can be duplicated whole (LB.6)', { skip }, () => {
         select: { id: true },
       }),
     );
+    // The THIRD and FOURTH drifts, caught the night their columns landed
+    // (19 Aug): a page's brand (LB.36) and its behavior opt-in (BH.1).
+    const brand = await withTenant(tenantId, (tx) =>
+      (tx as any).brand.create({
+        data: { tenantId, name: 'Dup Brand', slug: `dup-brand-${stamp}` },
+        select: { id: true },
+      }),
+    );
     await withTenant(tenantId, async (tx) => {
       await (tx as any).landingDeliveryPrice.create({
         data: { tenantId, landingPageId: pageId, wilayaId: wilaya.id, homePrice: 900, deskPrice: 450 },
       });
       await (tx as any).landingPage.update({
         where: { id: pageId },
-        data: { trackingIntegrationIds: [integration.id] },
+        data: { trackingIntegrationIds: [integration.id], brandId: brand.id },
+      });
+      await (tx as any).landingSetting.updateMany({
+        where: { landingPageId: pageId },
+        data: { behaviorTracking: true },
       });
     });
 
@@ -271,7 +283,7 @@ describe('a page can be duplicated whole (LB.6)', { skip }, () => {
     const copy = await withTenant(tenantId, (tx) =>
       (tx as any).landingPage.findUnique({
         where: { id: r.body.data.id },
-        include: { deliveryPrices: true },
+        include: { deliveryPrices: true, setting: true },
       }),
     );
 
@@ -282,6 +294,12 @@ describe('a page can be duplicated whole (LB.6)', { skip }, () => {
       copy.trackingIntegrationIds,
       [integration.id],
       'the copy inherited the whole tenant set instead of the page selection',
+    );
+    assert.equal(copy.brandId, brand.id, 'the copy silently sells under the STORE name, not its brand');
+    assert.equal(
+      copy.setting.behaviorTracking,
+      true,
+      'the copy silently stopped measuring — the merchant opted the page in',
     );
   });
 });

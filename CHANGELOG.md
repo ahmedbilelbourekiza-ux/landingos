@@ -10,6 +10,48 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## LB.6.d — the duplicate's copy list catches up with the week (the bug-hunt pass)
+
+**Committed locally 19 August 2026 (overnight session, the closing
+bug-hunt over the week's features) — NOT pushed, NOT deployed. No
+migration.** BUILDER_AUDIT's method: drive the app as a real merchant AND
+read the code.
+
+**Found and fixed — the drift `duplicate/route.ts`'s own comment predicts,
+in BOTH of the week's page-growing slices:**
+- **`brandId` (LB.36, hours old):** not in the copy list — a duplicate of
+  a branded page silently sold under the STORE's name.
+- **`setting.behaviorTracking` (BH.1, a day old):** not in the setting
+  copy — a duplicate of an opted-in page silently stopped measuring.
+Both now copy; the hardening suite's grew-after-LB.6 drift test pins both
+(it had pinned exactly this class for LB.20 and LB.35).
+
+**Driven as the demo merchant (zero-to-little data), all correct:** the
+Traffic screen renders totals/behavior/insights sections; the create
+screen shows the no-provider notice (and correctly no usage line — usage
+renders only beside a working panel); the ERP AI screen carries the AQ.1
+usage card; the Brands screen renders its empty state and create form.
+
+**Read and cleared:** `faqOpenedIds` is zod-enforced as an array on the
+write path, so the insight-summary's `jsonb_array_elements_text` cannot
+meet a scalar; the behavior table's percentage denominators are grouped
+into existence (measured > 0 by construction); the quota's reservation
+rolls back with the wrapper transaction on a handler throw.
+
+**Noted as a small proposal, not built (4am rule):** the Analyze button
+renders only for pages with MEASURED behavior (the insights section hangs
+off `behaviorByPage`), but the analyze API itself gates on VIEWS — so an
+AN.1-only page with rich traffic and no behavior opt-in is analyzable by
+API yet unreachable from the screen. Worth one decision: offer the button
+per page-with-views (recommended — the summary's behavior half is
+honestly null), or keep analysis a behavior-page feature.
+
+- **Files:** `api/builder/landings/[id]/duplicate/route.ts` ·
+  `test/hardening.test.ts`.
+- **Suites:** hardening **13** green at the final tree (one transient
+  Neon red on the first run, clean on the rerun — the zcode-dev-loop
+  rule).
+
 ## LB.14c.b — the hosting step stops being a manual secret: Render domain automation, built stubbed
 
 **Committed locally 19 August 2026 (overnight session) — NOT pushed, NOT

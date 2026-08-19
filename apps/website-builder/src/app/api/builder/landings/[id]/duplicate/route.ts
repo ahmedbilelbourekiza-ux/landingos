@@ -89,6 +89,10 @@ export const POST = tenantRoute<Params>("website-builder:pages:write", async ({ 
       seoDescription: source.seoDescription,
       categoryId: source.categoryId,
       themeId: source.themeId,
+      // LB.36 — the drift this route's own comment predicts, caught the same
+      // night the column landed: a copy without it silently sells under the
+      // STORE's name instead of the brand the original sells under.
+      brandId: source.brandId,
       // `?? undefined` rather than `?? null`: Prisma reads an explicit null on
       // a Json column as the JSON value `null`, which is a THIRD state beside
       // "absent" and "a list". Absent is what this column's own comment calls
@@ -119,6 +123,10 @@ export const POST = tenantRoute<Params>("website-builder:pages:write", async ({ 
                 orderFormConfig: source.setting.orderFormConfig ?? undefined,
                 homeDeliveryEnabled: source.setting.homeDeliveryEnabled,
                 stopDeskEnabled: source.setting.stopDeskEnabled,
+                // BH.1 — same drift, one day old: the merchant's own per-page
+                // opt-in is a display-section choice like the five above it,
+                // and a copy dropping it silently stops measuring.
+                behaviorTracking: source.setting.behaviorTracking,
               },
             },
           }
