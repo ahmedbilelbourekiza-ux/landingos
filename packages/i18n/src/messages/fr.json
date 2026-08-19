@@ -18,7 +18,8 @@
       "orders": "Commandes",
       "abandoned": "Paniers abandonnés",
       "analytics": "Trafic",
-      "deliveryPrices": "Tarifs de livraison"
+      "deliveryPrices": "Tarifs de livraison",
+      "brands": "Marques"
     },
     "navGroup": {
       "content": "Contenu",
@@ -429,7 +430,21 @@
       "noOverrides": "Aucune exception — ce produit est livré aux tarifs de la société partout.",
       "overrideHome": "Domicile",
       "overrideDesk": "Bureau",
-      "removeOverride": "Retirer cette wilaya"
+      "removeOverride": "Retirer cette wilaya",
+      "brandLabel": "Marque",
+      "brandHint": "Cette page vend sous le nom de la marque au lieu de celui de la boutique.",
+      "noBrand": "Sans marque — utiliser le nom de la boutique"
+    },
+    "brands": {
+      "subtitle": "Identités publiques sous lesquelles vos pages peuvent vendre. Une page avec une marque affiche le nom de la marque partout, à la place de celui de la boutique.",
+      "brand": "Marque",
+      "create": "Créer une marque",
+      "name": "Nom",
+      "slug": "Adresse",
+      "categories": "Catégories",
+      "editCategories": "Catégories…",
+      "empty": "Aucune marque pour l'instant. Une boutique sans marques fonctionne exactement comme avant.",
+      "deleteHint": "Supprimer une marque ne supprime jamais de pages — elles reprennent le nom de la boutique."
     }
   },
   "erp": {

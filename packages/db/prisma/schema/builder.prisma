@@ -100,6 +100,11 @@ model LandingPage {
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   themeId    String?
   theme      LandingTheme? @relation(fields: [themeId], references: [id], onDelete: SetNull)
+  // LB.36 — the public identity this page sells under. SetNull, the LB.34
+  // argument: a page cascades into its orders, so nothing that can reach a
+  // page may delete one.
+  brandId String?
+  brand   Brand? @relation(fields: [brandId], references: [id], onDelete: SetNull)
 
   media       LandingMedia[]
   variants    LandingVariant[]
@@ -589,6 +594,55 @@ model StorefrontVisit {
   @@index([tenantId, landingPageId, createdAt])
 }
 
+// LB.36 — a brand: a PUBLIC identity a page can sell under, replacing the
+// store's name everywhere the page (and its order confirmation) shows one.
+// A row, not free text, because customers see it: it needs a stable slug and
+// an identity that survives the merchant retyping its name (the LB.36
+// scoping's deciding axis). `CatalogProduct.brand` (ERP free text) is a
+// different thing — internal classification — and stays untouched, as the
+// scoping recorded.
+model Brand {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name        String
+  // Reserved for a public listing (/[tenant]/brand/<slug>) — not built yet;
+  // unique per tenant from day one so claiming it later is not a migration.
+  slug        String
+  logo        String?
+  description String?
+  isVisible   Boolean @default(true)
+
+  // MANY categories per brand (the user's decision on the proposal, which
+  // had a single categoryId) — a join table, not a column.
+  categories   BrandCategory[]
+  landingPages LandingPage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, name])
+}
+
+// The brand↔category link rows. Cascade from BOTH ends deliberately: deleting
+// a brand or a category deletes only the LINK — pages keep SetNull semantics
+// on their own brandId, and categories are never reachable-for-deletion
+// through a brand (the LB.34 rule again, applied to the join).
+model BrandCategory {
+  id       String @id @default(cuid())
+  tenantId String
+
+  brandId String
+  brand   Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, brandId, categoryId])
+  @@index([tenantId, categoryId])
+}
+
 // BH.3 — one stored AI analysis of one landing page's aggregates. The INPUT
 // summary is persisted beside the output so a merchant (and any future eval)
 // can see what the advice rested on after the raw visit rows expire (30-day
@@ -633,6 +687,8 @@ model Category {
   isVisible   Boolean @default(true)
 
   landingPages LandingPage[]
+  // LB.36 — the brands that sell in this category (join rows; see BrandCategory).
+  brandLinks   BrandCategory[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

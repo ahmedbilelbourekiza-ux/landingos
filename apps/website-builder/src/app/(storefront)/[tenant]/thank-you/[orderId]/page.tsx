@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -39,10 +40,52 @@ export const dynamic = "force-dynamic";
  * `LB.14a` already refuses to let any shared cache hold this response. This is
  * the same decision one layer out, and the two belong together: a page nobody
  * may cache is a page nobody may index.
+ *
+ * LB.36 — the ORDER CONFIRMATION wears the brand of the page it came from
+ * (the user's "everywhere" decision): when the ordered page has a brand, the
+ * tab title is the brand's name instead of the layout's store name. The
+ * function form exists only for that; noindex is restated unchanged. The
+ * order load is cache()d (LB.51's rule) so metadata and body share ONE query.
  */
-export const metadata: Metadata = {
-  robots: { index: false, follow: false },
-};
+const loadOrder = cache(async (tenantId: string, orderId: string): Promise<any> =>
+  withTenant(tenantId, (db) =>
+    (db as any).salesOrder.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        customerName: true,
+        wilaya: true,
+        baladia: true,
+        quantity: true,
+        totalPrice: true,
+        createdAt: true,
+        landingPage: {
+          select: {
+            id: true, title: true, slug: true, currency: true, theme: true,
+            brand: { select: { name: true } },
+          },
+        },
+      },
+    }),
+  ),
+);
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ tenant: string; orderId: string }>;
+}): Promise<Metadata> {
+  const noindex: Metadata = { robots: { index: false, follow: false } };
+  const { tenant: tenantSlug, orderId } = await params;
+  const tenant = await resolveStorefrontTenant(tenantSlug);
+  if (!tenant) return noindex;
+  const order = await loadOrder(tenant.id, orderId);
+  const brandName = order?.landingPage?.brand?.name;
+  return {
+    ...noindex,
+    ...(brandName ? { title: { absolute: brandName } } : {}),
+  };
+}
 
 export default async function ThankYouPage({
   params,
@@ -55,23 +98,7 @@ export default async function ThankYouPage({
 
   const locale = isLocale(tenant.locale) ? tenant.locale : DEFAULT_LOCALE;
 
-  const order = await withTenant(tenant.id, (db) =>
-    (db as any).salesOrder.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        customerName: true,
-        wilaya: true,
-        baladia: true,
-        quantity: true,
-        totalPrice: true,
-        createdAt: true,
-        landingPage: {
-          select: { id: true, title: true, slug: true, currency: true, theme: true },
-        },
-      },
-    }),
-  );
+  const order = await loadOrder(tenant.id, orderId);
 
   if (!order) notFound();
 

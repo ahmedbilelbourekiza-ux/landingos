@@ -180,6 +180,7 @@ export function toPreviewState(page: LandingWithRelations): PreviewState {
       announcement: page.announcement ?? "",
       categoryId: page.categoryId,
       themeId: page.themeId,
+      brandId: (page as any).brandId ?? null,
     },
     pricing: {
       price: page.price.toNumber(),

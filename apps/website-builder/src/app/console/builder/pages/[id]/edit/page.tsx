@@ -5,7 +5,7 @@ import { can } from "@landingos/auth";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { primaryPublicOrigin, publicPagePath } from "@/lib/console/public-page-url";
-import { resolveStoreName } from "@/lib/storefront/store-identity";
+import { resolveDisplayName } from "@/lib/storefront/store-identity";
 import { BuilderApiProvider } from "@/lib/builder/api-base";
 import { StorefrontApiProvider } from "@/lib/storefront/api-base";
 import { toPreviewState } from "@/lib/landing/mappers";
@@ -51,6 +51,9 @@ export default async function ConsoleEditLandingPage({
       faqs: { orderBy: { displayOrder: "asc" } },
       setting: true,
       theme: true,
+      // LB.36 — the preview wears the page's brand exactly as the public page
+      // will, so what the editor shows is what the customer gets.
+      brand: { select: { id: true, name: true, logo: true } },
     },
   });
 
@@ -108,9 +111,12 @@ export default async function ConsoleEditLandingPage({
         landingSlug={page.slug}
         publicPath={publicPagePath(publicOrigin, session.tenant!.slug, page.slug)}
         store={{
-          name: resolveStoreName(settings?.storeName, session.tenant!.name),
+          // LB.36 — the page's brand replaces the store name in the preview
+          // too, same seam as the public page (SAVED brand; the picker's
+          // unsaved choice shows on save, like the other identity fields).
+          name: resolveDisplayName(page.brand?.name, settings?.storeName, session.tenant!.name),
           description: settings?.storeDescription ?? null,
-          logo: settings?.logo ?? null,
+          logo: page.brand?.logo ?? settings?.logo ?? null,
           facebook: settings?.facebook ?? null,
           instagram: settings?.instagram ?? null,
           tiktok: settings?.tiktok ?? null,
@@ -120,7 +126,11 @@ export default async function ConsoleEditLandingPage({
           // way out of the editor.
           homePath: null,
         }}
-        initialPreview={toPreviewState(page)}
+        initialPreview={toPreviewState(
+          // `as any`: mappers types against the LEGACY generated client,
+          // which has no brand relation (the two-clients drift).
+          page as any,
+        )}
         initialSeo={{ seoTitle: page.seoTitle ?? "", seoDescription: page.seoDescription ?? "" }}
         trackingIntegrations={integrations}
         initialTracking={{ selected: selectedTracking }}

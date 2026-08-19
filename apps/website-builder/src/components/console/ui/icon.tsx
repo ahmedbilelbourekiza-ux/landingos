@@ -2,7 +2,7 @@ import {
   BarChart3, BellRing, Box, Briefcase, Calculator, ChevronDown, ChevronsUpDown,
   ClipboardList, FileText, FolderOpen, LayoutDashboard, LayoutTemplate, Layers,
   LineChart, Package, Palette, PhoneCall, PhoneMissed, Route, Settings, Sparkles,
-  Store, Truck, UserCog, Users, CircleDashed,
+  Store, Tag, Truck, UserCog, Users, CircleDashed,
   type LucideIcon,
 } from "lucide-react";
 
@@ -53,6 +53,7 @@ const ICONS: Record<string, LucideIcon> = {
   settings: Settings,
   sparkles: Sparkles,
   store: Store,
+  tag: Tag,
   truck: Truck,
   "user-cog": UserCog,
   users: Users,

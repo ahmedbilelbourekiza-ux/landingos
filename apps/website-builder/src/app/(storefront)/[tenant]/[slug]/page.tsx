@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import { withTenant } from "@landingos/db";
 
 import { resolveStorefrontTenant, storefrontHref } from "@/lib/storefront/resolve-tenant";
-import { resolveStoreName } from "@/lib/storefront/store-identity";
+import { resolveDisplayName } from "@/lib/storefront/store-identity";
 import { storefrontStoreSettings } from "@/lib/storefront/store-settings";
 import {
   activeBrowserIntegrationRows,
@@ -61,6 +61,8 @@ const load = cache(async (tenantSlug: string, pageSlug: string) => {
           faqs: { orderBy: { displayOrder: "asc" } },
           setting: true,
           theme: true,
+          // LB.36 — the identity this page sells under, when it has one.
+          brand: { select: { id: true, name: true, logo: true } },
         },
       }),
       // The pixels this page may fire (LB.35). Same transaction, one query —
@@ -82,10 +84,15 @@ const load = cache(async (tenantSlug: string, pageSlug: string) => {
   // measured. `resolveStoreName` also absorbs the other half of the leak: the
   // `storeName` column is NOT NULL defaulting to the platform's own name, so
   // the previous `?? tenant.name` could never fire.
+  /* LB.36 — the page's BRAND replaces the store name everywhere this page
+   * (and its metadata) shows one; the logo follows the same rule with the
+   * store's as its fallback, per the proposal. `page` may be null here (the
+   * 404 path below) — the identity of a page that does not exist is moot. */
+  const brand = page?.brand ?? null;
   const storeData = {
-    name: resolveStoreName(store?.storeName, tenant.name),
+    name: resolveDisplayName(brand?.name, store?.storeName, tenant.name),
     description: store?.storeDescription ?? null,
-    logo: store?.logo ?? null,
+    logo: brand?.logo ?? store?.logo ?? null,
     facebook: store?.facebook ?? null,
     instagram: store?.instagram ?? null,
     tiktok: store?.tiktok ?? null,
@@ -134,13 +141,24 @@ export async function generateMetadata({
   const path = storefrontHref(found.tenant, `/${found.page.slug}`);
 
   return {
-    title,
+    /* LB.36 — a branded page's <title> ends in the BRAND's name, not the
+     * store's. The layout's `%s · ${storeName}` template would append the
+     * store, so a branded page takes the `absolute` form — the one form that
+     * ends template resolution upward (the layout's own documented
+     * mechanism). An unbranded page keeps the plain string and the layout's
+     * template exactly as before. */
+    title: found.page.brand
+      ? { absolute: `${title} · ${found.page.brand.name}` }
+      : title,
     description,
     // A storefront IS meant to be indexed, unlike the console, which sets
     // noindex in the root layout. The storefront layout now states this for
     // the whole subtree; kept here because this page's own answer should not
     // depend on a parent for something this consequential.
     robots: { index: true, follow: true },
+    /* LB.36's "favicon context": a branded page's tab icon is the brand's
+     * logo when it has one; absent, the layout's store favicon stands. */
+    ...(found.page.brand?.logo ? { icons: { icon: found.page.brand.logo } } : {}),
     alternates: { canonical: path },
     openGraph: {
       title,

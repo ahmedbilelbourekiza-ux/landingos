@@ -17,6 +17,8 @@ const Body = z.object({
   ctaButtonText: z.string().trim().max(120).optional().nullable(),
   categoryId: z.string().optional().nullable(),
   themeId: z.string().optional().nullable(),
+  // LB.36 — null clears the brand; the page falls back to the store identity.
+  brandId: z.string().optional().nullable(),
   // The SEO columns: read by the public page's generateMetadata since the
   // port, writable nowhere until LB.6. Length caps are storage bounds; the
   // editor advises on display budgets.
@@ -47,11 +49,11 @@ export const PATCH = tenantRoute<Params>("website-builder:pages:write", async ({
   // A referenced category or theme must belong to this tenant. The binding
   // makes another tenant's id unresolvable, so this rejects rather than
   // silently attaching to nothing.
-  for (const [field, model] of [["categoryId", "category"], ["themeId", "landingTheme"]] as const) {
+  for (const [field, model] of [["categoryId", "category"], ["themeId", "landingTheme"], ["brandId", "brand"]] as const) {
     const value = (parsed.data as any)[field];
     if (value) {
       const found = await (db as any)[model].findUnique({ where: { id: value }, select: { id: true } });
-      if (!found) return apiError(422, "INVALID_REFERENCE", `That ${model === "category" ? "category" : "theme"} does not exist.`);
+      if (!found) return apiError(422, "INVALID_REFERENCE", `That ${model === "landingTheme" ? "theme" : model} does not exist.`);
     }
   }
 

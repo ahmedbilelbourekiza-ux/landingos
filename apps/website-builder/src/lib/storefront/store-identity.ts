@@ -1,4 +1,7 @@
-import { siteConfig } from "@/config/site";
+// Relative, not `@/config/site`: the alias only resolves inside Next's build,
+// and LB.36's suite imports this module from bare node (the ai-complete rule
+// — a pure resolver must be assertable without a server).
+import { siteConfig } from "../../config/site.ts";
 
 /* =============================================================================
  * Whose name a storefront wears.
@@ -34,4 +37,22 @@ export function resolveStoreName(
   // after the platform, so a match means the default was never replaced.
   if (trimmed.toLowerCase() === PLACEHOLDER_STORE_NAME.toLowerCase()) return tenantName;
   return trimmed;
+}
+
+/**
+ * LB.36 — whose name a PAGE wears: its brand's, when it has one; the store's
+ * resolution otherwise. One step in front of `resolveStoreName`, not a second
+ * fallback chain — the property LB.31 bought and this must not give back.
+ * The decision (19 Aug): a brand REPLACES the store name everywhere the page
+ * shows one — header, footer, <title>, og:site_name, the order confirmation.
+ * Store-level pages (home, category) have no page and therefore no brand.
+ */
+export function resolveDisplayName(
+  brandName: string | null | undefined,
+  storeName: string | null | undefined,
+  tenantName: string,
+): string {
+  const brand = brandName?.trim();
+  if (brand) return brand;
+  return resolveStoreName(storeName, tenantName);
 }

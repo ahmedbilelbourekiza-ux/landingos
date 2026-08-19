@@ -40,6 +40,8 @@ export const websiteBuilder: ProductManifest = {
     { id: 'overview', titleKey: 'builder.nav.overview', path: '', icon: 'layout-dashboard' },
     { id: 'pages', titleKey: 'builder.nav.pages', path: 'pages', icon: 'file-text', group: 'builder.navGroup.content' },
     { id: 'categories', titleKey: 'builder.nav.categories', path: 'categories', icon: 'folder-open', group: 'builder.navGroup.content' },
+    // LB.36 — brands: the public identities pages sell under.
+    { id: 'brands', titleKey: 'builder.nav.brands', path: 'brands', icon: 'tag', group: 'builder.navGroup.content' },
     { id: 'templates', titleKey: 'builder.nav.templates', path: 'templates', icon: 'palette', group: 'builder.navGroup.content' },
     { id: 'orders', titleKey: 'builder.nav.orders', path: 'orders', icon: 'package', permission: 'website-builder:orders:read', group: 'builder.navGroup.selling' },
     { id: 'abandoned', titleKey: 'builder.nav.abandoned', path: 'abandoned', icon: 'phone-missed', permission: 'website-builder:orders:read', group: 'builder.navGroup.selling' },

@@ -10,6 +10,75 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## LB.36 — a page learns to sell under a brand's name, everywhere it shows one
+
+**Committed locally 19 August 2026 (overnight session) — NOT pushed, NOT
+deployed. ⚠ Schema: TWO new tables `Brand` + `BrandCategory` and one
+nullable `LandingPage.brandId`. Applied to DEV in full (`ep-gentle-sky`
+confirmed; dev `apply-rls` now **54/54**). Production remains the user's
+separate approval; the HANDOFF §1 tonight-note covers these tables too.**
+
+Built to the LB.36 scoping's proposal with the user's two decisions
+applied: **(1) a brand REPLACES the store name EVERYWHERE the page shows
+one** — not just the product header — and **(2) a brand links to MANY
+categories** (a join table, not the proposed single `categoryId`).
+
+- **The schema is the proposal's otherwise:** a ROW, not free text (a
+  customer-facing identity needs a slug and survives a rename);
+  `onDelete: SetNull` from `LandingPage.brandId` (the LB.34 argument — a
+  page cascades into its orders, so nothing reaching a page may delete
+  one); the join rows cascade from BOTH ends, so deleting a brand or a
+  category deletes only the LINK. The `@@unique([tenantId, slug])` is
+  claimed from day one so the optional public listing
+  (`/[tenant]/brand/<slug>` — still NOT built, deliberately) is not a
+  migration later. `CatalogProduct.brand` (ERP free text) stays
+  untouched, as the scoping recorded.
+- **ONE resolution seam, extending `resolveStoreName`:**
+  `resolveDisplayName(brandName, storeName, tenantName)` — brand wins,
+  else LB.31's exact store resolution, placeholder rule included. The
+  fallback chain stays one function (the property LB.31 bought).
+- **"Everywhere", concretely:** the storefront page's header and footer
+  (via `storeData.name` — SiteNav/SiteFooter needed no change), the
+  page's `<title>` (the `absolute` form ends the layout's
+  `%s · store` template), `og:site_name`, the **favicon context** (a
+  branded page's tab icon is the brand's logo when set; the store
+  favicon stands otherwise), the **order confirmation** (the thank-you
+  page's `<title>` becomes the brand of the ordered page — its order
+  load is now `cache()`d so metadata and body share one query), and the
+  **editor preview** (same seam, saved brand). Store-level pages (home,
+  category) have no page and therefore no brand — the store keeps
+  working as a general shop exactly as today.
+- **Console:** a Brands screen (`/console/builder/brands`, the
+  Categories screen's shape + a per-row category-link editor with SET
+  semantics), `brands` nav item (manifest + the `tag` icon), a brand
+  picker in the editor's General section that renders ONLY when the
+  tenant has brands (a merchant who never made one keeps their exact
+  screen), and `brandId` on the general save route with the same
+  tenant-owned reference check as category/theme. i18n ×3.
+- **One route defect found by the suite while building:** a PATCH
+  carrying ONLY `categoryIds` hit `updateMany` with empty data, which
+  matches nothing and 404'd a real brand — the existence check now asks
+  directly on that path. Also: `store-identity.ts` moved to a relative
+  import so the pure resolver is assertable from bare node (the
+  ai-complete rule).
+- **Files:** `packages/db/prisma/schema/builder.prisma` ·
+  `packages/product-registry/src/manifests.ts` ·
+  `lib/storefront/store-identity.ts` · storefront `[slug]/page.tsx` +
+  `thank-you/[orderId]/page.tsx` · `api/builder/brands{,/[id]}/route.ts`
+  (new) · `api/builder/landings/[id]/general/route.ts` ·
+  `console/builder/(shell)/brands/page.tsx` (new) ·
+  `brand-create-form.tsx` + `brand-row-actions.tsx` (new) ·
+  `general-section.tsx` + `types/preview` + `mappers.ts` ·
+  `console/ui/icon.tsx` · edit page · catalogs ×3 ·
+  `test/builder-brands.test.ts` (new).
+- **Suites at this tree:** builder-brands **13** (new — the pure seam,
+  CRUD + join set-semantics, the SetNull/Cascade shape with the sales
+  history untouched, the ghost-reference refusal, and the brand actually
+  REPLACING the name on the public page, the confirmation and the
+  screen) · builder-api 49 · builder-sections 75 · console-shell 20 ·
+  storefront 95 · product-registry 36 · i18n 22 — all green against the
+  rebuilt standalone server on dev.
+
 ## LB.56 — the contrast sweep LB.53 and LB.55 kept promising: every palette, every surface, one arithmetic
 
 **Committed locally 19 August 2026 (overnight session) — NOT pushed, NOT

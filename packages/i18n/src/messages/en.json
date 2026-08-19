@@ -18,7 +18,8 @@
       "orders": "Orders",
       "abandoned": "Abandoned carts",
       "analytics": "Traffic",
-      "deliveryPrices": "Delivery prices"
+      "deliveryPrices": "Delivery prices",
+      "brands": "Brands"
     },
     "navGroup": {
       "content": "Content",
@@ -429,7 +430,21 @@
       "noOverrides": "No exceptions — this product ships at the company's prices everywhere.",
       "overrideHome": "Home",
       "overrideDesk": "Desk",
-      "removeOverride": "Remove this wilaya"
+      "removeOverride": "Remove this wilaya",
+      "brandLabel": "Brand",
+      "brandHint": "This page sells under the brand's name instead of the store's.",
+      "noBrand": "No brand — use the store name"
+    },
+    "brands": {
+      "subtitle": "Public identities your pages can sell under. A page with a brand shows the brand's name everywhere instead of the store's.",
+      "brand": "Brand",
+      "create": "Create a brand",
+      "name": "Name",
+      "slug": "Address",
+      "categories": "Categories",
+      "editCategories": "Categories…",
+      "empty": "No brands yet. A store without brands keeps working exactly as before.",
+      "deleteHint": "Deleting a brand never deletes pages — they fall back to the store's own name."
     }
   },
   "erp": {

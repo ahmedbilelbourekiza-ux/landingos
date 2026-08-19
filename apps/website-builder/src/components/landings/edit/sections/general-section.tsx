@@ -27,6 +27,9 @@ export interface GeneralPreviewValues {
   announcement: string;
   categoryId: string | null;
   themeId: string | null;
+  // LB.36 — the page's brand. Carried in the slice like categoryId (the
+  // preview's store identity itself resolves server-side on save).
+  brandId: string | null;
 }
 
 /* LB.13 — the schema is BUILT, not declared.
@@ -60,6 +63,7 @@ function buildGeneralSchema(t: (key: string) => string) {
     announcement: z.string().optional().or(z.literal("")),
     categoryId: z.string().nullable().optional(),
     themeId: z.string().nullable().optional(),
+    brandId: z.string().nullable().optional(),
   });
 }
 
@@ -103,6 +107,7 @@ export function GeneralSection({
           announcement: values.announcement || null,
           categoryId: values.categoryId || null,
           themeId: values.themeId || null,
+          brandId: values.brandId || null,
         }),
       });
       const json = await res.json();
@@ -137,6 +142,7 @@ export function GeneralSection({
   const announcementValue = useWatch({ control, name: "announcement" });
   const themeIdValue = useWatch({ control, name: "themeId" });
   const categoryIdValue = useWatch({ control, name: "categoryId" });
+  const brandIdValue = useWatch({ control, name: "brandId" });
 
   React.useEffect(() => {
     // The workspace REPLACES the slice with this object, so every field the
@@ -153,8 +159,9 @@ export function GeneralSection({
       announcement: announcementValue ?? "",
       categoryId: categoryIdValue ?? null,
       themeId: themeIdValue ?? null,
+      brandId: brandIdValue ?? null,
     });
-  }, [titleValue, descriptionValue, buttonValue, announcementValue, categoryIdValue, themeIdValue, onPreviewChange]);
+  }, [titleValue, descriptionValue, buttonValue, announcementValue, categoryIdValue, themeIdValue, brandIdValue, onPreviewChange]);
 
   const handleSave = async () => {
     const valid = await trigger();
@@ -219,6 +226,7 @@ export function GeneralSection({
   };
 
   const [categories, setCategories] = React.useState<{ id: string; name: string }[]>([]);
+  const [brands, setBrands] = React.useState<{ id: string; name: string }[]>([]);
   const [themes, setThemes] = React.useState<{ id: string; name: string; primary: string; accent: string; background: string }[]>([]);
   React.useEffect(() => {
     // Platform envelope: the list lives at data.items, not data (LB.2 — the
@@ -226,6 +234,10 @@ export function GeneralSection({
     fetch(api("/categories")).then((r) => r.json()).then((json) => {
       if (json.success && Array.isArray(json.data?.items))
         setCategories(json.data.items.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+    });
+    fetch(api("/brands")).then((r) => r.json()).then((json) => {
+      if (json.success && Array.isArray(json.data?.items))
+        setBrands(json.data.items.map((b: { id: string; name: string }) => ({ id: b.id, name: b.name })));
     });
     fetch(api("/themes")).then((r) => r.json()).then((json) => {
       if (json.success && Array.isArray(json.data?.items)) setThemes(json.data.items);
@@ -278,6 +290,26 @@ export function GeneralSection({
             ))}
           </select>
         </Field>
+
+        {/* LB.36 — the brand this page sells under. Rendered only when the
+            tenant HAS brands: a merchant who never made one keeps the exact
+            screen they had, and an empty select would advertise a concept
+            with nothing to pick. */}
+        {brands.length > 0 && (
+          <Field label={t("builder.editor.brandLabel")} htmlFor="brandId" hint={t("builder.editor.brandHint")}>
+            <select
+              id="brandId"
+              value={brandIdValue ?? ""}
+              onChange={(e) => setValue("brandId", e.target.value || null, { shouldValidate: true })}
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+            >
+              <option value="">{t("builder.editor.noBrand")}</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         {/* Theme selector */}
         <Field label={t("builder.editor.themeLabel")} htmlFor="themeId" hint={t("builder.editor.themeHint")}>
