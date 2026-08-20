@@ -15,6 +15,78 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ THE QUEUE IS EMPTY — all six remaining slices deployed 20 Aug 2026, 17:57–18:20 UTC
+>
+> **`origin/main` is `4069dde`, and `4069dde` is the live deploy** (Render,
+> `trigger=new_commit`, live **18:20:29 UTC**). Every feature slice written in
+> the three overnight sessions is now in production. **Local `main` is ahead by
+> FOUR commits and every one is documentation** (0 non-Markdown files) — the
+> migration/deploy records, which by construction are written after the work
+> they describe.
+>
+> **Production now: 61 tables · RLS 55/55/55/55 PASS · `SalesOrder` 2 rows,
+> `LandingPage` 2, `Tenant` 3 — untouched throughout.**
+>
+> | # | Slice | Commit | Migration | Live (UTC) |
+> |---|---|---|---|---|
+> | 1 | **BH.3** AI behaviour analysis | `ee2efcb` | `LandingInsight` (51→52) | 17:57:38 |
+> | 2 | **LB.56** contrast sweep | `f8d4589` | none | 18:02:53 |
+> | 3 | **LB.36** Brands | `1a6a12b` | `Brand`+`BrandCategory`+`brandId` (52→54) | 18:07:46 |
+> | 4 | **LB.14c.b** domain automation (dormant) | `cbfd17b` | `PlatformCredential`(unscoped)+3 `TenantDomain` cols | 18:12:35 |
+> | 5 | **LB.6.d** duplicate-drift fix | `2065f80` | none | 18:15:58 |
+> | 6 | **LB.14b** page version history | `4069dde` | `LandingPageVersion` (54→55) | 18:20:29 |
+>
+> **Every step ran the same cycle**: pre-flight health + RLS baseline → diff
+> asserted against expectation (**every one matched exactly; zero DROP
+> statements across all six**) → rollback script captured → `db push` from the
+> COMMIT's schema with `--skip-generate` (datasource read back as
+> `landingos_prod` every time, `--accept-data-loss` never passed or requested)
+> → `apply-rls` → post-apply `migrate diff` = *"No difference detected."* →
+> **ref-mapped push scoped to that commit only** → Render API confirms live →
+> post-deploy verification with a REAL functional test → fixture swept to zero.
+>
+> **The functional tests — what was actually proven, not assumed:**
+> - **BH.3** — analyze route answered **422 `INSUFFICIENT_DATA` (0 of 100
+>   views)**, not a 500: the route is live, the `LandingInsight` cooldown query
+>   and the summary builder both ran, and the data floor refused correctly.
+> - **LB.56** — the marker flipped absent → **`--theme-primary-foreground-muted:#eadbd2`**
+>   on the live page, and that shipped value measures **4.55:1 (AA PASS)** on
+>   dedima's real `#905228` primary where the OLD approach measured **3.57:1
+>   (FAIL)**. A real defect on the real store, fixed and measured.
+> - **LB.36** — a fixture page's storefront `<title>` flipped
+>   **`Fixture Page · Fixture …` → `Fixture Page · Nour Élégance`**: the brand
+>   REPLACED the store identity live. Brands screen 200. Deleting the brand
+>   left the page alive with `brandId=NULL` — `onDelete: SetNull` holds.
+> - **LB.14c.b — DORMANT, AS REQUIRED.** `PlatformCredential` **0 rows before
+>   and after; no credential was created and no Render API call was ever
+>   made.** A verified domain marked primary returned **200** and
+>   `renderState` stayed **NULL** — the merchant action succeeded while the
+>   automation stayed silent, which is the designed unconfigured behaviour.
+>   **Activating it live remains a separate, attended decision.**
+> - **LB.6.d** — a duplicate now carries **both** settings the old route
+>   silently dropped (`brandId` kept, `behaviorTracking` still true), landing
+>   as DRAFT.
+> - **LB.14b** — first write took a snapshot (**1 version**); a second write in
+>   the SAME sitting added **none** (one version per editing session, the
+>   user's decision); deleting the page cascaded its versions away.
+>
+> **Regression sweep after all six:** health **200** `database: ok` · dedima
+> **200** · robe **200** · store home **200** · robots **200** · sitemap
+> **200** · platform root **307** · console login **200** + `noindex, nofollow`
+> · erp/ai unauthed **307** · wilayas-404 `private, no-store` · **AN.1 beacon
+> still 204**. Every production fixture created during testing was swept to
+> zero remnants; production is back to exactly **3 real tenants** each time.
+>
+> **Rollback:** each slice's reverse script was captured before applying (in
+> the session scratchpad). Code rollback point for the whole batch is
+> `0dd2214`; per-slice points are each previous commit in the table above.
+>
+> **Two transient classes seen and correctly NOT treated as failures:** Neon
+> **direct-endpoint cold starts** (`Can't reach database server`, fine on
+> retry, while pooled `/api/health` stayed green throughout) and **two
+> github.com:443 connection failures** that succeeded on retry within a
+> minute. Both are documented; neither is an outage.
+
 > ### ✔ AQ.1 IS DEPLOYED — 20 Aug 2026, live 17:32:16 UTC
 >
 > **`origin/main` is `971811c`, and `971811c` is the live deploy.** Render

@@ -10,6 +10,52 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## DEPLOY — the remaining six slices are live (20 Aug 2026, 17:57–18:20 UTC)
+
+**`origin/main` walked `971811c → ee2efcb → f8d4589 → 1a6a12b → cbfd17b →
+2065f80 → 4069dde`, one ref-mapped push per slice**, each a verified
+fast-forward of exactly its own commit (LB.14b's step carried one docs-only
+commit alongside it). A plain `git push origin main` was never run. **Local
+`main` now leads by four commits, all documentation, 0 code files.**
+
+**Production: 61 tables, RLS 55/55 PASS, and the merchant's data untouched
+throughout** (`SalesOrder` 2, `LandingPage` 2, `Tenant` 3 at every checkpoint).
+
+**Migrations, in order — every diff matched its expectation exactly and not
+one contained a DROP:** `LandingInsight` (BH.3, RLS 51→52) · none (LB.56) ·
+`Brand` + `BrandCategory` + `LandingPage.brandId` (LB.36, 52→54) ·
+`PlatformCredential` (unscoped, by design) + three `TenantDomain` columns
+(LB.14c.b) · none (LB.6.d) · `LandingPageVersion` (LB.14b, 54→55). Each was
+pushed from the COMMIT's own schema with `--skip-generate`, with the
+datasource read back as `landingos_prod` from the command's own output;
+`--accept-data-loss` was never passed and never requested; each post-apply
+diff returned *"No difference detected."*
+
+**What the functional tests proved.** BH.3's analyze route refused with **422
+`INSUFFICIENT_DATA` (0 of 100 views)** rather than erroring — the new table's
+cooldown query and the summary builder both ran. LB.56's marker appeared as
+**`--theme-primary-foreground-muted:#eadbd2`**, which measures **4.55:1 (AA)**
+on dedima's real primary where the old approach measured **3.57:1 (fail)** —
+a genuine defect on the live store, now fixed and measured. LB.36 flipped a
+storefront title to the **brand's** name and, on brand deletion, left the page
+alive with `brandId=NULL`. **LB.14c.b stayed dormant exactly as required — 0
+credential rows before and after, no Render call ever made, a domain marked
+primary returned 200 with `renderState` NULL.** LB.6.d's duplicate carried
+both previously-dropped settings. LB.14b snapshotted on the first write and
+correctly did NOT snapshot again in the same sitting.
+
+**Every test fixture was a throwaway production tenant, swept to zero
+remnants each time** — production returned to its 3 real tenants after each
+slice.
+
+**Transients, correctly not treated as failures:** Neon direct-endpoint cold
+starts (green on retry; pooled `/api/health` never wavered) and two
+github.com connection failures that pushed cleanly on retry.
+
+**Still deliberately NOT done:** LB.14c.b's real Render credential and its
+first live domain test — an attended decision, out of scope here, and the
+reason the feature ships dormant.
+
 ## DEPLOY — AQ.1 (the AI spend quota) is live (20 Aug 2026, 17:32:16 UTC)
 
 **`origin/main` moved `0dd2214` → `971811c`, ONE commit, by ref-mapped push**
