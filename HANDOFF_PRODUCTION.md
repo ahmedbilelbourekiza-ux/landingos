@@ -15,6 +15,71 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ AN.1 + AN.2 + BH.1 + BH.2 ARE DEPLOYED — 20 Aug 2026, live 17:01:16 UTC
+>
+> **`origin/main` is `0dd2214`, and `0dd2214` is the live deploy.** Render
+> deploy `trigger=new_commit`, created 16:58:02 UTC, **live 17:01:16 UTC**
+> (build 3m14s), confirmed at the Render API with both previous `12d805e`
+> deploys now `deactivated`. Range **`12d805e..0dd2214`, EIGHT commits**:
+> LB.55, AN.1, JS.1, the 18 Aug records, AN.2, the §BH scoping, BH.1+BH.2,
+> the 19 Aug records. **Rollback point: `12d805e`.**
+>
+> **Pushed with a REF-MAPPED push — `git push origin 0dd2214:main`** — a clean
+> fast-forward (`merge-base --is-ancestor` verified first, no force). A plain
+> `git push origin main` would have shipped local HEAD and five un-approved
+> slices; it was deliberately not run. **Local `main` was not moved.**
+>
+> **The migration went FIRST** (16:49 UTC, the ✔ block below), so the code
+> arrived to a schema that already had its columns — the LB.20/LB.35 order.
+>
+> | Marker on `selliora1.com/dedima` | Before (`d26074c`) | After (`0dd2214`) |
+> |---|---|---|
+> | `POST /api/storefront/bebezzouar/visits` | **404** (route absent) | **204** (AN.1's silent beacon) |
+> | served HTML | 586,327 B | **503,362 B** (−83 KB — JS.1) |
+> | `<script` tags | 35 | **31** (JS.1) |
+> | visit-beacon reference in page | 0 | **1** |
+> | `landing-fade-up` / `theme-text-muted` / title / canonical | intact | **unchanged** |
+>
+> **THE POINT OF THE WHOLE DAY, VERIFIED END TO END:** a real beacon POST
+> against the live custom domain **wrote a `StorefrontVisit` row** —
+> `pageKind=landing`, correct `tenantId`/`landingPageId`, BH.1's `viewId`
+> stored, behaviour columns NULL ("not measured", never zero). A second
+> beacon carrying `fbclid` derived **`sourceChannel=facebook`,
+> `sourceDetail=fbclid` SERVER-SIDE** (AN.1 attribution) and honoured
+> `isReturning=true` (AN.2). **Both synthetic rows were then SWEPT** —
+> `StorefrontVisit` is back to **0 rows**, so no fake visitor sits in the
+> merchant's real numbers.
+>
+> *One honest note on that test:* the first attempt wrote nothing and
+> returned 204. The cause was MINE — the id scraped from the HTML was the
+> TENANT id, not the page id — and the route's `if (!page) return` guard
+> refusing an unknown page id silently is **correct behaviour**, not a
+> defect. With dedima's real id (`cmsv363a8…`) the row wrote immediately.
+> **A 204-on-every-refusal beacon can only be judged against the DATABASE,
+> never against its status code.**
+>
+> **Regression sweep, all intact:** `/api/health` **200** `database: ok`,
+> 58 wilayas, `isolation: rls` · `/robe` **200** · robots **200** · sitemap
+> **200** · store home **200** · platform root **307** · console login **200**
+> with `noindex, nofollow` (LB.37) · wilayas-404 `private, no-store` (LB.14a)
+> · **RLS 50/50** · **`SalesOrder` still 2 rows** — additive only, nothing
+> existing changed behaviour.
+>
+> ### ⚠ LOCAL `main` IS DELIBERATELY AHEAD OF `origin/main` — AND MUST STAY THERE UNTIL REVIEWED
+>
+> **Measured, not counted from a table** (`git rev-list --count
+> origin/main..HEAD`): **10 commits.** NOT deployed, by design:
+> **AQ.1** (AI spend quota), **BH.3** (AI behaviour analysis), **LB.36**
+> (Brands), **LB.14c.b** (Render domain automation, stubbed), **LB.14b**
+> (page version history), plus **LB.56** (contrast sweep), **LB.6.d**
+> (duplicate drift fixes) and the records commits.
+>
+> **Five of them read tables production does NOT have** — `AiUsageEvent`,
+> `LandingInsight`, `Brand`/`BrandCategory`, `PlatformCredential`,
+> `LandingPageVersion`. **Deploying HEAD as-is would 500**, LB.14b worst
+> (its checkpoint runs before every landing-page write route). Each needs
+> its own approved migration BEFORE its code ships.
+
 > ### ✔ THE ANALYTICS MIGRATION IS APPLIED — 20 Aug 2026, 16:49 UTC (AN.1 + AN.2 + BH.1/BH.2 schema)
 >
 > **Applied to `landingos_prod` with explicit user go-ahead, from the
@@ -151,7 +216,11 @@ remain the deep references.
 > **49 → 50** all four checks; (5) report before/after; **the CODE deploy
 > stays a separate user approval after that.**
 >
-> ### ⚠ SIXTEEN LOCAL COMMITS ARE QUEUED, NOT PUSHED — updated 19 Aug 2026 (third overnight session)
+> ### ✔ SUPERSEDED 20 Aug — (historical) SIXTEEN LOCAL COMMITS QUEUED (19 Aug, third session)
+>
+> **Eight of those sixteen shipped 20 Aug as `12d805e..0dd2214`. For the live
+> count see the ✔ deploy block at the top of §1 — and measure it, never
+> read it off a table.**
 >
 > **`main` is SIXTEEN commits ahead of `origin/main` (`12d805e..`), all
 > local, per every session's explicit no-push instruction. The push/deploy

@@ -10,6 +10,49 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## DEPLOY — AN.1 + AN.2 + BH.1 + BH.2 are live (20 Aug 2026, 17:01:16 UTC)
+
+**`origin/main` moved `12d805e` → `0dd2214`, eight commits, by REF-MAPPED
+push** (`git push origin 0dd2214:main`) after verifying the fast-forward with
+`merge-base --is-ancestor`. No force. **Local `main` was not moved and is
+still ahead** — a plain `git push origin main` would have shipped five
+un-approved slices and was deliberately not run. **Rollback point:
+`12d805e`.** The schema migration went first (16:49 UTC), so the code met a
+database that already had its columns — the LB.20/LB.35 order.
+
+**Liveness proven two ways.** The Render API reports the deploy `live` at
+17:01:16 UTC with both `12d805e` deploys `deactivated`; and the range has a
+clean PUBLIC marker whose baseline was captured before pushing —
+`POST /api/storefront/<tenant>/visits` answered **404** on the old build and
+**204** on the new one. JS.1's diet is visible on the same page: HTML
+**586,327 → 503,362 bytes**, `<script` tags **35 → 31**, while
+`landing-fade-up`, `theme-text-muted`, the title and the absolute canonical
+are unchanged.
+
+**The analytics path verified end to end against the live custom domain:** a
+real beacon wrote a `StorefrontVisit` row (correct tenant and page,
+`pageKind=landing`, BH.1's `viewId` stored, behaviour columns NULL for "not
+measured"); a second carrying `fbclid` derived **`sourceChannel=facebook` /
+`sourceDetail=fbclid` server-side** and honoured `isReturning=true`. Both
+synthetic rows were swept — the table is back to 0, so no fake visitor sits
+in the merchant's numbers.
+
+**A false alarm worth recording, because the lesson is reusable:** the first
+beacon wrote nothing and returned 204. The id scraped from the served HTML
+was the TENANT id, not the landing page id — the first `cm…` string in the
+markup. The route's `if (!page) return` guard refusing an unknown page id
+*silently* is exactly right; the 204-on-every-refusal contract means a
+beacon test can only be read against the DATABASE, never against the status
+code.
+
+**Regression sweep intact:** health 200 `database: ok` · `/robe` 200 · robots
+200 · sitemap 200 · store home 200 · platform root 307 · console login 200 +
+`noindex` · wilayas-404 `no-store` · RLS 50/50 · `SalesOrder` still 2 rows.
+
+**Not deployed, deliberately:** AQ.1, BH.3, LB.36, LB.14c.b, LB.14b (+ LB.56,
+LB.6.d and the records commits) remain local. Five of them read tables
+production does not have; each needs its own approved migration first.
+
 ## AN.1 + AN.2 + BH.1/BH.2 — the analytics schema is APPLIED to production (20 Aug 2026, 16:49 UTC)
 
 **A DATABASE ACTION ON ITS OWN, not a deploy** — the LB.20/LB.35 order, and
