@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { Prisma, withTenant } from "@landingos/db";
 
 import { tenantBySlug, currentOrigin, storefrontHref } from "@/lib/storefront/resolve-tenant";
-import { allowRequest, clientIp, checkoutLimit } from "@/lib/storefront/rate-limit";
+import { allowRequest, clientIp, trustedClientIp, checkoutLimit } from "@/lib/storefront/rate-limit";
 import { CheckoutBody } from "@/lib/storefront/contract";
 import { deriveSource } from "@/lib/storefront/traffic-source";
 import { deliveryPricesFor, priceForMethod } from "@/lib/storefront/delivery";
@@ -238,7 +238,7 @@ export async function POST(
       quantity: input.quantity,
       customer: { name: input.customerName, phone: input.phone },
       context: {
-        ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+        ip: trustedClientIp(req),
         userAgent: req.headers.get("user-agent"),
         fbc: input.fbc ?? null,
         fbp: input.fbp ?? null,

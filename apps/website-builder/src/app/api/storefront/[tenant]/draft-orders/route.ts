@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { withTenant } from "@landingos/db";
 
 import { tenantBySlug, currentOrigin, storefrontHref } from "@/lib/storefront/resolve-tenant";
-import { allowRequest, clientIp, draftLimit } from "@/lib/storefront/rate-limit";
+import { allowRequest, clientIp, trustedClientIp, draftLimit } from "@/lib/storefront/rate-limit";
 import { DraftBody } from "@/lib/storefront/contract";
 import { triggerDraftOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 import { dispatchTrackingEvent } from "@/lib/tracking/dispatch";
@@ -118,7 +118,7 @@ export async function POST(
           contentId: landingPageId,
           customer: { name: fields.customerName ?? null, phone: fields.phone },
           context: {
-            ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+            ip: trustedClientIp(req),
             userAgent: req.headers.get("user-agent"),
             fbc: fbc ?? null,
             fbp: fbp ?? null,

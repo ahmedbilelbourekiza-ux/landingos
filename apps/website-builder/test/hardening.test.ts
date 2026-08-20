@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { asPlatform, withTenant, disconnect, deleteTenant } from '@landingos/db';
 import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } from '@landingos/auth';
 
-import { allowRequest } from '../src/lib/storefront/rate-limit.ts';
+import { allowRequest, clientIp, trustedClientIp } from '../src/lib/storefront/rate-limit.ts';
 import { refuseWebhookUrl } from '../src/lib/webhooks/url-guard.ts';
 
 /* =============================================================================
@@ -40,6 +40,74 @@ describe('the rate limiter (pure)', () => {
     assert.equal(allowRequest('t4', ip, 1, 150), false);
     await new Promise((r) => setTimeout(r, 200));
     assert.equal(allowRequest('t4', ip, 1, 150), true, 'the budget came back');
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * WHO the limiter thinks you are — the half that had NO tests, which is
+ * exactly why the bypass survived to production.
+ *
+ * `X-Forwarded-For` grows left to right and the edge APPENDS what it saw, so
+ * the last entry is the only trustworthy one. Reading the first let anyone
+ * mint a fresh bucket per request and never be counted.
+ * -------------------------------------------------------------------------- */
+const headers = (h: Record<string, string>) => ({
+  headers: { get: (n: string) => h[n.toLowerCase()] ?? null },
+});
+
+describe('clientIp — the trusted hop (pure)', () => {
+  test('THE BYPASS: a spoofed prefix cannot buy a fresh bucket', () => {
+    // Every request claims a different origin, but the edge appended the SAME
+    // real address each time. Before the fix each of these was its own bucket
+    // and the budget never ran out.
+    const real = '203.0.113.9';
+    const keys = new Set<string>();
+    for (let i = 0; i < 25; i++) {
+      keys.add(clientIp(headers({ 'x-forwarded-for': `10.9.9.${i}, 172.16.0.${i}, ${real}` })));
+    }
+    assert.deepEqual([...keys], [real], 'all 25 spoofed prefixes must collapse to the one real hop');
+
+    // And the budget genuinely runs out, which is the property that matters.
+    const bucket = `xff-${Date.now()}`;
+    let allowed = 0;
+    for (let i = 0; i < 12; i++) {
+      if (allowRequest(bucket, clientIp(headers({ 'x-forwarded-for': `1.2.3.${i}, ${real}` })), 5, 60_000)) allowed++;
+    }
+    assert.equal(allowed, 5, 'exactly the limit got through despite 12 different spoofed prefixes');
+  });
+
+  test('a single entry (no proxy chain) is used as-is', () => {
+    assert.equal(clientIp(headers({ 'x-forwarded-for': '198.51.100.4' })), '198.51.100.4');
+  });
+
+  test('ports are stripped and IPv6 is understood, bracketed or bare', () => {
+    assert.equal(clientIp(headers({ 'x-forwarded-for': '198.51.100.4:51234' })), '198.51.100.4');
+    assert.equal(clientIp(headers({ 'x-forwarded-for': '[2001:db8::1]:443' })), '2001:db8::1');
+    assert.equal(clientIp(headers({ 'x-forwarded-for': '2001:db8::1' })), '2001:db8::1');
+    assert.equal(clientIp(headers({ 'x-forwarded-for': '::ffff:198.51.100.4' })), '::ffff:198.51.100.4');
+  });
+
+  test('garbage collapses to the SHARED bucket, never a private unlimited one', () => {
+    for (const junk of ['not-an-ip', 'rate-probe-123', '999.1.1.1', 'evil.example.com', '   ']) {
+      assert.equal(clientIp(headers({ 'x-forwarded-for': junk })), 'unknown', junk);
+    }
+    // Sharing one bucket is the point: junk callers are bounded together.
+    assert.equal(clientIp(headers({ 'x-forwarded-for': 'aaa' })), clientIp(headers({ 'x-forwarded-for': 'bbb' })));
+  });
+
+  test('an unreadable X-Forwarded-For does NOT fall through to X-Real-IP', () => {
+    // Both headers are client-settable; falling through would re-open the
+    // bypass through the back door.
+    assert.equal(clientIp(headers({ 'x-forwarded-for': 'junk', 'x-real-ip': '203.0.113.77' })), 'unknown');
+    // With no X-Forwarded-For at all, X-Real-IP is the best available signal.
+    assert.equal(clientIp(headers({ 'x-real-ip': '203.0.113.77' })), '203.0.113.77');
+    assert.equal(clientIp(headers({})), 'unknown');
+  });
+
+  test('trustedClientIp reports null rather than a placeholder, for audit rows', () => {
+    assert.equal(trustedClientIp(headers({ 'x-forwarded-for': '1.2.3.4, 203.0.113.9' })), '203.0.113.9');
+    assert.equal(trustedClientIp(headers({ 'x-forwarded-for': 'junk' })), null);
+    assert.equal(trustedClientIp(headers({})), null);
   });
 });
 
@@ -313,7 +381,7 @@ describe('the checkout rate limit exists and is tunable (LB.6)', { skip }, () =>
     // the window arithmetic; this proves the wiring answers 429 when it fires.
     const r = await fetch(`${BASE}/api/storefront/${slug}/orders`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-forwarded-for': `rate-probe-${stamp}` },
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.7' },
       body: JSON.stringify({}),
     });
     // Under budget this malformed body is a 422; over budget it is a 429.

@@ -10,6 +10,70 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## SEC.6 — the rate limiter stops believing the caller about who they are
+
+**Committed locally 21 August 2026 — NOT pushed, NOT deployed. No migration.**
+
+**The defect, measured on LIVE production before touching anything.** Fourteen
+POSTs to the real checkout endpoint, empty bodies so nothing could be written:
+
+| Probe | Result |
+|---|---|
+| the SAME spoofed `X-Forwarded-For` each time | 10 accepted, then **4 × 429** — the limiter works |
+| a **ROTATING** spoofed `X-Forwarded-For` | **14/14 accepted, 0 × 429 — complete bypass** |
+
+`clientIp` read `x-forwarded-for.split(",")[0]` — the FIRST entry. That header
+accumulates left to right and the edge APPENDS what it actually saw, so the
+first entry is whatever the caller typed. A different value per request bought
+a fresh bucket per request and the limiter counted to one forever. **No
+account, no inside knowledge — reachable by anyone on the internet**, across
+checkout, draft capture and (since AN.1 shipped) the visit beacon.
+
+**The codebase had already reasoned its way to the right answer and the
+limiter disagreed with it.** `resolve-tenant.ts`'s `normalizeHost` reads the
+same header, takes the LAST entry, and says why in its own comment: *"the LAST
+entry is the one written by the hop nearest us … taking the first would take
+precisely the value an attacker prepends."* One rule now, in that direction.
+
+- **The fix:** nearest-hop only, plus validation. The value must parse as an
+  IP literal (v4, v6, bracketed, v4-mapped, trailing port tolerated);
+  anything else — garbage, a hostname, an injected list — collapses to the
+  shared `unknown` bucket, which is bounded rather than unlimited. That is the
+  fail-closed direction: mangling the header shares one budget with every
+  other mangler instead of buying a private unlimited one. **A present-but
+  unreadable `X-Forwarded-For` does NOT fall through to `X-Real-IP`** — that
+  header is client-settable too, and falling through would reopen the bypass
+  through the back door.
+- **The same spoofable expression was in two more places, and they were the
+  same one-line bug**: the `ip` recorded in the tracking/audit context on
+  every ORDER and every DRAFT. That value is not just a log line — it travels
+  to Meta CAPI as customer context, so a spoofed one poisons attribution as
+  well as the audit trail. Both now call the one definition
+  (`trustedClientIp`, which returns **null** rather than the string
+  `"unknown"`, so an audit column records "not known" honestly).
+  **Zero `split(",")[0]` reads of that header remain in `src/`.**
+- **Why it survived to production: `clientIp` had no tests at all.** Only
+  `allowRequest` — the arithmetic — was covered. The half that decides WHO you
+  are was untested, so nothing could fail. Six tests now cover it, led by a
+  regression test that reproduces the bypass: 25 rotating spoofed prefixes
+  must collapse to one bucket, and 12 requests against a limit of 5 must let
+  exactly 5 through.
+- **Deliberately NOT changed:** the limiter is still per-process in-memory, so
+  a multi-instance deployment still multiplies the effective limit by the
+  instance count. That is a shared-store change, materially bigger, and this
+  module's header comment already states it. Also unchanged: `signup` and the
+  login page record the WHOLE header rather than one entry — for a forensic
+  log the full chain is more evidence, not less, so those were left alone.
+- **Files:** `lib/storefront/rate-limit.ts` ·
+  `api/storefront/[tenant]/orders/route.ts` ·
+  `api/storefront/[tenant]/draft-orders/route.ts` · `test/hardening.test.ts`.
+- **Suites:** hardening **19** (was 13) · storefront 95 · builder-api 49 ·
+  tracking 16 · traffic-source 14 — all green against a rebuilt standalone
+  server.
+
+**Owed after deploy:** re-run the same two live probes. The rotating-IP one
+must show 429s where it showed none.
+
 ## DEPLOY — the remaining six slices are live (20 Aug 2026, 17:57–18:20 UTC)
 
 **`origin/main` walked `971811c → ee2efcb → f8d4589 → 1a6a12b → cbfd17b →
