@@ -10,6 +10,43 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## AQ.1 — the spend-quota table is APPLIED to production (20 Aug 2026, 17:23 UTC)
+
+**A DATABASE ACTION ON ITS OWN — the code is NOT deployed** (`origin/main`
+stays `0dd2214`). Same order as this morning's analytics batch and the
+LB.20/LB.35 precedent: the table goes first, alone, and the code follows
+under its own approval.
+
+**Applied from commit `971811c`** — whose parent is exactly the deployed tip,
+so AQ.1 is a clean single-commit step with nothing of a later slice in it
+(verified: `Brand`, `BrandCategory`, `LandingInsight`, `LandingPageVersion`
+and `PlatformCredential` are absent from that tree, and the files for BH.3,
+LB.36, LB.14c.b and LB.14b do not exist there yet). The schema was extracted
+from the commit itself — never the working tree — and pushed with
+`--skip-generate`, so neither generated client was touched.
+
+**The delta: one table, one index.** `AiUsageEvent (id, tenantId, kind,
+provider?, model?, status default 'pending', promptTokens?,
+completionTokens?, createdAt)` plus `(tenantId, createdAt)` — the index the
+monthly quota count reads. Zero ALTER, zero DROP, no foreign keys.
+
+**Before → after:** 55 → **56** tables · RLS 50/50 → **51/51 PASS on all four
+checks** · `AiUsageEvent` 0 rows · `StorefrontVisit` 0 and `SalesOrder` 2,
+both untouched. Post-apply `migrate diff` → *"No difference detected."*
+`/api/health` 200 `database: ok`; `/dedima` byte-identical at 503,362 B with
+identical markers; `/robe` 200; platform root 307.
+
+**Why the order was not optional:** AQ.1's usage card on `/console/erp/ai`
+reads the ledger unguarded on every page load, and all three production
+tenants hold `product.erp`, so that screen is reachable for each of them.
+The code would have 500'd against a database without this table.
+
+**Recorded for the next session:** the first direct-endpoint query of the
+session failed with "Can't reach database server" and succeeded on retry
+seconds later, while `/api/health` — which uses the pooled endpoint — stayed
+green throughout. Neon scale-to-zero cold start, not an outage. A single
+failed direct connection is not evidence production is down.
+
 ## DEPLOY — AN.1 + AN.2 + BH.1 + BH.2 are live (20 Aug 2026, 17:01:16 UTC)
 
 **`origin/main` moved `12d805e` → `0dd2214`, eight commits, by REF-MAPPED

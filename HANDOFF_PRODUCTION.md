@@ -15,6 +15,51 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ AQ.1's MIGRATION IS APPLIED — 20 Aug 2026, 17:23 UTC (`AiUsageEvent`)
+>
+> **The schema half of AQ.1 (the AI spend quota) is in `landingos_prod`.
+> Applied from commit `971811c` with explicit user go-ahead. THE CODE IS NOT
+> DEPLOYED — `origin/main` is still `0dd2214`.**
+>
+> | | Before | After |
+> |---|---|---|
+> | tables | 55 | **56** |
+> | RLS (scoped/enabled/FORCE/policy/WITH CHECK) | 50/50/50/50 | **51/51/51/51 PASS** |
+> | `AiUsageEvent` | absent | **present, 0 rows** |
+> | `StorefrontVisit` / `SalesOrder` | 0 / 2 rows | **0 / 2 rows — untouched** |
+>
+> **The delta was exactly one table and one index**, re-asserted against the
+> approved preview immediately before applying (14 assertions: 1 CREATE TABLE,
+> 1 CREATE INDEX, zero ALTER, zero DROP, zero foreign keys, and zero mention
+> of any still-undeployed table or column). `db push` at **17:23:10 UTC** read
+> its datasource back as **`landingos_prod` at `ep-summer-shadow-a2ks6nf8`**;
+> no `--accept-data-loss` was passed and none was requested. `apply-rls` at
+> **17:23:17 UTC**. Post-apply `migrate diff` → **"No difference detected."**
+>
+> `AiUsageEvent` as built: `id, tenantId, kind, provider?, model?, status
+> (default 'pending'), promptTokens?, completionTokens?, createdAt` + the
+> `(tenantId, createdAt)` index the monthly quota count reads.
+> **Rollback: `DROP TABLE "public"."AiUsageEvent";`** (saved before applying).
+>
+> **Live after, unchanged:** `/api/health` 200 `database: ok` · `/dedima` 200
+> and **byte-identical** to before (503,362 B, same markers) · `/robe` 200 ·
+> platform root 307. Additive only.
+>
+> **⚠ ORDER MATTERS FOR THE CODE STEP, and it is not optional.** AQ.1's usage
+> card on `/console/erp/ai` reads this ledger **unguarded** on every load, and
+> all three production tenants (`alaa`, `bebezzouar`, `union`) hold
+> `product.erp`, so that screen is reachable for each. Shipping the code
+> before this table existed would have 500'd it. The table now exists, so the
+> code deploy is unblocked — it remains a SEPARATE approval.
+>
+> *Operational note worth keeping:* the first baseline query of this session
+> failed with `Can't reach database server` on the **direct** endpoint, then
+> succeeded on retry seconds later while `/api/health` (which uses the POOLED
+> endpoint) stayed green throughout. That is Neon **scale-to-zero cold start**
+> on the direct endpoint, not an outage. **Never read a single failed direct
+> connection as production being down — retry, and cross-check the pooled
+> path.**
+
 > ### ✔ AN.1 + AN.2 + BH.1 + BH.2 ARE DEPLOYED — 20 Aug 2026, live 17:01:16 UTC
 >
 > **`origin/main` is `0dd2214`, and `0dd2214` is the live deploy.** Render
