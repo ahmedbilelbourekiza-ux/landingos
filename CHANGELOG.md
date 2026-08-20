@@ -10,6 +10,56 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## DEPLOY — AQ.1 (the AI spend quota) is live (20 Aug 2026, 17:32:16 UTC)
+
+**`origin/main` moved `0dd2214` → `971811c`, ONE commit, by ref-mapped push**
+after confirming the fast-forward (the target's parent IS the previous tip).
+No force; local `main` untouched. **Rollback: `0dd2214`.** The table went
+first at 17:23 UTC — schema ahead of code, the LB.20/LB.35 order, third time
+today.
+
+**The migration-record commit could not ship with the slice it documents.**
+`4abd71b` sits at local HEAD with nine commits between it and `971811c`,
+including every unreviewed slice; including it would have deployed all six.
+It is docs-only, so nothing runtime is lost by leaving it local — but the
+lesson generalises: **a record commit written after later work is not
+adjacent to what it records, and cannot ride along with it.**
+
+**No public marker exists for this range** — every changed surface is authed
+console or server-only — so liveness came from the Render API. Recorded while
+watching it: the status walk is `build_in_progress → update_in_progress →
+live`, and traffic switches during the update phase. That is why this
+morning's public marker flipped about a minute before the API read `live`;
+the two signals never actually disagreed.
+
+**The screen that would have broken is proven working.** `/console/erp/ai`
+reads the new ledger unconditionally on every load. Both halves were checked:
+every query `readAiUsage` issues, run bound to each real ERP tenant
+(`alaa`, `bebezzouar`, `union`) — all succeeded, `used=0 failed=0`, no
+override so the 200/month default applies; and the screen RENDERED through a
+throwaway production fixture — **HTTP 200** with the usage card showing *0 of
+200 calls used, resetting 1 September*. Fixture swept to zero remnants,
+production back to 3 real tenants.
+
+**Unchanged:** health 200 `database: ok`; `dedima` byte-identical at 503,362 B
+with identical markers; `robe` 200; platform root 307; `AiUsageEvent` still 0
+rows (production holds 0 `AiProvider` rows, so no AI spend is possible yet —
+the ceiling ships ahead of the key, by design).
+
+**A check-design note worth keeping:** the fixture probe's "error boundary"
+test returned true and was a FALSE POSITIVE — `somethingWentWrong` is an i18n
+key present in every console page's catalogue. Grep rendered TEXT, never
+catalogue keys — the same trap LB.42's bare `Label` grep recorded.
+
+**Two transients, neither an outage:** a Neon direct-endpoint query failed
+with "Can't reach database server" and succeeded on retry while the pooled
+`/api/health` stayed green (scale-to-zero cold start); and the first `git
+push` failed to reach github.com:443, which answered 200 seconds later.
+Retry before concluding anything is down.
+
+**Still not deployed:** BH.3, LB.36, LB.14c.b, LB.14b, LB.56, LB.6.d — four
+still need tables production does not have.
+
 ## AQ.1 — the spend-quota table is APPLIED to production (20 Aug 2026, 17:23 UTC)
 
 **A DATABASE ACTION ON ITS OWN — the code is NOT deployed** (`origin/main`

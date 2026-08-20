@@ -15,6 +15,65 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ AQ.1 IS DEPLOYED — 20 Aug 2026, live 17:32:16 UTC
+>
+> **`origin/main` is `971811c`, and `971811c` is the live deploy.** Render
+> `trigger=new_commit`, **live 17:32:16 UTC**, the previous `0dd2214` deploy
+> now `deactivated`. Range **`0dd2214..971811c`, ONE commit.**
+> **Rollback point: `0dd2214`.** Its table was applied first at 17:23 UTC.
+>
+> **Pushed REF-MAPPED — `git push origin 971811c…:main`** — a clean 1-commit
+> fast-forward whose parent IS the previous tip. Local `main` was not moved.
+>
+> **⚠ THE MIGRATION-RECORD COMMIT COULD NOT SHIP WITH IT, and the reason is
+> worth keeping.** AQ.1's record commit (`4abd71b`) sits at local HEAD with
+> **NINE commits between it and `971811c`** — every unreviewed slice (BH.3,
+> LB.56, LB.36, LB.14c.b, LB.6.d, LB.14b). Including it would have shipped
+> all six. It is **docs-only** (2 Markdown files, zero code), so excluding it
+> changes nothing at runtime; it stays local exactly as the analytics
+> migration/deploy records did. **A record commit written after later work
+> cannot be deployed with the slice it documents — write it, but never assume
+> it is adjacent.**
+>
+> **THIS RANGE HAS NO PUBLIC MARKER** — every changed surface is either
+> authenticated console or server-only (the SEC.1–5 situation again), so
+> liveness was settled at the **Render API**, not guessed. Worth recording:
+> the status walk observed was `build_in_progress → update_in_progress →
+> live`, and traffic switches during **update_in_progress** — which is why
+> this morning a public marker flipped ~1 minute before the API said `live`.
+> The two were never in conflict.
+>
+> **Verified after:**
+> - `/api/health` **200** `database: ok`, 58 wilayas, `isolation: rls`
+> - `selliora1.com/dedima` **200** and **byte-identical** (503,362 B, same
+>   `landing-fade-up`, script count and beacon reference) · `/robe` **200** ·
+>   platform root **307** · `/console/erp/ai` unauthed **307** to login
+> - **The screen that reads the ledger unconditionally WORKS.** Every query
+>   `readAiUsage` issues was run bound to each of the three real ERP tenants
+>   (`alaa`, `bebezzouar`, `union`) — all succeeded, all `used=0 failed=0`,
+>   no per-tenant limit override, so the default 200 applies. Then the screen
+>   itself was RENDERED through a throwaway production fixture (tenant + user
+>   + membership + subscription + session, the LB.42/LB.46 pattern):
+>   **HTTP 200**, `data-testid="ai-usage"` present, showing *"استُخدم 0 من 200
+>   نداءً للنموذج · 0 فشلت. تتجدد في 01/09/2026"* — 0 of 200 calls used,
+>   resetting 1 Sep. **Fixture swept to zero remnants**; production back to
+>   its 3 real tenants.
+> - `AiUsageEvent` still **0 rows** — nothing spends, because production has
+>   **0 `AiProvider` rows**. The quota ships as a ceiling waiting for a key.
+>
+> *Check-design note:* the fixture probe's "error boundary" test reported
+> true and is a **false positive** — `somethingWentWrong` is an i18n KEY
+> present in every console page's message catalogue. A 200 plus a rendered
+> usage card is the real evidence. Grep rendered TEXT, not catalogue keys
+> (the same trap LB.42's `Label` grep recorded).
+>
+> **Two transients seen this session, both recorded so neither is misread as
+> an outage:** a direct-endpoint Neon query failed with *"Can't reach database
+> server"* twice and succeeded on retry while `/api/health` (pooled) stayed
+> green — scale-to-zero cold start. And the first `git push` failed with
+> *"Failed to connect to github.com:443"*; GitHub answered 200 seconds later
+> and the retry pushed cleanly. **Retry before concluding anything is down.**
+
 > ### ✔ AQ.1's MIGRATION IS APPLIED — 20 Aug 2026, 17:23 UTC (`AiUsageEvent`)
 >
 > **The schema half of AQ.1 (the AI spend quota) is in `landingos_prod`.
