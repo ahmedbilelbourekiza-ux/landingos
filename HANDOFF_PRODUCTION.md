@@ -15,6 +15,45 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ THE ANALYTICS MIGRATION IS APPLIED — 20 Aug 2026, 16:49 UTC (AN.1 + AN.2 + BH.1/BH.2 schema)
+>
+> **Applied to `landingos_prod` with explicit user go-ahead, from the
+> APPROVED TREE `0dd2214` (schema-identical to `be020b0`) — NOT from HEAD.**
+> Neon compute was restored first (Launch plan); Render is on Starter. The
+> outage block below is CLOSED.
+>
+> | Step | Result |
+> |---|---|
+> | Pre-flight health | `/api/health` **200** — `database: ok`, 58 wilayas, `isolation: rls`, `uploads: r2`; `/dedima` **200** |
+> | Pre-flight diff | Re-run and **asserted identical to the approved preview** — 1 CREATE TABLE, 1 unique + 2 plain indexes, 1 FK, 3 ADD COLUMN, **zero DROP**, zero drift tables |
+> | Rollback reference | Reverse diff captured BEFORE applying (drop FK → drop `behaviorTracking` → drop the two `SalesOrder` columns → drop `StorefrontVisit`) |
+> | Apply, 16:49:22 UTC | `prisma db push --schema <approved tree> --skip-generate`, datasource read back from its own output: **`landingos_prod` at `ep-summer-shadow-a2ks6nf8`**. No `--accept-data-loss` was passed and none was requested. 2.50s |
+> | `apply-rls`, 16:49:41 UTC | **49 → 50**, all four checks **PASS 50/50** (enabled, FORCE, policy, WITH CHECK). 55 tables, 5 expected-unscoped |
+> | Post-apply drift | `migrate diff` against the approved tree: **"No difference detected."** |
+>
+> **What the database looks like after:** 55 tables (was 54) ·
+> `StorefrontVisit` present, **0 rows**, 4 indexes (pkey + `viewId` unique +
+> the two composite) · **`SalesOrder` 2 rows PRESERVED**, `sourceChannel`
+> non-null on **0** of them · `LandingSetting` 2 rows, `behaviorTracking`
+> false on both (the opt-in default held) · **none of the six un-approved
+> drift tables exist** (`AiUsageEvent`, `Brand`, `BrandCategory`,
+> `LandingInsight`, `LandingPageVersion`, `PlatformCredential`).
+>
+> **Live after:** `/api/health` **200** `database: ok` · `selliora1.com/dedima`
+> **200** with its landing markers intact (`landing-fade-up`, the order form,
+> `<title>dedima · selliora16</title>`) · platform root **307**. Additive-only,
+> and nothing existing changed behaviour.
+>
+> **⚠ THE CODE IS NOT DEPLOYED. `origin/main` is unchanged** — production
+> still runs `d26074c`, which does not read any of these columns. That is the
+> safe direction (schema ahead of code, the LB.35 precedent). **The code
+> deploy is a SEPARATE user approval, and it carries a trap:** HEAD also
+> contains AQ.1, BH.3, LB.36, LB.14c.b and LB.14b, each of which reads a
+> table this migration did NOT create. Deploying HEAD against this database
+> would 500 — LB.14b worst, since its checkpoint runs before every
+> landing-page write. Pin the deploy to the approved commit point, or approve
+> the remaining migrations first.
+
 > ### 🛑 READ FIRST — 17 Aug 2026: DEV MOVED TO A SEPARATE NEON PROJECT, AND BOTH DATABASES ARE NAMED `neondb`
 >
 > **All local development, testing and audit work now goes to a NEW Neon
@@ -48,7 +87,9 @@ remain the deep references.
 > carried `/0` all require `landingos_prod`, which is now off-limits. They are
 > **closed-unverified**, not pending.
 
-> ### 🛑 19 Aug 2026: PRODUCTION IS DOWN — Neon compute quota exhausted; THE MIGRATION IS PREPARED AND ON HOLD
+> ### ✔ CLOSED 20 Aug — (historical) 19 Aug 2026: PRODUCTION WAS DOWN, Neon compute quota exhausted; the migration was prepared and ON HOLD
+>
+> **RESOLVED: the Neon project is on the Launch plan, compute is restored, and the migration above was applied 20 Aug 16:49 UTC. Kept for the record.**
 >
 > **Discovered ~00:45 UTC+1 on 19 Aug while starting the approved migration
 > (step 1 of the deploy).** The OLD Neon project (`ep-summer-shadow…`,
@@ -93,7 +134,7 @@ remain the deep references.
 > before every landing-page write handler, so the twelve wrapped routes and
 > the editor's history control would 500 against a database that lacks it.
 >
-> **MIGRATION STATE: NOT APPLIED, ZERO WRITES MADE.** The one connection
+> **MIGRATION STATE (historical, now SUPERSEDED — applied 20 Aug 16:49 UTC, see the ✔ block at the top of §1): NOT APPLIED, ZERO WRITES MADE.** The one connection
 > attempted was the read-only `migrate diff` preview, refused at the door.
 > The owner credential was provided 19 Aug as a gitignored local file
 > (location in the project memory, the neon-dev precedent) and VALIDATED:

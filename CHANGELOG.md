@@ -10,6 +10,39 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## AN.1 + AN.2 + BH.1/BH.2 — the analytics schema is APPLIED to production (20 Aug 2026, 16:49 UTC)
+
+**A DATABASE ACTION ON ITS OWN, not a deploy** — the LB.20/LB.35 order, and
+the same reason: the column goes first, alone, and the code follows under a
+separate approval. User go-ahead was explicit for this step only.
+
+**Applied from the APPROVED TREE `0dd2214`** (schema-identical to `be020b0`,
+verified with `git diff` over `packages/db/prisma/schema/`), **never from
+HEAD** — HEAD had drifted six tables and four columns ahead (AQ.1, LB.36,
+BH.3, LB.14c.b, LB.14b), none of which are approved and none of which were
+applied. The approved schema was extracted to a scratch folder and pushed
+from there, so the working tree and both generated clients were untouched
+(`--skip-generate`).
+
+**The delta, exactly as previewed and re-asserted immediately before apply:**
+`CREATE TABLE StorefrontVisit` (with `viewId` unique, `isReturning`, the ten
+nullable behaviour columns, two composite indexes, FK to `LandingPage`
+ON DELETE CASCADE) · `SalesOrder` + nullable `sourceChannel`/`sourceDetail` ·
+`LandingSetting.behaviorTracking BOOLEAN NOT NULL DEFAULT false`. **Zero DROP
+statements**; a rollback script was captured before applying.
+
+**Verified after:** `migrate diff` → *"No difference detected."* · `apply-rls`
+**49 → 50**, PASS 50/50 on all four checks · 55 tables · `StorefrontVisit`
+present and **empty** · **the 2 real `SalesOrder` rows preserved** with the new
+columns null · `behaviorTracking` false on both `LandingSetting` rows ·
+`/api/health` **200** `database: ok` · `selliora1.com/dedima` **200** with its
+landing markers unchanged. Additive-only, nothing existing altered.
+
+**Not done, deliberately:** no code pushed, no deploy. Production still serves
+`d26074c`, which reads none of these columns — schema ahead of code, which is
+the safe direction. See HANDOFF §1 for the trap in deploying HEAD against this
+database.
+
 ## LB.14b — a page gets a way back: version history, one per sitting
 
 **Committed locally 19 August 2026 (overnight session) — NOT pushed, NOT
