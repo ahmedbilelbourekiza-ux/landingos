@@ -15,6 +15,38 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.23c IS LIVE — the token field exists now (21 Aug 2026, live 20:57:00 UTC)
+>
+> **`origin/main` is `c69d7c7`** (`e54b878..c69d7c7`, ref-mapped). Rollback
+> **`e54b878`**. **NO MIGRATION** — UI only, asserted before pushing (zero
+> prisma/migration/`.sql` files in the range).
+>
+> **What was broken:** LB.23b shipped an intake route that **nothing in the UI
+> called**. A grep of `src/components` and `src/app/console` for `ad-accounts`
+> returned one hit, and it was the REFRESH route. So the panel said "no
+> advertising account is connected" and offered no way to connect one — a dead
+> end escapable only with database access, which is how production got its
+> account row. The operator found it by looking for the field and correctly
+> concluding it did not exist.
+>
+> **Why the tests missed it, which is the durable lesson:** seventeen route
+> tests, a live end-to-end run with a real token, and a production functional
+> check were all green while the feature was unreachable, because every one of
+> them called the route directly. **A route test cannot see that nothing
+> reaches the route.** Three tests now assert REACHABILITY from the rendered
+> screen instead.
+>
+> **Verified on production:** the connect form, token input and save button are
+> each present exactly once on the real console, in Arabic, with the token
+> field `type="password"` and autocomplete off. The intake route still answers
+> **401** unauthenticated. Storefront unchanged (see the marker note below),
+> health 200, wilayas 200, cache header intact.
+>
+> **⚠ STILL NO TOKEN INSTALLED — `accessToken IS NOT NULL` is 0 rows.** The
+> field now exists; pasting into it is the operator's action. On the live
+> console the account is in the `ready` state, so the form renders COLLAPSED —
+> click "ربط حساب إعلاني" / "Connect an advertising account" to open it.
+
 > ### ✔ LB.23b IS LIVE — the ad credential now has a door, and spend has a trigger (21 Aug 2026, live 19:44:52 UTC)
 >
 > **`origin/main` is `e54b878`** (`94d675c..e54b878`, ref-mapped). Rollback
@@ -22,6 +54,18 @@ remain the deep references.
 > column** (`AdAccount.accessToken`), zero DROP, zero CREATE TABLE — tables
 > stayed **63**, RLS stayed **57/57 PASS** (a column is not a table), merchant
 > data untouched, storefront byte-identical across the migration.
+>
+> **⚠ MARKER METHOD REFINED (LB.23c, third use).** §1 previously said the diff
+> should show "exactly one differing region". That was too strict and held only
+> by luck on two deploys. Chunk filenames are CONTENT HASHES, so any rebuilt
+> shared module renames a chunk and that name appears in the script tag and
+> several times in the flight data — LB.23c showed **8 regions, which were
+> only TWO facts**: the build id, and one chunk rename repeated seven times.
+> **The correct check is: every differing region is either the build id or a
+> `/_next/static/chunks/` filename, AND the payload length is unchanged.**
+> When a chunk does rename, confirm it is benign by fetching it and grepping
+> for strings that should not be there (LB.23c: zero console-only strings in
+> the storefront chunk, script count unchanged 31, payload identical).
 >
 > **Liveness by the build-id marker, second use:** `V7Ig1oHyFLiHyoIkFkiEB` →
 > `5exkkG9g2q0v_dtdZ_npR`, with exactly one differing region in 503,276
