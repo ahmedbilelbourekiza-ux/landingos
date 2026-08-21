@@ -15,6 +15,38 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.23b IS LIVE — the ad credential now has a door, and spend has a trigger (21 Aug 2026, live 19:44:52 UTC)
+>
+> **`origin/main` is `e54b878`** (`94d675c..e54b878`, ref-mapped). Rollback
+> **`94d675c`**. Migration applied first as its own step: **one nullable
+> column** (`AdAccount.accessToken`), zero DROP, zero CREATE TABLE — tables
+> stayed **63**, RLS stayed **57/57 PASS** (a column is not a table), merchant
+> data untouched, storefront byte-identical across the migration.
+>
+> **Liveness by the build-id marker, second use:** `V7Ig1oHyFLiHyoIkFkiEB` →
+> `5exkkG9g2q0v_dtdZ_npR`, with exactly one differing region in 503,276
+> characters — deploy confirmation and content-regression check in one
+> observation, no credential and no auth needed.
+>
+> **Verified functionally, not just as a 200.** All three new routes answer
+> **401** unauthenticated. Authed: the list returns the real account with
+> `accessToken: null` (the mask reporting absence, not a leaked value), and
+> **Refresh spend answers `409 NO_CREDENTIAL`** — the correct answer for an
+> account whose token has not been pasted, and proof the trigger path resolves
+> end to end. The screen renders the control and still labels spend **USD**.
+>
+> **⚠ WHAT IS NOW POSSIBLE, AND WHAT IS STILL YOURS.** Ad spend can finally be
+> refreshed from inside the product, and the credential can finally be
+> installed the only way that works: **pasted into the console**, where the app
+> encrypts it with its own `AUTH_SECRET`. Encrypting it anywhere else — a
+> laptop, a one-off script — produces a value production cannot decrypt and
+> that reads as a silent "not connected"; that mismatch is measured and real.
+> **`accessToken IS NOT NULL` is 0 rows: no token is installed, deliberately.**
+>
+> **Still NOT built, and the UI does not imply otherwise:** a SCHEDULE.
+> "Auto-refresh" is on-demand today — the button is the trigger. A cron or
+> worker tick is its own slice and its own decision.
+
 > ### ✔ LB.23 IS LIVE — real Meta ad spend is in production (21 Aug 2026, live 15:13:17 UTC)
 >
 > **`origin/main` is `a2c9df6`** (`63ef313..a2c9df6`, two commits: the LB.23

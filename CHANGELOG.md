@@ -12,9 +12,33 @@ touched, any **migration**, and any **risk**.
 
 ## LB.23b — the ad credential comes in through the console, and spend refreshes on demand
 
-**Built and verified on DEV 21 August 2026. NOT deployed; production does not
-have the column. Migration preview against production is one line and is
-recorded below — the decision is the user's.**
+**Built 21 August 2026; DEPLOYED THE SAME DAY as `94d675c..e54b878`, live
+19:44:52 UTC.** Migration applied first as its own step. Rollback `94d675c`.
+
+**The deploy record.** Migration: one nullable column
+(`AdAccount.accessToken`), **zero DROP, zero CREATE TABLE** — tables stayed
+63 and RLS stayed **57/57 PASS**, because a column is not a table. Merchant
+data untouched throughout (`AdAccount` 1, `AdSpendDaily` 30, `SalesOrder` 2,
+`LandingPage` 2, `Tenant` 3), and the storefront was byte-identical across the
+migration.
+
+**Liveness by the build-id marker** — the method recorded in HANDOFF §1, used
+here for the second time and again with no credential, no fixture and no auth:
+`V7Ig1oHyFLiHyoIkFkiEB` → `5exkkG9g2q0v_dtdZ_npR`, and the before/after
+storefront diff showed **exactly one differing region in 503,276 characters**,
+which is the marker and the content-regression check in one observation.
+
+**Verified functionally on production, not just as a 200.** All three new
+routes answer **401 unauthenticated**. Authed: the account list returns the
+real row with `accessToken: null` — the mask reporting "no token", not a
+leaked value — and **Refresh spend answers `409 NO_CREDENTIAL`** with its
+named message, which is the correct answer for an account whose token has not
+been pasted yet and proves the whole trigger path resolves. The console screen
+renders the control and still labels the spend **USD**, not the store's DZD.
+
+**⚠ NO TOKEN IS INSTALLED, deliberately: `accessToken IS NOT NULL` is 0 rows.**
+Pasting it is the operator's own action, in the console, and nobody else's —
+which is the entire reason this slice exists.
 
 **Why this exists.** LB.23 shipped the pull and the read side but nothing that
 could *reach* them: no route, no job and no cron called `syncDailySpend`, and
