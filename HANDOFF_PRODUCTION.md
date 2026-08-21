@@ -15,6 +15,21 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ⚠ 22 Aug 2026 — LOCAL MAIN LEADS ORIGIN WITH UNDEPLOYED SECURITY CODE
+>
+> The overnight security pass (SEC.7 SSRF resolve-time guard, SEC.8 the
+> `ai:spend` permission, SEC.9 LB.23-surface fixes) is committed locally as
+> `72f89fa` + `304a547` + `796362e` (+ this docs commit) and **NOT pushed —
+> production still runs `c69d7c7` and is untouched**. The range is code-only
+> (zero migrations, asserted), so shipping it is a ref-mapped push with no
+> database step and **no Render env change** (the guard's
+> `OUTBOUND_PRIVATE_ALLOWLIST` seam defaults to strict when unset — it is a
+> TEST seam and must never be set in production). Full record, priority
+> order, accepted risks and the deploy notes: **`SECURITY_PASS_AUG22.md`**.
+> Suite note for any session in between: the test SERVER env now also needs
+> `OUTBOUND_PRIVATE_ALLOWLIST=127.0.0.1` or every delivery/AI suite refuses
+> its own 127.0.0.1 stubs.
+
 > ### ✔ LB.23c IS LIVE — the token field exists now (21 Aug 2026, live 20:57:00 UTC)
 >
 > **`origin/main` is `c69d7c7`** (`e54b878..c69d7c7`, ref-mapped). Rollback

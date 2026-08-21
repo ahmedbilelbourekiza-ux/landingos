@@ -10,6 +10,50 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## SEC.7 + SEC.8 + SEC.9 — the overnight security pass of 22 August
+
+**Built, tested, COMMITTED LOCALLY (`72f89fa`, `304a547`, `796362e`). NOT
+pushed, NOT deployed, no migration — the range is code-only by assertion.**
+The full consolidated write-up, in priority order with the accepted-risk
+register and the verification table, is **`SECURITY_PASS_AUG22.md`** — read
+that first; this entry is the index.
+
+**SEC.7 (`72f89fa`)** closes the review's SSRF finding at all three gates:
+outbound destinations (webhook endpoints, AI provider base URLs) are now
+checked **as resolved at request time**, not just as written — webhook
+delivery re-resolves before every attempt, both AI fetch paths run through a
+guarded fetch that never lets the runtime follow a redirect on its own
+(same-origin hops re-checked, cross-origin refused — Node does not strip
+`x-api-key` on a cross-origin hop), and the AI `baseUrl`, which had **no
+validation at all**, is refused at configuration when private/internal. One
+new authority: `src/lib/net/outbound-guard.ts`. One new seam the suites need:
+the server must start with `OUTBOUND_PRIVATE_ALLOWLIST=127.0.0.1` (unset in
+production = fully strict; no Render change needed). outbound-guard **29
+new tests**; webhooks +1 (delivery-time refusal, end to end); erp/ai +2.
+
+**SEC.8 (`304a547`)** closes the AI-spend permission asymmetry — LB.24's own
+open question — the way rbac's SENSITIVE list already treats money: a new
+`website-builder:ai:spend` permission (`*:ai:spend` SENSITIVE, so OWNER/ADMIN
+by role, everyone else by named grant), checked in-handler by both spenders
+before any provider logic, with the panel/analyze button hidden from
+non-spenders. **Permission over lower quota, deliberately**: the quota bounds
+HOW MUCH and cannot answer WHO. Known cost: no console UI writes membership
+grants yet (pre-existing, now load-bearing). auth +1 describe, builder-ai +2,
+builder-insights +1.
+
+**SEC.9 (`796362e`)** is the fresh review of the whole LB.23 surface. The
+encrypted-only guarantee **held** under every probed edge (now pinned:
+tampered GCM, four-segment near-miss, 500-char max, megabyte junk, no refusal
+echoes the credential). Two gaps fixed: the analytics screen offered the
+connect-token form and Refresh to every role the screen admits while the
+routes demand `platform:integrations:manage` (now gated); and the documented
+disconnect ("DELETE the row") **did not exist** — a stored credential could
+not be revoked from the console. `DELETE /ad-accounts/[id]` now exists,
+cascade stated. Plus digits-only enforcement where the Graph URL is built.
+ads-routes +4, ads-credential +3, ads-spend +1.
+
+---
+
 ## LB.23c — the field the token is pasted into, which LB.23b never built
 
 **Built and verified on DEV. NOT deployed. No migration — UI only.**

@@ -10,6 +10,17 @@ audit — six defects fixed with regression tests, CHANGELOG §LB.10) have both
 landed since the queue below was first written; the old queue numbers LB.9 and
 LB.10 are renumbered to avoid colliding with those commits.**
 
+> **22 Aug 2026 — SEC.7/SEC.8/SEC.9 (the overnight security pass) are BUILT
+> AND COMMITTED LOCALLY, NOT DEPLOYED.** `SECURITY_PASS_AUG22.md` is the
+> consolidated record; CHANGELOG §SEC.7–9 is the index. Two notes that touch
+> entries below: **LB.24's "who may spend AI money" open question is CLOSED**
+> (a distinct `website-builder:ai:spend` permission, SENSITIVE like every
+> other money permission — NOT a lower quota; the reasoning is in the
+> report), and every mention below of "the quota question, still open" is
+> historical — AQ.1 closed the HOW-MUCH half on 20 Aug and SEC.8 the WHO
+> half. New open decision: granting `ai:spend` to a MANAGER needs a console
+> writer for `Membership.permissions`, which no screen has ever had.
+
 ## WHAT PHASE LB LEFT — the builder's own queue
 
 Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
