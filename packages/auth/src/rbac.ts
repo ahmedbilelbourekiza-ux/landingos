@@ -93,6 +93,14 @@ const SENSITIVE = [
   // B9. Renaming the company and switching its display currency are
   // owner-tier decisions, same argument as billing.
   'platform:workspace:manage',
+  // SEC.8 — closing the LB.24 open question ("who may spend AI money") the
+  // way this list already answers it for money generally. Every AI call
+  // bills the TENANT's own provider key, and it was granted by the `*:*:write`
+  // glob because the spending routes are gated on pages:write — so anyone who
+  // could edit a page could spend the company's key, silently, up to the
+  // whole monthly quota. The quota (AQ.1) bounds HOW MUCH; it cannot say WHO.
+  // Product-agnostic like the rest: an ERP spender inherits the rule unbuilt.
+  '*:ai:spend',
 ];
 
 export interface AuthContext {

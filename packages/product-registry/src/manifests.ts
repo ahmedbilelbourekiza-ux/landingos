@@ -31,6 +31,12 @@ export const websiteBuilder: ProductManifest = {
     // MANAGER's `*:*:write` glob grants this; MEMBER/VIEWER need it by name.
     'website-builder:orders:write',
     'website-builder:settings:write',
+    // SEC.8 — spending the tenant's own AI key (generation, page insights).
+    // Distinct from pages:write because "may edit the shop" and "may spend
+    // the company's money" are different trusts: rbac's SENSITIVE list
+    // matches `*:ai:spend`, so OWNER/ADMIN hold it by role and everyone else
+    // needs it granted by name — the same shape as `*:finance:read`.
+    'website-builder:ai:spend',
   ],
   /* `group` is UI.8. A flat list of seven is readable; a flat list of fifteen
      (see the ERP below) is not, and the grouping has to be declared HERE

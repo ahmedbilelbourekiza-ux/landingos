@@ -31,6 +31,11 @@ const ERROR_KEYS: Record<string, string> = {
   UNAUTHENTICATED: "common.error.signedOut",
   NO_ACTIVE_TENANT: "common.error.noTenant",
   FORBIDDEN: "common.error.forbidden",
+  // SEC.8. To the person on the screen it reads as the ordinary refusal —
+  // the code exists so the LOG can tell "not yours to spend" apart from a
+  // role problem. The UI hides AI controls from non-spenders, so this only
+  // renders in the revoked-mid-session race.
+  AI_SPEND_FORBIDDEN: "common.error.forbidden",
   FORBIDDEN_FIELD: "common.error.forbiddenField",
   NOT_FOUND: "common.error.notFound",
   // The four ways a body can be refused all say the same thing to a person:

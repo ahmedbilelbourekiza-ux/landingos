@@ -155,6 +155,25 @@ describe('authorization', () => {
     assert.equal(can(manager, 'erp:agents:manage'), true);
   });
 
+  test('SEC.8 — AI spend is not implied by the write glob', () => {
+    // The asymmetry the security review named: every AI call bills the
+    // tenant's own provider key, and the spending routes were gated on
+    // pages:write — so `*:*:write` quietly handed a MANAGER the company
+    // wallet. `*:ai:spend` is SENSITIVE now: role `*` or a named grant.
+    const manager = ctx({ role: 'MANAGER' });
+    assert.equal(can(manager, 'website-builder:pages:write'), true, 'editing is still theirs');
+    assert.equal(can(manager, 'website-builder:ai:spend'), false, 'spending is not');
+
+    const member = ctx({ role: 'MEMBER', permissions: ['website-builder:pages:write'] });
+    assert.equal(can(member, 'website-builder:pages:write'), true);
+    assert.equal(can(member, 'website-builder:ai:spend'), false);
+
+    assert.equal(can(ctx({ role: 'OWNER' }), 'website-builder:ai:spend'), true);
+    assert.equal(can(ctx({ role: 'ADMIN' }), 'website-builder:ai:spend'), true);
+    const trusted = ctx({ role: 'MANAGER', permissions: ['website-builder:ai:spend'] });
+    assert.equal(can(trusted, 'website-builder:ai:spend'), true, 'grantable by name, like agents:manage');
+  });
+
   test('D-05.1 — the customer registry and the books are not ordinary reads', () => {
     // Found by porting the ERP's suite (Phase 5.1). Both were manager-only
     // there, and the `*:*:read` glob would have handed them to every member —

@@ -32,16 +32,25 @@ export default async function NewLandingPage() {
   if (!can(session.auth!, "website-builder:pages:write")) notFound();
   const locale = isLocale(rawLocale) ? rawLocale : DEFAULT_LOCALE;
 
+  // SEC.8 — generation bills the tenant's own AI key, and that is its own
+  // permission now (`*:ai:spend` is SENSITIVE: OWNER/ADMIN by role, everyone
+  // else by name). Without it neither the panel NOR the configure pointer
+  // renders — the reachability rule cuts both ways: a control must exist for
+  // whoever may use it, and must not dangle for whoever may not.
+  const maySpendOnAi = can(session.auth!, "website-builder:ai:spend");
+
   // LB.24 — the AI panel renders only when a model provider is configured;
   // without one it points at the AI settings screen instead of offering a
   // button that can only answer NO_AI_PROVIDER.
   const db = forTenant(session.auth!.tenantId);
-  const aiConfigured = Boolean(
-    await db.aiProvider.findFirst({
-      where: { active: true },
-      select: { id: true },
-    }),
-  );
+  const aiConfigured =
+    maySpendOnAi &&
+    Boolean(
+      await db.aiProvider.findFirst({
+        where: { active: true },
+        select: { id: true },
+      }),
+    );
   // AQ.1 — the same numbers the generate route's gate reads, shown BEFORE the
   // merchant fills a whole form a 429 would then refuse.
   const usage = aiConfigured ? await readAiUsage(db) : null;
@@ -126,7 +135,7 @@ export default async function NewLandingPage() {
           }}
           errors={errors}
         />
-      ) : (
+      ) : maySpendOnAi ? (
         <div
           data-testid="ai-generate-unavailable"
           className="mt-6 max-w-lg rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground"
@@ -136,7 +145,7 @@ export default async function NewLandingPage() {
             {t("builder.newPage.ai.configureLink")}
           </Link>
         </div>
-      )}
+      ) : null}
       </PageBody>
     </>
   );

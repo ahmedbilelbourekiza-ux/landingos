@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { can } from "@landingos/auth";
 import { withTenant } from "@landingos/db";
 import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
@@ -48,6 +49,20 @@ export default async function BuilderAnalyticsScreen({
   );
   const locale = isLocale(rawLocale) ? rawLocale : DEFAULT_LOCALE;
   const range = analyticsRange((await searchParams).days);
+
+  // SEC.8 — the analyze button bills the tenant's AI key, which is its own
+  // permission now. Without it the button is not rendered at all: this screen
+  // is reachable on orders:read, and a control that can only answer 403 is
+  // the reachability defect in reverse.
+  const maySpendOnAi = can(session.auth!, "website-builder:ai:spend");
+
+  // SEC.9 (LB.23 review) — the connect form and Refresh call routes gated on
+  // `platform:integrations:manage`, which only OWNER/ADMIN hold by role,
+  // while THIS screen is reachable on orders:read. Rendered ungated, a
+  // VIEWER was offered a credential field whose save could only answer 403 —
+  // LB.23c's dead-control defect, wearing a permission instead of a missing
+  // form. The spend NUMBERS stay for everyone the screen admits.
+  const mayManageIntegrations = can(session.auth!, "platform:integrations:manage");
 
   /* `withTenant`, not `forTenant`: the uniques aggregate is raw SQL and needs
    * the one bound transaction connection (the proxy cannot carry it). The
@@ -205,8 +220,11 @@ export default async function BuilderAnalyticsScreen({
             {/* The remedy belongs WITH the message. Saying "not connected" and
                 offering nothing is a dead end, which is exactly what shipped
                 in LB.23b and what the operator found. Open by default here:
-                this is the one state where the merchant came to fix it. */}
-            <ConnectAdAccountPanel errors={spendErrors} labels={adAccountLabels} defaultOpen />
+                this is the one state where the merchant came to fix it.
+                SEC.9: only for whoever the intake route would actually admit. */}
+            {mayManageIntegrations && (
+              <ConnectAdAccountPanel errors={spendErrors} labels={adAccountLabels} defaultOpen />
+            )}
           </>
         ) : adSpend.state === "never-synced" ? (
           <>
@@ -215,27 +233,31 @@ export default async function BuilderAnalyticsScreen({
             </p>
             {/* The first pull belongs here: this state IS "connected, nothing
                 fetched yet", and the fix for it is the same button. */}
-            <RefreshSpendButton
-              adAccountId={adSpend.adAccountId}
-              days={range.days}
-              labels={{
-                refresh: t("builder.analytics.adSpendRefresh"),
-                refreshing: t("builder.analytics.adSpendRefreshing"),
-              }}
-              errors={spendErrors}
-            />
+            {mayManageIntegrations && (
+              <RefreshSpendButton
+                adAccountId={adSpend.adAccountId}
+                days={range.days}
+                labels={{
+                  refresh: t("builder.analytics.adSpendRefresh"),
+                  refreshing: t("builder.analytics.adSpendRefreshing"),
+                }}
+                errors={spendErrors}
+              />
+            )}
             {/* The commonest real case: the account row exists but its token
                 was never pasted, so Refresh answers NO_CREDENTIAL. The field
                 to fix that has to be reachable from right here. */}
-            <ConnectAdAccountPanel
-              errors={spendErrors}
-              labels={adAccountLabels}
-              existing={{
-                accountId: adSpend.accountRef,
-                name: adSpend.accountName,
-                currency: adSpend.currency,
-              }}
-            />
+            {mayManageIntegrations && (
+              <ConnectAdAccountPanel
+                errors={spendErrors}
+                labels={adAccountLabels}
+                existing={{
+                  accountId: adSpend.accountRef,
+                  name: adSpend.accountName,
+                  currency: adSpend.currency,
+                }}
+              />
+            )}
           </>
         ) : (
           <>
@@ -292,26 +314,30 @@ export default async function BuilderAnalyticsScreen({
             )}
             {/* On demand only — nothing schedules a pull, and the screen should
                 not imply otherwise. It refreshes the window being LOOKED AT. */}
-            <RefreshSpendButton
-              adAccountId={adSpend.adAccountId}
-              days={range.days}
-              labels={{
-                refresh: t("builder.analytics.adSpendRefresh"),
-                refreshing: t("builder.analytics.adSpendRefreshing"),
-              }}
-              errors={spendErrors}
-            />
+            {mayManageIntegrations && (
+              <RefreshSpendButton
+                adAccountId={adSpend.adAccountId}
+                days={range.days}
+                labels={{
+                  refresh: t("builder.analytics.adSpendRefresh"),
+                  refreshing: t("builder.analytics.adSpendRefreshing"),
+                }}
+                errors={spendErrors}
+              />
+            )}
             {/* Collapsed here: nothing is broken, but a token expires or gets
                 revoked, and rotating it must not require database access. */}
-            <ConnectAdAccountPanel
-              errors={spendErrors}
-              labels={adAccountLabels}
-              existing={{
-                accountId: adSpend.accountRef,
-                name: adSpend.accountName,
-                currency: adSpend.currency,
-              }}
-            />
+            {mayManageIntegrations && (
+              <ConnectAdAccountPanel
+                errors={spendErrors}
+                labels={adAccountLabels}
+                existing={{
+                  accountId: adSpend.accountRef,
+                  name: adSpend.accountName,
+                  currency: adSpend.currency,
+                }}
+              />
+            )}
           </>
         )}
       </section>
@@ -463,7 +489,7 @@ export default async function BuilderAnalyticsScreen({
                         needed: INSIGHT_MIN_VIEWS,
                       })}
                     </p>
-                  ) : (
+                  ) : maySpendOnAi ? (
                     <AnalyzePageButton
                       landingPageId={row.landingPageId}
                       labels={{
@@ -472,7 +498,7 @@ export default async function BuilderAnalyticsScreen({
                       }}
                       errors={insightErrors}
                     />
-                  )}
+                  ) : null}
                 </div>
                 {recommendations.length > 0 && (
                   <ul className="mt-3 space-y-3">

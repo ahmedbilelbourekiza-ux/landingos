@@ -281,14 +281,14 @@ describe('POST /api/builder/landings/generate (end to end)', { skip }, () => {
   let photoUrl = '';
   let photo2Url = '';
 
-  async function makeUser(tenantId: string, role: string, label: string) {
+  async function makeUser(tenantId: string, role: string, label: string, permissions: string[] = []) {
     const email = `ai-${label}-${stamp}@landingos.test`;
     const u = await asPlatform().user.create({
       data: { email, name: email, passwordHash: await hashPassword('x') },
     });
     userIds.push(u.id);
     await withTenant(tenantId, (tx) =>
-      (tx as any).membership.create({ data: { tenantId, userId: u.id, role } }),
+      (tx as any).membership.create({ data: { tenantId, userId: u.id, role, permissions } }),
     );
     const { token } = await createSession(u.id, tenantId);
     tokens[label] = token;
@@ -411,6 +411,27 @@ describe('POST /api/builder/landings/generate (end to end)', { skip }, () => {
     assert.equal(viewer.status, 403);
   });
 
+  test('SEC.8 — a MANAGER may edit pages but may NOT spend: 403 AI_SPEND_FORBIDDEN, before any provider logic', async () => {
+    /* The asymmetry the review named: generation bills the tenant's own key,
+     * and pages:write (which MANAGER holds through the write glob) used to be
+     * the only gate. The refusal must also come BEFORE the provider lookup —
+     * at this point in the suite no provider exists, so a 501 here would mean
+     * the permission is checked after the wallet is already half-open. */
+    await makeUser(tenantA, 'MANAGER', 'manager');
+    const res = await api('/api/builder/landings/generate', tokens.manager, generateBody());
+    assert.equal(res.status, 403, JSON.stringify(res.body));
+    assert.equal(res.body.error.code, 'AI_SPEND_FORBIDDEN');
+
+    // Reachability (the LB.23c lesson): the screen offers the manager NO dead
+    // control — neither the panel nor the configure pointer renders for
+    // someone whose click could only answer 403.
+    const html = await fetch(BASE + '/console/builder/pages/new', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.manager}` },
+    }).then((r) => r.text());
+    assert.ok(!html.includes('data-testid="ai-generate-panel"'));
+    assert.ok(!html.includes('data-testid="ai-generate-unavailable"'));
+  });
+
   test('no provider configured: 501 NO_AI_PROVIDER, and the screen says so', async () => {
     const res = await api('/api/builder/landings/generate', tokens.owner, generateBody());
     assert.equal(res.status, 501);
@@ -518,6 +539,29 @@ describe('POST /api/builder/landings/generate (end to end)', { skip }, () => {
     assert.ok(page.themeId);
     assert.ok(page.theme.primary.startsWith('#'));
     assert.equal(page.theme.isBuiltIn, false);
+  });
+
+  test('SEC.8 — the grant by name opens the gate; the bare MANAGER stays refused even with a provider', async () => {
+    /* The other half of the sensitive-permission shape: `*:ai:spend` is
+     * grantable on the membership like `erp:agents:manage`, so a merchant CAN
+     * delegate spending without handing over ADMIN. And with a provider now
+     * configured, the bare manager's refusal must still be the permission —
+     * proving the 403 was never really "no provider yet" in disguise. */
+    const bare = await api('/api/builder/landings/generate', tokens.manager, generateBody());
+    assert.equal(bare.status, 403);
+    assert.equal(bare.body.error.code, 'AI_SPEND_FORBIDDEN');
+
+    await makeUser(tenantA, 'MANAGER', 'spender', ['website-builder:ai:spend']);
+    behaviour.status = 200;
+    behaviour.answer = JSON.stringify(VALID_COPY);
+    const res = await api('/api/builder/landings/generate', tokens.spender, generateBody());
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.equal(res.body.data.status, 'DRAFT');
+
+    const html = await fetch(BASE + '/console/builder/pages/new', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.spender}` },
+    }).then((r) => r.text());
+    assert.ok(html.includes('data-testid="ai-generate-panel"'), 'the panel is reachable for the granted manager');
   });
 
   test('a malformed answer writes NOTHING — no half-page to discover', async () => {

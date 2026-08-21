@@ -152,14 +152,14 @@ describe('POST /api/builder/landings/[id]/analyze (end to end)', { skip }, () =>
   const hits: Array<{ path: string; body: any }> = [];
   const behaviour = { status: 200, answer: '' };
 
-  async function makeUser(role: string, label: string) {
+  async function makeUser(role: string, label: string, permissions: string[] = []) {
     const email = `bh3-${label}-${stamp}@landingos.test`;
     const u = await asPlatform().user.create({
       data: { email, name: email, passwordHash: await hashPassword('x') },
     });
     userIds.push(u.id);
     await withTenant(tenantId, (tx) =>
-      (tx as any).membership.create({ data: { tenantId, userId: u.id, role } }),
+      (tx as any).membership.create({ data: { tenantId, userId: u.id, role, permissions } }),
     );
     const { token } = await createSession(u.id, tenantId);
     tokens[label] = token;
@@ -359,6 +359,37 @@ describe('POST /api/builder/landings/[id]/analyze (end to end)', { skip }, () =>
     assert.equal(anon.status, 401);
     const viewer = await api(`/api/builder/landings/${pageId}/analyze`, tokens.viewer);
     assert.equal(viewer.status, 403);
+  });
+
+  test('SEC.8 — a MANAGER is refused as AI_SPEND_FORBIDDEN; the grant by name opens it', async () => {
+    /* This is the quota's second spender, so it carries the generate route's
+     * rule: pages:write (which MANAGER holds by glob) no longer implies
+     * billing the tenant's key. The refusal must not touch the ledger — a 403
+     * that consumed an allowance slot would be spending on behalf of the
+     * person it just refused. Both calls use the THIN page so the permission
+     * outcome is observable without an analysis being stored (which would
+     * poison the cooldown/whole-flow tests below). */
+    await makeUser('MANAGER', 'manager');
+    const before = (await ledger()).length;
+    const res = await api(`/api/builder/landings/${thinPageId}/analyze`, tokens.manager);
+    assert.equal(res.status, 403, JSON.stringify(res.body));
+    assert.equal(res.body.error.code, 'AI_SPEND_FORBIDDEN');
+    assert.equal((await ledger()).length, before);
+
+    // Reachability: the analytics screen renders the analyze control only for
+    // someone whose click can succeed.
+    const html = await fetch(BASE + '/console/builder/analytics', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.manager}` },
+    }).then((r) => r.text());
+    assert.ok(!html.includes('data-testid="analyze-page-'), 'no dead analyze button for a non-spender');
+
+    // The grant flips the ANSWER from "may not spend" to the data floor —
+    // permission first, floor second, provider never (thin page, no ledger row).
+    await makeUser('MANAGER', 'spender', ['website-builder:ai:spend']);
+    const granted = await api(`/api/builder/landings/${thinPageId}/analyze`, tokens.spender);
+    assert.equal(granted.status, 422, JSON.stringify(granted.body));
+    assert.equal(granted.body.error.code, 'INSUFFICIENT_DATA');
+    assert.equal((await ledger()).length, before);
   });
 
   test('below the data floor: a named refusal BEFORE provider or quota are touched', async () => {

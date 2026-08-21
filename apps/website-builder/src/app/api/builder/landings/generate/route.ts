@@ -1,3 +1,4 @@
+import { can } from "@landingos/auth";
 import { withTenant } from "@landingos/db";
 import { z } from "zod";
 
@@ -83,6 +84,16 @@ function ownsUpload(url: string, tenantId: string): boolean {
 }
 
 export const POST = tenantRoute("website-builder:pages:write", async ({ db, req, session, afterCommit }) => {
+  /* SEC.8 — the SECOND permission, checked by hand because the wrapper takes
+   * one. pages:write says the caller may create the draft this route writes;
+   * ai:spend says they may bill the tenant's provider key to do it. The 16 Aug
+   * header note below ("whether AI spend deserves its own permission is an
+   * open product question") is closed: it does, because the SENSITIVE list's
+   * own rule — spending money is never implied by a glob — already applied. */
+  if (!can(session.auth!, "website-builder:ai:spend")) {
+    return apiError(403, "AI_SPEND_FORBIDDEN", "Spending on AI needs its own permission on this company.");
+  }
+
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");

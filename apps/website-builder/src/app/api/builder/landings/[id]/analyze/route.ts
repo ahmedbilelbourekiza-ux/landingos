@@ -1,3 +1,4 @@
+import { can } from "@landingos/auth";
 import { withTenant } from "@landingos/db";
 import { z } from "zod";
 
@@ -53,6 +54,14 @@ const insightShape = (row: any, cached: boolean) => ({
 });
 
 export const POST = tenantRoute<Params>("website-builder:pages:write", async ({ db, req, session, params, afterCommit }) => {
+  /* SEC.8 — the generate route's rule, because this is the quota's second
+   * spender: pages:write authorises the page-side work, ai:spend authorises
+   * billing the tenant's key. Checked before the cooldown so "may I" never
+   * depends on "is there a young insight to re-show". */
+  if (!can(session.auth!, "website-builder:ai:spend")) {
+    return apiError(403, "AI_SPEND_FORBIDDEN", "Spending on AI needs its own permission on this company.");
+  }
+
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");
