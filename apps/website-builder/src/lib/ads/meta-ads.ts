@@ -2,7 +2,7 @@ import { asPlatform, withTenant } from "@landingos/db";
 
 // Relative, not `@/lib/...`: the alias only resolves inside Next's build, and
 // the suite imports this module from bare node. Same reason as render-domains.
-import { encryptToken, revealStoredSecret } from "../meta/crypto.ts";
+import { encryptToken, decryptToken, revealStoredSecret } from "../meta/crypto.ts";
 import {
   buildInsightsRequest,
   parseInsightsRows,
@@ -42,6 +42,52 @@ import {
  * ========================================================================== */
 
 const META_ADS_CREDENTIAL_KEY = "meta-ads";
+
+/* -----------------------------------------------------------------------------
+ * THE TOKEN ON AN AD ACCOUNT ROW — encrypted only, never plaintext.
+ *
+ * `revealStoredSecret` returns its input UNCHANGED when the input is not in
+ * `iv:tag:ciphertext` form. That fallback exists so LB.5-era rows written
+ * before encryption could still be read, and for THIS credential it is a trap:
+ * it would let a live ads token sit in the clear in the database and still
+ * "work", so nothing would ever surface the mistake.
+ *
+ * So this reader does NOT call it. A value that does not look encrypted is
+ * refused outright — treated as no credential at all — which fails in the safe
+ * direction: the console says "not connected" instead of quietly using a
+ * plaintext secret.
+ * -------------------------------------------------------------------------- */
+
+const ENCRYPTED_SHAPE = /^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/i;
+
+/** True only for the AES-256-GCM stored form. Exported so a test can pin that
+ * the plaintext path is unreachable for this credential. */
+export function isEncryptedSecret(stored: string | null | undefined): boolean {
+  return typeof stored === "string" && ENCRYPTED_SHAPE.test(stored);
+}
+
+/**
+ * The token stored on an AdAccount row, or null.
+ *
+ * Null when absent, when it is not in the encrypted form (see above), or when
+ * it will not decrypt — every broken state reads as "not connected" rather
+ * than throwing into a merchant's screen.
+ */
+export function readAccountToken(stored: string | null | undefined): string | null {
+  if (!isEncryptedSecret(stored)) return null;
+  try {
+    const plain = decryptToken(stored as string);
+    return plain.trim() ? plain : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Encrypt on the way in. One call site for the route, so nothing can store a
+ * bare token by taking a different path. */
+export function sealAccountToken(plaintext: string): string {
+  return encryptToken(plaintext);
+}
 
 /** Encrypt + upsert the credential row. An attended script calls this; the
  * token is never logged, never selected into a response, and never returned
@@ -247,4 +293,46 @@ export async function metaChannelPerformance(
       revenueMinor,
     };
   });
+}
+
+export type RefreshOutcome =
+  | { readonly ok: true; readonly written: number; readonly days: number }
+  | { readonly ok: false; readonly code: "NO_ACCOUNT" | "NO_CREDENTIAL" | "UPSTREAM"; readonly error?: string };
+
+/**
+ * LB.23 — the "Refresh spend" action, end to end, for ONE tenant's account.
+ *
+ * Resolves the token from the account ROW (encrypted at rest, never plaintext
+ * — see `readAccountToken`), pulls the window, and upserts. Returns a CODE
+ * rather than a message so the console can map it to a translated string; the
+ * upstream text from Meta rides along untranslated because it is Meta's, and
+ * inventing our own wording for it would hide which system refused.
+ *
+ * A missing credential is its own code, not an upstream failure: one is the
+ * merchant's next action ("paste your token"), the other is not.
+ */
+export async function refreshAccountSpend(
+  tenantId: string,
+  adAccountRowId: string,
+  range: DateRange,
+): Promise<RefreshOutcome> {
+  const account = await withTenant(tenantId, (tx) =>
+    tx.adAccount.findFirst({
+      where: { id: adAccountRowId },
+      select: { id: true, accountId: true, accessToken: true, isActive: true },
+    }),
+  );
+  if (!account) return { ok: false, code: "NO_ACCOUNT" };
+
+  const token = readAccountToken(account.accessToken);
+  if (!token) return { ok: false, code: "NO_CREDENTIAL" };
+
+  const result = await syncDailySpend(
+    tenantId,
+    account.id,
+    { token, accountId: account.accountId },
+    range,
+  );
+  if (!result.ok) return { ok: false, code: "UPSTREAM", error: result.error };
+  return { ok: true, written: result.written, days: result.written };
 }

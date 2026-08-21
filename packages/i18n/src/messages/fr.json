@@ -168,7 +168,10 @@
       "adSpendOrders": "commandes depuis Facebook et Instagram",
       "adSpendCostPerOrder": "coût par commande",
       "adSpendNotAnswerable": "pas encore calculable",
-      "adSpendCurrencyNote": "Les dépenses sont affichées dans la devise du compte publicitaire, sans conversion. Le calculateur de rentabilité les convertit avec le taux que vous y saisissez."
+      "adSpendCurrencyNote": "Les dépenses sont affichées dans la devise du compte publicitaire, sans conversion. Le calculateur de rentabilité les convertit avec le taux que vous y saisissez.",
+      "adSpendRefresh": "Actualiser les dépenses",
+      "adSpendRefreshing": "Actualisation…",
+      "adSpendNoCredential": "Ce compte publicitaire n'a pas encore de jeton d'accès enregistré. Ajoutez-le dans Paramètres → Intégrations."
     },
     "newPage": {
       "title": "Nouvelle page de vente",

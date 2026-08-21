@@ -10,6 +10,92 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## LB.23b — the ad credential comes in through the console, and spend refreshes on demand
+
+**Built and verified on DEV 21 August 2026. NOT deployed; production does not
+have the column. Migration preview against production is one line and is
+recorded below — the decision is the user's.**
+
+**Why this exists.** LB.23 shipped the pull and the read side but nothing that
+could *reach* them: no route, no job and no cron called `syncDailySpend`, and
+nothing read a credential. The 30 rows in production got there because a
+laptop ran the sync by hand. So the credential was never the next step — a
+credential with no reader is the "writer with no reader" defect this codebase
+keeps naming, and installing one first would have produced exactly that.
+
+**Why the console and not a shell.** The encryption key is derived from
+`AUTH_SECRET`. A credential encrypted anywhere else — a laptop, a one-off
+script with a different environment — is undecryptable by the running app and
+surfaces as a silent "not connected"; that mismatch was measured on 21 Aug by
+failing to decrypt a production tracking token with the local key. Accepting
+the token through the app makes the key correct BY CONSTRUCTION instead of by
+someone remembering to match two secrets. It is also repeatable for rotation,
+needs no Render plan feature, no CLI, no API key and no Node-version
+assumption.
+
+**The token lives on the AdAccount row, per tenant — NOT in the platform-wide
+`PlatformCredential`.** The intake route is gated by a TENANT permission
+(`platform:integrations:manage`, the `/integrations/tracking` precedent), so a
+global credential behind it would let any tenant's OWNER overwrite the
+credential every other tenant depends on. On `AdAccount` it is RLS-scoped like
+everything else the tenant owns. Pinned by a test: the same
+`provider`+`accountId` in a second tenant creates a SEPARATE row and leaves
+the first untouched.
+
+**⚠ THE PLAINTEXT PATH IS CLOSED, DELIBERATELY AND WITH A TEST.**
+`revealStoredSecret` returns its input unchanged when the input is not in
+`iv:tag:ciphertext` form — a fallback that exists for pre-encryption rows, and
+for an ads token it is a trap: a live credential sitting in the clear in the
+database would work perfectly, so nothing would ever surface the mistake.
+`readAccountToken` therefore does NOT call it and refuses anything that is not
+the encrypted shape, failing to "not connected" rather than to a plaintext
+secret. Three tests pin this, including one that first proves the dangerous
+fallback really does exist elsewhere, and an end-to-end check that writes a
+plaintext token into the column and asserts the refresh route answers
+**409 NO_CREDENTIAL** rather than using it.
+
+**What was built:**
+- `AdAccount.accessToken`, nullable, encrypted at rest (**dev migration: one
+  ALTER, zero DROP; RLS unchanged at 57/57 — a column, not a table**).
+- `POST/GET /api/platform/integrations/ad-accounts` — the tracking route's
+  shape: encrypted in-process, write-only, masked to `••••••••` on read, never
+  selected into a response. An edit WITHOUT a token keeps the stored one, so
+  renaming an account cannot silently disconnect it.
+- `POST /api/platform/integrations/ad-accounts/[id]/refresh` — the trigger.
+  The window is bounded **server-side at 90 days**, because an unbounded
+  `since` is an unbounded Meta pull and an unbounded write. Refusals are named
+  codes, and `NO_CREDENTIAL` is its own 409 rather than an upstream error: one
+  has a next action the merchant can take, the other does not. A 403 would
+  have sent someone to look at permissions instead.
+- **"Refresh spend"** on the Traffic screen, on demand only — nothing
+  schedules a pull and the screen must not imply otherwise. It refreshes the
+  window being LOOKED AT, and renders none of the answer: the POST upserts the
+  rows the server pass already reads. It also appears in the `never-synced`
+  state, which is exactly where a first pull is the next action.
+- 12 → 15 `builder.analytics.*` keys across en/fr/ar; parity holds (1406).
+
+**Verified end to end on dev with the REAL token, through the route** — the
+same flow the operator will use: pasted in, **encrypted at rest** (not the
+plaintext, correct `iv:tag:ciphertext` shape), **absent from the entire
+response body**, masked in the list; then Refresh pulled **27 real days
+totalling 388.49 USD**, stored unconverted, `lastSyncedAt` moved. Throwaway
+tenant, swept to zero.
+
+**Suites:** ads-credential **9 new**, ads-routes **14 new**, ads-spend 18,
+ads-panel 8, plus the regression set.
+
+**Production migration preview (read-only, nothing applied):**
+
+```sql
+ALTER TABLE "AdAccount" ADD COLUMN "accessToken" TEXT;
+```
+
+Zero DROP, zero CREATE TABLE, one nullable column. RLS would stay 57/57.
+
+**Still not built, and still not implied anywhere in the UI:** a SCHEDULE.
+"Auto-refresh" is on-demand today. A cron or worker tick is its own slice and
+its own decision.
+
 ## DEPLOY — LB.23 ad-spend attribution is live (21 August 2026, 15:10–15:13 UTC)
 
 **`origin/main` moved `63ef313..a2c9df6`** — two commits, the LB.23 build and

@@ -710,6 +710,20 @@ model AdAccount {
   // As the provider reports it (USD here). NEVER converted on the way in.
   currency String
 
+  // The provider credential, ENCRYPTED AT REST (AES-256-GCM, the
+  // TrackingIntegration.serverToken pattern). Write-only: no route ever
+  // selects it into a response, and the console masks it to its presence.
+  //
+  // It lives HERE, per tenant, and deliberately NOT in the platform-wide
+  // PlatformCredential row: the intake route is gated by a TENANT permission,
+  // so a global credential behind it would let any tenant's owner overwrite
+  // the credential every other tenant depends on. On this table it is
+  // RLS-scoped like everything else the tenant owns.
+  //
+  // Nullable: an account row can exist before its token is pasted, which is
+  // the `never-synced` state the panel already distinguishes.
+  accessToken String?
+
   isActive Boolean @default(true)
 
   // Null until the first successful pull. Distinguishes "never synced" from

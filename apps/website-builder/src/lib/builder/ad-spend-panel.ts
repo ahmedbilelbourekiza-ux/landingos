@@ -29,10 +29,14 @@ export type AdSpendPanel =
   | {
       readonly state: "never-synced";
       readonly accountName: string;
+      /** So the screen can offer the FIRST pull from here — this state is
+       *  exactly where a refresh is the merchant's next action. */
+      readonly adAccountId: string;
     }
   | {
       readonly state: "ready";
       readonly accountName: string;
+      readonly adAccountId: string;
       readonly lastSyncedAt: Date;
       /** Formatted to 2dp; the currency is carried separately, never merged. */
       readonly spend: string;
@@ -88,7 +92,7 @@ export async function adSpendPanel(
   if (!account.lastSyncedAt) {
     // Distinct from "synced and found nothing" — one is our job to fix, the
     // other is a true fact about the account.
-    return { state: "never-synced", accountName: account.name };
+    return { state: "never-synced", accountName: account.name, adAccountId: account.id };
   }
 
   const stored = await db.adSpendDaily.findMany({
@@ -128,6 +132,7 @@ export async function adSpendPanel(
   return {
     state: "ready",
     accountName: account.name,
+    adAccountId: account.id,
     lastSyncedAt: account.lastSyncedAt,
     spend: toString(summary.spend, 2),
     currency,

@@ -12,6 +12,7 @@ import { INSIGHT_MIN_VIEWS, type InsightRecommendationData } from "@/lib/landing
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { AnalyzePageButton } from "@/components/console/builder/analyze-page-button";
+import { RefreshSpendButton } from "@/components/console/builder/refresh-spend-button";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +91,12 @@ export default async function BuilderAnalyticsScreen({
 
   // The analyze control's refusal vocabulary — the AI-surface codes plus this
   // route's own two, each named specifically because each names its fix.
+  /* LB.23 — the refresh control's refusal vocabulary. NO_CREDENTIAL is named
+     specifically because it is the one refusal with a next action the merchant
+     can take; the rest fall back to the generic wording on purpose. */
+  const spendErrors = actionErrors(t);
+  spendErrors.NO_CREDENTIAL = t("builder.analytics.adSpendNoCredential");
+
   const insightErrors = actionErrors(t);
   insightErrors.NO_AI_PROVIDER = t("builder.newPage.ai.noProvider");
   insightErrors.AI_UPSTREAM_ERROR = t("builder.newPage.ai.upstreamFailed");
@@ -179,9 +186,22 @@ export default async function BuilderAnalyticsScreen({
             {t("builder.analytics.adSpendUnconfigured")}
           </p>
         ) : adSpend.state === "never-synced" ? (
-          <p className="text-sm text-muted-foreground">
-            {t("builder.analytics.adSpendNeverSynced").replace("{account}", adSpend.accountName)}
-          </p>
+          <>
+            <p className="text-sm text-muted-foreground">
+              {t("builder.analytics.adSpendNeverSynced").replace("{account}", adSpend.accountName)}
+            </p>
+            {/* The first pull belongs here: this state IS "connected, nothing
+                fetched yet", and the fix for it is the same button. */}
+            <RefreshSpendButton
+              adAccountId={adSpend.adAccountId}
+              days={range.days}
+              labels={{
+                refresh: t("builder.analytics.adSpendRefresh"),
+                refreshing: t("builder.analytics.adSpendRefreshing"),
+              }}
+              errors={spendErrors}
+            />
+          </>
         ) : (
           <>
             <div className="flex flex-wrap gap-4 text-sm" data-testid="analytics-ad-spend-totals">
@@ -235,6 +255,17 @@ export default async function BuilderAnalyticsScreen({
                 {t("builder.analytics.adSpendCurrencyNote")}
               </p>
             )}
+            {/* On demand only — nothing schedules a pull, and the screen should
+                not imply otherwise. It refreshes the window being LOOKED AT. */}
+            <RefreshSpendButton
+              adAccountId={adSpend.adAccountId}
+              days={range.days}
+              labels={{
+                refresh: t("builder.analytics.adSpendRefresh"),
+                refreshing: t("builder.analytics.adSpendRefreshing"),
+              }}
+              errors={spendErrors}
+            />
           </>
         )}
       </section>

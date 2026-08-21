@@ -168,7 +168,10 @@
       "adSpendOrders": "orders from Facebook and Instagram",
       "adSpendCostPerOrder": "cost per order",
       "adSpendNotAnswerable": "not answerable yet",
-      "adSpendCurrencyNote": "Spend is shown in the advertising account's own currency, unconverted. The profit calculator converts it using the rate you enter there."
+      "adSpendCurrencyNote": "Spend is shown in the advertising account's own currency, unconverted. The profit calculator converts it using the rate you enter there.",
+      "adSpendRefresh": "Refresh spend",
+      "adSpendRefreshing": "Refreshing…",
+      "adSpendNoCredential": "This advertising account has no access token saved yet. Add it in Settings → Integrations."
     },
     "newPage": {
       "title": "New landing page",
