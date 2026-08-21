@@ -6,6 +6,7 @@ import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { analyticsRange, storefrontAnalytics } from "@/lib/builder/analytics";
+import { adSpendPanel } from "@/lib/builder/ad-spend-panel";
 import { pruneExpiredVisits } from "@/lib/storefront/visit-retention";
 import { INSIGHT_MIN_VIEWS, type InsightRecommendationData } from "@/lib/landing/ai-insight";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
@@ -51,7 +52,7 @@ export default async function BuilderAnalyticsScreen({
    * prune runs FIRST, in the same transaction — AN.2's read-path retention:
    * whoever looks at analytics sweeps their own expired rows, so this screen
    * never reports over data the retention rule says should be gone. */
-  const { data, insights } = await withTenant(session.auth!.tenantId, async (db) => {
+  const { data, insights, spend: adSpend } = await withTenant(session.auth!.tenantId, async (db) => {
     await pruneExpiredVisits(db);
     const analytics = await storefrontAnalytics(db, range);
     /* BH.3 — the newest stored analysis per measured page. DISTINCT ON is
@@ -71,7 +72,17 @@ export default async function BuilderAnalyticsScreen({
     for (const row of insightRows) {
       if (!newestPerPage.has(row.landingPageId)) newestPerPage.set(row.landingPageId, row);
     }
-    return { data: analytics, insights: newestPerPage };
+    /* LB.23 — inside the SAME transaction as the rest of the screen's reads:
+       one tenant scope, one connection, and the spend cannot disagree with
+       the orders it is shown beside. */
+    const tenantRow = await (db as never as {
+      tenant: { findUnique(a: unknown): Promise<{ currency: string } | null> };
+    }).tenant.findUnique({
+      where: { id: session.auth!.tenantId },
+      select: { currency: true },
+    });
+    const spend = await adSpendPanel(db as never, range, tenantRow?.currency ?? "DZD");
+    return { data: analytics, insights: newestPerPage, spend };
   });
 
   const channelLabel = (channel: string) =>
@@ -149,6 +160,84 @@ export default async function BuilderAnalyticsScreen({
           ))}
         </nav>
       </div>
+
+      {/* LB.23 — real ad spend, pulled from Meta, beside the orders AN.1
+          attributed to the same channels. Four distinct states rather than a
+          zero for all of them: a screen that renders 0.00 whether nothing is
+          connected, nothing is synced or nothing was spent teaches a merchant
+          to distrust the figure that IS real.
+
+          The spend is in the AD ACCOUNT's currency (USD) and the store sells
+          in DA. Nothing here converts: the profit calculator already owns
+          that, with the rate the manager types. The note says so on the
+          screen rather than leaving a bare number to be misread. */}
+      <section className="space-y-2" data-testid="analytics-ad-spend">
+        <h2 className="text-sm font-semibold">{t("builder.analytics.adSpendTitle")}</h2>
+
+        {adSpend.state === "unconfigured" ? (
+          <p className="text-sm text-muted-foreground">
+            {t("builder.analytics.adSpendUnconfigured")}
+          </p>
+        ) : adSpend.state === "never-synced" ? (
+          <p className="text-sm text-muted-foreground">
+            {t("builder.analytics.adSpendNeverSynced").replace("{account}", adSpend.accountName)}
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-4 text-sm" data-testid="analytics-ad-spend-totals">
+              <span>
+                {/* Currency beside the number, always — it is USD while every
+                    other figure on this screen is DA. */}
+                <span className="font-semibold tabular-nums">{adSpend.spend}</span>{" "}
+                <span className="text-muted-foreground">{adSpend.currency}</span>
+              </span>
+              <span>
+                <span className="font-semibold tabular-nums">{adSpend.impressions}</span>{" "}
+                <span className="text-muted-foreground">
+                  {t("builder.analytics.adSpendImpressions")}
+                </span>
+              </span>
+              <span>
+                <span className="font-semibold tabular-nums">{adSpend.clicks}</span>{" "}
+                <span className="text-muted-foreground">
+                  {t("builder.analytics.adSpendClicks")}
+                </span>
+              </span>
+              <span>
+                <span className="font-semibold tabular-nums">{adSpend.orders}</span>{" "}
+                <span className="text-muted-foreground">
+                  {t("builder.analytics.adSpendOrders")}
+                </span>
+              </span>
+              <span data-testid="analytics-cost-per-order">
+                {adSpend.costPerOrder === null ? (
+                  <span className="text-muted-foreground">
+                    {t("builder.analytics.adSpendNotAnswerable")}
+                  </span>
+                ) : (
+                  <>
+                    <span className="font-semibold tabular-nums">{adSpend.costPerOrder}</span>{" "}
+                    <span className="text-muted-foreground">
+                      {adSpend.currency} {t("builder.analytics.adSpendCostPerOrder")}
+                    </span>
+                  </>
+                )}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t("builder.analytics.adSpendAccount")}: {adSpend.accountName} ·{" "}
+              {t("builder.analytics.adSpendSynced")}:{" "}
+              {formatDate(adSpend.lastSyncedAt, locale)} · {adSpend.days}{" "}
+              {t("builder.analytics.adSpendDays")}
+            </p>
+            {adSpend.ratioRefusal && (
+              <p className="text-xs text-muted-foreground">
+                {t("builder.analytics.adSpendCurrencyNote")}
+              </p>
+            )}
+          </>
+        )}
+      </section>
 
       <DataTable
         testId="analytics-pages"

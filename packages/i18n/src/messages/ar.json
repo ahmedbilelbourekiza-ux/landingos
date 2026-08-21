@@ -156,7 +156,19 @@
       "insightMeta": "{date} · نافذة {days} يوماً · استناداً إلى {views} مشاهدة",
       "insightNone": "لا يوجد تحليل بعد.",
       "insightInsufficient": "لا يوجد زيارات كافية للتحليل بعد ({views} من {needed} مشاهدة في النافذة).",
-      "insightRefused": "تعذّر إسناد التحليل إلى أرقامك — لم يُحفظ شيء. حاول مجدداً."
+      "insightRefused": "تعذّر إسناد التحليل إلى أرقامك — لم يُحفظ شيء. حاول مجدداً.",
+      "adSpendTitle": "مصاريف الإعلانات",
+      "adSpendUnconfigured": "لم يتم ربط أي حساب إعلاني بعد.",
+      "adSpendNeverSynced": "مرتبط بـ {account}، لكن لم يتم جلب أي مصاريف بعد.",
+      "adSpendAccount": "الحساب",
+      "adSpendSynced": "آخر تحديث",
+      "adSpendDays": "أيام بها مصاريف",
+      "adSpendImpressions": "ظهور",
+      "adSpendClicks": "نقرات",
+      "adSpendOrders": "طلبات من فيسبوك وإنستغرام",
+      "adSpendCostPerOrder": "تكلفة الطلب",
+      "adSpendNotAnswerable": "غير قابل للحساب بعد",
+      "adSpendCurrencyNote": "تُعرض المصاريف بعملة الحساب الإعلاني نفسه، دون تحويل. حاسبة الأرباح تحوّلها بالسعر الذي تدخله هناك."
     },
     "newPage": {
       "title": "صفحة هبوط جديدة",

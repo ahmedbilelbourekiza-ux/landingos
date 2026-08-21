@@ -156,7 +156,19 @@
       "insightMeta": "{date} · fenêtre de {days} jours · basée sur {views} vues",
       "insightNone": "Aucune analyse pour l'instant.",
       "insightInsufficient": "Pas encore assez de trafic pour analyser ({views} vues sur {needed} dans la fenêtre).",
-      "insightRefused": "L'analyse n'a pas pu s'appuyer sur vos chiffres — rien n'a été enregistré. Réessayez."
+      "insightRefused": "L'analyse n'a pas pu s'appuyer sur vos chiffres — rien n'a été enregistré. Réessayez.",
+      "adSpendTitle": "Dépenses publicitaires",
+      "adSpendUnconfigured": "Aucun compte publicitaire n'est encore connecté.",
+      "adSpendNeverSynced": "Connecté à {account}, mais aucune dépense n'a encore été récupérée.",
+      "adSpendAccount": "compte",
+      "adSpendSynced": "dernière mise à jour",
+      "adSpendDays": "jours avec dépenses",
+      "adSpendImpressions": "impressions",
+      "adSpendClicks": "clics",
+      "adSpendOrders": "commandes depuis Facebook et Instagram",
+      "adSpendCostPerOrder": "coût par commande",
+      "adSpendNotAnswerable": "pas encore calculable",
+      "adSpendCurrencyNote": "Les dépenses sont affichées dans la devise du compte publicitaire, sans conversion. Le calculateur de rentabilité les convertit avec le taux que vous y saisissez."
     },
     "newPage": {
       "title": "Nouvelle page de vente",

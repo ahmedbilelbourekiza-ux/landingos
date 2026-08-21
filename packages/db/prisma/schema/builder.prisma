@@ -674,6 +674,88 @@ model StorefrontVisit {
   @@index([tenantId, landingPageId, createdAt])
 }
 
+/* =============================================================================
+ * LB.23 — REAL ad spend, pulled from Meta, joined to AN.1's channels.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT DO: convert currency. Meta bills these
+ * accounts in USD and the stores sell in DA. The ERP calculator ALREADY owns
+ * that conversion — `CalcInputs.adsUsd × CalcInputs.rate`, a rate the manager
+ * types because it moves — and its comment states the rule: "Bought in USD,
+ * accounted in DA, at a rate that moves." So spend is stored EXACTLY as Meta
+ * reported it, with the currency beside it, and no DA figure is ever written
+ * here. A second conversion path would be a second answer to a question that
+ * already has one, and the two would drift.
+ *
+ * The `currency` column is therefore not decoration: it is the guard that
+ * stops a USD number being read as DA by a later reader who forgot.
+ * ========================================================================== */
+
+// One advertising account a tenant's spend is pulled from. A ROW, not an env
+// var, because which account belongs to which store is a merchant fact that
+// changes without a deploy — and because nine accounts exist on this token
+// while only one currently runs ads.
+model AdAccount {
+  id       String @id @default(cuid())
+  tenantId String
+
+  // "meta" today. A plain string on AN.1's `sourceChannel` precedent: a new
+  // network is a row, not a migration.
+  provider String
+
+  // Meta's account id WITHOUT the `act_` prefix — the prefix is wire syntax
+  // and belongs in the request builder, not in stored data.
+  accountId String
+  name      String
+
+  // As the provider reports it (USD here). NEVER converted on the way in.
+  currency String
+
+  isActive Boolean @default(true)
+
+  // Null until the first successful pull. Distinguishes "never synced" from
+  // "synced and found nothing", which a zero-row spend table cannot.
+  lastSyncedAt DateTime?
+
+  dailySpend AdSpendDaily[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, provider, accountId])
+  @@index([tenantId, isActive])
+}
+
+// One account's spend for one day, as the provider reported it. Daily rather
+// than per-request: it is the finest grain the insights API bills by, it makes
+// the sync idempotent on a natural key, and re-pulling a day overwrites rather
+// than accumulates.
+model AdSpendDaily {
+  id       String @id @default(cuid())
+  tenantId String
+
+  adAccountId String
+  adAccount   AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+
+  // The PROVIDER's day, in the ACCOUNT's timezone — not ours. Two accounts on
+  // this token sit in different zones (Africa/Casablanca and Africa/Algiers),
+  // so a day boundary is a property of the account and re-deriving it here
+  // would invent a number Meta never reported.
+  date DateTime @db.Date
+
+  spend    Decimal
+  currency String
+
+  impressions Int @default(0)
+  clicks      Int @default(0)
+
+  // When WE last wrote this row. Not the same as `date`, and the difference is
+  // how a stale window is spotted.
+  syncedAt DateTime @default(now())
+
+  @@unique([tenantId, adAccountId, date])
+  @@index([tenantId, date])
+}
+
 // LB.36 — a brand: a PUBLIC identity a page can sell under, replacing the
 // store's name everywhere the page (and its order confirmation) shows one.
 // A row, not free text, because customers see it: it needs a stable slug and

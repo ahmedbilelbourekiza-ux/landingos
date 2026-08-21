@@ -156,7 +156,19 @@
       "insightMeta": "{date} · {days}-day window · based on {views} views",
       "insightNone": "No analysis yet.",
       "insightInsufficient": "Not enough traffic to analyze yet ({views} of {needed} views in the window).",
-      "insightRefused": "The analysis could not be grounded in your numbers — nothing was stored. Try again."
+      "insightRefused": "The analysis could not be grounded in your numbers — nothing was stored. Try again.",
+      "adSpendTitle": "Ad spend",
+      "adSpendUnconfigured": "No advertising account is connected yet.",
+      "adSpendNeverSynced": "Connected to {account}, but no spend has been pulled yet.",
+      "adSpendAccount": "account",
+      "adSpendSynced": "last updated",
+      "adSpendDays": "days with spend",
+      "adSpendImpressions": "impressions",
+      "adSpendClicks": "clicks",
+      "adSpendOrders": "orders from Facebook and Instagram",
+      "adSpendCostPerOrder": "cost per order",
+      "adSpendNotAnswerable": "not answerable yet",
+      "adSpendCurrencyNote": "Spend is shown in the advertising account's own currency, unconverted. The profit calculator converts it using the rate you enter there."
     },
     "newPage": {
       "title": "New landing page",
