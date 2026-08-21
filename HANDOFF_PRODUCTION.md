@@ -15,6 +15,48 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.23 IS LIVE — real Meta ad spend is in production (21 Aug 2026, live 15:13:17 UTC)
+>
+> **`origin/main` is `a2c9df6`** (`63ef313..a2c9df6`, two commits: the LB.23
+> build and the SEC.6 doc record), pushed REF-MAPPED. Rollback **`63ef313`**.
+> **Migration ran first and separately:** tables **61 → 63**, RLS **55 → 57**,
+> policies **58 → 60**, `apply-rls` **PASS 57/57**, merchant data untouched
+> (`SalesOrder` 2, `LandingPage` 2, `Tenant` 3). The production preview was
+> byte-identical to dev's — zero DROP — which also proved no schema drift.
+> Health stayed 200 and the storefront byte-identical at 503,710 throughout.
+>
+> **Liveness had no public marker** (server + console only, as with SEC.6, and
+> still no Render API credential here). Confirmed by an AUTHED render of the
+> production console — the `Session.id = sha256(rawToken)` technique — checking
+> for the `analytics-ad-spend` testid, which exists only in the new code. The
+> session was deleted afterwards.
+>
+> **Real data is in production:** `AdAccount` 1 row (`Atlas Accounts 6`,
+> `act_730934849575452`, USD) mapped to **`bebezzouar`/selliora16**, and
+> `AdSpendDaily` **30 rows totalling 470.32 USD** (September 2025), matching
+> Meta's own aggregate. The last-30-days sync wrote **0 rows** — the account
+> has genuinely not spent since ~22 July — so the screen's 7/30-day window
+> honestly shows `0.00` / `0 days with spend`.
+>
+> **⚠ THE PLATFORM CANNOT REFRESH THAT DATA ITSELF.** The `meta-ads` credential
+> is encrypted from `AUTH_SECRET`, and **this machine's `AUTH_SECRET` does not
+> match production's** — proven by failing to decrypt a production
+> `TrackingIntegration.serverToken` with the local key. A credential encrypted
+> here is undecryptable there and would read as a silent "unconfigured". The 30
+> rows were written by running the sync FROM this machine with the token passed
+> directly (the READ path needs no credential). **Installing it in production
+> is an ATTENDED step needing the production `AUTH_SECRET`** — the LB.14c.b
+> dormancy shape again.
+>
+> **A defect was found by the functional test and fixed, NOT yet deployed.**
+> The live Arabic console printed **`0.00 DZD` for a USD account**: the panel
+> fell back to the STORE currency on an empty window. Fixed in **`c5d7cdb`**
+> (fallback is the ad account's own currency) with the missing test added —
+> **local only; production still shows the wrong label on a zero.**
+>
+> **Still open:** campaign-level attribution needs the ad links tagged with
+> `{{campaign.name}}` macros in Ads Manager, and tagging is not retroactive.
+
 > ### ✔ SEC.6 IS LIVE — the rate-limiter bypass is closed, proven on production (21 Aug 2026, pushed ~00:41 UTC)
 >
 > **`origin/main` is `63ef313`** (`c3dad4ce…` → `63ef313e456d139525994fac4207b8a4733235e8`),
