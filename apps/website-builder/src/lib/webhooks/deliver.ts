@@ -2,6 +2,7 @@ import { createHmac } from "crypto";
 
 import { withTenant } from "@landingos/db";
 import { revealStoredSecret } from "@/lib/meta/crypto";
+import { refuseResolvedTarget } from "../net/outbound-guard.ts";
 import type { WebhookEvent } from "./events";
 
 // Outgoing webhook delivery: signing, retries, and logging.
@@ -35,6 +36,33 @@ function isRetryable(statusCode: number | null): boolean {
   if (statusCode === null) return true; // network error / timeout
   if (statusCode === 429) return true;
   return statusCode >= 500;
+}
+
+/**
+ * SEC.7 — the resolve-time half of the SSRF guard, run before EVERY attempt.
+ *
+ * `url-guard.ts` refused private hosts as WRITTEN at configuration time, and
+ * its header honestly recorded the gap: a public DNS name that has since been
+ * pointed at a private address (DNS rebinding) sailed past a check that only
+ * ever read the string. So the destination is re-resolved here, immediately
+ * before each connection — per ATTEMPT, not per delivery, because between
+ * retry waits is exactly when a hostile record would flip.
+ *
+ * Only the resolve gate runs here, not the config-time protocol gate: the
+ * suites' stub receivers are plain-http 127.0.0.1 rows seeded straight into
+ * the database (the delivery-test convention), and they pass because the test
+ * server sets `OUTBOUND_PRIVATE_ALLOWLIST=127.0.0.1` — the guard's one seam.
+ * Production leaves that unset, so there a rebound name is refused, logged,
+ * and never retried.
+ */
+async function refuseDeliveryTarget(rawUrl: string): Promise<string | null> {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return "The endpoint URL is not a valid URL.";
+  }
+  return refuseResolvedTarget(url);
 }
 
 interface EndpointRow {
@@ -93,6 +121,17 @@ async function deliverToEndpoint(
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     attemptsMade = attempt;
+
+    // SEC.7 — refused targets are a terminal failure, not a retryable one:
+    // retrying a name that resolves privately is handing a rebinding attacker
+    // more coin flips.
+    const refusal = await refuseDeliveryTarget(endpoint.url);
+    if (refusal) {
+      lastStatus = null;
+      lastError = refusal;
+      break;
+    }
+
     try {
       const res = await fetch(endpoint.url, {
         method: "POST",
@@ -205,6 +244,16 @@ export async function sendTestDelivery(
 
   let statusCode: number | null = null;
   let error: string | null = null;
+
+  // SEC.7 — the same resolve-time gate real deliveries run. The operator
+  // pressing "send test" is owed the same refusal production would apply,
+  // not a green tick production would then contradict.
+  const refusal = await refuseDeliveryTarget(endpoint.url);
+  if (refusal) {
+    await logDelivery(tenantId, endpoint.id, "test", endpoint.id, false, null, 1, refusal);
+    return { ok: false, statusCode: null, error: refusal };
+  }
+
   try {
     const res = await fetch(endpoint.url, {
       method: "POST",

@@ -1,4 +1,5 @@
 import { aiProviderPreset } from "./ai-providers.ts";
+import { guardedFetch, OutboundRefusedError } from "../net/outbound-guard.ts";
 
 /* =============================================================================
  * One completion, any provider (LB.24).
@@ -212,14 +213,28 @@ export async function completeWithProvider(
 
   let res: Response;
   try {
-    res = await fetch(wire.url, {
-      method: "POST",
-      headers: wire.headers,
-      body: JSON.stringify(wire.body),
-      signal: AbortSignal.timeout(generationTimeoutMs(cfg)),
-      cache: "no-store",
-    });
+    /* SEC.7 — a merchant-set baseUrl is a server-side fetch of an arbitrary
+     * host, with a credential attached. guardedFetch refuses private-range
+     * targets both as written and AS RESOLVED at request time, and re-checks
+     * every redirect hop instead of letting the runtime follow them blind —
+     * before this, a hostile "OpenAI-compatible" base could 302 the request
+     * (x-api-key and all) at the cloud metadata service. */
+    res = await guardedFetch(
+      wire.url,
+      {
+        method: "POST",
+        headers: wire.headers,
+        body: JSON.stringify(wire.body),
+        signal: AbortSignal.timeout(generationTimeoutMs(cfg)),
+        cache: "no-store",
+      },
+      { protocols: ["https:", "http:"], maxRedirects: 3 },
+    );
   } catch (error) {
+    if (error instanceof OutboundRefusedError) {
+      // The guard's own words — operator-actionable, and never a secret.
+      throw new AiCallError("AI_UPSTREAM_ERROR", error.message);
+    }
     const timedOut = error instanceof Error && error.name === "TimeoutError";
     throw new AiCallError(
       "AI_UPSTREAM_ERROR",

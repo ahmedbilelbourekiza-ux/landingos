@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
 import { AI_PROVIDER_KEYS } from "@/lib/erp/ai-providers";
+import { refuseOutboundUrl } from "@/lib/net/outbound-guard";
 import { toJson } from "@/lib/erp/serialize";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,14 @@ export const POST = tenantRoute("erp:settings:write", async ({ db, req, session 
   const parsed = CreateProvider.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");
+  }
+  /* SEC.7 — this URL is fetched SERVER-SIDE with the tenant's key attached,
+   * so a private or internal address here is an SSRF primitive. Refused at
+   * configuration as written (the call path re-checks as resolved). An empty
+   * string still means "use the preset" and is not judged as a URL. */
+  if (parsed.data.baseUrl) {
+    const reason = refuseOutboundUrl(parsed.data.baseUrl, { protocols: ["https:", "http:"] });
+    if (reason) return apiError(422, "INVALID_INPUT", reason);
   }
   const created = await db.aiProvider.create({
     data: { ...parsed.data, tenantId: session.auth!.tenantId },

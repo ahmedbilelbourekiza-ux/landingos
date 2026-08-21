@@ -1,6 +1,7 @@
 import "server-only";
 
 import { aiProviderPreset } from "@/lib/erp/ai-providers";
+import { guardedFetch, OutboundRefusedError } from "@/lib/net/outbound-guard";
 
 /* =============================================================================
  * Does this API key work? — AUDIT.5, restoring the legacy's Test Connection.
@@ -97,7 +98,16 @@ async function fetchWithTimeout(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
-    const res = await fetch(url, { ...init, signal: controller.signal, cache: "no-store" });
+    /* SEC.7 — the same guard `completeWithProvider` runs, because this module
+     * contacts the same merchant-set base URL: refused as written and AS
+     * RESOLVED when it points anywhere private, every redirect hop re-checked.
+     * The connection tester is the screen where the refusal is USEFUL — the
+     * operator sees it at configuration time instead of at generation time. */
+    const res = await guardedFetch(
+      url,
+      { ...init, signal: controller.signal, cache: "no-store" },
+      { protocols: ["https:", "http:"], maxRedirects: 3 },
+    );
     // A provider that answers HTML on an error path must not crash the test.
     const json = await res.json().catch(() => null);
     return { status: res.status, ok: res.ok, json };
@@ -107,6 +117,7 @@ async function fetchWithTimeout(
 }
 
 function networkMessage(error: unknown): string {
+  if (error instanceof OutboundRefusedError) return error.message;
   if (error instanceof Error && error.name === "AbortError") return "Network error: timeout";
   return `Network error: ${error instanceof Error ? error.message : String(error)}`;
 }

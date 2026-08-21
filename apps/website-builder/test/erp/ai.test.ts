@@ -2,6 +2,7 @@ import { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { SESSION_COOKIE } from '@landingos/auth';
+import { withTenant } from '@landingos/db';
 
 import {
   skip, BASE, uid, makeErpTenant, makeMember, cleanup,
@@ -139,6 +140,34 @@ describe('a provider can finally be corrected and removed', () => {
     assert.equal(r.status, 200);
     assert.equal(r.body.data.baseUrl, 'https://right.example.test');
     assert.ok(!('apiKey' in r.body.data), 'the key is not in the select, so it cannot leak');
+  });
+
+  test('SEC.7 — a private or internal base URL is refused at configuration, POST and PUT alike', async () => {
+    /* The base URL is fetched SERVER-SIDE with the tenant's key attached, so
+     * pointing it at 169.254.169.254 or a bare `localhost` turns the connection
+     * tester and every completion into an SSRF probe. (The suites' own
+     * 127.0.0.1 stubs pass because the test server runs with
+     * OUTBOUND_PRIVATE_ALLOWLIST=127.0.0.1 — the guard's one, exact-host seam;
+     * these addresses are deliberately NOT on it.) */
+    for (const baseUrl of [
+      'http://169.254.169.254/latest',
+      'https://10.0.0.7/v1',
+      'https://localhost/v1',
+      'https://internal-api.internal/v1',
+      'ftp://models.example.com/v1',
+      'https://user:pass@models.example.com/v1',
+    ]) {
+      const created = await acme.manager.api('POST', '/api/erp/ai/providers', {
+        name: `Bad ${uid()}`, type: 'openai-compat', baseUrl,
+      });
+      assert.equal(created.status, 422, `POST ${baseUrl}: ${JSON.stringify(created.body)}`);
+      const updated = await acme.manager.api('PUT', `/api/erp/ai/providers/${providerId}`, { baseUrl });
+      assert.equal(updated.status, 422, `PUT ${baseUrl}: ${JSON.stringify(updated.body)}`);
+    }
+    // And the row survived all of it unchanged.
+    const list = await acme.manager.api('GET', '/api/erp/ai/providers');
+    const row = list.body.data.items.find((p: any) => p.id === providerId);
+    assert.equal(row.baseUrl, 'https://right.example.test');
   });
 
   test('the key can be rotated, and is never read back', async () => {
@@ -353,6 +382,30 @@ describe('a provider can be tested, and the result is recorded', () => {
       !serialized.includes('sk-not-a-real-key'),
       'the API key reached the integration log',
     );
+  });
+
+  test('SEC.7 — a row that dodged the config guard is refused at TEST time, before any connection', async () => {
+    /* The config-time gate can be bypassed the only way rows really do bypass
+     * it — written directly (an older deployment, a hand-edited record). The
+     * request-time guard in ai-connection must then refuse the private target
+     * itself, and FAST: against 169.254.169.254 an unguarded fetch would hang
+     * to its timeout, so speed here is also proof no connection was attempted. */
+    const seeded = await withTenant(acme.tenantId, (tx) =>
+      (tx as any).aiProvider.create({
+        data: {
+          tenantId: acme.tenantId, name: 'Smuggled', type: 'openai-compat',
+          baseUrl: 'http://169.254.169.254/latest', apiKey: 'sk-smuggled', active: true,
+        },
+        select: { id: true },
+      }),
+    );
+    const started = Date.now();
+    const r = await acme.manager.api('POST', `/api/erp/ai/providers/${seeded.id}/test`, {});
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.ok, false, 'a private target reported a working connection');
+    assert.match(r.body.data.message, /private|internal/i, r.body.data.message);
+    assert.ok(Date.now() - started < 10_000, 'the refusal must not be a timeout in disguise');
+    await acme.manager.api('DELETE', `/api/erp/ai/providers/${seeded.id}`);
   });
 
   test('a type with no adapter refuses rather than reporting success', async () => {

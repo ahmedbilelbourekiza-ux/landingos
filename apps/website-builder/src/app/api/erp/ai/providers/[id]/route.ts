@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
+import { refuseOutboundUrl } from "@/lib/net/outbound-guard";
 import { toJson } from "@/lib/erp/serialize";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +49,13 @@ export const PUT = tenantRoute<Params>("erp:settings:write", async ({ db, req, p
   const parsed = UpdateProvider.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return apiError(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Invalid input.");
+  }
+  /* SEC.7 — same rule as creation: the base URL is fetched server-side with
+   * the key attached, so "the typo can be fixed" must not become the door a
+   * private address walks in through. Empty still means "use the preset". */
+  if (parsed.data.baseUrl) {
+    const reason = refuseOutboundUrl(parsed.data.baseUrl, { protocols: ["https:", "http:"] });
+    if (reason) return apiError(422, "INVALID_INPUT", reason);
   }
   // `type` is deliberately not editable. It decides which adapter would be used
   // and which fields mean what; changing it in place turns a configured provider

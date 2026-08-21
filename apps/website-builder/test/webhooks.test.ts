@@ -421,4 +421,47 @@ describe('failure handling and the operator surface', { skip }, () => {
     const log = await api(`/api/platform/integrations/webhooks/${endpointId}/deliveries`, ownerToken);
     assert.ok(log.body.data.items.some((d: any) => d.event === 'test' && d.success));
   });
+
+  test('SEC.7 — a destination that RESOLVES privately is refused at delivery time, nothing sent', async () => {
+    /* The rebinding case, end to end: url-guard refused private hosts as
+     * WRITTEN at configuration, so this endpoint is seeded straight into the
+     * database — exactly how a name that passed the config check and was then
+     * repointed at a private address looks by the time delivery runs. Its
+     * hostname is `localhost`, which is NOT on the server's
+     * OUTBOUND_PRIVATE_ALLOWLIST (that lists `127.0.0.1` verbatim), and it
+     * RESOLVES to the loopback where our own stub is listening — so if the
+     * delivery layer trusted the name, the request would land and `received`
+     * would say so. The assertions are that it refused instead: a failure log
+     * with the guard's reason, ONE attempt (a refused target is terminal, not
+     * retryable), and zero hits on the receiver. */
+    const endpointId = await withTenant(tenantId, (tx) =>
+      (tx as any).webhookEndpoint.create({
+        data: {
+          tenantId, label: 'rebound', url: `http://localhost:${stubPort}/rebound`,
+          secret: SECRET, events: [], isActive: true,
+        },
+        select: { id: true },
+      }),
+    ).then((row) => row.id);
+
+    const r = await api(`/api/platform/integrations/webhooks/${endpointId}/test`, ownerToken, {
+      method: 'POST',
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.ok, false, 'a privately-resolving destination reported a delivery');
+    assert.match(String(r.body.data.error ?? ''), /private|internal/i, JSON.stringify(r.body.data));
+
+    assert.equal(received.filter((x) => x.path === '/rebound').length, 0,
+      'the payload must never have left — the receiver saw nothing');
+
+    const log = await api(`/api/platform/integrations/webhooks/${endpointId}/deliveries`, ownerToken);
+    const entry = log.body.data.items.find((d: any) => d.event === 'test');
+    assert.ok(entry, 'the refusal is a logged fact, not a silent skip');
+    assert.equal(entry.success, false);
+    assert.equal(entry.attempts, 1, 'refused, not retried');
+    assert.match(String(entry.error ?? ''), /private|internal/i);
+
+    await withTenant(tenantId, (tx) =>
+      (tx as any).webhookEndpoint.deleteMany({ where: { id: endpointId } }));
+  });
 });
