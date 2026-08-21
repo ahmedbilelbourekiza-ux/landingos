@@ -12,7 +12,11 @@ touched, any **migration**, and any **risk**.
 
 ## SEC.6 — the rate limiter stops believing the caller about who they are
 
-**Committed locally 21 August 2026 — NOT pushed, NOT deployed. No migration.**
+**Committed 21 August 2026; DEPLOYED THE SAME NIGHT as `c3dad4c..63ef313`. No
+migration — code only.** Pushed ref-mapped (`git push origin 63ef313:main`) so
+local `main` never moved independently. **The live proof is at the end of this
+entry — and the probe had to be REDESIGNED mid-flight, because the original
+14-request shape can no longer detect the bypass in production.**
 
 **The defect, measured on LIVE production before touching anything.** Fourteen
 POSTs to the real checkout endpoint, empty bodies so nothing could be written:
@@ -71,8 +75,80 @@ precisely the value an attacker prepends."* One rule now, in that direction.
   tracking 16 · traffic-source 14 — all green against a rebuilt standalone
   server.
 
-**Owed after deploy:** re-run the same two live probes. The rotating-IP one
-must show 429s where it showed none.
+### Proof on production — the debt above, paid, and the probe it invalidated
+
+**Deployed 21 Aug 2026: pushed `c3dad4c..63ef313` at ~00:41 UTC, confirmed
+live by 01:33 UTC.** *(Exact Render "live" timestamp NOT captured — no Render
+API key or CLI exists on this machine and GitHub carries no Render deployment
+status for the commit, `state: pending` with zero statuses and zero check
+runs. Liveness was established behaviourally instead; see below. **This is a
+gap worth closing: without that credential there is no server-only deploy
+marker at all.)***
+
+**⚠ THE OWED PROBE, RUN AS WRITTEN, PROVES NOTHING NOW — and reading it
+naively says the fix did nothing.** Re-run at its original 14 requests:
+
+| Probe, 14 requests | Before fix | After fix |
+|---|---|---|
+| same spoofed `X-Forwarded-For` | 10 through, **4 × 429** | 14 through, **0 × 429** |
+| ROTATING spoofed `X-Forwarded-For` | 14 through, 0 × 429 | 14 through, **0 × 429** |
+
+Both rows now show zero blocks, and the same-IP row LOST the blocks it used to
+have. The cause is not the fix: **the effective bound in production is no
+longer 10.** A same-IP run of 40 first blocks at request **29**, and blocking
+above that threshold *alternates* (`429 429 422 429 422 429`) — which one
+bucket cannot do, since `allowRequest` never re-adds to a full bucket and a
+bucket that has blocked once keeps blocking for the rest of its window.
+Interleaved successes above the threshold mean SEVERAL independent buckets:
+**~3 app instances × limit 10 ≈ 30**. This is the per-process caveat in the
+module's own header, measured on production for the first time. Fourteen
+requests simply never reach the threshold, so the original probe sits entirely
+below the floor and is blind in both directions.
+
+**The valid comparison, at 40 requests, same endpoint and path:**
+
+| Probe, 40 requests | Result |
+|---|---|
+| same spoofed IP (control) | first block req **29** — 36 through, 4 × 429 |
+| **ROTATING spoofed IP** | first block req **25** — 31 through, **9 × 429** |
+
+**The rotating case is now indistinguishable from the constant one, which is
+exactly the property the fix claims.** And the old code's rotating number is
+not merely "measured as zero" — it is zero BY CONSTRUCTION: 40 distinct
+spoofed addresses are 40 distinct buckets holding one request each against a
+limit of 10, so a block was arithmetically impossible. Nine blocks is the
+bypass closed. A 429 on a never-before-used spoofed address is itself
+something the old code could not produce, and was the first signal the new
+build was live.
+
+**Two findings this measurement turned up, neither of them SEC.6's doing:**
+
+1. **Production is Cloudflare → Render, not Render alone** (`Server:
+   cloudflare` + `CF-RAY`, then `x-render-origin-server`), and 12 sampled
+   requests spread across ~10 distinct Cloudflare edge machines. The fix
+   trusts the LAST `X-Forwarded-For` entry, which in this topology is
+   infrastructure rather than the customer. It happens to be stable enough
+   that the bound holds — blocks at 29 prove the key does not fragment — but
+   **`CF-Connecting-IP` does not appear anywhere in `src/`**, and it is the
+   header this deployment actually wants. Worth its own slice.
+2. **`landingos.onrender.com` answers directly**, so the Cloudflare layer can
+   be bypassed by address. The limiter behaves the same there (a same-IP run
+   of 14 also passes 14, same sub-threshold reason).
+
+**Also recorded:** the pre-fix baseline blocked at 10, tonight's blocks at ~29.
+The process count therefore changed between the two measurements — most
+plausibly at the redeploy. Nothing in SEC.6 touches instance count; it is
+noted so the two numbers are never compared as if they came from one machine.
+
+**Regression, same session:** `/api/health` 200 `database: ok` · storefront
+`/dedima` 200 and byte-identical at 503,710 · title `dedima · selliora16` ·
+wilayas 200 · LB.14a's `private, max-age=60, must-revalidate` intact. Every
+probe used an EMPTY body, so all 148 requests died at the 422 contract check
+and **nothing was written** — `SalesOrder` untouched.
+
+**Still true, and now the live bound:** the limiter is per-process in memory,
+so production enforces ~3 × the configured limit. A shared store is the
+upgrade path and this module remains the one place it would go.
 
 ## DEPLOY — the remaining six slices are live (20 Aug 2026, 17:57–18:20 UTC)
 

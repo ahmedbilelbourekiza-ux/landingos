@@ -43,7 +43,7 @@ Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
 | **BH.1–2** | ~~Deep in-page behavior tracking + computed read side~~ | S–M / S | **DONE 18 Aug 2026 (local commit; NOT deployed) — built to the user's review decisions: opt-in PER PAGE (a Display-section toggle, default off, server-enforced), WhatsApp taps NOT counted as conversions (their own column), signals per the §BH table (five v1 signals, several declined with reasons). One row per view — no events table; the columns FOLDED into the still-unshipped AN.1/AN.2 migration (batch still = one db push + one apply-rls, 49→50). Verified live through the real editor toggle and a real customer session. CHANGELOG §BH.1+BH.2** |
 | **BH.3** | AI page recommendations over the behavior aggregates | M | **APPROVED but BLOCKED (user decision, 18 Aug): waits until a SPEND-QUOTA system exists. Do not build unprompted.** The design is settled in §BH below (aggregates-only input, recommendation-with-its-number contract, the `insights/deep` 501 slot, `LandingInsight` table → RLS +1). **⚠ The spend quota is now needed by TWO features — LB.24's generator ("who may spend AI money", its own open question) and BH.3 — so it is worth scoping as its own piece of work when the time comes** |
 | **LB.36** | Brands — a store organised around brands instead of one flat shop | M–L | **BUILT 19 Aug 2026 (overnight, CHANGELOG §LB.36) to your two decisions: the brand replaces the store name EVERYWHERE, and brand↔category is a JOIN (many). Dev-only migration (RLS 54/54). Still open, deliberately: the public `/[tenant]/brand/<slug>` listing page (slug reserved), and whether `homePath` should point at it once it exists** |
-| **LB.23** | Facebook Ads account linking | L | **DECIDED, NOT STARTED — blocked on credentials.** Real ad-spend attribution via a Meta app + OAuth, not merely storing an account id. Waiting on a Meta Developer App: Marketing API product, App ID/Secret, redirect URI, `ads_read`, possibly App Review / Business verification. See `FEATURE_PASS_AUG12.md` §5 |
+| **LB.23** | Facebook Ads account linking | L → **M** for the first phase | **REVIEWED 21 Aug 2026, NOT STARTED — still blocked on you, but the block shrank from an App Review to about an hour.** App Review / Business Verification is the price of the MERCHANT-FACING version only; an app that reads ad accounts the user ALREADY OWNS stays in Development mode and needs none of it. **Path A = a Business-type app + the Marketing API product + an `ads_read` SYSTEM-USER token (expiry *Never*)** — no redirect URI, no OAuth, no review. Then **M/one session** for channel-level spend + ROAS, plus a migration: AN.1's `sourceChannel` is already the join key on both visits and orders, so it works day one. **⚠ Campaign-level attribution is NOT buildable from what is stored** — `fbclid` is discarded and opaque, and no Meta API resolves one to a campaign; it needs the ad links tagged with `{{campaign.name}}` macros FIRST and is **not retroactive**. Verdict, setup steps and the full mapping: **§LB.23 below**. Original scoping (its OAuth assumption is narrowed, not wrong): `FEATURE_PASS_AUG12.md` §5 |
 | **LB.24** | AI landing page generator | L | **FIRST SLICE DEPLOYED 16 Aug (night) as part of `1dbe119..c722050`**, no migration. Merchant facts + their own photos in → an Algerian-Darija DRAFT out (copy + LB.22 theme), reviewed in the ordinary editor. Adversarially reviewed (one BLOCKER found and fixed: the model call sat inside the 15s tenant transaction — now D-LP.5.1 three-phase, pinned by a 16.5s slow-model test). builder-ai **19** new. §LB.24 below has the record, the deliberate lines (no generated reviews, ever), and the open questions — **the push/deploy decision is yours** |
 | **LB.14** | Storefront caching + version history + custom-domain console flow | M–L | **SPLIT INTO THREE, because they are three different risks.** LB.14a caching — **DONE 13 Aug 2026 (night), DEPLOYED the same night**; LB.14b version history and LB.14c custom domains — see their own rows below. Original scoping: handoff §13 |
 | ~~**LB.14c**~~ | ~~Custom-domain console flow~~ | S | **PREMISE FALSE — the flow already exists** (B5, 10 Aug, deployed): claim, per-row token, **real DNS TXT verification**, primary, unlink, screen, tests. Driven live to confirm. **What was wrong and is now fixed (13 Aug, night; DEPLOYED the same night):** the verify route distinguishes "no TXT record yet" from "wrong value" on purpose — the opposite instruction to a merchant mid-setup — and both arrived as "that didn't work", because one code carried both meanings and B5 mapped **none** of its five refusal codes in `action-errors.ts`. Split + six messages ×3 locales. platform/domains 13→14. **⚠ SCOPED, NOT BUILT — the part that needs infrastructure:** a verified domain still 403s until the OPERATOR adds the hostname to Render and it issues a certificate (proven: `x-render-routing` 403; no Render credential exists here). **Custom domains are therefore complete in the app and inert in production.** Three options + the `isPrimary`-has-no-reader finding written up below; the decision is yours |
@@ -732,7 +732,12 @@ investigated to a full proposal — mechanism pinned to the exact `headers()`
 call sites, the host-capture rewrite linchpin PROVEN empirically on this
 Next version, the price-staleness question answered, blast radius
 enumerated. See §LB.14a.2 near the top of this file. Still deliberately not
-built — architectural, the decision is the user's.)*
+built — architectural, the decision is the user's.)* *(21 Aug: REVIEWED —
+verdict **DEFER, with a named trigger**: sustained real ad traffic on one
+landing page, or the Neon compute line tracking storefront traffic instead
+of sitting flat. **LB.23 first**, because it is the instrument that says
+when. The proposal itself stands unretracted; the objection is timing, not
+mechanism. See §LB.14a.2.)*
 
 **Verified live across nine paths** against the running build; console screens
 and `/_next/static/*` (still `public, max-age=31536000, immutable`) are outside
@@ -1033,11 +1038,144 @@ configured provider to do anything (and its 501 path already exists).
 7. **FAQ opened-question IDS in v1** (proposed, bounded ≤20, feeds the AI
    its best signal) — or counts only?
 
+### LB.23 — REVIEWED 21 Aug 2026: still blocked on you, but the block is an hour, not an App Review
+
+**No code written; this is the review the 12 Aug decision asked for, and it
+NARROWS the scope rather than changing it. The Meta-side facts below were
+verified against Meta's own documentation on 21 Aug 2026, not recalled.**
+
+**The finding that matters.** `FEATURE_PASS_AUG12.md` §5 records the price
+as "a Meta app + OAuth, redirect URI, `ads_read`, possibly App Review /
+Business verification". That is the price of the **merchant-facing** version
+only. Meta requires App Review for a permission when the app reads ad
+accounts belonging to businesses OUTSIDE its own portfolio; an app reading
+accounts the user already owns or has been granted stays in **Development
+mode**, which is exactly what Development mode is for. So the slice splits,
+and the first half is cheap:
+
+- **Path A — the user's own ad accounts.** A *Business*-type app with the
+  Marketing API product, left in Development mode, plus a **system user**
+  (Business settings → Users → System users) holding view-performance on the
+  ad account and a token scoped to **`ads_read` alone, expiry *Never***. No
+  redirect URI, no OAuth flow, no App Review, no Business Verification.
+  **~1 hour of the user's time.** The four values the build needs: App ID,
+  App Secret, the system-user token, and the `act_…` ad account id.
+- **Path B — merchants link their own accounts.** The original shape: OAuth,
+  a registered redirect URI, App Review for `ads_read`, and Business
+  Verification with company legal documents. Days to weeks, and it can be
+  sent back.
+
+**Recommendation: Path A now.** Production holds three tenants and two real
+orders; Path B is a customs office for a village with one truck. Path A's
+sync, storage and read side ARE most of Path B's — only the credential
+source changes — so nothing is thrown away when the merchant-facing version
+is finally warranted.
+
+**⚠ The token is a credential and must not travel through a chat, an email
+or a commit.** It belongs in the encrypted store the Meta CAPI token already
+uses (`TrackingIntegration.serverToken`'s pattern for a tenant-owned
+account, `PlatformCredential` for a platform-owned one), entered through a
+console field by the user. `ads_read` is **read-only**: it cannot spend,
+create, pause or alter anything in the account.
+
+**What it pulls, and where it joins what AN.1 already stores.** Per day, per
+campaign / ad set / ad: spend, impressions, reach, clicks, CPC, CPM, the
+names and ids, and Meta's own attributed conversions.
+
+- **Channel-level ROAS works on day one with NO new tracking.** AN.1 stamps
+  `sourceChannel` on every `StorefrontVisit` **and** every `SalesOrder`, from
+  the same server-side derivation, so Meta's spend for a window ÷ the orders
+  attributed to `facebook` in that window is a real cost-per-order. This is
+  the number that answers "are ads profitable at all", and it needs nothing
+  but the token.
+- **Campaign-level attribution is NOT reachable from stored data, and cannot
+  be fixed on our side alone.** `deriveSource` keeps `fbclid` only as the
+  literal string `"fbclid"` in `sourceDetail` — the click id itself is
+  discarded, and it is **opaque anyway: no Meta API resolves a click id back
+  to a campaign.** The only route is the merchant filling the ad's *URL
+  parameters* field in Ads Manager with Meta's dynamic macros
+  (`utm_campaign={{campaign.name}}`, `utm_content={{ad.id}}`), which we then
+  store. **That is an operational prerequisite, not a build task, and it is
+  NOT retroactive** — untagged clicks are permanently uncomparable, so the
+  tagging should happen before any spend the user wants to compare. It also
+  makes **AN.1's open question 4 (`utm_campaign`, approved-but-parked)** the
+  gating dependency for phase 2, not an optional extra.
+- **Two seams the read side must not paper over.** (a) Meta reports spend per
+  AD ACCOUNT, covering Facebook and Instagram placements together, while
+  AN.1 splits `facebook` and `instagram` into separate channels — they must
+  be summed into one "Meta" bucket or cost-per-order is wrong on both.
+  (b) **Meta's purchase count will never equal ours:** Meta counts inside its
+  own attribution windows (fed by LB.11's live CAPI events), we count rows
+  in `SalesOrder`. Both numbers are honest and they will differ; the screen
+  shows both and claims neither is the other.
+
+**Where the number lands:** `FinancialRecord.advertisingCosts` — the field a
+manager types by hand today. That is the payoff: net profit stops depending
+on somebody remembering the ad bill.
+
+**Cost, limits, review — verified 21 Aug 2026.** The Marketing API itself is
+free. Default **development tier**: 60 points per ad account per 5 minutes
+(a read = 1 point, a write = 3) and 600 insights calls/hour + 400 × active
+ads — a once-daily sync of yesterday's spend is a rounding error of that, so
+rate limits are not a constraint at this size. The upper tier was renamed
+**Advanced Access → "Full Access" on 4 May 2026**, its bar lowered to 500
+Marketing API calls in 15 days at a <15% error rate; irrelevant until real
+scale. **Token failure must be VISIBLE:** a never-expiring system-user token
+still dies on revocation, system-user removal or an unshared asset, and
+silent zeros in a profit screen are worse than a stated error.
+
+**Effort once the credential exists:**
+
+| Phase | Size | Gated on |
+|---|---|---|
+| Channel-level spend + ROAS: the account link and daily spend rows (**carries a migration**), the daily sync, a panel on the Traffic screen, and `advertisingCosts` prefilled instead of typed | **M**, one session | the token, nothing else |
+| Campaign / creative breakdown | **S–M** | the ad links being TAGGED first, plus AN.1 §4's `utm_campaign` column |
+| Merchant-facing OAuth linking (Path B) | **L** | Meta App Review + Business Verification — **do not put a date on it**, the timeline is not ours |
+
+**Unchanged from the 12 Aug decision:** storing an account id alone is still
+refused — a column with a writer and no reader is not a feature. Nothing
+here is started; the first line of code waits on the token.
+
 ### LB.14a.2 — PROPOSED 18 Aug (overnight): the front-door split, measured to its exact mechanism, with the linchpin proven empirically
 
 **Deliberately NOT built — this is architectural and the decision is the
 user's. But the investigation moved it from "scoped" to "proposal with its
 core assumption proven on this exact Next version".**
+
+**⚠ REVIEWED 21 Aug 2026 — VERDICT: DEFER, with a named trigger. Still not
+built, and now deliberately so rather than merely undecided.** The proposal
+below is sound and its linchpin is proven; the objection is TIMING, not
+mechanism. Nothing below is retracted — the mechanism, the host-capture
+rewrite proven on this Next version, the price-staleness answer and the
+enumerated blast radius all stand as written, and are what a future session
+builds from.
+
+- **The benefit is proportional to traffic that does not exist yet.**
+  Production holds 3 tenants, 2 landing pages and 2 real orders. One render
+  per minute instead of one per visitor is an enormous saving at 200
+  visitors and no saving at 3.
+- **The ad-burst case it is built for is the case LB.23 would measure.** The
+  traffic that would justify this slice has not started, and LB.23 is the
+  instrument that makes its arrival visible.
+- **The per-render cost was already cut once.** LB.51 took one product-page
+  render from 34 statements to 10 and ~18 serialized round trips to ~6; live
+  root TTFB now measures ~10ms warm.
+- **It does not touch the page-speed number that is actually bad.** The real
+  page measures perf ~64–74 / LCP ~3.3–4.3s warm, and that residue is image
+  and JS weight (§JS.1's remaining diet), not server render time. Caching
+  the HTML leaves LCP exactly where it is.
+- **The risk profile is wrong for a quiet period.** This touches D2 ("a
+  custom domain wins"), the `X-Forwarded-Host` trust rule recorded in
+  `resolve-tenant.ts`, and every storefront test — a trade worth taking
+  against a measured problem, and hard to justify against pages that are
+  already fast.
+
+**The trigger, so this is a decision and not a drift:** pick it up when ONE
+landing page takes sustained real ad traffic (order of a few thousand views
+a day — the Traffic screen reports this now), or when the Neon compute line
+starts tracking storefront traffic instead of sitting flat. **Do LB.23
+first:** it is cheap, it is unblocked by an hour of the user's time, and it
+is what says when this slice is worth its blast radius.
 
 **The mechanism, precisely.** Storefront pages are `force-dynamic` because
 `resolveStorefrontTenant` asks `tenantByDomain()` FIRST (D2: a custom domain

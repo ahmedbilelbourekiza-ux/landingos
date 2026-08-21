@@ -15,14 +15,75 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### ✔ THE QUEUE IS EMPTY — all six remaining slices deployed 20 Aug 2026, 17:57–18:20 UTC
+> ### ✔ SEC.6 IS LIVE — the rate-limiter bypass is closed, proven on production (21 Aug 2026, pushed ~00:41 UTC)
 >
-> **`origin/main` is `4069dde`, and `4069dde` is the live deploy** (Render,
-> `trigger=new_commit`, live **18:20:29 UTC**). Every feature slice written in
-> the three overnight sessions is now in production. **Local `main` is ahead by
-> FOUR commits and every one is documentation** (0 non-Markdown files) — the
-> migration/deploy records, which by construction are written after the work
-> they describe.
+> **`origin/main` is `63ef313`** (`c3dad4ce…` → `63ef313e456d139525994fac4207b8a4733235e8`),
+> pushed REF-MAPPED (`git push origin 63ef313:main`) so local `main` never
+> moved independently. **One commit, code only, NO MIGRATION** — verified
+> before the push: zero `prisma`/migration/`.sql` files in the range.
+> Rollback point: **`c3dad4c`**.
+>
+> **⚠ THE LIVE TIMESTAMP IS NOT RECORDED, and that is a tooling gap, not an
+> oversight.** This machine has **no Render API key and no Render CLI**, and
+> GitHub carries no Render deployment status for the commit (`state: pending`,
+> zero statuses, zero check runs). SEC.6 is server-only, so it has no public
+> asset marker either. Liveness was established BEHAVIOURALLY — a 429 on a
+> never-before-used spoofed IP, which the old code cannot produce — and
+> confirmed by 01:33 UTC. **Restoring a Render read credential is the single
+> highest-value fix to this checklist:** §1's own rule is "confirm what is LIVE
+> via the Render API", and tonight that rule could not be followed.
+>
+> **The proof, and the probe that had to be rebuilt to get it.** The owed
+> re-run at its original 14 requests is now BLIND — it shows zero blocks in
+> both arms and, read naively, says the fix did nothing:
+>
+> | 14 requests | Before | After |
+> |---|---|---|
+> | same spoofed IP | 10 through, 4 × 429 | 14 through, **0 × 429** |
+> | rotating spoofed IP | 14 through, 0 × 429 | 14 through, **0 × 429** |
+>
+> **The effective bound in production is no longer 10 — it is ~30.** A same-IP
+> run of 40 first blocks at request 29, and blocking above that threshold
+> *alternates*, which a single bucket cannot do (`allowRequest` never re-adds
+> to a full bucket). That means ~**3 instances × limit 10**, the per-process
+> caveat in the limiter's own header, measured live for the first time. At 40
+> requests the comparison works:
+>
+> | 40 requests | Result |
+> |---|---|
+> | same spoofed IP (control) | first block req **29** — 36 through, 4 × 429 |
+> | **rotating spoofed IP** | first block req **25** — 31 through, **9 × 429** |
+>
+> Rotating is now indistinguishable from constant. The old code's rotating
+> zero was true **by construction** (40 spoofed values = 40 buckets of 1
+> against a limit of 10), so nine blocks is the bypass closed, not a
+> favourable sample. All 148 probe requests used EMPTY bodies, died at the 422
+> contract check, and **wrote nothing** — `SalesOrder` still 2 rows.
+>
+> **Two things this turned up that are NOT SEC.6's doing and are still open:**
+> production is **Cloudflare → Render** (12 requests across ~10 distinct
+> Cloudflare edge machines), yet **`CF-Connecting-IP` appears nowhere in
+> `src/`** — the fix trusts the last `X-Forwarded-For` entry, which here is
+> infrastructure, not the customer; it is stable enough that the bound holds,
+> but it is not the right header for this topology. And
+> **`landingos.onrender.com` answers directly**, so the Cloudflare layer is
+> bypassable by address. Each deserves its own slice.
+>
+> **Regression after deploy:** `/api/health` 200 `database: ok` · `/dedima`
+> 200, byte-identical 503,710 · title `dedima · selliora16` · wilayas 200 ·
+> LB.14a's `private, max-age=60, must-revalidate` intact.
+>
+> **LB.23 and LB.14a.2 remain HELD** and were deliberately not part of this
+> deploy — see `NEXT_STEPS.md` §LB.23 and §LB.14a.2 for both verdicts.
+
+> ### (superseded as the tip, still the feature record) THE QUEUE IS EMPTY — all six remaining slices deployed 20 Aug 2026, 17:57–18:20 UTC
+>
+> **`4069dde` was the live deploy** (Render, `trigger=new_commit`, live
+> **18:20:29 UTC**) and remained `origin/main` until SEC.6 above superseded it
+> on 21 Aug. Every feature slice written in the three overnight sessions is in
+> production. *(The "local `main` is ahead by FOUR documentation commits" note
+> that stood here is now spent: those records were pushed, and as of SEC.6
+> local `main` and `origin/main` are equal.)*
 >
 > **Production now: 61 tables · RLS 55/55/55/55 PASS · `SalesOrder` 2 rows,
 > `LandingPage` 2, `Tenant` 3 — untouched throughout.**
