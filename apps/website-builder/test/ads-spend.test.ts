@@ -55,6 +55,20 @@ describe('buildInsightsRequest — the wire shape', () => {
     );
   });
 
+  test('SEC.9 — a non-numeric accountId is REFUSED where the URL is built', () => {
+    /* The id is interpolated into the request PATH. The intake route regexes
+     * digits, but this builder also serves the PlatformCredential config, so
+     * the refusal must live here too — `123/../x` is a different Graph URL,
+     * and a query-metacharacter id could rewrite the request. */
+    for (const evil of ['123/../me', '123?fields=adsets', '123#x', '123abc', '١٢٣٤٥']) {
+      assert.throws(
+        () => buildInsightsRequest({ ...cfg, accountId: evil }, range),
+        /digits only/,
+        evil,
+      );
+    }
+  });
+
   test('malformed or inverted date bounds are refused', () => {
     assert.throws(() => buildInsightsRequest(cfg, { since: '01-08-2026', until: '2026-08-07' }), /since/);
     assert.throws(() => buildInsightsRequest(cfg, { since: '2026-08-07', until: '2026-08-01' }), /precedes/);

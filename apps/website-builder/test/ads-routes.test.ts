@@ -85,6 +85,7 @@ before(async () => {
   tenantB = await makeTenant(`ads-b-${stamp}`);
   await makeUser(tenantA, 'OWNER', 'ownerA');
   await makeUser(tenantA, 'VIEWER', 'viewerA');
+  await makeUser(tenantA, 'MANAGER', 'managerA');
   await makeUser(tenantB, 'OWNER', 'ownerB');
   tenantB2 = await makeTenant(`ads-c-${stamp}`);
   await makeUser(tenantB2, 'OWNER', 'ownerB2');
@@ -175,6 +176,33 @@ describe('ad-account intake — the token goes in and never comes back', { skip 
       assert.equal(r.status, 422, JSON.stringify(body));
     }
   });
+
+  test('SEC.9 — token edge shapes are refused, and NO refusal echoes the credential', async () => {
+    /* The three edges the review names: empty (must not silently clear or
+     * store), whitespace-only (trims to empty), and over the 500-char cap.
+     * Whatever the refusal, the submitted secret must not ride back out in
+     * the error envelope — a validator that quotes its input would put a
+     * mistyped-but-real token into logs and screens. */
+    const tokenBefore = await withTenant(tenantA, (tx) =>
+      (tx as any).adAccount.findUnique({ where: { id: accountA }, select: { accessToken: true } }),
+    );
+    for (const accessToken of ['', ' '.repeat(40), 'E'.repeat(501)]) {
+      const r = await api('/api/platform/integrations/ad-accounts', tokens.ownerA, {
+        method: 'POST',
+        body: JSON.stringify({
+          provider: 'meta', accountId: ACCOUNT_ID, name: 'Renamed', currency: 'USD', accessToken,
+        }),
+      });
+      assert.equal(r.status, 422, `len ${accessToken.length}: ${JSON.stringify(r.body).slice(0, 200)}`);
+      if (accessToken.trim()) {
+        assert.ok(!r.raw.includes(accessToken), 'the refusal must not reflect the credential');
+      }
+    }
+    const tokenAfter = await withTenant(tenantA, (tx) =>
+      (tx as any).adAccount.findUnique({ where: { id: accountA }, select: { accessToken: true } }),
+    );
+    assert.equal(tokenAfter.accessToken, tokenBefore.accessToken, 'a refused submit changes nothing at rest');
+  });
 });
 
 describe('ad-account intake — the boundaries', { skip }, () => {
@@ -186,6 +214,27 @@ describe('ad-account intake — the boundaries', { skip }, () => {
       }),
     });
     assert.equal(r.status, 403, JSON.stringify(r.body));
+  });
+
+  test('SEC.9 — a MANAGER cannot either: manage is not in the write glob', async () => {
+    /* `platform:integrations:manage` matches neither `*:*:write` nor
+     * `*:*:publish`, so the day-to-day tier stops short of the credential —
+     * pinned here because the ROLE that most plausibly gets handed around is
+     * exactly the one that must not be able to swap where ad spend reads
+     * from. The read half (the masked list) is deliberately still theirs. */
+    const write = await api('/api/platform/integrations/ad-accounts', tokens.managerA, {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'meta', accountId: '111111112', name: 'x', currency: 'USD', accessToken: FAKE_TOKEN,
+      }),
+    });
+    assert.equal(write.status, 403, JSON.stringify(write.body));
+    const refresh = await api(`/api/platform/integrations/ad-accounts/${accountA}/refresh`, tokens.managerA, {
+      method: 'POST', body: JSON.stringify({ days: 7 }),
+    });
+    assert.equal(refresh.status, 403, JSON.stringify(refresh.body));
+    const read = await api('/api/platform/integrations/ad-accounts', tokens.managerA);
+    assert.equal(read.status, 200);
   });
 
   test('signed out is 401, not 403 — different questions, different answers', async () => {
@@ -287,6 +336,18 @@ describe('the token field is reachable from the screen', { skip }, () => {
     assert.ok(html.includes('ad-account-token'), 'the token input must be on the page');
   });
 
+  test('SEC.9 — a role the intake route refuses is not offered the field at all', async () => {
+    /* The reachability rule cuts both ways. The intake and refresh routes are
+     * gated on platform:integrations:manage (OWNER/ADMIN by role); the screen
+     * is reachable on orders:read. Before this fix a VIEWER was rendered the
+     * whole credential form — a token field whose save could only answer 403,
+     * LB.23c's dead-control defect with a permission where the form was. */
+    const html = await screen(tokens.viewerA);
+    assert.ok(!html.includes('connect-ad-account'), 'no credential form for a viewer');
+    assert.ok(!html.includes('ad-account-token'), 'no token field for a viewer');
+    assert.ok(!html.includes('data-testid="refresh-spend"'), 'no refresh trigger for a viewer');
+  });
+
   test('the token input is a password field, not plain text', async () => {
     const html = await screen(tokens.ownerB2);
     const near = html.slice(Math.max(0, html.indexOf('ad-account-token') - 400),
@@ -305,5 +366,63 @@ describe('the token field is reachable from the screen', { skip }, () => {
     const html = await screen(tokens.ownerB2);
     assert.ok(!html.includes(FAKE_TOKEN), 'the secret must not reach the HTML');
     assert.ok(html.includes('connect-ad-account'), 'and the form stays available for rotation');
+  });
+});
+
+describe('SEC.9 — disconnecting an account (the documented act, now real)', { skip }, () => {
+  let doomedId = '';
+
+  test('setup: a connected account with spend history', async () => {
+    const r = await api('/api/platform/integrations/ad-accounts', tokens.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'meta', accountId: '444444444', name: 'doomed',
+        currency: 'USD', accessToken: FAKE_TOKEN,
+      }),
+    });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    doomedId = r.body.data.id;
+    await withTenant(tenantA, (tx) =>
+      (tx as any).adSpendDaily.create({
+        data: {
+          tenantId: tenantA, adAccountId: doomedId, date: new Date('2026-08-01T00:00:00Z'),
+          spend: '12.34', currency: 'USD', impressions: 10, clicks: 2,
+        },
+      }),
+    );
+  });
+
+  test('a VIEWER and a MANAGER cannot disconnect', async () => {
+    for (const tok of [tokens.viewerA, tokens.managerA]) {
+      const r = await api(`/api/platform/integrations/ad-accounts/${doomedId}`, tok, { method: 'DELETE' });
+      assert.equal(r.status, 403, JSON.stringify(r.body));
+    }
+  });
+
+  test("another tenant's owner gets 404 — the same answer as a nonexistent id, no oracle", async () => {
+    const r = await api(`/api/platform/integrations/ad-accounts/${doomedId}`, tokens.ownerB, { method: 'DELETE' });
+    assert.equal(r.status, 404, JSON.stringify(r.body));
+    const still = await withTenant(tenantA, (tx) =>
+      (tx as any).adAccount.findUnique({ where: { id: doomedId }, select: { id: true } }),
+    );
+    assert.ok(still, 'the row must survive a cross-tenant delete attempt');
+  });
+
+  test('the owner disconnects: the credential AND its spend rows are gone', async () => {
+    const r = await api(`/api/platform/integrations/ad-accounts/${doomedId}`, tokens.ownerA, { method: 'DELETE' });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const row = await withTenant(tenantA, (tx) =>
+      (tx as any).adAccount.findUnique({ where: { id: doomedId }, select: { id: true } }),
+    );
+    assert.equal(row, null, 'no stored credential survives the disconnect');
+    const spend = await withTenant(tenantA, (tx) =>
+      (tx as any).adSpendDaily.count({ where: { adAccountId: doomedId } }),
+    );
+    assert.equal(spend, 0, 'the cascade takes the history with the account, as documented');
+  });
+
+  test('deleting it twice is 404, not a second success', async () => {
+    const r = await api(`/api/platform/integrations/ad-accounts/${doomedId}`, tokens.ownerA, { method: 'DELETE' });
+    assert.equal(r.status, 404);
   });
 });

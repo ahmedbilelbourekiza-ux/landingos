@@ -74,6 +74,36 @@ describe('THE PLAINTEXT PATH IS CLOSED for this credential', () => {
     assert.equal(isEncryptedSecret(null), false);
   });
 
+  test('a FOUR-segment hex value is refused before decryptToken can quietly drop the tail', () => {
+    // decryptToken splits on ":" and reads exactly three parts — handed
+    // `iv:tag:data:extra` it would silently ignore `extra`. The shape gate
+    // must refuse it first, so that lenient parse is never reached here.
+    const sealed = sealAccountToken(TOKEN);
+    assert.equal(readAccountToken(`${sealed}:deadbeef`), null);
+  });
+
+  test('a TAMPERED ciphertext reads as null, not a throw and not garbage', () => {
+    // GCM's auth tag is the whole reason for choosing the mode; one flipped
+    // nibble anywhere in the stored value must surface as "no credential".
+    const sealed = sealAccountToken(TOKEN);
+    const flip = (s: string, at: number) =>
+      s.slice(0, at) + (s[at] === 'a' ? 'b' : 'a') + s.slice(at + 1);
+    const [iv, tag, data] = sealed.split(':');
+    assert.equal(readAccountToken(flip(sealed, sealed.length - 2)), null, 'ciphertext bit');
+    assert.equal(readAccountToken(`${iv}:${flip(tag, 0)}:${data}`), null, 'auth tag bit');
+    assert.equal(readAccountToken(`${flip(iv, 0)}:${tag}:${data}`), null, 'iv bit');
+  });
+
+  test('the intake maximum round-trips, and absurdly long garbage refuses without throwing', () => {
+    // 500 chars is the route's cap — the longest value the seal path can be
+    // handed. And a reader fed a megabyte of junk (a corrupted column, an
+    // import gone wrong) must answer null in bounded time, not crash.
+    const max = 'E'.repeat(500);
+    assert.equal(readAccountToken(sealAccountToken(max)), max);
+    assert.equal(readAccountToken('x'.repeat(1_000_000)), null);
+    assert.equal(readAccountToken('ab:'.repeat(300_000) + 'cd'), null);
+  });
+
   test('a well-formed value encrypted with a DIFFERENT secret reads as null, not a throw', () => {
     // The production/local AUTH_SECRET mismatch, as a unit test: it must
     // degrade to "not connected", never to a 500 in a merchant's screen.

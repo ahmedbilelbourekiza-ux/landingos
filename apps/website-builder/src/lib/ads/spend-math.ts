@@ -95,6 +95,16 @@ export function buildInsightsRequest(cfg: MetaAdsConfig, range: DateRange): Wire
       `accountId must be the bare numeric id without the act_ prefix, got ${JSON.stringify(cfg.accountId)}`,
     );
   }
+  /* SEC.9 (LB.23 review) — digits ONLY, enforced where the URL is built. The
+   * intake route already regexes `^\d{5,25}$`, but this builder also takes
+   * config from the PlatformCredential row (an attended script writes it),
+   * and an id is interpolated into the request PATH — `123/../something`
+   * must be a thrown refusal here, not a different Graph URL. */
+  if (!/^\d+$/.test(cfg.accountId)) {
+    throw new Error(
+      `accountId must be digits only, got ${JSON.stringify(cfg.accountId)}`,
+    );
+  }
 
   const base = (cfg.apiBase ?? "https://graph.facebook.com").replace(/\/+$/, "");
   const params = new URLSearchParams({
