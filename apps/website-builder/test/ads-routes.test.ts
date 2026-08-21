@@ -34,6 +34,7 @@ const userIds: string[] = [];
 const tokens: Record<string, string> = {};
 let tenantA = '';
 let tenantB = '';
+let tenantB2 = '';
 let accountA = '';
 let accountB = '';
 
@@ -85,18 +86,20 @@ before(async () => {
   await makeUser(tenantA, 'OWNER', 'ownerA');
   await makeUser(tenantA, 'VIEWER', 'viewerA');
   await makeUser(tenantB, 'OWNER', 'ownerB');
+  tenantB2 = await makeTenant(`ads-c-${stamp}`);
+  await makeUser(tenantB2, 'OWNER', 'ownerB2');
 });
 
 after(async () => {
   if (skip) return;
   for (const id of userIds) {
     await destroySessionsForUser(id);
-    for (const t of [tenantA, tenantB]) {
+    for (const t of [tenantA, tenantB, tenantB2]) {
       await withTenant(t, (tx) => (tx as any).membership.deleteMany({ where: { userId: id } }));
     }
     await asPlatform().user.delete({ where: { id } }).catch(() => {});
   }
-  for (const id of [tenantA, tenantB].filter(Boolean)) await deleteTenant(id).catch(() => {});
+  for (const id of [tenantA, tenantB, tenantB2].filter(Boolean)) await deleteTenant(id).catch(() => {});
   await disconnect();
 });
 
@@ -254,5 +257,53 @@ describe('refresh spend — named refusals', { skip }, () => {
       });
       assert.equal(r.status, 422, `days=${days}`);
     }
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * LB.23c — THE GAP THAT SHIPPED, now pinned.
+ *
+ * LB.23b built the intake route and verified it with direct API calls, and
+ * called that "end to end". It was not: no form anywhere in the console called
+ * the route, so the panel could say "no advertising account is connected" and
+ * offer nothing to fix it. Every route test passed the whole time, because a
+ * route test cannot see that nothing reaches the route.
+ *
+ * These assert REACHABILITY from the rendered screen, which is the property
+ * that was actually missing.
+ * -------------------------------------------------------------------------- */
+describe('the token field is reachable from the screen', { skip }, () => {
+  const screen = async (tok: string) => {
+    const r = await fetch(BASE + '/console/builder/analytics', {
+      headers: { cookie: `${SESSION_COOKIE}=${tok}` },
+    });
+    return await r.text();
+  };
+
+  test('with NO account connected, the screen still offers a way to connect one', async () => {
+    // The dead end: "not connected" with no remedy on the page.
+    const html = await screen(tokens.ownerB2);
+    assert.ok(html.includes('connect-ad-account'), 'the connect form must be on the page');
+    assert.ok(html.includes('ad-account-token'), 'the token input must be on the page');
+  });
+
+  test('the token input is a password field, not plain text', async () => {
+    const html = await screen(tokens.ownerB2);
+    const near = html.slice(Math.max(0, html.indexOf('ad-account-token') - 400),
+                            html.indexOf('ad-account-token') + 400);
+    assert.match(near, /type="password"/, 'a pasted credential must not be shoulder-surfable');
+  });
+
+  test('a stored token is NEVER rendered into the page', async () => {
+    await api('/api/platform/integrations/ad-accounts', tokens.ownerB2, {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'meta', accountId: '333333333', name: 'reachable',
+        currency: 'USD', accessToken: FAKE_TOKEN,
+      }),
+    });
+    const html = await screen(tokens.ownerB2);
+    assert.ok(!html.includes(FAKE_TOKEN), 'the secret must not reach the HTML');
+    assert.ok(html.includes('connect-ad-account'), 'and the form stays available for rotation');
   });
 });

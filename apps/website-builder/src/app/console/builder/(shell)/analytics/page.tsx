@@ -13,6 +13,7 @@ import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { AnalyzePageButton } from "@/components/console/builder/analyze-page-button";
 import { RefreshSpendButton } from "@/components/console/builder/refresh-spend-button";
+import { ConnectAdAccountPanel } from "@/components/console/builder/connect-ad-account";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,21 @@ export default async function BuilderAnalyticsScreen({
      can take; the rest fall back to the generic wording on purpose. */
   const spendErrors = actionErrors(t);
   spendErrors.NO_CREDENTIAL = t("builder.analytics.adSpendNoCredential");
+
+  /* LB.23c — the connect form's words, translated ONCE on the server and
+     handed down as props: this console's convention for client write controls,
+     so a write control never depends on messages being available client-side. */
+  const adAccountLabels = {
+    connect: t("builder.analytics.adAccountConnect"),
+    accountId: t("builder.analytics.adAccountIdLabel"),
+    accountIdHint: t("builder.analytics.adAccountIdHint"),
+    name: t("builder.analytics.adAccountNameLabel"),
+    currency: t("builder.analytics.adAccountCurrencyLabel"),
+    token: t("builder.analytics.adAccountTokenLabel"),
+    tokenHint: t("builder.analytics.adAccountTokenHint"),
+    save: t("builder.analytics.adAccountSave"),
+    saving: t("builder.analytics.adAccountSaving"),
+  };
 
   const insightErrors = actionErrors(t);
   insightErrors.NO_AI_PROVIDER = t("builder.newPage.ai.noProvider");
@@ -182,9 +198,16 @@ export default async function BuilderAnalyticsScreen({
         <h2 className="text-sm font-semibold">{t("builder.analytics.adSpendTitle")}</h2>
 
         {adSpend.state === "unconfigured" ? (
-          <p className="text-sm text-muted-foreground">
-            {t("builder.analytics.adSpendUnconfigured")}
-          </p>
+          <>
+            <p className="text-sm text-muted-foreground">
+              {t("builder.analytics.adSpendUnconfigured")}
+            </p>
+            {/* The remedy belongs WITH the message. Saying "not connected" and
+                offering nothing is a dead end, which is exactly what shipped
+                in LB.23b and what the operator found. Open by default here:
+                this is the one state where the merchant came to fix it. */}
+            <ConnectAdAccountPanel errors={spendErrors} labels={adAccountLabels} defaultOpen />
+          </>
         ) : adSpend.state === "never-synced" ? (
           <>
             <p className="text-sm text-muted-foreground">
@@ -200,6 +223,18 @@ export default async function BuilderAnalyticsScreen({
                 refreshing: t("builder.analytics.adSpendRefreshing"),
               }}
               errors={spendErrors}
+            />
+            {/* The commonest real case: the account row exists but its token
+                was never pasted, so Refresh answers NO_CREDENTIAL. The field
+                to fix that has to be reachable from right here. */}
+            <ConnectAdAccountPanel
+              errors={spendErrors}
+              labels={adAccountLabels}
+              existing={{
+                accountId: adSpend.accountRef,
+                name: adSpend.accountName,
+                currency: adSpend.currency,
+              }}
             />
           </>
         ) : (
@@ -265,6 +300,17 @@ export default async function BuilderAnalyticsScreen({
                 refreshing: t("builder.analytics.adSpendRefreshing"),
               }}
               errors={spendErrors}
+            />
+            {/* Collapsed here: nothing is broken, but a token expires or gets
+                revoked, and rotating it must not require database access. */}
+            <ConnectAdAccountPanel
+              errors={spendErrors}
+              labels={adAccountLabels}
+              existing={{
+                accountId: adSpend.accountRef,
+                name: adSpend.accountName,
+                currency: adSpend.currency,
+              }}
             />
           </>
         )}

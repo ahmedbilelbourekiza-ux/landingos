@@ -171,7 +171,16 @@
       "adSpendCurrencyNote": "Spend is shown in the advertising account's own currency, unconverted. The profit calculator converts it using the rate you enter there.",
       "adSpendRefresh": "Refresh spend",
       "adSpendRefreshing": "Refreshing…",
-      "adSpendNoCredential": "This advertising account has no access token saved yet. Add it in Settings → Integrations."
+      "adSpendNoCredential": "This advertising account has no access token saved yet. Add it in Settings → Integrations.",
+      "adAccountConnect": "Connect an advertising account",
+      "adAccountIdLabel": "Ad account ID",
+      "adAccountIdHint": "Digits only, without the act_ prefix",
+      "adAccountNameLabel": "Name",
+      "adAccountCurrencyLabel": "Currency the account is billed in",
+      "adAccountTokenLabel": "Access token — stored encrypted, shown only now",
+      "adAccountTokenHint": "Paste the ads_read token. Leave blank to keep the saved one.",
+      "adAccountSave": "Save",
+      "adAccountSaving": "Saving…"
     },
     "newPage": {
       "title": "New landing page",

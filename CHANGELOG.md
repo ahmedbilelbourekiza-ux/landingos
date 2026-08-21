@@ -10,6 +10,61 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## LB.23c — the field the token is pasted into, which LB.23b never built
+
+**Built and verified on DEV. NOT deployed. No migration — UI only.**
+
+**Reported by the operator, and he was right.** He went looking for somewhere
+to paste the `ads_read` token — Traffic screen, Settings → Integrations, all
+the way down — and found nothing, because there was nothing. LB.23b built the
+intake route, verified it with direct API calls, and called that "end to end".
+It was not. **No form anywhere in the console called
+`POST /api/platform/integrations/ad-accounts`;** a grep of `src/components` and
+`src/app/console` for `ad-accounts` returned exactly one hit, and it was the
+REFRESH route. So the panel could say "no advertising account is connected"
+and offer nothing whatsoever to fix that — a dead end escapable only with
+database access, which is how production got its account row in the first
+place.
+
+**Why every test passed anyway, which is the lesson.** Seventeen route tests,
+a live end-to-end run with a real token, and a production functional check all
+went green while the feature was unreachable — because each of them called the
+route directly. **A route test cannot see that nothing reaches the route.** The
+missing assertion was never about the route at all; it was reachability from
+the rendered screen, and three tests now pin exactly that: the connect form is
+present when nothing is connected, the token input is a `password` field, and
+a stored token never reaches the HTML.
+
+**What was built:** `ConnectAdAccountPanel`, following
+`platform/tracking-write.tsx` — this console's existing answer to "type a
+secret into a form": labels arrive as props (the server translates once, LB.42),
+the body renders always and toggles with `hidden` (D-06.4), the secret is
+write-only and cleared on success, and the control renders none of the answer.
+The token field is `type="password"` with autocomplete off, so a pasted
+credential is not shoulder-surfed, screenshotted, or offered to a password
+manager.
+
+It appears in **all three panel states**, each for its own reason: **open by
+default** when nothing is connected (the merchant is there to fix precisely
+that, and a collapsed panel would hide the only remedy); below Refresh in
+`never-synced`, which is the commonest real case — the row exists, the token
+was never pasted, and Refresh answers `NO_CREDENTIAL`; and collapsed in
+`ready`, because tokens expire and rotating one must not require database
+access. The token is OPTIONAL on submit throughout, so the same form is
+"connect" and "rename" and a blank field cannot silently disconnect a working
+account.
+
+**Verified through the UI flow this time**, on dev with the real token: the
+field is present and `type="password"`, the form is open in the unconfigured
+state, submitting it stores the token **encrypted at rest** and masked in the
+response, the screen then offers Refresh and **Refresh succeeds against the
+stored token — 27 days, 388.49 USD** — the token never appears in the rendered
+HTML, and re-saving without a token leaves the stored one intact while the
+rename lands. Throwaway tenant, swept to zero.
+
+52 → 61 `builder.analytics.*` keys (nine new); parity holds across en/fr/ar (1415).
+Suites: ads-routes 14 → **17**.
+
 ## LB.23b — the ad credential comes in through the console, and spend refreshes on demand
 
 **Built 21 August 2026; DEPLOYED THE SAME DAY as `94d675c..e54b878`, live

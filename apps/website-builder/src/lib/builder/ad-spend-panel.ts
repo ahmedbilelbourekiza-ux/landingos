@@ -32,11 +32,16 @@ export type AdSpendPanel =
       /** So the screen can offer the FIRST pull from here — this state is
        *  exactly where a refresh is the merchant's next action. */
       readonly adAccountId: string;
+      /** LB.23c — enough to PRE-FILL the connect form, so pasting a token into
+       *  an account that already exists is an edit and not a re-entry. */
+      readonly accountRef: string;
+      readonly currency: string;
     }
   | {
       readonly state: "ready";
       readonly accountName: string;
       readonly adAccountId: string;
+      readonly accountRef: string;
       readonly lastSyncedAt: Date;
       /** Formatted to 2dp; the currency is carried separately, never merged. */
       readonly spend: string;
@@ -56,6 +61,7 @@ interface SpendClient {
     findFirst(args: unknown): Promise<{
       id: string;
       name: string;
+      accountId: string;
       currency: string;
       lastSyncedAt: Date | null;
     } | null>;
@@ -85,14 +91,20 @@ export async function adSpendPanel(
 ): Promise<AdSpendPanel> {
   const account = await db.adAccount.findFirst({
     where: { provider: "meta", isActive: true },
-    select: { id: true, name: true, currency: true, lastSyncedAt: true },
+    select: { id: true, name: true, accountId: true, currency: true, lastSyncedAt: true },
     orderBy: { createdAt: "asc" },
   });
   if (!account) return { state: "unconfigured" };
   if (!account.lastSyncedAt) {
     // Distinct from "synced and found nothing" — one is our job to fix, the
     // other is a true fact about the account.
-    return { state: "never-synced", accountName: account.name, adAccountId: account.id };
+    return {
+      state: "never-synced",
+      accountName: account.name,
+      adAccountId: account.id,
+      accountRef: account.accountId,
+      currency: account.currency,
+    };
   }
 
   const stored = await db.adSpendDaily.findMany({
@@ -133,6 +145,7 @@ export async function adSpendPanel(
     state: "ready",
     accountName: account.name,
     adAccountId: account.id,
+    accountRef: account.accountId,
     lastSyncedAt: account.lastSyncedAt,
     spend: toString(summary.spend, 2),
     currency,

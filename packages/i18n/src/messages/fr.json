@@ -171,7 +171,16 @@
       "adSpendCurrencyNote": "Les dépenses sont affichées dans la devise du compte publicitaire, sans conversion. Le calculateur de rentabilité les convertit avec le taux que vous y saisissez.",
       "adSpendRefresh": "Actualiser les dépenses",
       "adSpendRefreshing": "Actualisation…",
-      "adSpendNoCredential": "Ce compte publicitaire n'a pas encore de jeton d'accès enregistré. Ajoutez-le dans Paramètres → Intégrations."
+      "adSpendNoCredential": "Ce compte publicitaire n'a pas encore de jeton d'accès enregistré. Ajoutez-le dans Paramètres → Intégrations.",
+      "adAccountConnect": "Connecter un compte publicitaire",
+      "adAccountIdLabel": "Identifiant du compte publicitaire",
+      "adAccountIdHint": "Chiffres uniquement, sans le préfixe act_",
+      "adAccountNameLabel": "Nom",
+      "adAccountCurrencyLabel": "Devise de facturation du compte",
+      "adAccountTokenLabel": "Jeton d'accès — stocké chiffré, affiché seulement maintenant",
+      "adAccountTokenHint": "Collez le jeton ads_read. Laissez vide pour conserver celui enregistré.",
+      "adAccountSave": "Enregistrer",
+      "adAccountSaving": "Enregistrement…"
     },
     "newPage": {
       "title": "Nouvelle page de vente",
