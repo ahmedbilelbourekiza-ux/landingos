@@ -10,6 +10,73 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## DEPLOY — LB.23 ad-spend attribution is live (21 August 2026, 15:10–15:13 UTC)
+
+**`origin/main` moved `63ef313..a2c9df6`** — two commits, the LB.23 build and
+the SEC.6 documentation record — pushed REF-MAPPED
+(`git push origin a2c9df6:main`). Rollback point **`63ef313`**. Live at
+**15:13:17 UTC**, about three minutes after the push.
+
+**The migration ran first, as its own approved step.** Preview against
+production was byte-identical to the dev preview — 2 CREATE TABLE, 4 indexes,
+one ALTER carrying the FK on the NEW table, **zero DROP** — which also proved
+production carried no schema drift. Applied, then `apply-rls`:
+
+| | before | after |
+|---|---|---|
+| tables | 61 | **63** |
+| RLS-enabled | 55 | **57** |
+| policies | 58 | **60** |
+| `SalesOrder` / `LandingPage` / `Tenant` | 2 / 2 / 3 | **2 / 2 / 3 — untouched** |
+
+`apply-rls` reported **PASS 57/57 on all four checks**; the two new tables
+needed no list edit because the delegate set is derived from `tenantId`
+presence. Health stayed 200 `database: ok` and the storefront stayed
+**byte-identical at 503,710** across the migration.
+
+**Deploy liveness had no public marker again** (server- and console-only, the
+SEC.6 problem repeated, and still no Render API credential on the machine).
+It was confirmed the honest way instead: an authed render of the production
+console, using the `Session.id = sha256(rawToken)` technique, checked for the
+`analytics-ad-spend` section — a testid that exists only in the new code. The
+session was deleted afterwards.
+
+**The functional test found a real defect, which is the point of running one.**
+The live Arabic console rendered the panel with genuine data — account name
+`Atlas Accounts 6` pulled from Meta, a real last-synced stamp, and the new
+`builder.analytics.*` keys resolving in `ar` — but printed **`0.00 DZD` for a
+USD account**. `adSpendPanel` fell back to the STORE currency when the window
+held no rows (`summary.currency ?? storeCurrency`), which is precisely the
+mislabelling this module's own header exists to forbid: a spend figure under
+the wrong currency. Harmless at zero, wrong in principle, and invisible to the
+suite because no test paired an EMPTY window with a foreign-currency account.
+Fixed to fall back to the AD ACCOUNT's own currency, with the missing test
+added. **Found by rendering the real screen, not by the tests — the LB.14a
+lesson again: read the served response.**
+
+**Real spend is in production, and the screen's zero is truthful.** 30 days of
+September 2025 synced into `landingos_prod` for `bebezzouar` totalling
+**470.32 USD**, matching Meta's own aggregate. The last-30-days sync wrote
+**0 rows** — the account genuinely has not spent since ~22 July — so the
+screen's 7/30-day window correctly shows `0.00` with `0 days with spend`. That
+is the "synced and found nothing" state doing its job, not a failure.
+
+**⚠ THE PLATFORM CANNOT SYNC ITSELF YET, and the reason is a hard one.** The
+`meta-ads` credential is encrypted with a key derived from `AUTH_SECRET`, and
+**this machine's `AUTH_SECRET` does not match production's** — proven by
+attempting to decrypt a production `TrackingIntegration.serverToken` with the
+local key, which failed. So a credential encrypted here would be undecryptable
+there and would surface as a silent "unconfigured". The 30 rows above were
+written by running the sync FROM this machine with the token passed directly,
+which the read path does not need. **Installing the credential in production
+is an attended step requiring the production `AUTH_SECRET`** — the same shape
+as LB.14c.b's dormant state. Until then the panel reads real stored rows but
+nothing refreshes them.
+
+**Also open, unchanged:** campaign-level attribution still needs the ad links
+tagged with `{{campaign.name}}` macros in Ads Manager, and tagging is not
+retroactive.
+
 ## SEC.6 — the rate limiter stops believing the caller about who they are
 
 **Committed 21 August 2026; DEPLOYED THE SAME NIGHT as `c3dad4c..63ef313`. No

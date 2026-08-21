@@ -18,7 +18,7 @@ import { adSpendPanel, META_ORDER_CHANNELS } from '../src/lib/builder/ad-spend-p
 const RANGE = { days: 7, since: new Date('2026-08-14T00:00:00.000Z') };
 
 function client(opts: {
-  account?: { id: string; name: string; lastSyncedAt: Date | null } | null;
+  account?: { id: string; name: string; currency?: string; lastSyncedAt: Date | null } | null;
   spend?: { date: string; spend: string; currency: string; impressions: number; clicks: number }[];
   orders?: number;
 }) {
@@ -26,7 +26,10 @@ function client(opts: {
   return {
     captured,
     db: {
-      adAccount: { findFirst: async () => opts.account ?? null },
+      adAccount: {
+        findFirst: async () =>
+          opts.account ? { currency: 'USD', ...opts.account } : null,
+      },
       adSpendDaily: {
         findMany: async () =>
           (opts.spend ?? []).map((r) => ({
@@ -98,6 +101,22 @@ describe('adSpendPanel — four states, never one zero', () => {
 });
 
 describe('the currency boundary the screen must not cross', () => {
+  test("an EMPTY window falls back to the ACCOUNT currency, never the store's", async () => {
+    // Caught on the live production screen, not here: a USD account with no
+    // spend in the window rendered "0.00 DZD" — a spend figure under the wrong
+    // label, the exact failure this module exists to prevent. No test had an
+    // empty window on a foreign-currency account.
+    const { db } = client({
+      account: { id: 'a1', name: 'Atlas Accounts 6', currency: 'USD', lastSyncedAt: new Date() },
+      spend: [],
+      orders: 0,
+    });
+    const panel = await adSpendPanel(db as never, RANGE, 'DZD') as any;
+    assert.equal(panel.spend, '0.00');
+    assert.equal(panel.currency, 'USD', 'must NOT borrow the store currency');
+    assert.ok(panel.ratioRefusal, 'and the refusal still applies across USD/DZD');
+  });
+
   test('USD spend against a DZD store yields a refusal, never a ratio', async () => {
     const { db } = client({
       account: { id: 'a1', name: 'A6', lastSyncedAt: new Date() },

@@ -52,6 +52,7 @@ interface SpendClient {
     findFirst(args: unknown): Promise<{
       id: string;
       name: string;
+      currency: string;
       lastSyncedAt: Date | null;
     } | null>;
   };
@@ -80,7 +81,7 @@ export async function adSpendPanel(
 ): Promise<AdSpendPanel> {
   const account = await db.adAccount.findFirst({
     where: { provider: "meta", isActive: true },
-    select: { id: true, name: true, lastSyncedAt: true },
+    select: { id: true, name: true, currency: true, lastSyncedAt: true },
     orderBy: { createdAt: "asc" },
   });
   if (!account) return { state: "unconfigured" };
@@ -113,17 +114,23 @@ export async function adSpendPanel(
     },
   });
 
+  /* An EMPTY window has no currency of its own, so the fallback must be the
+   * AD ACCOUNT's currency — never the store's. Falling back to the store's
+   * printed "0.00 DZD" for a USD account: a spend figure under the wrong
+   * label, which is the one failure this module exists to prevent. Caught on
+   * the live screen, not by a test, because no test had an empty window on a
+   * foreign-currency account. */
+  const currency = summary.currency ?? account.currency;
+
   const cpo = costPerOrder(summary, orders);
-  const verdict = summary.currency
-    ? crossCurrencyRatio(summary.currency, storeCurrency)
-    : { ok: true as const };
+  const verdict = crossCurrencyRatio(currency, storeCurrency);
 
   return {
     state: "ready",
     accountName: account.name,
     lastSyncedAt: account.lastSyncedAt,
     spend: toString(summary.spend, 2),
-    currency: summary.currency ?? storeCurrency,
+    currency,
     days: summary.days,
     impressions: summary.impressions,
     clicks: summary.clicks,
