@@ -10,6 +10,29 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## LB.23d — the disconnect button, so SEC.9's exit door hangs on the wall
+
+**Built, tested, COMMITTED LOCALLY (`c303157`). NOT pushed, NOT deployed, no
+migration — one client component, one screen wiring, three i18n keys ×3
+locales, tests.**
+
+The SEC.7–9 deploy's verification pass found its own gap: SEC.9 shipped
+`DELETE /ad-accounts/[id]` manage-gated and route-tested while **nothing in
+the console called it** — the LB.23b reachability defect at the exit instead
+of the entrance. `DisconnectAdAccountButton` (the refresh-spend shape) now
+renders in both account-bearing states of the analytics ad-spend panel,
+gated to `platform:integrations:manage` exactly like its route; the
+`window.confirm` sentence states the cascade's cost (credential + pulled
+spend history) before it happens; success re-renders the screen into the
+`unconfigured` state with the connect form open. Reachability pinned the way
+LB.23c pinned the entrance: present for an owner once an account exists,
+absent in the unconfigured state, absent for VIEWER **and MANAGER**.
+ads-routes 25→27; ads-credential 12, ads-spend 19, builder-insights 14,
+i18n 22 all green; tsc baseline unchanged (277 — the recorded 269 had
+drifted before this slice).
+
+---
+
 ## SEC.7 + SEC.8 + SEC.9 — the overnight security pass of 22 August
 
 **DEPLOYED 22 Aug 2026, live 00:47 UTC** — `origin/main` = `36bf799`

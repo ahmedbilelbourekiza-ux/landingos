@@ -55,13 +55,16 @@ remain the deep references.
 > SalesOrder 2, LandingPage 2, AdAccount 1, AdSpendDaily 30; fixture tenant,
 > both users, both sessions gone. The tmp fixture/sweep scripts are deleted.
 >
-> **⚠ NEW FINDING (SEC.9's own lesson, at the exit door): there is NO
-> disconnect BUTTON.** `grep src -r 'ad-accounts'` finds the connect POST and
-> the refresh POST — nothing calls `DELETE /ad-accounts/[id]`. The route is
-> live, manage-gated and route-tested, but console-unreachable: revoking a
-> stored credential is still an API/curl act, exactly the LB.23b reachability
-> defect shape. Needs a small disconnect control (manage-gated) + reachability
-> test — an open item, deliberately not built unreviewed during the deploy.
+> **✔ THE DISCONNECT BUTTON IS NOW BUILT — LB.23d, committed locally as
+> `c303157` later the same day, NOT pushed, awaiting review.** The finding
+> stands as history: SEC.9's route shipped console-unreachable (nothing
+> called `DELETE /ad-accounts/[id]`), the LB.23b reachability shape at the
+> exit. The control renders in both account-bearing states of the analytics
+> panel, gated to `platform:integrations:manage` like its route, with the
+> cascade's cost in the confirm sentence. Reachability pinned: ads-routes
+> 25→27 (present for owner-with-account, absent unconfigured, absent for
+> VIEWER and MANAGER). CHANGELOG §LB.23d is the record. Deploying it is a
+> code-only ref-mapped push, no DB step.
 >
 > Suite note unchanged: the test SERVER env needs
 > `OUTBOUND_PRIVATE_ALLOWLIST=127.0.0.1` or every delivery/AI suite refuses
