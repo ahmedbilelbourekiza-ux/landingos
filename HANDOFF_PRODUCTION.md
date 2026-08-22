@@ -15,6 +15,51 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ⚡ 23 Aug 2026 — THE PRODUCTION DATABASE IS NOW SUPABASE (attended cutover, Bilel approving every phase)
+>
+> **`PLATFORM_DATABASE_URL` on Render now points at Supabase project
+> `fpwrvcwunypgdwndtqop` (eu-west-2), session pooler
+> `aws-0-eu-west-2.pooler.supabase.com:5432`, role
+> `landingos_app.fpwrvcwunypgdwndtqop`, `connection_limit=10`.** The flip was
+> Bilel's own dashboard edit ~22:50 UTC 22 Aug; same build, env-only restart
+> (build id unchanged — that is correct, not a missed deploy).
+>
+> **The gate that preceded it:** schema re-synced (one drift column,
+> `AdAccount.accessToken`, applied; then `migrate diff` = *No difference
+> detected*), RLS re-applied **PASS 57/57 all four checks**, `landingos_app`
+> rotated + verified NOBYPASSRLS, and the **full 44-file suite (1,667 tests)
+> passed against Supabase** — 1,448 in one run plus every remaining file
+> complete in isolation; the only failures ever seen were connection-transport
+> transients, attributed via Supavisor's own logs (pool cap 15, RAISED by
+> Bilel; his pool-size change's own 57P01s; laptop network blips that
+> Supavisor never saw). **Data copy: 701/701 rows, 63/63 tables exact, and
+> ALL 63 tables value-identical under canonical-jsonb checksums**; 13
+> sequences reset; one transaction.
+>
+> **Live-verified after the flip:** health 200 `database: ok` from Supabase;
+> storefront 200, byte-stable; **the decisive beacon — a real visit through
+> the live domain landed as a `StorefrontVisit` row ON SUPABASE (identified
+> by its token) while Neon stayed frozen at 5** — then swept, both sides 5/5.
+> Supavisor logs clean since the flip. Sessions were copied, so operator
+> logins survived.
+>
+> **ROLLBACK (standing):** paste the saved Neon `landingos_prod` value back
+> into Render's `PLATFORM_DATABASE_URL` (Bilel holds it) — ~3–5 min restart.
+> ⚠ Anything written after the flip exists only on Supabase; a late rollback
+> loses it. **Neon `landingos_prod` is now a frozen snapshot (701 rows as of
+> the flip) on the Launch plan — the rollback net until Bilel retires it.**
+>
+> **Standing rules that CHANGED:** (1) production is identified by the
+> Supabase host `aws-0-eu-west-2.pooler.supabase.com` / project ref
+> `fpwrvcwunypgdwndtqop` — the old "prod = ep-summer-shadow Neon" rule is
+> history; (2) the direct host `db.fpwrvcwunypgdwndtqop.supabase.co` is
+> IPv6-only and unreachable from the HP laptop — use the session pooler for
+> everything; (3) attended prod DB work uses the owner string in
+> `C:\Users\HP\Supabase connection string.txt`; the app credential lives in
+> Render + `C:\Users\HP\render-platform-database-url.txt`; (4) dev is
+> unchanged (`ep-gentle-sky…` Neon) and `packages/db/.env` was restored to it
+> after the cutover — never leave local tooling pointed at Supabase.
+
 > ### ✔ LB.23d IS LIVE — the disconnect button exists on the real console (22 Aug 2026, live 10:33:55 UTC)
 >
 > **`origin/main` is `464b6e6`** (`559aa5d..464b6e6`, ref-mapped; two commits —

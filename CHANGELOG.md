@@ -10,6 +10,21 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## DB.1 — the Supabase cutover: production's database moved, attended end to end
+
+**DONE 22–23 Aug 2026 (overnight, Bilel attending and approving each phase).**
+Production now runs on Supabase (`fpwrvcwunypgdwndtqop`, eu-west-2, session
+pooler, `landingos_app` under the same 57-table RLS). The full record —
+re-sync (one drift column, then zero), RLS 57/57, the 1,667-test gate with
+the Supavisor-log attribution of every transient (incl. the pool_size:15 cap
+Bilel raised mid-gate), the 701/701-row copy with all-63-table canonical-jsonb
+checksum identity, the beacon proof that the live domain writes to Supabase
+while Neon stays frozen, and the standing rollback (Neon = frozen snapshot) —
+is **HANDOFF_PRODUCTION §1's top banner**. No code changed; no migration ran;
+the flip was one Render env var, Bilel's own edit.
+
+---
+
 ## LB.23d — the disconnect button, so SEC.9's exit door hangs on the wall
 
 **DEPLOYED 22 Aug 2026, live 10:33:55 UTC** — `origin/main` = `464b6e6`
