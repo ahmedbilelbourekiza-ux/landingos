@@ -180,7 +180,10 @@
       "adAccountTokenLabel": "Jeton d'accès — stocké chiffré, affiché seulement maintenant",
       "adAccountTokenHint": "Collez le jeton ads_read. Laissez vide pour conserver celui enregistré.",
       "adAccountSave": "Enregistrer",
-      "adAccountSaving": "Enregistrement…"
+      "adAccountSaving": "Enregistrement…",
+      "adAccountDisconnect": "Déconnecter le compte",
+      "adAccountDisconnecting": "Déconnexion…",
+      "adAccountDisconnectConfirm": "Déconnecter ce compte publicitaire ? Le jeton enregistré et l'historique de dépenses importé seront supprimés. Une reconnexion réimporte la période à nouveau."
     },
     "newPage": {
       "title": "Nouvelle page de vente",

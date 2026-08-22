@@ -334,6 +334,9 @@ describe('the token field is reachable from the screen', { skip }, () => {
     const html = await screen(tokens.ownerB2);
     assert.ok(html.includes('connect-ad-account'), 'the connect form must be on the page');
     assert.ok(html.includes('ad-account-token'), 'the token input must be on the page');
+    // And no exit where there is nothing to leave: a disconnect control in the
+    // unconfigured state would be a button whose route can only answer 404.
+    assert.ok(!html.includes('disconnect-ad-account'), 'nothing to disconnect, no disconnect control');
   });
 
   test('SEC.9 — a role the intake route refuses is not offered the field at all', async () => {
@@ -346,6 +349,20 @@ describe('the token field is reachable from the screen', { skip }, () => {
     assert.ok(!html.includes('connect-ad-account'), 'no credential form for a viewer');
     assert.ok(!html.includes('ad-account-token'), 'no token field for a viewer');
     assert.ok(!html.includes('data-testid="refresh-spend"'), 'no refresh trigger for a viewer');
+    // tenantA HAS an account here, so the exit exists — but not for this role.
+    assert.ok(!html.includes('disconnect-ad-account'), 'no disconnect control for a viewer');
+  });
+
+  test('a MANAGER is likewise offered none of the manage controls', async () => {
+    /* MANAGER holds *:*:write and still fails platform:integrations:manage —
+     * exactly the role most likely to be handed this screen day to day, and
+     * exactly the one whose disconnect DELETE answers 403 (pinned below). A
+     * rendered control here would be the dead-control defect for the third
+     * time on one panel. */
+    const html = await screen(tokens.managerA);
+    assert.ok(!html.includes('connect-ad-account'), 'no credential form for a manager');
+    assert.ok(!html.includes('data-testid="refresh-spend"'), 'no refresh trigger for a manager');
+    assert.ok(!html.includes('disconnect-ad-account'), 'no disconnect control for a manager');
   });
 
   test('the token input is a password field, not plain text', async () => {
@@ -366,6 +383,16 @@ describe('the token field is reachable from the screen', { skip }, () => {
     const html = await screen(tokens.ownerB2);
     assert.ok(!html.includes(FAKE_TOKEN), 'the secret must not reach the HTML');
     assert.ok(html.includes('connect-ad-account'), 'and the form stays available for rotation');
+  });
+
+  test('once an account exists, the DISCONNECT control is on the screen for whoever the route admits', async () => {
+    /* The deploy pass's finding, pinned the way LB.23c pinned the entrance:
+     * SEC.9 shipped `DELETE /ad-accounts/[id]` route-tested and UI-unreachable
+     * — a grep for `ad-accounts` found the connect POST and the refresh POST,
+     * nothing else. Revoking a credential was still an API act. This asserts
+     * the exit is a rendered control, not documentation. */
+    const html = await screen(tokens.ownerB2);
+    assert.ok(html.includes('data-testid="disconnect-ad-account"'), 'the disconnect button must be on the page');
   });
 });
 

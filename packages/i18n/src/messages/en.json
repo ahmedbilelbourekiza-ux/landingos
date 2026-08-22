@@ -180,7 +180,10 @@
       "adAccountTokenLabel": "Access token — stored encrypted, shown only now",
       "adAccountTokenHint": "Paste the ads_read token. Leave blank to keep the saved one.",
       "adAccountSave": "Save",
-      "adAccountSaving": "Saving…"
+      "adAccountSaving": "Saving…",
+      "adAccountDisconnect": "Disconnect account",
+      "adAccountDisconnecting": "Disconnecting…",
+      "adAccountDisconnectConfirm": "Disconnect this advertising account? The stored token and the pulled spend history are deleted. Re-connecting pulls the window again."
     },
     "newPage": {
       "title": "New landing page",

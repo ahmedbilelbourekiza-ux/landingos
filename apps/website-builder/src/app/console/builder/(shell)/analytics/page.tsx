@@ -15,6 +15,7 @@ import { DataTable } from "@/components/console/data-table";
 import { AnalyzePageButton } from "@/components/console/builder/analyze-page-button";
 import { RefreshSpendButton } from "@/components/console/builder/refresh-spend-button";
 import { ConnectAdAccountPanel } from "@/components/console/builder/connect-ad-account";
+import { DisconnectAdAccountButton } from "@/components/console/builder/disconnect-ad-account";
 
 export const dynamic = "force-dynamic";
 
@@ -126,6 +127,15 @@ export default async function BuilderAnalyticsScreen({
     tokenHint: t("builder.analytics.adAccountTokenHint"),
     save: t("builder.analytics.adAccountSave"),
     saving: t("builder.analytics.adAccountSaving"),
+  };
+
+  /* The exit door's words, same convention. The confirm sentence carries the
+     cost (credential + pulled history, per the route's cascade) because the
+     dialog is the last place to say it before it happens. */
+  const disconnectLabels = {
+    disconnect: t("builder.analytics.adAccountDisconnect"),
+    disconnecting: t("builder.analytics.adAccountDisconnecting"),
+    confirm: t("builder.analytics.adAccountDisconnectConfirm"),
   };
 
   const insightErrors = actionErrors(t);
@@ -258,6 +268,16 @@ export default async function BuilderAnalyticsScreen({
                 }}
               />
             )}
+            {/* SEC.9's DELETE finally gets its door — found button-less by the
+                deploy's own verification pass. Here too: a token pasted into
+                the wrong account is this state's commonest mistake. */}
+            {mayManageIntegrations && (
+              <DisconnectAdAccountButton
+                adAccountId={adSpend.adAccountId}
+                labels={disconnectLabels}
+                errors={spendErrors}
+              />
+            )}
           </>
         ) : (
           <>
@@ -336,6 +356,16 @@ export default async function BuilderAnalyticsScreen({
                   name: adSpend.accountName,
                   currency: adSpend.currency,
                 }}
+              />
+            )}
+            {/* And the exit, beside the rotation door it complements: rotate
+                when the token changed hands, disconnect when the account did.
+                Route-gated to the same permission; confirm says the cascade. */}
+            {mayManageIntegrations && (
+              <DisconnectAdAccountButton
+                adAccountId={adSpend.adAccountId}
+                labels={disconnectLabels}
+                errors={spendErrors}
               />
             )}
           </>

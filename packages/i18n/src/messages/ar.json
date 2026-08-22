@@ -180,7 +180,10 @@
       "adAccountTokenLabel": "رمز الوصول — يُحفظ مشفّراً، ويُعرض الآن فقط",
       "adAccountTokenHint": "ألصق رمز ads_read. اتركه فارغاً للإبقاء على المحفوظ.",
       "adAccountSave": "حفظ",
-      "adAccountSaving": "جارٍ الحفظ…"
+      "adAccountSaving": "جارٍ الحفظ…",
+      "adAccountDisconnect": "فصل الحساب",
+      "adAccountDisconnecting": "جارٍ الفصل…",
+      "adAccountDisconnectConfirm": "هل تريد فصل هذا الحساب الإعلاني؟ سيُحذف الرمز المحفوظ وسجل الإنفاق المستورد. إعادة الربط تعيد استيراد الفترة من جديد."
     },
     "newPage": {
       "title": "صفحة هبوط جديدة",
