@@ -15,6 +15,30 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✔ LB.23d IS LIVE — the disconnect button exists on the real console (22 Aug 2026, live 10:33:55 UTC)
+>
+> **`origin/main` is `464b6e6`** (`559aa5d..464b6e6`, ref-mapped; two commits —
+> the slice `c303157` + its record). Rollback **`559aa5d`**. **NO MIGRATION** —
+> zero `packages/db` files in the range, asserted before the push. Reviewed by
+> Bilel before deploying (the finding was his call to close same-day).
+>
+> **Verified live:** build id `KIiVW8GpUe1-…` → `g1HLmM_3ngyu5j-Lvu72h` ~3.5
+> min after push; storefront byte-identical (503,710 bytes, 31 scripts, the
+> one 21-byte build-id region — a console-only change touching nothing
+> public); health 200. **Reachability verified ON the real console** with an
+> attended throwaway fixture: an OWNER of a tenant in the `never-synced`
+> state got screen 200 with `disconnect-ad-account`, the connect form AND
+> Refresh all rendered. Fixture swept to zero: 3 tenants, 1 AdAccount, 30
+> AdSpendDaily, 2 SalesOrder, 2 LandingPage.
+>
+> **⚠ SWEEP LESSON, for every future prod fixture:** `tenant.delete` does
+> NOT cascade `AdAccount` — builder tables carry a bare `tenantId` with no
+> `Tenant` relation. The one-shot script's sweep left exactly one orphaned
+> account row, caught by the script's own post-sweep counts and removed with
+> a guarded targeted delete (exact accountId match + tenant-must-be-dead
+> check). **Sweep with `deleteTenant()` (the delegate sweeper) or explicit
+> per-table deletes — never bare `tenant.delete`.**
+
 > ### ✔ SEC.7 + SEC.8 + SEC.9 ARE LIVE (22 Aug 2026, live 00:47 UTC)
 >
 > **`origin/main` is `36bf799`** (`f0e2084..36bf799`, ref-mapped push of the
@@ -55,8 +79,8 @@ remain the deep references.
 > SalesOrder 2, LandingPage 2, AdAccount 1, AdSpendDaily 30; fixture tenant,
 > both users, both sessions gone. The tmp fixture/sweep scripts are deleted.
 >
-> **✔ THE DISCONNECT BUTTON IS NOW BUILT — LB.23d, committed locally as
-> `c303157` later the same day, NOT pushed, awaiting review.** The finding
+> **✔ THE DISCONNECT BUTTON IS NOW BUILT AND LIVE — LB.23d, reviewed and
+> deployed the same day (see the banner above).** The finding
 > stands as history: SEC.9's route shipped console-unreachable (nothing
 > called `DELETE /ad-accounts/[id]`), the LB.23b reachability shape at the
 > exit. The control renders in both account-bearing states of the analytics

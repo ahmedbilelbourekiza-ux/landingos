@@ -12,9 +12,14 @@ touched, any **migration**, and any **risk**.
 
 ## LB.23d — the disconnect button, so SEC.9's exit door hangs on the wall
 
-**Built, tested, COMMITTED LOCALLY (`c303157`). NOT pushed, NOT deployed, no
-migration — one client component, one screen wiring, three i18n keys ×3
-locales, tests.**
+**DEPLOYED 22 Aug 2026, live 10:33:55 UTC** — `origin/main` = `464b6e6`
+(`559aa5d..464b6e6`, ref-mapped; rollback `559aa5d`), reviewed by Bilel
+first. No migration — one client component, one screen wiring, three i18n
+keys ×3 locales, tests. **Live-verified on the real console** (attended
+fixture: screen 200 with the disconnect control rendered for an OWNER in
+the never-synced state; storefront byte-identical; fixture swept to zero —
+with one lesson: `tenant.delete` does not cascade `AdAccount`, use
+`deleteTenant()`; see HANDOFF §1).
 
 The SEC.7–9 deploy's verification pass found its own gap: SEC.9 shipped
 `DELETE /ad-accounts/[id]` manage-gated and route-tested while **nothing in
