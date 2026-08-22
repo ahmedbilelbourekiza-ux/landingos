@@ -1,10 +1,13 @@
 # SECURITY_PASS_AUG22 — the overnight security pass, consolidated
 
 **Written:** 22 August 2026 (overnight, unattended) · **For:** Bilel, on return.
-**State: BUILT, TESTED, COMMITTED LOCALLY. NOT PUSHED, NOT DEPLOYED — production
-untouched in every way** (no push, no migration, no Render env change, no
-database contact beyond the ordinary dev-suite runs against the dev project).
-`origin/main` is still `f0e2084`; local main leads by **three code commits**:
+**State: DEPLOYED — approved by Bilel and pushed 22 Aug, live 00:47 UTC.**
+`origin/main` = `36bf799` (`f0e2084..36bf799`, ref-mapped; rollback
+`f0e2084`). No migration, no Render env change. Public live verification and
+the three still-open ATTENDED checks are recorded in `HANDOFF_PRODUCTION.md`
+§1 (build-id flip, byte-identical storefront, the DELETE route's public 401
+proof, and the new finding that the disconnect route has no console button).
+The three code commits:
 
 | Commit | Slice |
 |---|---|
@@ -13,8 +16,8 @@ database contact beyond the ordinary dev-suite runs against the dev project).
 | `796362e` | **SEC.9** — fresh review of the LB.23 surface: two gaps closed, guarantees pinned |
 
 **The range is code-only: zero `.prisma`, zero migrations, zero `.sql`** —
-asserted with a diff over the range, so deploying it is a push with **no
-database step**. Deploying is your decision and is NOT done.
+asserted with a diff over the range and re-confirmed immediately before the
+push, so the deploy was a ref-mapped push with **no database step**.
 
 ---
 

@@ -12,8 +12,17 @@ touched, any **migration**, and any **risk**.
 
 ## SEC.7 + SEC.8 + SEC.9 — the overnight security pass of 22 August
 
-**Built, tested, COMMITTED LOCALLY (`72f89fa`, `304a547`, `796362e`). NOT
-pushed, NOT deployed, no migration — the range is code-only by assertion.**
+**DEPLOYED 22 Aug 2026, live 00:47 UTC** — `origin/main` = `36bf799`
+(`f0e2084..36bf799`, ref-mapped; rollback `f0e2084`). No migration — code-only
+re-confirmed before the push (zero `packages/db` files in the range); no
+Render env change (`OUTBOUND_PRIVATE_ALLOWLIST` stays unset = strict).
+Live-verified publicly: build-id flip, storefront byte-identical apart from
+the build id itself, health 200, and the SEC.9 DELETE route answering 401
+where a missing handler answers 405/404. Three authed functional checks
+remain attended-only (SSRF delivery-time refusal, MANAGER `ai:spend` 403,
+disconnect cascade) — see HANDOFF §1. **Open finding from the deploy pass: no
+console UI calls `DELETE /ad-accounts/[id]` — the disconnect route is live
+but button-less (the LB.23b reachability lesson, at the exit).**
 The full consolidated write-up, in priority order with the accepted-risk
 register and the verification table, is **`SECURITY_PASS_AUG22.md`** — read
 that first; this entry is the index.

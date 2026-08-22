@@ -15,18 +15,46 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### ⚠ 22 Aug 2026 — LOCAL MAIN LEADS ORIGIN WITH UNDEPLOYED SECURITY CODE
+> ### ✔ SEC.7 + SEC.8 + SEC.9 ARE LIVE (22 Aug 2026, live 00:47 UTC)
 >
-> The overnight security pass (SEC.7 SSRF resolve-time guard, SEC.8 the
-> `ai:spend` permission, SEC.9 LB.23-surface fixes) is committed locally as
-> `72f89fa` + `304a547` + `796362e` (+ this docs commit) and **NOT pushed —
-> production still runs `c69d7c7` and is untouched**. The range is code-only
-> (zero migrations, asserted), so shipping it is a ref-mapped push with no
-> database step and **no Render env change** (the guard's
-> `OUTBOUND_PRIVATE_ALLOWLIST` seam defaults to strict when unset — it is a
-> TEST seam and must never be set in production). Full record, priority
-> order, accepted risks and the deploy notes: **`SECURITY_PASS_AUG22.md`**.
-> Suite note for any session in between: the test SERVER env now also needs
+> **`origin/main` is `36bf799`** (`f0e2084..36bf799`, ref-mapped push of the
+> exact SHA; four commits — SEC.7 `72f89fa`, SEC.8 `304a547`, SEC.9 `796362e`,
+> docs `36bf799`). Rollback **`f0e2084`**. **NO MIGRATION** — re-confirmed
+> immediately before the push: zero files under `packages/db` in the range,
+> zero prisma/migration paths. No DB step ran, so RLS cannot have moved.
+> **No Render env change** — `OUTBOUND_PRIVATE_ALLOWLIST` stays unset in
+> production (unset = fully strict; it is a TEST seam only). Full write-up:
+> **`SECURITY_PASS_AUG22.md`**; CHANGELOG §SEC.7–9 is the index.
+>
+> **Verified live (public-HTTP, this machine):** build id flipped
+> `Qix-V0xx6CxAuddPvc7yx` → `rkVOFbqYJPBhvoQzgLL0A` ~3 min after push;
+> storefront byte-comparison is the cleanest yet — **identical 503,710 bytes,
+> 31 scripts, exactly ONE 21-byte differing region: the build id itself** (not
+> even a chunk rename). Health 200 `database: ok`. **SEC.9's
+> `DELETE /ad-accounts/[id]` is publicly proven live:** it answers **401**
+> unauthenticated where a missing handler answers 405/404 (both negative
+> controls run). Hero `/_next/image` variants re-warmed after the cache wipe
+> (w1920: 1.17s cold → 0.21s warm).
+>
+> **⚠ THREE AUTHED FUNCTIONAL CHECKS STILL OPEN** — this machine's permission
+> gate refused the prod fixture run (it reads the prod owner credential and
+> writes throwaway rows), so these need an attended yes: (1) delivery-time
+> SSRF refusal against a privately-RESOLVING webhook target, (2) MANAGER
+> refused with `AI_SPEND_FORBIDDEN` on generate/analyze while OWNER passes the
+> gate to a 422, (3) disconnect end-to-end incl. the AdSpendDaily cascade.
+> The fixture script is ready (untracked): `packages/db/scripts/tmp-sec-verify.ts`
+> — hard-asserts the prod host before touching anything, prints session
+> tokens + ids for the curl checks; sweep = `tenant.delete` + sessions + users.
+>
+> **⚠ NEW FINDING (SEC.9's own lesson, at the exit door): there is NO
+> disconnect BUTTON.** `grep src -r 'ad-accounts'` finds the connect POST and
+> the refresh POST — nothing calls `DELETE /ad-accounts/[id]`. The route is
+> live, manage-gated and route-tested, but console-unreachable: revoking a
+> stored credential is still an API/curl act, exactly the LB.23b reachability
+> defect shape. Needs a small disconnect control (manage-gated) + reachability
+> test — an open item, deliberately not built unreviewed during the deploy.
+>
+> Suite note unchanged: the test SERVER env needs
 > `OUTBOUND_PRIVATE_ALLOWLIST=127.0.0.1` or every delivery/AI suite refuses
 > its own 127.0.0.1 stubs.
 
