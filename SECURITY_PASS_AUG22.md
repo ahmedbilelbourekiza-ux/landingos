@@ -3,11 +3,13 @@
 **Written:** 22 August 2026 (overnight, unattended) · **For:** Bilel, on return.
 **State: DEPLOYED — approved by Bilel and pushed 22 Aug, live 00:47 UTC.**
 `origin/main` = `36bf799` (`f0e2084..36bf799`, ref-mapped; rollback
-`f0e2084`). No migration, no Render env change. Public live verification and
-the three still-open ATTENDED checks are recorded in `HANDOFF_PRODUCTION.md`
-§1 (build-id flip, byte-identical storefront, the DELETE route's public 401
-proof, and the new finding that the disconnect route has no console button).
-The three code commits:
+`f0e2084`). No migration, no Render env change. Live verification is
+COMPLETE — the public checks (build-id flip, byte-identical storefront, the
+DELETE route's public 401 proof) and the three attended functional checks
+(SSRF resolve-time refusal with no connection made, MANAGER 403 vs OWNER 422
+at zero spend, disconnect + cascade; RLS measured 57/63 unchanged) are all
+recorded in `HANDOFF_PRODUCTION.md` §1, along with the one open finding: the
+disconnect route has no console button yet. The three code commits:
 
 | Commit | Slice |
 |---|---|

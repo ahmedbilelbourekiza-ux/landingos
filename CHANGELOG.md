@@ -18,9 +18,12 @@ re-confirmed before the push (zero `packages/db` files in the range); no
 Render env change (`OUTBOUND_PRIVATE_ALLOWLIST` stays unset = strict).
 Live-verified publicly: build-id flip, storefront byte-identical apart from
 the build id itself, health 200, and the SEC.9 DELETE route answering 401
-where a missing handler answers 405/404. Three authed functional checks
-remain attended-only (SSRF delivery-time refusal, MANAGER `ai:spend` 403,
-disconnect cascade) — see HANDOFF §1. **Open finding from the deploy pass: no
+where a missing handler answers 405/404. **The three authed functional
+checks ran attended later the same morning — ALL PASS on the live domain
+(SSRF refused at resolve time with no connection made, MANAGER 403
+`AI_SPEND_FORBIDDEN` vs OWNER 422 at zero spend, disconnect + AdSpendDaily
+cascade), RLS measured unchanged at 57/63, fixture swept to zero** — the
+full sequence is in HANDOFF §1. **Open finding from the deploy pass: no
 console UI calls `DELETE /ad-accounts/[id]` — the disconnect route is live
 but button-less (the LB.23b reachability lesson, at the exit).**
 The full consolidated write-up, in priority order with the accepted-risk

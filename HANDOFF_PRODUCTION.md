@@ -36,15 +36,24 @@ remain the deep references.
 > controls run). Hero `/_next/image` variants re-warmed after the cache wipe
 > (w1920: 1.17s cold → 0.21s warm).
 >
-> **⚠ THREE AUTHED FUNCTIONAL CHECKS STILL OPEN** — this machine's permission
-> gate refused the prod fixture run (it reads the prod owner credential and
-> writes throwaway rows), so these need an attended yes: (1) delivery-time
-> SSRF refusal against a privately-RESOLVING webhook target, (2) MANAGER
-> refused with `AI_SPEND_FORBIDDEN` on generate/analyze while OWNER passes the
-> gate to a 422, (3) disconnect end-to-end incl. the AdSpendDaily cascade.
-> The fixture script is ready (untracked): `packages/db/scripts/tmp-sec-verify.ts`
-> — hard-asserts the prod host before touching anything, prints session
-> tokens + ids for the curl checks; sweep = `tenant.delete` + sessions + users.
+> **✔ THE THREE AUTHED FUNCTIONAL CHECKS RAN 22 Aug ~09:52 UTC (Bilel
+> attending) — ALL PASS, on the live domain, via a throwaway tenant swept to
+> zero.** (1) **SSRF, delivery-time:** an endpoint at `https://localtest.me/hook`
+> (public-looking name → 127.0.0.1) was accepted at configuration (gate 1
+> judges the string, by design) and **refused by the test delivery with
+> `statusCode: null` — "The URL resolves to a private or internal address —
+> refused."** — no connection ever made; bonus: an AI provider `baseUrl` of
+> `http://169.254.169.254/…` was 422-refused at configuration, nothing stored
+> (prod `AiProvider` stays 0 rows). (2) **AI spend:** MANAGER → **403
+> `AI_SPEND_FORBIDDEN`** on BOTH generate and analyze (before body parsing /
+> page lookup); OWNER → **422 INVALID_INPUT** on the same call — the gate
+> opened and the request died at validation, zero real spend. (3)
+> **Disconnect:** MANAGER → 403; OWNER → 200 `deleted: true`; repeat → 404;
+> and the throwaway account's AdSpendDaily row was **already gone before the
+> sweep** — the cascade is real. **RLS measured during the fixture: 57
+> policy-covered tables / 63 tables — unchanged.** Sweep verified: tenants 3,
+> SalesOrder 2, LandingPage 2, AdAccount 1, AdSpendDaily 30; fixture tenant,
+> both users, both sessions gone. The tmp fixture/sweep scripts are deleted.
 >
 > **⚠ NEW FINDING (SEC.9's own lesson, at the exit door): there is NO
 > disconnect BUTTON.** `grep src -r 'ad-accounts'` finds the connect POST and
