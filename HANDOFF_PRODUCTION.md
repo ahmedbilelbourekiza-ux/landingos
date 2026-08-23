@@ -15,22 +15,26 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### 🔶 PF.1 — BUILT AND COMMITTED LOCALLY, NOT PUSHED, NOT DEPLOYED (23 Aug 2026)
+> ### ✅ PF.1 IS LIVE — the AI provider is platform-level (23 Aug 2026, live by 21:18:40 UTC)
 >
-> **The AI provider is platform-level now**: one operator-owned, encrypted
-> `PlatformCredential` row (key `"platform-ai"`, `lib/platform/platform-ai.ts`)
-> powers landing generation and behavior insights for every tenant; the
-> tenant-facing provider panel and all five `/api/erp/ai/providers*` routes are
-> REMOVED (the `AiProvider` table stays, dormant). **Zero migrations — the
-> deploy, when approved, is a code-only ref-mapped push.** AQ.1's per-tenant
-> quota and SEC.8's `*:ai:spend` are unchanged, asserted by the suites.
+> **`origin/main` = `7f6c8e8`** (`91e5020..7f6c8e8`, ref-mapped, one commit;
+> **rollback `91e5020`**). Zero migrations, no env change. One operator-owned,
+> encrypted `PlatformCredential` row (key `"platform-ai"`,
+> `lib/platform/platform-ai.ts`) powers landing generation and behavior
+> insights for every tenant; the tenant provider panel and all five
+> `/api/erp/ai/providers*` routes are REMOVED (`AiProvider` table stays,
+> dormant). AQ.1 per-tenant quota and SEC.8 `*:ai:spend` unchanged.
 >
-> **Two attended steps remain, in order:** (1) the deploy; (2) the install —
-> `scripts/set-platform-ai-provider.ts` run with PRODUCTION's `AUTH_SECRET`
-> and Bilel's real Gemini key (NEXT_STEPS §PF.1 has the command; the script
-> refuses a key that fails its free connection test). **Until (2), AI answers
-> 501 platform-wide — deploying first is safe and changes nothing visible.**
-> CHANGELOG §PF.1 is the full record.
+> **Verified live:** the five routes 404 with 401 controls on their surviving
+> neighbors; build id flip `AHd1KAG5…` → `eRPRzdzzG37GlFwPUoAMC`; health 200;
+> storefront text word-identical to the pre-push capture; 83 image variants
+> re-warmed. CHANGELOG §PF.1 is the full record.
+>
+> **⚠ ONE ATTENDED STEP REMAINS — the credential install.** No row exists,
+> so AI answers 501 platform-wide (as it always has in prod). Run
+> `scripts/set-platform-ai-provider.ts` with PRODUCTION's `AUTH_SECRET` and
+> the real Gemini key — NEXT_STEPS §PF.1 has the command; the script refuses
+> a key that fails its free connection test.
 
 > ### ✅ SEC.11 + SEC.12 ARE LIVE — migrated and deployed together (23 Aug 2026, live 17:35:25 UTC)
 >

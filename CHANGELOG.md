@@ -12,11 +12,26 @@ touched, any **migration**, and any **risk**.
 
 ## PF.1 — the AI provider becomes PLATFORM-level: one operator credential, every tenant
 
-**BUILT 23 Aug 2026 — committed locally, NOT pushed, NOT deployed. ZERO
+**DEPLOYED 23 Aug 2026, live by 21:18:40 UTC** — `origin/main` = `7f6c8e8`
+(`91e5020..7f6c8e8`, ref-mapped, one commit; **rollback `91e5020`**). ZERO
 migrations (code-only; `PlatformCredential` already existed and is already on
-the RLS EXPECTED_UNSCOPED list — 63 tables, RLS 57 untouched). The attended
-install step has NOT run: no credential row exists anywhere, so AI is off
-platform-wide until the operator runs the script against production.**
+the RLS EXPECTED_UNSCOPED list — 63 tables, RLS 57 untouched).
+
+**Verified live, with a before/after control:** `/api/erp/ai/providers`
+flipped **401 → 404** ~120s after the push, and all five removed routes
+answer 404 while the surviving neighbors (`insights`, `agents`) still answer
+401 — the removal, not an outage. Build id `AHd1KAG5kTa9kqHjHsmIi` →
+`eRPRzdzzG37GlFwPUoAMC`; health 200 `database: ok`; storefront 200 with
+title/robots intact, 10 scripts unchanged, and the visible text word-for-word
+identical to the pre-push capture (byte-identity was not expected this time —
+the i18n catalogs feed client chunks, so hashed asset names shift; the
+remaining diff is stream-order only). dedima 502,330 B vs PM.3's recorded
+502,331 B. All 83 `/_next/image` variants across dedima+robe re-warmed to
+200 (a deploy wipes that cache).
+
+**⚠ The attended install step has NOT run: no credential row exists
+anywhere, so AI answers 501 platform-wide — exactly what prod did before
+(it had zero `AiProvider` rows). NEXT_STEPS §PF.1 is the command.**
 
 **What changed and why.** AI (landing generation LB.24, behavior insights
 BH.3, the ERP assistant when it ships) is a platform capability now, like a
