@@ -31,6 +31,51 @@ one is wrong), so the build-id marker is the whole of the liveness proof. It
 is a good one here: a one-region diff is exactly what a code-only range
 should look like.
 
+### Step 2 — the env var, and the security check that came back better than the design assumed
+
+**`TRUST_CLOUDFLARE_CLIENT_IP=1` set by Bilel in the Render dashboard, 23 Aug
+~13:5x UTC.**
+
+**THE FORGED-HEADER PROBE DID NOT MEASURE WHAT IT WAS BUILT TO MEASURE,
+because the attack is impossible one layer earlier.** 40 POSTs carrying a
+rotating forged `CF-Connecting-IP` all answered **403 from Cloudflare itself**
+— `Server: cloudflare` and a `CF-RAY`, but **no `rndr-id` and no
+`x-render-origin-server`**, body `error code: 1000` — while the identical
+request without the header answered the app's own 404 with both Render headers
+present. **Cloudflare REFUSES a request that carries its own control header**,
+so a forged `CF-Connecting-IP` never reaches Render at all. That is stronger
+than the property the design leaned on ("Cloudflare sets and overwrites it"):
+the header cannot arrive forged, rather than arriving and being corrected. The
+env var is therefore safe to leave on, and the fail-closed flag remains correct
+for a future host where that is not true.
+
+**What the plain probe showed, and what it does NOT prove.** 40 plain POSTs on
+a fresh window: **first 429 at request 10, exactly 10 allowed in the window,
+crisp — no 404 interleaved among the 429s.** Against the pre-env baseline of
+20 allowed with interleaving, the bucket count went from several to **one**.
+That is consistent with the key having become a single per-customer value, but
+**it is NOT proof**, because a drop from ~2 instances to 1 produces the same
+reading, and this machine has one address and no IPv6 so every probe from here
+is single-source. **This is exactly the trap SEC.6's "blocks at 29" fell into
+and it is not being repeated: the claim is not made.** The decisive test is two
+different networks — see the handoff banner.
+
+**What IS certain about the CAPI field without any further test.** The junk
+value can no longer be sent. `10.203.4.17` could only ever reach the payload
+through the forwarded walk with hops skipped, and that path now returns
+`isEndUser: false`, which makes `endUserIp()` null and omits the field. So the
+only two possible outcomes are the real customer address or no `ip` field at
+all; the private address is unreachable by construction. Which of the two is
+live follows from the same two-network test.
+
+**Operational note, confirming LB.57's observation:** the docs-only push
+`c476e53` triggered a full Render rebuild and a new build id
+(`jL4cjgSA4BJ-E_jZ6_iT4` → `wrrg_wwDrjhqOAjuLLIS_`), storefront byte-identical
+at 503,710 with both differing regions inside the build-id token. **Any push to
+`main` redeploys production, docs included.** It also means the prediction that
+the env restart alone would not flip the id could not be tested this time — the
+push confounded it.
+
 **Effective ceiling measured on production right after the push, flag still
 off** — 40 empty-body POSTs to a nonexistent tenant (the limiter runs before
 tenant resolution, so budget is consumed and nothing is written): first 429 at

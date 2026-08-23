@@ -15,7 +15,48 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### ⏳ SEC.10 — CODE IS LIVE, THE ENV VAR IS STILL PENDING (23 Aug 2026)
+> ### ✅ SEC.10 IS FULLY DEPLOYED — code + env var (23 Aug 2026). ONE CHECK STILL OWED, and it needs two networks
+>
+> **`origin/main` = `efc9341`** for the code (records on top), **and
+> `TRUST_CLOUDFLARE_CLIENT_IP=1` is set in Render.** Rollback: unset the env
+> var (no redeploy, instant, reverts to the safe fallback) or roll the code to
+> **`9f5dbc7`**.
+>
+> **THE SECURITY QUESTION IS CLOSED, and better than the design assumed.** A
+> forged `CF-Connecting-IP` gets **403 from Cloudflare itself** — `CF-RAY`
+> present, `rndr-id` and `x-render-origin-server` absent, body `error code:
+> 1000` — while the same request without the header reaches the app normally.
+> Cloudflare refuses requests carrying its own control header, so the value
+> cannot arrive forged at all. Stronger than "Cloudflare overwrites it".
+>
+> **⚠ THE ONE CHECK STILL OWED — and do not let anyone claim it from a single
+> machine.** Post-env the limiter went from 20 allowed with interleaved 404s
+> (several buckets) to **exactly 10, crisp, no interleaving (one bucket)**.
+> That is consistent with per-customer keying, but a drop from ~2 instances to
+> 1 reads identically, and every probe from the dev laptop is single-source
+> (no IPv6). **This is the precise shape of the SEC.6 "blocks at 29"
+> misreading; the claim is deliberately not made.** To settle it: load the
+> storefront **on a phone over mobile data AND on the laptop**, place two test
+> orders within five minutes. Both accepted ⇒ per-customer buckets ⇒ the flag
+> is doing its job. One of them 429ing ⇒ they are still sharing a bucket.
+> While you are in the dashboard, read the **real instance count** — the ~3
+> assumed since SEC.6 measured as ~2 before this deploy and possibly 1 after.
+>
+> **The CAPI field needs no further test to be safe.** The junk value is
+> unreachable by construction: `10.203.4.17` could only arrive through the
+> forwarded walk with hops skipped, which now sets `isEndUser: false` and makes
+> `endUserIp()` null. The only outcomes are the real customer address or no
+> `ip` field. Which one is live follows from the same two-network test; to see
+> it directly, read `client_ip_address` in Events Manager → Test Events after
+> the first real order.
+>
+> **⚠ Any push to `main` redeploys production, docs included** — the docs-only
+> commit `c476e53` rebuilt and flipped the build id
+> (`jL4cjgSA4BJ-E_jZ6_iT4` → `wrrg_wwDrjhqOAjuLLIS_`), storefront byte-identical
+> at 503,710. Confirms LB.57's observation, and it confounded the prediction
+> that an env-only restart leaves the id alone — still untested.
+>
+> ### (superseded by the banner above) SEC.10 — code live, env var pending
 >
 > **`origin/main` = `efc9341`** (`9f5dbc7..efc9341`, ref-mapped; **rollback
 > `9f5dbc7`**), live by **13:35:45 UTC**, ~3 min after the push. **No
