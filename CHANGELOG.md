@@ -10,6 +10,76 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## PM.3 — the optimizer stops generating variants larger than the source
+
+**Committed 23 Aug 2026. NOT DEPLOYED — held for go-ahead.** No migration, no
+env change: six characters of `next.config.ts`.
+
+**The finding, measured on the live storefront.** One page load asks the image
+optimizer for **68 distinct variants**, and **20 of them (w=2048 ×7, w=3840
+×13) produce results the smaller widths already produced.** Every image here
+has been through `storeImage`
+(`.resize(2000, 2000, { fit: "inside", withoutEnlargement: true })`), so no
+source exceeds 2000px — and the optimizer **clamps to the source rather than
+enlarging it**, which was measured rather than assumed: a 768px source
+requested at `w=1920` comes back 768×1376, the whole image and no more.
+
+So the tail of Next's default `deviceSizes` is not three sizes on this
+platform, it is **one result behind three cache keys**. 1920 already delivers
+the full source; 2048 and 3840 can only re-encode the identical output, each as
+its own cold transform at full source resolution.
+
+*(An earlier draft of this entry said those widths "upscale". That was wrong —
+Next clamps — and the corrected mechanism is if anything a better argument:
+the work is not merely oversized, it is duplicated.)*
+
+That matters because a **cold transform costs ~560ms of server CPU** (the
+readiness audit's measurement — twelve full page renders each), the disk cache
+holding them is per-instance, and **a deploy wipes it**. Cutting the widest
+widths is the cheapest available reduction of the cold-transform problem: no
+CDN, no DNS, no bucket, no new failure mode.
+
+- **`deviceSizes: [640, 750, 828, 1080, 1200, 1920]`** — the default minus the
+  two entries above the source cap.
+- **Measured, same dev page before and after:** optimizer URLs **45 → 39**,
+  `w=2048` 5 → 0, `w=3840` 9 → 0, max width offered 1920. On the production
+  page, which carries more images, the same trim takes **68 → ~48 (−29%)**.
+- **Nothing a browser could have used is lost.** The widest `sizes` in the
+  templates is `1152px` (description images), `50vw` elsewhere, and the largest
+  explicit `width` prop anywhere is 1600. The largest honest requirement is
+  1920 — a retina laptop at 50vw of a 1920px viewport — and that entry returns
+  the full source. A viewport that would previously have picked 3840 now picks
+  1920 and receives the identical bytes.
+- **1920 stays** even though the cap is 2000: the cap is a ceiling, not every
+  source reaches it, and on a 1500px image 1200 and 1920 differ genuinely.
+- **`imageSizes` (16…384) deliberately untouched.** Those serve fixed-size
+  thumbnails and avatars, they are the cheapest transforms in the set, and
+  trimming them would trade a real risk of blurry thumbnails on high-DPR phones
+  for almost no CPU. The cost is concentrated in the big widths.
+- **Verified on dev:** w=640/1080/1920 all serve `image/webp` 200; w=2048/3840
+  now answer **400**, which is correct — Next refuses widths outside
+  `deviceSizes`, and nothing requests them any more.
+- **⚠ One bounded transitional risk.** LB.14a gives storefront HTML
+  `private, max-age=60`, so for up to a minute after the deploy a browser may
+  still hold the previous srcset and request `w=3840`, which will 400 as a
+  broken image. Self-healing within 60s and affecting only visitors mid-session
+  at the moment of deploy — stated rather than discovered.
+- **Files:** `next.config.ts` only.
+- **Suites:** storefront 95, builder-sections 75, theme-contrast 21, screens
+  172 — all unchanged. No test asserted on image markup, so none needed
+  updating. `tsc` unchanged at 277.
+
+**This replaces `R2_PUBLIC_BASE_URL` as the image action, and the audit's
+recommendation of that flag is withdrawn.** Investigated the same day: the only
+raw `/uploads/` file a browser fetches is the **17 KB logo** — the other five
+sources (3.84 MB) are fetched by the optimizer, server-side, and what customers
+actually download is `/_next/image` WebP at 72–107 KB, which that flag does not
+touch. It would have offloaded 17 KB per visitor against a real risk of
+breaking every product image (the R2 host is absent from `remotePatterns`, and
+whether the optimizer follows the 302 was never tested). Wrong trade.
+
+---
+
 ## SEC.12 — one engine, three identity keys, and the saboteur it was redesigned for
 
 **DEPLOYED 23 Aug 2026 WITH SEC.11, live 17:35:25 UTC** — `origin/main` =

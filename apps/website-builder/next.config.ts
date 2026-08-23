@@ -57,6 +57,48 @@ const nextConfig: NextConfig = {
   // public storefront and dashboard render these via next/image, which
   // requires every remote hostname to be explicitly allow-listed.
   images: {
+    /* PM.3 — STOP ASKING FOR WIDTHS THAT PRODUCE THE SAME BYTES.
+     *
+     * Every image this platform serves has been through `storeImage`, which
+     * does `.resize(2000, 2000, { fit: "inside", withoutEnlargement: true })`,
+     * so no source is wider than 2000px. And the optimizer CLAMPS to the
+     * source rather than enlarging it — measured, not assumed: a 768px-wide
+     * source requested at `w=1920` comes back 768px, byte for byte the whole
+     * image.
+     *
+     * So on this platform the tail of Next's default `deviceSizes`
+     * ([… 1920, 2048, 3840]) is not three sizes, it is ONE result behind three
+     * cache keys: 1920 already delivers the full source, and 2048 and 3840 can
+     * only re-encode the identical output again. Each of those is a separate
+     * cold transform at full source resolution — the most expensive kind — for
+     * a file the 1920 entry already produced.
+     *
+     * Measured on the live storefront before the change: 68 optimizer URLs on
+     * one page load, of which **20 were w=2048 or w=3840** — 29% of the work,
+     * duplicating results. A cold transform costs ~560ms of server CPU (the
+     * readiness audit's figure, twelve page renders each), the disk cache
+     * holding them is per-instance, and a deploy wipes it. This is the cheapest
+     * available cut to that problem: no CDN, no DNS, no bucket, no new failure
+     * mode.
+     *
+     * WHAT A BROWSER LOSES: nothing it could have used. The widest `sizes` in
+     * the templates is `1152px` (description images) and `50vw` elsewhere, so
+     * the largest honest requirement is 1920 — a retina laptop at 50vw of a
+     * 1920px viewport — and that entry still returns the full source.
+     *
+     * 1920 STAYS even though 2000 is the cap, because the cap is a ceiling and
+     * not every source reaches it: on a 1500px image, 1200 and 1920 give
+     * genuinely different results and 1920 is the one that delivers all of it.
+     *
+     * `imageSizes` (16…384) is deliberately LEFT ALONE. Those serve fixed-size
+     * thumbnails and avatars, they are the cheapest transforms in the set, and
+     * trimming them trades a real risk of blurry thumbnails on high-DPR phones
+     * for almost no CPU. The cost here is concentrated in the big widths.
+     *
+     * If `storeImage`'s 2000px cap ever rises, raise this list to match — the
+     * two numbers are the same decision stated twice, which is the one thing
+     * to watch. */
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },
       { protocol: "https", hostname: "plus.unsplash.com" },
