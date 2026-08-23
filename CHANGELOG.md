@@ -10,6 +10,45 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## PF.1c — a reasoning model can no longer starve the answer it is reasoning about
+
+**BUILT 24 Aug 2026 — committed locally, awaiting deploy approval (runtime
+code, unlike PF.1b's install-time preset). Zero migrations.**
+
+**The bug, proven from a raw response, not inferred:** `gemini-3.6-flash`
+(PF.1b's replacement model) is a Gemini 3 REASONING model, and its thinking
+tokens spend the same `maxOutputTokens` budget as the answer. A byte-exact
+replay of the production request showed `finishReason: MAX_TOKENS` with
+thoughts 1681 + answer 363 ≈ the 2048 cap — the copy JSON cut mid-object —
+and running the real reader→parser chain on that response reproduced the
+exact production failure: `GenerationParseError — "The answer's JSON does
+not parse."`, surfaced in the console as AI_INVALID_OUTPUT and two
+billed-`ok` AiUsageEvent rows (answer fragments 249/471). The submission's
+5 photos were eliminated as a cause by code: images never enter the model
+request (they serve ownership checks and LB.22's palette only).
+
+**The fix, three parts in `ai-complete.ts`:** (1) the Gemini branch sends
+`thinkingConfig: { thinkingLevel: "low" }` — the current v1beta field per
+Google's Gemini 3 guide; a fixed-contract copy task buys nothing with deep
+reasoning. (2) `maxTokens` now means the ANSWER budget: the adapter adds
+`GEMINI_THINKING_HEADROOM` (4096) on top, so thinking cannot starve the
+answer — worst case ≈ $0.02/call, AQ.1's calls-as-spend-ceiling argument
+unchanged. (3) NEW `readTruncation`: a cut-off answer (MAX_TOKENS /
+max_tokens / length, all three adapters) now refuses as "The model's answer
+was cut off at its token limit" instead of reaching the parser as mystery
+bad JSON — the disguise that cost this diagnosis cycle.
+
+**Verified against REAL Gemini before any deploy (zero quota, zero prod):**
+the same replay with the fixed config answered `finishReason: STOP`, the
+thoughts field absent entirely (904 prompt + 641 answer = 1545 total), and
+`parseGeneratedCopy` returned the full contract — title, slug, announcement,
+description, CTA, 4 benefits, 4 FAQs, SEO pair, in dialect Arabic. tsc 275
+(baseline); builder-ai 33/0 (two new tests pin the gemini wire shape and the
+truncation reader per provider). Remaining after deploy: one attended real
+generate in the console as the end-to-end proof.
+
+---
+
 ## PF.1 — the AI provider becomes PLATFORM-level: one operator credential, every tenant
 
 **DEPLOYED 23 Aug 2026, live by 21:18:40 UTC** — `origin/main` = `7f6c8e8`

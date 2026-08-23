@@ -17,6 +17,7 @@ import {
   buildCompletionRequest,
   readCompletionResponse,
   readCompletionUsage,
+  readTruncation,
   generationTimeoutMs,
 } from '../src/lib/erp/ai-complete.ts';
 import {
@@ -124,6 +125,32 @@ describe('the three provider wire shapes (pure)', () => {
     const body = wire.body as any;
     assert.equal(body.systemInstruction.parts[0].text, 'S');
     assert.equal(body.contents[0].role, 'user');
+  });
+
+  test('gemini: thinking gets HEADROOM on top of the answer budget, at level low', () => {
+    // Measured on a real gemini-3.6-flash call (24 Aug 2026): thoughts 1681 +
+    // answer 363 ate the old 2048 cap and the JSON was cut mid-object. The
+    // config's maxTokens means the ANSWER budget; the adapter adds the
+    // thinking allowance so a reasoning model cannot starve the answer.
+    const wire = buildCompletionRequest(
+      { ...CFG, type: 'gemini', baseUrl: 'http://g/v1beta', defaultModel: 'gem', maxTokens: 2048 },
+      [{ role: 'user', content: 'U' }],
+    );
+    const gc = (wire.body as any).generationConfig;
+    assert.equal(gc.maxOutputTokens, 2048 + 4096);
+    assert.deepEqual(gc.thinkingConfig, { thinkingLevel: 'low' });
+  });
+
+  test('a truncated answer is named as truncation, per provider shape — never mystery bad JSON', () => {
+    // The disguise cost a real diagnosis cycle: MAX_TOKENS surfaced as
+    // "The answer's JSON does not parse".
+    assert.equal(readTruncation('gemini', { candidates: [{ finishReason: 'MAX_TOKENS' }] }), true);
+    assert.equal(readTruncation('gemini', { candidates: [{ finishReason: 'STOP' }] }), false);
+    assert.equal(readTruncation('anthropic', { stop_reason: 'max_tokens' }), true);
+    assert.equal(readTruncation('anthropic', { stop_reason: 'end_turn' }), false);
+    assert.equal(readTruncation('openai-compat', { choices: [{ finish_reason: 'length' }] }), true);
+    assert.equal(readTruncation('openai-compat', { choices: [{ finish_reason: 'stop' }] }), false);
+    assert.equal(readTruncation('gemini', {}), false);
   });
 
   test('response readers pull the text out of each provider shape', () => {

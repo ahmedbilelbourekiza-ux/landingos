@@ -64,6 +64,11 @@ export class AiCallError extends Error {
  * settings. Both still respect a LARGER configured value. */
 const MIN_GENERATION_TOKENS = 2048;
 const MIN_TIMEOUT_MS = 30_000;
+/* Room for a Gemini reasoning model to think WITHOUT starving the answer —
+ * see the gemini branch below. On 3.6-flash output pricing the worst case
+ * adds ~2 hundredths of a dollar per call, so AQ.1's "N calls is a spend
+ * ceiling" argument survives unchanged. */
+const GEMINI_THINKING_HEADROOM = 4_096;
 const MAX_TIMEOUT_MS = 120_000;
 
 const baseOf = (cfg: AiCompletionConfig): string =>
@@ -131,7 +136,16 @@ export function buildCompletionRequest(
           contents: [{ role: "user", parts: users.map((m) => ({ text: m.content })) }],
           generationConfig: {
             temperature: temperatureOf(cfg),
-            maxOutputTokens: tokensOf(cfg),
+            /* Gemini 3 models REASON, and their thinking tokens spend the
+             * same maxOutputTokens budget as the answer — measured on a
+             * real gemini-3.6-flash call (24 Aug 2026): thoughts 1681 +
+             * answer 363 ≈ the old cap of 2048, finishReason MAX_TOKENS,
+             * JSON cut mid-object. So `maxTokens` here means the ANSWER
+             * budget, and this adapter adds the thinking allowance on top —
+             * with thinkingLevel "low", because a fixed-contract copy task
+             * buys nothing with deep reasoning. */
+            maxOutputTokens: tokensOf(cfg) + GEMINI_THINKING_HEADROOM,
+            thinkingConfig: { thinkingLevel: "low" },
           },
           ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
         },
@@ -186,6 +200,17 @@ export function readCompletionUsage(type: string | null, json: unknown): AiUsage
     promptTokens: num(j?.usage?.prompt_tokens),
     completionTokens: num(j?.usage?.completion_tokens),
   };
+}
+
+/** Did the provider CUT the answer at its token limit? Each adapter names it
+ * differently; a truncated answer must be refused with the truth rather than
+ * reaching the copy parser as mystery bad JSON — that disguise cost a real
+ * diagnosis cycle (24 Aug 2026). */
+export function readTruncation(type: string | null, json: unknown): boolean {
+  const j = json as any;
+  if (type === "anthropic") return j?.stop_reason === "max_tokens";
+  if (type === "gemini") return j?.candidates?.[0]?.finishReason === "MAX_TOKENS";
+  return j?.choices?.[0]?.finish_reason === "length";
 }
 
 export function readCompletionResponse(type: string | null, json: unknown): string {
@@ -258,6 +283,9 @@ export async function completeWithProvider(
     throw new AiCallError("AI_UPSTREAM_ERROR", "The provider answered with something that is not JSON.");
   }
 
+  if (readTruncation(cfg.type, json)) {
+    throw new AiCallError("AI_UPSTREAM_ERROR", "The model's answer was cut off at its token limit.");
+  }
   const answer = readCompletionResponse(cfg.type, json).trim();
   if (!answer) throw new AiCallError("AI_EMPTY_ANSWER", "The model returned an empty answer.");
   return { text: answer, usage: readCompletionUsage(cfg.type, json) };
