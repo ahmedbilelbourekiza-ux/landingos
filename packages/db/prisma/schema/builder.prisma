@@ -494,6 +494,34 @@ model SalesOrder {
   sourceChannel String?
   sourceDetail  String?
 
+  /* SEC.11 — the idempotency key for ONE intended purchase.
+   *
+   * Holds the storefront's `draftToken`: minted per landing page per session
+   * on form mount, already sent with every checkout, and already the handle
+   * the abandoned-cart row is addressed by. A retry of a submission whose
+   * response was lost therefore arrives carrying the same value, and the
+   * unique index below turns the second insert into a lookup instead of a
+   * second COD parcel.
+   *
+   * NULLABLE, and Postgres treats NULLs as distinct in a unique index — which
+   * is the behaviour wanted here: a caller that sends no token (server-side
+   * rendering never mints one, and the field is optional at the contract) is
+   * simply not deduplicated, rather than colliding with every other such
+   * caller on a single NULL row.
+   *
+   * SCOPED PER TENANT, not globally. `DraftOrder.token` is globally unique and
+   * that is defensible for a value only the draft system reads, but this
+   * column sits on a tenant-scoped table where a global index would let one
+   * company's client-supplied string refuse another company's order —
+   * `FulfillmentOrder.reference` records the same reasoning (D-05.3).
+   *
+   * NOT a secret and never treated as one: it is `Math.random()`-derived and
+   * carries a guessable timestamp prefix, so matching it is necessary but not
+   * sufficient to be handed an existing order back — the route also requires
+   * the phone number to match. See the checkout route.
+   */
+  requestKey String?
+
   landingPage   LandingPage              @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
   statusHistory SalesOrderStatusHistory[]
 
@@ -505,6 +533,7 @@ model SalesOrder {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([tenantId, requestKey])
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
   @@index([tenantId, landingPageId])

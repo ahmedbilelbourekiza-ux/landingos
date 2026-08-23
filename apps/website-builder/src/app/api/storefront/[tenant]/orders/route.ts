@@ -10,6 +10,9 @@ import { deliveryPricesFor, priceForMethod } from "@/lib/storefront/delivery";
 import { triggerOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 import { dispatchTrackingEvent } from "@/lib/tracking/dispatch";
 import { hasErp, fulfilmentFromSale } from "@/lib/erp/from-sale";
+// SEC.11 — the same folding the ERP applies, so "0555 12 34 56" and
+// "0555123456" are one customer to the idempotency guard too.
+import { normalizePhone } from "@/lib/erp/phone";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +39,26 @@ export const dynamic = "force-dynamic";
 const fail = (status: number, code: string, message: string) =>
   NextResponse.json({ success: false, error: { code, message } }, { status });
 
+/**
+ * SEC.11 — the answer to a purchase that was already placed.
+ *
+ * Deliberately a SUCCESS, and 200 rather than 201: the customer did place this
+ * order, they simply did not hear us say so the first time, and the right
+ * outcome for them is the thank-you page and not an apology. The existing
+ * purchase form needs no change to do that — it reads `data.id` and navigates,
+ * exactly as it does for a fresh order.
+ *
+ * `duplicate: true` rides along so a log, an agent screen or a future client
+ * can tell the two apart. Nothing today branches on it, which is the point: a
+ * retry should be indistinguishable from success to the person buying, and
+ * distinguishable to anyone investigating.
+ */
+const alreadyPlaced = (order: { id: string; total: string }) =>
+  NextResponse.json(
+    { success: true, data: { ...order, duplicate: true } },
+    { status: 200 },
+  );
+
 export async function POST(
   req: NextRequest,
   ctx: { params: Promise<{ tenant: string }> },
@@ -59,6 +82,49 @@ export async function POST(
 
   try {
     const result = await withTenant(tenant.id, async (db) => {
+      /* SEC.11 — has this exact purchase already been placed?
+       *
+       * The customer's connection dropping after the transaction committed is
+       * the ordinary case here, not an exotic one: this route takes seconds
+       * under load, the customers are on Algerian mobile networks, and the
+       * form's own client-side guard cannot survive a page reload. Without
+       * this, the retry is a second COD parcel and a second courier fee that
+       * nobody refunds.
+       *
+       * Read inside the caller's transaction rather than before it, so the
+       * common path costs one statement on the already-pinned connection
+       * instead of a whole extra round trip. The race — two submissions in
+       * flight at once, both seeing nothing here — is closed by the unique
+       * index, and recovered from where the write actually fails, below. */
+      const existing = input.draftToken
+        ? await (db as any).salesOrder.findFirst({
+            where: { requestKey: input.draftToken },
+            select: { id: true, totalPrice: true, phone: true },
+          })
+        : null;
+
+      /* MATCHING THE KEY IS NECESSARY BUT NOT SUFFICIENT.
+       *
+       * The token is `Math.random()`-derived with a guessable timestamp
+       * prefix — adequate for addressing a draft row, nowhere near secret. An
+       * order id, by contrast, IS a bearer handle: the thank-you page renders
+       * a customer's name, wilaya and total for anyone holding one. So a
+       * guessed token must not be enough to be handed one back, and the
+       * phone number — which a genuine retry resends verbatim and a guesser
+       * does not know — is the second factor.
+       *
+       * A key that matches with a DIFFERENT phone is either a collision or a
+       * probe. Either way the answer is the same and it is not an error: drop
+       * the key and let the sale through unguarded. Refusing would lose a real
+       * order to protect a value that was never load-bearing. */
+      const keyForInsert =
+        existing && normalizePhone(existing.phone) !== normalizePhone(input.phone)
+          ? null
+          : (input.draftToken ?? null);
+
+      if (existing && keyForInsert !== null) {
+        return { duplicate: { id: existing.id as string, total: String(existing.totalPrice) } };
+      }
       const page = await (db as any).landingPage.findFirst({
         where: { id: input.landingPageId, published: true, status: "PUBLISHED" },
         include: { setting: true, variants: true },
@@ -132,6 +198,11 @@ export async function POST(
           totalPrice: total,
           shippingMethod: input.shippingMethod,
           status: "NEW",
+          // SEC.11 — written in the SAME statement as the order, so the
+          // uniqueness of an intended purchase and the purchase itself commit
+          // or roll back together. Null when the caller sent no token, or when
+          // the key resolved to somebody else's order (see above).
+          requestKey: keyForInsert,
           // AN.1 — attribution snapshot, derived server-side from the
           // session's evidence with the SAME function the visit beacon uses,
           // so an order and the views that led to it cannot name different
@@ -224,6 +295,7 @@ export async function POST(
     });
 
     if ("error" in result) return result.error;
+    if ("duplicate" in result && result.duplicate) return alreadyPlaced(result.duplicate);
 
     // Fire and forget, deliberately NOT awaited.
     //
@@ -277,6 +349,63 @@ export async function POST(
       { status: 201 },
     );
   } catch (error) {
+    /* SEC.11 — the race the fast path above cannot see.
+     *
+     * Two submissions of the same purchase in flight together both read no
+     * existing order and both try to insert. One wins; the other's unique
+     * violation aborts its whole Postgres transaction, which is why the
+     * recovery has to live out here rather than inside it — the same
+     * constraint `nextReference` documents for its own P2002.
+     *
+     * The loser's rollback is total, so there is no half-order to clean up and
+     * no `ORD-` number burned: the SalesOrder insert carrying the key runs
+     * BEFORE the sequence is touched. It re-reads the winner's row and answers
+     * as though it had been the duplicate all along. */
+    /* THE ERROR DOES NOT SAY WHICH CONSTRAINT, SO DO NOT ASK IT.
+     *
+     * Measured against this exact stack (Prisma 6.19.3 on Postgres 17, through
+     * the standalone bundle): a unique violation arrives as P2002 with
+     * `meta.target: null` and the message "Unique constraint failed on the
+     * (not available)". A first version of this branch keyed off
+     * `meta.target` containing "requestKey" and therefore never fired — the
+     * duplicate fell through to a 500, which is the very thing this slice
+     * exists to stop. The concurrent test caught it.
+     *
+     * So the re-read IS the discriminator. If a row now holds this key, the
+     * violation was ours and we can answer for it; if none does, it came from
+     * somewhere else and belongs in the generic failure below. That is also
+     * robust to `instanceof` failing across bundled copies of the client,
+     * which is why the code is read structurally rather than by class. */
+    if ((error as { code?: string } | null)?.code === "P2002" && input.draftToken) {
+      /* Annotated because `salesOrder` is reached through `as any` — the
+       * tenant client's generated types do not carry the builder models, so
+       * the awaited value widens to `{}` and every field read below becomes a
+       * type error rather than a lookup. Same note as the ERP suites. */
+      const winner = (await withTenant(tenant.id, (db) =>
+        (db as any).salesOrder.findFirst({
+          where: { requestKey: input.draftToken },
+          select: { id: true, totalPrice: true, phone: true },
+        }),
+      ).catch(() => null)) as { id: string; totalPrice: unknown; phone: string } | null;
+
+      if (winner) {
+        // Same second factor as the fast path.
+        if (normalizePhone(winner.phone) === normalizePhone(input.phone)) {
+          return alreadyPlaced({ id: winner.id as string, total: String(winner.totalPrice) });
+        }
+        // Someone else's order got the key between our read and our write. We
+        // cannot hand it back, and we cannot re-run the transaction from here,
+        // so this is the one genuinely conflicting case — and it is a retry
+        // the customer can win, not a dead end.
+        return fail(
+          409,
+          "CHECKOUT_CONFLICT",
+          "That checkout could not be completed. Refresh the page and try again.",
+        );
+      }
+      // Not our constraint. Fall through.
+    }
+
     console.error("[storefront] checkout failed", error);
     return fail(500, "INTERNAL_ERROR", "We could not place that order. Please try again.");
   }

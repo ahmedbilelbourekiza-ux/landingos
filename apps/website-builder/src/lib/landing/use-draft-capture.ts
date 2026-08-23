@@ -65,7 +65,7 @@ export function useDraftCapture(landingId: string) {
   // return value, so it is read during render by the consuming form. The
   // lazy initializer runs once per mount; the window guard keeps it from
   // touching sessionStorage during server rendering.
-  const [token] = React.useState<string | null>(() =>
+  const [token, setToken] = React.useState<string | null>(() =>
     typeof window === "undefined" ? null : getOrCreateToken(landingId),
   );
 
@@ -145,10 +145,29 @@ export function useDraftCapture(landingId: string) {
 
   // Called after a successful order so the pagehide flush does not resurrect
   // a lead the customer already converted.
+  //
+  // SEC.11 — it also RETIRES the token, and that is what keeps server-side
+  // idempotency honest. The token lives in sessionStorage keyed by landing
+  // page, so without this it would outlive the purchase it belongs to and a
+  // customer deliberately ordering a second time in the same session — a
+  // second colour, one for a friend — would have that order silently answered
+  // with the first one. Retiring it here draws the line in the only place that
+  // knows the difference: a retry is a submission we never confirmed, and this
+  // callback runs only once we have.
+  //
+  // The failure direction is deliberate. If the response never arrives this
+  // does not run, the token survives, and the retry deduplicates — which is
+  // exactly the case the whole slice exists for.
   const markConverted = React.useCallback(() => {
     convertedRef.current = true;
     if (timerRef.current) clearTimeout(timerRef.current);
-  }, []);
+    try {
+      sessionStorage.removeItem(`landingos_draft_${landingId}`);
+    } catch {
+      // Private browsing. The in-memory rotation below still applies.
+    }
+    setToken(typeof window === "undefined" ? null : getOrCreateToken(landingId));
+  }, [landingId]);
 
   React.useEffect(() => {
     const flush = () => send(latestRef.current, true);
