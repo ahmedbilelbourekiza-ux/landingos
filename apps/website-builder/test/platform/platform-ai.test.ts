@@ -30,7 +30,7 @@ const skip = !HAS_DB;
 const CFG = {
   type: 'gemini',
   apiKey: 'AIza-test-secret-pf1',
-  defaultModel: 'gemini-2.0-flash',
+  defaultModel: 'gemini-3.6-flash',
   baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
 } as const;
 

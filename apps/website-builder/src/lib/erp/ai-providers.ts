@@ -40,7 +40,12 @@ export const AI_PROVIDER_TYPES: readonly AiProviderType[] = [
     key: "gemini",
     label: "Google Gemini",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    model: "gemini-2.0-flash",
+    // gemini-2.0-flash was RETIRED by Google (confirmed 24 Aug 2026: a real
+    // generateContent answered 404 NOT_FOUND naming this replacement) — and
+    // the install script's connection test is a models-LIST, so it cannot
+    // catch a dead model name. Verify against Google's model docs when
+    // changing this.
+    model: "gemini-3.6-flash",
   },
   {
     key: "anthropic",

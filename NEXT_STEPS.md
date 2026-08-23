@@ -41,7 +41,8 @@ LB.10 are renumbered to avoid colliding with those commits.**
 >
 > The script refuses to store a key that fails its (free) connection test.
 > `PLATFORM_AI_MODEL` / `PLATFORM_AI_BASE_URL` override the gemini presets
-> (`gemini-2.0-flash`, `https://generativelanguage.googleapis.com/v1beta`).
+> (`gemini-3.6-flash`, `https://generativelanguage.googleapis.com/v1beta`;
+> 2.0-flash was retired by Google — a real 404 proved it, 24 Aug).
 > Then verify live: a generate on a real tenant answers, and `AiUsageEvent`
 > gains rows. Turning AI off again = deleting the one row.
 
