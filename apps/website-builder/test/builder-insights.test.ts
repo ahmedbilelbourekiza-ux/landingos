@@ -4,6 +4,11 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import { asPlatform, withTenant, disconnect, deleteTenant } from '@landingos/db';
+
+import {
+  storePlatformAiProvider,
+  PLATFORM_AI_CREDENTIAL_KEY,
+} from '../src/lib/platform/platform-ai.ts';
 import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } from '@landingos/auth';
 
 import {
@@ -252,18 +257,14 @@ describe('POST /api/builder/landings/[id]/analyze (end to end)', { skip }, () =>
       await (tx as any).subscription.create({
         data: { tenantId, status: 'ACTIVE', entitlements: ['product.website-builder'] },
       });
-      await (tx as any).aiProvider.create({
-        data: {
-          tenantId,
-          name: 'stub',
-          type: 'openai-compat',
-          baseUrl: stubUrl,
-          apiKey: 'sk-test-secret-bh3',
-          defaultModel: 'test-model',
-          active: true,
-          isDefault: true,
-        },
-      });
+    });
+    // PF.1 — the platform's ONE credential (global row), pointed at the stub.
+    // Same encrypt-and-upsert the attended install script uses.
+    await storePlatformAiProvider({
+      type: 'openai-compat',
+      baseUrl: stubUrl,
+      apiKey: 'sk-test-secret-bh3',
+      defaultModel: 'test-model',
     });
     await makeUser('OWNER', 'owner');
     await makeUser('VIEWER', 'viewer');
@@ -350,6 +351,9 @@ describe('POST /api/builder/landings/[id]/analyze (end to end)', { skip }, () =>
       await asPlatform().user.delete({ where: { id } }).catch(() => {});
     }
     if (tenantId) await deleteTenant(tenantId).catch(() => {});
+    await asPlatform().platformCredential.deleteMany({
+      where: { key: PLATFORM_AI_CREDENTIAL_KEY },
+    });
     await disconnect();
     if (stub) await new Promise<void>((resolve) => stub!.close(() => resolve()));
   });

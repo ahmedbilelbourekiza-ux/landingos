@@ -6,6 +6,11 @@ import type { AddressInfo } from 'node:net';
 import sharp from 'sharp';
 
 import { asPlatform, withTenant, disconnect, deleteTenant } from '@landingos/db';
+
+import {
+  storePlatformAiProvider,
+  PLATFORM_AI_CREDENTIAL_KEY,
+} from '../src/lib/platform/platform-ai.ts';
 import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } from '@landingos/auth';
 
 import {
@@ -336,6 +341,13 @@ describe('POST /api/builder/landings/generate (end to end)', { skip }, () => {
   before(async () => {
     if (skip) return;
 
+    // PF.1 — the credential is GLOBAL (one row for the whole dev DB), so a
+    // stale row from a run killed mid-way would make the "no provider → 501"
+    // test below fail for the wrong reason. Start from the documented state.
+    await asPlatform().platformCredential.deleteMany({
+      where: { key: PLATFORM_AI_CREDENTIAL_KEY },
+    });
+
     stub = createServer((req, res) => {
       let raw = '';
       req.on('data', (c) => { raw += c; });
@@ -400,6 +412,11 @@ describe('POST /api/builder/landings/generate (end to end)', { skip }, () => {
     for (const id of [tenantA, tenantB].filter(Boolean)) {
       await deleteTenant(id).catch(() => {});
     }
+    // The platform credential this suite installed — global, so it must not
+    // outlive the run.
+    await asPlatform().platformCredential.deleteMany({
+      where: { key: PLATFORM_AI_CREDENTIAL_KEY },
+    });
     await disconnect();
     if (stub) await new Promise<void>((resolve) => stub!.close(() => resolve()));
   });
@@ -444,21 +461,15 @@ describe('POST /api/builder/landings/generate (end to end)', { skip }, () => {
     assert.ok(!html.includes('data-testid="ai-generate-panel"'));
   });
 
-  test('with a provider row, the create screen offers the panel', async () => {
-    await withTenant(tenantA, (tx) =>
-      (tx as any).aiProvider.create({
-        data: {
-          tenantId: tenantA,
-          name: 'stub',
-          type: 'openai-compat',
-          baseUrl: stubUrl,
-          apiKey: 'sk-test-secret-lb24',
-          defaultModel: 'test-model',
-          active: true,
-          isDefault: true,
-        },
-      }),
-    );
+  test('with the platform credential installed, the create screen offers the panel', async () => {
+    // PF.1 — ONE operator-owned credential, not a tenant row. Stored through
+    // the same encrypt-and-upsert the attended script uses.
+    await storePlatformAiProvider({
+      type: 'openai-compat',
+      baseUrl: stubUrl,
+      apiKey: 'sk-test-secret-lb24',
+      defaultModel: 'test-model',
+    });
     const html = await fetch(BASE + '/console/builder/pages/new', {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
     }).then((r) => r.text());

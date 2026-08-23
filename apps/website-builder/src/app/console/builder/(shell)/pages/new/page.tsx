@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { can } from "@landingos/auth";
@@ -6,6 +5,7 @@ import { forTenant } from "@landingos/db";
 import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { readAiUsage } from "@/lib/erp/ai-quota";
+import { readPlatformAiProvider } from "@/lib/platform/platform-ai";
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
@@ -39,18 +39,12 @@ export default async function NewLandingPage() {
   // whoever may use it, and must not dangle for whoever may not.
   const maySpendOnAi = can(session.auth!, "website-builder:ai:spend");
 
-  // LB.24 — the AI panel renders only when a model provider is configured;
-  // without one it points at the AI settings screen instead of offering a
-  // button that can only answer NO_AI_PROVIDER.
+  // LB.24/PF.1 — the AI panel renders only when the PLATFORM's provider is
+  // configured (one operator-owned credential for every tenant); without it
+  // the screen says AI is unavailable instead of offering a button that can
+  // only answer NO_AI_PROVIDER. Nothing here is the tenant's to configure.
   const db = forTenant(session.auth!.tenantId);
-  const aiConfigured =
-    maySpendOnAi &&
-    Boolean(
-      await db.aiProvider.findFirst({
-        where: { active: true },
-        select: { id: true },
-      }),
-    );
+  const aiConfigured = maySpendOnAi && Boolean(await readPlatformAiProvider());
   // AQ.1 — the same numbers the generate route's gate reads, shown BEFORE the
   // merchant fills a whole form a 429 would then refuse.
   const usage = aiConfigured ? await readAiUsage(db) : null;
@@ -140,10 +134,10 @@ export default async function NewLandingPage() {
           data-testid="ai-generate-unavailable"
           className="mt-6 max-w-lg rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground"
         >
+          {/* PF.1 — no configure pointer: the provider is platform-level and
+              there is no tenant control to point at (the reachability rule
+              cuts both ways). */}
           <p>{t("builder.newPage.ai.notConfigured")}</p>
-          <Link href="/console/erp/ai" className="mt-2 inline-block underline">
-            {t("builder.newPage.ai.configureLink")}
-          </Link>
         </div>
       ) : null}
       </PageBody>

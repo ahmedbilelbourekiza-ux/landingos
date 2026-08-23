@@ -7,12 +7,9 @@ import { formatMoney, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i1
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
 import { aiStrings } from "@/lib/console/erp-strings";
-import { AI_PROVIDER_TYPES } from "@/lib/erp/ai-providers";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
-import {
-  ProviderCreatePanel, ProviderRowActions, AgentCreatePanel, AgentRowActions,
-} from "@/components/console/erp/ai-write";
+import { AgentCreatePanel, AgentRowActions } from "@/components/console/erp/ai-write";
 import { ALL_AI_PERMISSIONS, ceilingFor } from "@/lib/erp/ai";
 import { readAiUsage } from "@/lib/erp/ai-quota";
 
@@ -39,16 +36,19 @@ export const dynamic = "force-dynamic";
  * worse than a sentence saying so — it is the same class of lie as the
  * fabricated tracking numbers D-LP.2 removed.
  *
- * TWO PERMISSIONS, TWO HALVES. Reading insights is `erp:ai:use`, which every
- * member holds. CONFIGURING a provider is `erp:settings:write`, because a
- * provider is a billing account and adding one commits the company to
- * per-token charges. The page checks both itself rather than trusting the nav.
+ * TWO PERMISSIONS, TWO HALVES. Reading insights is `erp:ai:use`. Configuring
+ * ASSISTANTS is `erp:settings:write`. The page checks both itself rather than
+ * trusting the nav.
+ *
+ * NO PROVIDER CONFIGURATION, since PF.1: the model credential is the
+ * OPERATOR's, one PlatformCredential row for the whole platform
+ * (`lib/platform/platform-ai.ts`), installed by an attended script and never
+ * by any tenant surface. The per-tenant provider panel and its five routes
+ * are gone — a tenant neither sees nor supplies an AI key. The quota panel
+ * stays: the ALLOWANCE is still per tenant (AQ.1) even though the credential
+ * is not.
  * ========================================================================== */
 
-/* The audit's finding: this was a second copy of the route's enum, and the
- * component's own comment said otherwise. One list now, in
- * `lib/erp/ai-providers.ts`, which also carries the base-URL and model
- * suggestions the legacy publishes and this had nothing for. */
 const AGENT_ROLES = [
   "general", "manager", "sales", "confirmation", "delivery", "analytics", "support",
 ] as const;
@@ -64,7 +64,7 @@ export default async function ErpAiScreen() {
   const mayConfigure = can(session.auth, "erp:settings:write");
   const ceiling = ceilingFor(session);
 
-  const { insights, providers, agents, usage } = await withTenant(session.auth.tenantId, async (db) => {
+  const { insights, agents, usage } = await withTenant(session.auth.tenantId, async (db) => {
     // The same three counts `GET /api/erp/ai/insights` returns, and the same
     // rule about the money line: absent rather than zero when the caller may not
     // see it, because a zero is a lie that reads like a fact.
@@ -86,17 +86,6 @@ export default async function ErpAiScreen() {
       // `erp:ai:use` holder: an allowance you cannot see is one you discover
       // by being refused.
       usage: await readAiUsage(db),
-      // `apiKey` is absent from both selects, not masked afterwards. A key never
-      // loaded cannot leak through a logger or a field added later.
-      providers: mayConfigure
-        ? await db.aiProvider.findMany({
-            orderBy: { createdAt: "desc" },
-            select: {
-              id: true, name: true, type: true, baseUrl: true, defaultModel: true,
-              active: true, isDefault: true, lastTestAt: true, lastTestOk: true,
-            },
-          })
-        : [],
       agents: mayConfigure
         ? await db.aiAgent.findMany({
             orderBy: { createdAt: "desc" },
@@ -169,75 +158,10 @@ export default async function ErpAiScreen() {
 
       {mayConfigure && (
         <>
-          <h2 className="mt-8 text-sm font-semibold tracking-tight">{t("erp.ai.providers")}</h2>
-          <ProviderCreatePanel errors={errors} s={s} types={AI_PROVIDER_TYPES} />
-
-          <DataTable
-            testId="ai-providers-table"
-            empty={t("erp.ai.noProviders")}
-            rows={providers}
-            rowKey={(p) => p.id}
-            rowAttrs={(p) => ({ "data-provider-id": p.id })}
-            columns={[
-              {
-                id: "name",
-                header: t("erp.ai.provider"),
-                cell: (p) => (
-                  <>
-                    <span className="font-medium">{p.name}</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground" dir="ltr">
-                      {p.type}{p.defaultModel ? ` · ${p.defaultModel}` : ""}
-                    </span>
-                  </>
-                ),
-              },
-              {
-                id: "state",
-                header: t("erp.carriers.default"),
-                cell: (p) => (
-                  <span className="text-muted-foreground">
-                    {p.isDefault ? `${t("erp.write.makeDefault")} · ` : ""}
-                    {p.active ? t("erp.write.activate") : t("erp.write.deactivate")}
-                  </span>
-                ),
-              },
-              {
-                id: "tested",
-                header: t("erp.ai.lastTest"),
-                // AUDIT.5. This used to read "Testing needs a model adapter",
-                // because nothing wrote the column and the reason recorded for
-                // that was "testing a provider means calling a model". The
-                // legacy's adapters say otherwise — two of three test with GET
-                // /models — so there is a test now, and the honest empty state
-                // is the one the carriers and channels screens use.
-                cell: (p) => (
-                  <span className="text-muted-foreground" data-tested={String(p.lastTestOk)}>
-                    {p.lastTestAt
-                      ? `${formatDate(p.lastTestAt, locale)} ${p.lastTestOk ? "✓" : "✕"}`
-                      : t("erp.carriers.neverTested")}
-                  </span>
-                ),
-              },
-              {
-                id: "actions", header: "", align: "end" as const,
-                cell: (p) => (
-                  <ProviderRowActions
-                    // `name` and `type` are nullable columns; the control needs
-                    // strings, and an unnamed provider is still deletable.
-                    provider={{ ...p, name: p.name ?? "", type: p.type ?? "" }}
-                    errors={errors}
-                    s={s}
-                  />
-                ),
-              },
-            ]}
-          />
-
           <h2 className="mt-8 text-sm font-semibold tracking-tight">{t("erp.ai.agents")}</h2>
           <AgentCreatePanel
             errors={errors}
             s={s}
-            providers={providers.map((p) => ({ id: p.id, name: p.name ?? p.id }))}
             // The route's own vocabulary, so a permission it would refuse cannot
             // be offered and one it accepts cannot go missing.
             permissions={ALL_AI_PERMISSIONS.map((p) => ({ value: p, label: t(`erp.ai.perm.${p}`) }))}

@@ -1,36 +1,22 @@
 /* =============================================================================
- * Which model providers this deployment offers — the audit's finding.
+ * Which model providers this deployment can talk to — the adapter vocabulary.
  *
- * TWO PLACES HELD THIS LIST. `POST /api/erp/ai/providers` validated
- * `z.enum(["openai-compat", "gemini", "anthropic"])` and
- * `console/erp/ai/page.tsx` declared its own
- * `const PROVIDER_TYPES = ["openai-compat", "gemini", "anthropic"]` — with a
- * comment on the component saying "the route's own enum, so a type it would
- * refuse cannot be offered", which was the intent and not what the code did.
+ * ONE list (the audit's D-LP.3 rule): `ai-complete` and `ai-connection` key
+ * their adapters on it, and since PF.1 the ATTENDED INSTALL SCRIPT
+ * (`scripts/set-platform-ai-provider.ts`) validates the operator's chosen
+ * type against `AI_PROVIDER_KEYS` and prefills the base URL and model from
+ * the preset. The tenant-facing route and form that used to share this list
+ * are gone — the provider credential is platform-level now — but the rule
+ * that created the list survives: a type an adapter cannot serve must not be
+ * offerable anywhere, and a type the script accepts must have an adapter.
  *
- * It is the second-vocabulary defect D-LP.3 exists to prevent, and it fails the
- * same way: silently, the moment one of the two changes. A type added to the
- * route would never appear in the dropdown; one added to the dropdown would be
- * refused with a 422 nobody could explain.
+ * THE PRESETS ARE SUGGESTIONS, NOT SILENT DEFAULTS: the script stores an
+ * explicit base URL and model every time (overridable per invocation), which
+ * is what lets one `openai-compat` entry serve OpenAI, GLM, DeepSeek, Qwen,
+ * OpenRouter or a local Ollama.
  *
- * NO DIRECTIVE, and that is required: the route imports it on the server and
- * the screen imports it to build a `<select>`. It is a list and a lookup table
- * — no I/O, no React, no Prisma — which is the `edit-field.ts` shape.
- *
- * -----------------------------------------------------------------------------
- * THE PRESETS ARE THE SECOND HALF, AND THEY ARE NOT DECORATION
- *
- * The legacy publishes `GET /api/ai/providers/presets/:type` and the platform
- * had nothing: an operator configuring "Google Gemini" was shown an empty base
- * URL box and had to know
- * `https://generativelanguage.googleapis.com/v1beta` from memory. A field
- * somebody has to look up in another tab is a field they get wrong, and a wrong
- * base URL fails at chat time rather than at configuration time.
- *
- * They are SUGGESTIONS, not defaults that are silently stored: the form
- * prefills them and a person can overwrite them, which is what makes an
- * OpenAI-compatible provider (GLM, DeepSeek, Qwen, OpenRouter, a local Ollama)
- * work through the same entry.
+ * NO DIRECTIVE, deliberately: a list and a lookup — no I/O, no React, no
+ * Prisma — importable from Next routes and from bare node alike.
  * ========================================================================== */
 
 export interface AiProviderType {

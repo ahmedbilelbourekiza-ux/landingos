@@ -41,11 +41,11 @@ import { withTenant, type TenantDb } from "@landingos/db";
  * loop from hammering a failing provider 200 times for free. The usage
  * surfaces show the failed share so a merchant can see the difference.
  *
- * Connection tests (`/api/erp/ai/providers/[id]/test`) do NOT go through
- * this ledger, deliberately: two of the three adapters call a free
- * models-list endpoint and the third is a max_tokens:1 ping; the route is
- * gated `erp:settings:write` and human-paced. Metering it would charge
- * merchants quota for checking their own credential.
+ * Connection tests do NOT go through this ledger, deliberately. Since PF.1
+ * the only one left is the attended install script's pre-store check
+ * (`scripts/set-platform-ai-provider.ts`): two of the three adapters call a
+ * free models-list endpoint and the third is a max_tokens:1 ping — and it is
+ * the OPERATOR's own key being checked, not any tenant's allowance.
  *
  * Concurrency, stated honestly: two reservations racing the last slot can
  * both pass the count and overshoot the limit by the burst width. The

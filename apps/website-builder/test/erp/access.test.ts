@@ -130,14 +130,11 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   ['GET', '/api/erp/financial-records/aggregate?periodType=month&startDate=1&endDate=2'],
   ['GET', '/api/erp/financial-records/export'],
   ['GET', '/api/erp/unexpected-charges'],
-  ['GET', '/api/erp/ai/providers'],
+  // PF.1: the five `/api/erp/ai/providers*` routes are GONE (platform-level
+  // credential now) — ai.test.ts pins that they 404 even for a manager.
   ['GET', '/api/erp/ai/agents'],
   ['GET', '/api/erp/ai/insights'],
-  // LP.17. Editing and removing a provider or an assistant — the half
-  // R10 was missing, and a provider is a billing account.
-  ['PUT', '/api/erp/ai/providers/nonexistent'],
-  ['DELETE', '/api/erp/ai/providers/nonexistent'],
-  ['POST', '/api/erp/ai/providers/nonexistent/default'],
+  // LP.17. Editing and removing an assistant — the half R10 was missing.
   ['PUT', '/api/erp/ai/agents/nonexistent'],
   ['DELETE', '/api/erp/ai/agents/nonexistent'],
 ];
@@ -204,7 +201,6 @@ describe('an agent cannot do a manager’s job', () => {
     ['PUT', '/api/erp/settings', { minCallSeconds: 99 }],
     ['POST', '/api/erp/carriers', { name: 'p', code: `c${uid()}` }],
     ['POST', '/api/erp/sales-channels', { name: 's', platform: 'shopify' }],
-    ['POST', '/api/erp/ai/providers', { name: 'a', type: 'openai-compat' }],
     ['GET', '/api/erp/agents/payroll'],
     ['POST', '/api/erp/agents/nonexistent/reset-missed', {}],
     ['POST', '/api/erp/financial-records', { periodType: 'week', startDate: 1, endDate: 2 }],

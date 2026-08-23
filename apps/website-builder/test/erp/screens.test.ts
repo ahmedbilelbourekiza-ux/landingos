@@ -2639,42 +2639,6 @@ describe('a period saved twice says which version is current (audit)', () => {
   });
 });
 
-describe('the AI provider vocabulary is ONE list (audit)', () => {
-  test('every type the form offers is one the route accepts', async () => {
-    // Two copies of the same three strings, with a comment claiming otherwise.
-    // A type added to one and not the other fails silently — the D-LP.3 shape.
-    const r = await html('/console/erp/ai', acme.manager.token);
-    assert.equal(r.status, 200);
-
-    const offered = [...r.body.matchAll(/<option value="([a-z-]+)"[^>]*>/g)]
-      .map((m) => m[1])
-      .filter((v) => ['openai-compat', 'gemini', 'anthropic'].includes(v));
-    assert.ok(offered.length > 0, 'the form offers no provider type at all');
-
-    for (const type of new Set(offered)) {
-      const created = await acme.manager.api('POST', '/api/erp/ai/providers', {
-        name: `Probe ${type} ${uid()}`, type,
-      });
-      assert.equal(created.status, 201, `the form offers "${type}" and the route refuses it`);
-    }
-  });
-
-  test('a type the list does not carry is still refused', async () => {
-    const r = await acme.manager.api('POST', '/api/erp/ai/providers', {
-      name: 'Nonsense', type: 'llama-cpp',
-    });
-    assert.equal(r.status, 422);
-  });
-
-  test('the form suggests a base URL and a model, which it had none of', async () => {
-    // An operator configuring Gemini was shown an empty box and had to know the
-    // URL from memory — a field somebody looks up in another tab is one they
-    // get wrong, and a wrong base URL fails at CHAT time.
-    const r = await html('/console/erp/ai', acme.manager.token);
-    assert.match(r.body, /generativelanguage\.googleapis\.com|api\.openai\.com/);
-  });
-});
-
 describe('a duplicated product name is refused, not guessed (audit)', () => {
   test('an order naming two products attributes to NEITHER, and both rows say so', async () => {
     // Found by driving a real order through the running console, not by a

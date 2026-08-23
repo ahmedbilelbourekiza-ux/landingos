@@ -21,6 +21,30 @@ LB.10 are renumbered to avoid colliding with those commits.**
 > half. New open decision: granting `ai:spend` to a MANAGER needs a console
 > writer for `Membership.permissions`, which no screen has ever had.
 
+> **23 Aug 2026 — PF.1 (platform-level AI provider) is BUILT AND COMMITTED
+> LOCALLY, NOT PUSHED, NOT DEPLOYED. Zero migrations.** CHANGELOG §PF.1 is
+> the record. The model credential is the OPERATOR's now — one encrypted
+> `PlatformCredential` row (key `"platform-ai"`) powering AI for every
+> tenant; the tenant-facing provider panel and its five routes are REMOVED
+> (the `AiProvider` table stays, dormant). AQ.1's per-tenant quota and
+> SEC.8's `*:ai:spend` are unchanged.
+>
+> ### §PF.1 — the attended install, YOURS, after the deploy
+>
+> Run with PRODUCTION's `AUTH_SECRET` in the env (this machine's differs —
+> proven in LB.23; a dev-encrypted row reads in prod as "not configured"):
+>
+> ```
+> cd apps/website-builder
+> AUTH_SECRET=<prod's> PLATFORM_DATABASE_URL=<prod pooler URL> >   PLATFORM_AI_TYPE=gemini PLATFORM_AI_KEY=AIza... >   node --env-file=.env --experimental-strip-types scripts/set-platform-ai-provider.ts
+> ```
+>
+> The script refuses to store a key that fails its (free) connection test.
+> `PLATFORM_AI_MODEL` / `PLATFORM_AI_BASE_URL` override the gemini presets
+> (`gemini-2.0-flash`, `https://generativelanguage.googleapis.com/v1beta`).
+> Then verify live: a generate on a real tenant answers, and `AiUsageEvent`
+> gains rows. Turning AI off again = deleting the one row.
+
 ## WHAT PHASE LB LEFT — the builder's own queue
 
 Full reasoning in `BUILDER_HANDOFF.md` §12–13. In order:
@@ -3785,9 +3809,10 @@ belongs in a product suite, which is why they left it in 5.1:
 - `POST /api/erp/agents` — inviting a person is a PLATFORM action (M-02).
   Gated first, so an agent is still refused; a manager is told where it lives.
 - `POST /api/erp/ai/chat`, `GET /api/erp/ai/chat/stream`,
-  `POST /api/erp/ai/insights/deep` — calling a model needs a configured provider
-  and a real key, which is deployment configuration. Gated first, because
-  leaving them unrouted would put a hole in "every AI route requires a session"
+  `POST /api/erp/ai/insights/deep` — calling a model needs the PLATFORM's
+  provider credential (PF.1: one operator-owned row, installed by the attended
+  script — no longer any tenant's configuration). Gated first, because leaving
+  them unrouted would put a hole in "every AI route requires a session"
   exactly where SEC-03 was.
 
 ---

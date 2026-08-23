@@ -1,7 +1,9 @@
-import "server-only";
-
-import { aiProviderPreset } from "@/lib/erp/ai-providers";
-import { guardedFetch, OutboundRefusedError } from "@/lib/net/outbound-guard";
+// No `server-only` and relative imports, the ai-complete.ts rule: nothing
+// here holds a secret (config arrives as an argument), and the attended
+// install script (`scripts/set-platform-ai-provider.ts`) imports this module
+// from bare node, where the directive and the `@/` alias both fail to resolve.
+import { aiProviderPreset } from "./ai-providers.ts";
+import { guardedFetch, OutboundRefusedError } from "../net/outbound-guard.ts";
 
 /* =============================================================================
  * Does this API key work? — AUDIT.5, restoring the legacy's Test Connection.

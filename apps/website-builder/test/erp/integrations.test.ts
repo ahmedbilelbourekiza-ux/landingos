@@ -280,7 +280,6 @@ describe('the AI surface is gated and scoped (SEC-03)', () => {
       ['GET', '/api/erp/ai/insights'],
       ['POST', '/api/erp/ai/insights/deep'],
       ['GET', '/api/erp/ai/agents'],
-      ['GET', '/api/erp/ai/providers'],
       ['GET', '/api/erp/ai/permissions'],
       ['GET', '/api/erp/ai/conversations/general'],
     ];
@@ -294,23 +293,14 @@ describe('the AI surface is gated and scoped (SEC-03)', () => {
     }
   });
 
-  test('provider configuration is manager-only', async () => {
-    assert.equal((await acme.agent.api('GET', '/api/erp/ai/providers')).status, 403);
-    assert.equal(
-      (await acme.agent.api('POST', '/api/erp/ai/providers', { name: 'x', type: 'openai-compat' })).status,
-      403,
-    );
-    // …but an agent may still list the assistants they are allowed to use.
+  test('PF.1 — the provider routes are gone; the assistants remain reachable', async () => {
+    // The stronger form of the old "manager-only" and "key never returned"
+    // guarantees: no tenant role can reach a provider credential because no
+    // route exists, and the platform's key never enters a tenant route at all.
+    assert.equal((await acme.manager.api('GET', '/api/erp/ai/providers')).status, 404);
+    assert.equal((await acme.agent.api('GET', '/api/erp/ai/providers')).status, 404);
+    // …and an agent may still list the assistants they are allowed to use.
     assert.equal((await acme.agent.api('GET', '/api/erp/ai/agents/enabled')).status, 200);
-  });
-
-  test('an API key is never returned, even to a manager', async () => {
-    await acme.manager.api('POST', '/api/erp/ai/providers', {
-      name: 'Configured', type: 'openai-compat',
-      baseUrl: 'https://example.invalid', apiKey: 'sk-super-secret-model-key',
-    });
-    const raw = JSON.stringify((await acme.manager.api('GET', '/api/erp/ai/providers')).body);
-    assert.ok(!raw.includes('sk-super-secret-model-key'), 'the model key must be masked on read');
   });
 
   test('an agent cannot read another account’s conversation history', async () => {

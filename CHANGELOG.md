@@ -10,6 +10,86 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## PF.1 — the AI provider becomes PLATFORM-level: one operator credential, every tenant
+
+**BUILT 23 Aug 2026 — committed locally, NOT pushed, NOT deployed. ZERO
+migrations (code-only; `PlatformCredential` already existed and is already on
+the RLS EXPECTED_UNSCOPED list — 63 tables, RLS 57 untouched). The attended
+install step has NOT run: no credential row exists anywhere, so AI is off
+platform-wide until the operator runs the script against production.**
+
+**What changed and why.** AI (landing generation LB.24, behavior insights
+BH.3, the ERP assistant when it ships) is a platform capability now, like a
+real SaaS — not a bring-your-own-key integration. ONE credential, the
+OPERATOR's, powers every tenant; individual tenants neither see nor supply an
+AI key. Deliberately UNLIKE the Meta pixel, which stays per-tenant because
+that credential really is each merchant's own ad account.
+
+- **New `src/lib/platform/platform-ai.ts`** — the credential store, mirroring
+  `render-domains.ts` exactly: one `PlatformCredential` row (key
+  `"platform-ai"`), AES-256-GCM via the meta/crypto pattern (key derived from
+  `AUTH_SECRET`), read decrypts server-side only, every broken state
+  (absent / undecryptable / malformed / field missing) reads as null.
+  Rejected alternative, recorded: a "platform row" in `AiProvider` would
+  either be invisible to every tenant transaction (RLS policy compares
+  tenantId) or need the one special-case policy shape `apply-rls.ts` exists
+  to forbid — and would sit plaintext in a tenant-gated table besides.
+- **New `scripts/set-platform-ai-provider.ts`** — the attended writer (the
+  set-render-credential pattern): type validated against `AI_PROVIDER_KEYS`,
+  base URL/model prefilled from the presets, SEC.7 `refuseOutboundUrl` on the
+  base URL at install time, and the type's own FREE connection test
+  (`ai-connection.ts`) runs BEFORE storing — a failing key is not stored.
+  `ai-connection.ts` dropped `server-only` and went relative-import (the
+  ai-complete.ts rule; nothing in it holds a secret) so bare node can run it.
+- **Readers swapped, adapters untouched:** generate, analyze, the ERP chat
+  stub and the pages/new presence check read `readPlatformAiProvider()`
+  instead of the tenant's `aiProvider.findFirst`. `AiCompletionConfig`,
+  the three adapters and the SEC.7 request-time guard are byte-identical —
+  the config was always source-agnostic. 501 `NO_AI_PROVIDER` keeps its code;
+  the message now says "AI is not enabled on this platform." **No fallback to
+  tenant rows, by decision: one source, one answer.**
+- **The tenant provider surface is GONE, not hidden:** the five
+  `/api/erp/ai/providers*` routes deleted; the "Model providers" panel,
+  table, and the assistant form's provider select removed from
+  `/console/erp/ai` and `ai-write.tsx`; the pages/new "Configure an AI
+  provider" pointer removed (it would dangle — the LB.23c reachability rule
+  cuts both ways). `AiProvider` the TABLE stays, dormant, zero readers —
+  `AiAgent.providerId` keeps its FK and no migration is spent on a drop.
+- **AQ.1 quota untouched, asserted:** `reserveAiCall`/`AiUsageEvent`/the
+  per-tenant `ProductSetting` override never read the credential — the
+  allowance is still per tenant (and the 0-override is now the per-tenant
+  kill switch for the operator's shared key). SEC.8's `*:ai:spend` still
+  gates who inside a tenant may trigger spend.
+
+**Tests: 7 suites touched, run against the running server (measured, not
+projected)** — platform-ai NEW 6/0 (encrypted at rest, replace-not-append,
+wrong-AUTH_SECRET reads as unconfigured, malformed/incomplete configs read
+as null), erp/ai 13/0 (provider CRUD/test describes retired; NEW pin: the
+five routes answer 404 even to a manager, the panel renders for no one, the
+assistants half survives), access 193/0 (five dead surfaces delisted),
+integrations 79/0 (the manager-only and key-never-returned tests became the
+stronger routes-are-gone pin), builder-ai 31/0 + builder-insights 14/0
+(fixtures seed the platform credential — a GLOBAL row, so both suites wipe
+it defensively in before() AND after()), screens 168/1 with the
+provider-vocabulary describe retired — the ONE red is the carriers-screen
+credential test, a screen this slice does not touch. Attributed, not
+shrugged off: it passes on this build in isolation AND with its entire
+preceding context (28/0), and the server log carries P1001 "can't reach
+database server" Neon transients during the long runs — the test's own POST
+is never status-checked, so a create landing on a blip renders a page with
+no carrier and fails exactly this way. A Neon blip, not a PF.1 regression
+(the known judge-per-file/rerun rule). tsc 275 (baseline 277 — the deleted
+routes carried two).
+
+**⚠ OPEN — the attended install (NEXT_STEPS §PF.1):** run
+`scripts/set-platform-ai-provider.ts` with PRODUCTION's `AUTH_SECRET` (this
+machine's differs — proven in LB.23; a dev-encrypted row reads in prod as
+silently "not configured"), Bilel's real Gemini key, then verify: generate
+answers on a real tenant and `AiUsageEvent` writes rows. Rollback of the
+credential = delete the one row; rollback of the code = the pre-push commit.
+
+---
+
 ## PM.3 — the optimizer stops generating variants larger than the source
 
 **DEPLOYED 23 Aug 2026, live 18:47 UTC** — `origin/main` = `6acb18a`

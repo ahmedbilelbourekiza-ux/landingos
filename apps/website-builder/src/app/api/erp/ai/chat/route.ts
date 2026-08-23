@@ -1,5 +1,6 @@
 import { tenantRoute, apiError } from "@/lib/api/route";
 import { ceilingFor } from "@/lib/erp/ai";
+import { readPlatformAiProvider } from "@/lib/platform/platform-ai";
 
 export const dynamic = "force-dynamic";
 
@@ -13,13 +14,11 @@ export const dynamic = "force-dynamic";
  * the "every AI route requires a session" contract had a hole in it exactly
  * where the original vulnerability was.
  */
-export const POST = tenantRoute("erp:ai:use", async ({ db, session }) => {
-  const provider = await db.aiProvider.findFirst({
-    where: { active: true },
-    select: { id: true },
-  });
+export const POST = tenantRoute("erp:ai:use", async ({ session }) => {
+  // PF.1 — the platform's provider, not a tenant row. Absent = AI off.
+  const provider = await readPlatformAiProvider();
   if (!provider) {
-    return apiError(501, "NO_AI_PROVIDER", "No model provider is configured for this company.");
+    return apiError(501, "NO_AI_PROVIDER", "AI is not enabled on this platform.");
   }
   return apiError(501, "NOT_IMPLEMENTED", "Model calls are not enabled on this deployment.", {
     permissions: ceilingFor(session),

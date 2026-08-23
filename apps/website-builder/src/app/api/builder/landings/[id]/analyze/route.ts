@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { tenantRoute, apiOk, apiError } from "@/lib/api/route";
 import { completeWithProvider, AiCallError } from "@/lib/erp/ai-complete";
+import { readPlatformAiProvider } from "@/lib/platform/platform-ai";
 import { reserveAiCall, settleAiCall } from "@/lib/erp/ai-quota";
 import { buildInsightSummary } from "@/lib/builder/insight-summary";
 import {
@@ -99,16 +100,11 @@ export const POST = tenantRoute<Params>("website-builder:pages:write", async ({ 
     );
   }
 
-  const provider = await (db as any).aiProvider.findFirst({
-    where: { active: true },
-    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
-    select: {
-      type: true, baseUrl: true, apiKey: true, defaultModel: true,
-      temperature: true, maxTokens: true, timeoutMs: true,
-    },
-  });
+  /* PF.1 — the PLATFORM's provider, not the tenant's (see generate). Absent
+   * means AI is off platform-wide; no fallback. */
+  const provider = await readPlatformAiProvider();
   if (!provider) {
-    return apiError(501, "NO_AI_PROVIDER", "No model provider is configured for this company.");
+    return apiError(501, "NO_AI_PROVIDER", "AI is not enabled on this platform.");
   }
 
   const reservation = await reserveAiCall(db, tenantId, "behavior_insight", {
@@ -135,9 +131,9 @@ export const POST = tenantRoute<Params>("website-builder:pages:write", async ({ 
           baseUrl: provider.baseUrl,
           apiKey: provider.apiKey,
           defaultModel: provider.defaultModel,
-          temperature: provider.temperature == null ? null : Number(provider.temperature),
-          maxTokens: provider.maxTokens,
-          timeoutMs: provider.timeoutMs,
+          temperature: provider.temperature ?? null,
+          maxTokens: provider.maxTokens ?? null,
+          timeoutMs: provider.timeoutMs ?? null,
         },
         buildInsightMessages(summary),
       );
