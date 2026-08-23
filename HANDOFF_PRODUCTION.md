@@ -15,6 +15,51 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ⏸ SEC.10 IS COMMITTED AND WAITING FOR GO-AHEAD — not deployed (23 Aug 2026)
+>
+> **Local `main` = `efc9341`; `origin/main` is still `9f5dbc7`.** Nothing has
+> been pushed. **No migration** — zero files under `packages/db`, asserted.
+>
+> **What it fixes, and how it was found.** The pre-launch ad-traffic audit
+> resolved SEC.6's open note by reading `Session.ip` on production (two
+> read-only aggregate `SELECT`s, no addresses returned). Every session carries
+> a **three-hop** chain — `customer, Cloudflare egress, Render router
+> (PRIVATE)` — so `trustedClientIp()`, which takes the last hop, has been
+> returning an RFC1918 address identical for every customer. The rate limiter
+> therefore had **one global bucket per endpoint** (~30 checkouts per five
+> minutes for the whole internet, with drafts and the visit beacon failing
+> *silently* at 204), and **Meta CAPI / TikTok have been receiving that private
+> address as `client_ip_address`** since 21 Aug — the second half being a
+> regression SEC.6 itself introduced. Full reasoning: CHANGELOG §SEC.10.
+>
+> **⚠ THE DEPLOY HAS TWO STEPS.** Push the range, AND set
+> **`TRUST_CLOUDFLARE_CLIENT_IP=1`** in Render. Order does not matter. The env
+> edit restarts without rebuilding, so **the build id will not flip on that
+> step alone** — same behaviour DB.1's cutover recorded. Without the env var
+> the range is still a strict improvement (buckets move from one global private
+> address to Cloudflare's egress) but stays one hop coarse and CAPI still sends
+> no IP.
+>
+> **Correction to a standing assumption:** `landingos.onrender.com` does NOT
+> bypass Cloudflare. Measured 23 Aug — both it and `selliora1.com` answer with
+> `Server: cloudflare` and a `CF-RAY`, so there is no Cloudflare-free route to
+> the app for `CF-Connecting-IP` to be forged over. The flag exists because
+> that is a fact about today's hosting, not a permanent one.
+>
+> **Forward-only, by Bilel's instruction:** no past order or draft is
+> rewritten. Any retroactive repair of the junk IPs already sent is a separate
+> decision, not part of this range.
+>
+> **Post-deploy verification to run** (the range has no storefront-visible
+> marker beyond the build id, and the env step has none at all): confirm the
+> live commit at the Render API `deploys` endpoint; `/api/health` 200; then the
+> functional check that actually proves it — two checkouts from two different
+> real devices/networks within five minutes, both accepted, where before the
+> fix the second would have eaten the first's budget. The cheap public probe is
+> the SEC.6 shape: POSTs with an empty body to
+> `/api/storefront/<nonexistent>/orders` answer 404 while under budget and 429
+> over it, and write nothing.
+
 > ### ✅ 23 Aug 2026 — LB.57 IS LIVE: the abandoned cart now reaches the ERP
 >
 > **`origin/main` = `46d6c34`, live 01:15:37 UTC** (`ab06752..46d6c34`,

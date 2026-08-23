@@ -10,6 +10,132 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## SEC.10 — the limiter was counting our own router, not the customer
+
+**Committed 23 Aug 2026 as `efc9341`. NOT DEPLOYED — held for Bilel's
+go-ahead.** No migration: zero files under `packages/db`, asserted.
+**Deploying this range needs one Render env var, `TRUST_CLOUDFLARE_CLIENT_IP=1`
+— see "the deploy has two steps" at the end.**
+
+**Found by the pre-launch ad-traffic audit, and the audit could not settle it
+without production.** SEC.6 flagged that the last `X-Forwarded-For` hop "in
+this topology is infrastructure rather than the customer" and filed it as
+worth its own slice. Two read-only aggregate `SELECT`s against `Session.ip`
+— login and signup store the whole header verbatim, which is what made this
+diagnosable at all — settled it. Four sessions, and every one of them three
+hops:
+
+| Position | Distinct | Private | What it is |
+|---|---|---|---|
+| hop 1 | 4 of 4 | 0 | public, unique per session — **the customer** |
+| hop 2 | 4 of 4 | 0 | public, varies per request — Cloudflare's egress |
+| **hop 3 (last)** | 3 of 4 | **4 of 4** | **RFC1918 — Render's own router** |
+
+**So the value this module keyed everything on was a private address inside
+Render's network, identical for every customer on earth.** Two live
+consequences:
+
+1. **The limiter had ONE global bucket per endpoint.** Checkout was ~30
+   orders per five minutes *for the entire internet* rather than per
+   customer (limit 10 × ~3 instances); drafts and the visit beacon were
+   bounded the same way and **both refuse with a silent 204**, so the loss
+   left no error, no log and no counter anywhere. The audit measured the
+   silence directly: 472 beacons sent, 392 rows stored, 80 gone.
+2. **The same value went to Meta CAPI and the TikTok Events API** as
+   `client_ip_address` / `user.ip`, where a private address matches nobody.
+   **This half is a REGRESSION SEC.6 introduced** — the pre-SEC.6
+   `split(",")[0]` was attacker-spoofable, but for honest traffic it was
+   exactly the right address, as hop 1 above confirms.
+
+**It also explains the one number SEC.6 measured and could not interpret.**
+That probe blocked at request 29 of 40 from a single machine and read it as
+"~3 instances × limit 10". True — but one client and the whole internet
+produce *the same* ~30, so a single-source probe could never have told the
+two topologies apart. That is why the question survived an otherwise careful
+pass, and why the fix is grounded in stored evidence rather than another
+probe.
+
+- **The fix, part 1: `CF-Connecting-IP` when configured to sit behind
+  Cloudflare.** Cloudflare SETS and OVERWRITES that header on every proxied
+  request, which makes it the only value here that is both unforgeable and
+  the true end user.
+- **Part 2: otherwise, walk the chain from the RIGHT and skip our own
+  plumbing** — loopback, the three RFC1918 blocks, CGNAT, link-local, IPv6
+  ULA. An attacker can only PREPEND, never append, so the first public hop
+  from the right is as unforgeable as SEC.6's rule while no longer
+  collapsing on a private address. Documentation ranges (`2001:db8::/32`,
+  `198.51.100.0/24`, `203.0.113.0/24`) are deliberately NOT internal — real
+  infrastructure does not use them, and treating them as internal would make
+  every fixture in the suite describe a topology nobody runs.
+- **Trust is CONFIGURATION, not a header sniff, and the comment says why.**
+  `CF-Connecting-IP`, `CF-RAY` and any corroboration between them are all
+  forgeable by whoever can reach us without Cloudflare in front, so no
+  header-only test can authenticate a proxy. `TRUST_CLOUDFLARE_CLIENT_IP`,
+  unset meaning "do not trust" — the same fail-closed default
+  `OUTBOUND_PRIVATE_ALLOWLIST` uses (SEC.7).
+- **Measured while writing it, and the reason the flag is safe to set here:**
+  BOTH `selliora1.com` AND `landingos.onrender.com` answer with
+  `Server: cloudflare` and a `CF-RAY`. **There is no Cloudflare-free route to
+  this app today**, so the forgery path the fix guards against is not
+  currently reachable — which corrects the working assumption that the
+  onrender hostname bypasses Cloudflare. That is a fact about today's
+  hosting, not a permanent property, hence a flag rather than an assumption
+  baked into the code.
+- **One seam for readers that genuinely differ.** `resolveClientIdentity()`
+  reports the address, where it came from, and whether it is the END USER.
+  The limiter takes any stable key (`clientIp`); the ad platforms take
+  `endUserIp()`, which returns **null rather than a proxy's address** —
+  to Meta a wrong IP is worse than a missing one. A private
+  `CF-Connecting-IP` is refused even with the flag on, so a future front
+  layer that passes the header through cannot turn private-address rotation
+  into free buckets.
+- **Deliberately NOT touched:** `Session.ip` and the signup log keep the
+  whole raw header — SEC.6 left them for forensics and that decision is
+  what made this diagnosable. **No past order or draft is rewritten**; this
+  is forward-only by Bilel's explicit instruction, and any retroactive
+  repair is a separate conversation.
+- **Files:** `lib/storefront/rate-limit.ts` ·
+  `api/storefront/[tenant]/orders/route.ts` ·
+  `api/storefront/[tenant]/draft-orders/route.ts` · `test/hardening.test.ts`
+  · `test/tracking.test.ts`.
+- **Suites:** hardening **19 → 30**, tracking **16 → 17**. Green with the
+  flag ON *and* OFF, both suites and the server started to match. Unchanged:
+  storefront 95, builder-api 49, webhooks 11, traffic-source 14,
+  outbound-guard 29, erp/orders 58, erp/abandoned-bridge 12. `tsc` unchanged
+  at its 277 baseline.
+
+**The new tests, and what each one exists to stop.** The real production
+chain shape no longer collapsing onto the private hop; per-customer budgets
+with the flag on; a forged `CF-Connecting-IP` ignored entirely with the flag
+off and refused when private with it on; **SEC.6's bypass re-pinned under
+BOTH configurations** so this fix cannot reopen it; internal-range detection
+across both address families with documentation ranges excluded; an
+all-internal chain keeping one bounded bucket rather than becoming
+unlimited; the walk stopping at garbage instead of reading past it; and the
+flag's own parsing, including that `0`, `false` and junk do not enable it.
+End to end in `tracking`, through the real route against the capture stub:
+Meta must receive the customer or **no `ip` field at all**, never
+`10.203.4.17`, and TikTok's differently-named field is asserted too so a fix
+that only reached Meta would fail.
+
+**Verified live on the dev server** (limit 10, real three-hop chain, probes
+against a nonexistent tenant with an empty body so nothing was written):
+one customer → 10 through then 4 × 429; **fourteen fresh customers behind
+the same infrastructure → all 14 through**; the same fourteen with no CF
+header → 10 through and 4 × 429 on the Cloudflare hop, bounded and stable
+rather than one global private bucket. Every fixture swept: zero tenants
+created in the preceding five hours remain.
+
+**THE DEPLOY HAS TWO STEPS, and the order does not matter.** Push the range,
+and set `TRUST_CLOUDFLARE_CLIENT_IP=1` in Render (an env edit restarts
+without rebuilding, so the build id will not flip on that step alone —
+DB.1's cutover recorded the same behaviour). **Without the env var the range
+is still a strict improvement** — buckets move from one global private
+address to Cloudflare's egress — but it is one hop coarse and CAPI still
+sends no IP, so the var is what finishes the job.
+
+---
+
 ## LB.57 — the abandoned cart reaches the ERP, so somebody rings the customer
 
 **DEPLOYED 23 Aug 2026, live 01:15:37 UTC** — `origin/main` = `46d6c34`
