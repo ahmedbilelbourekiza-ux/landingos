@@ -15,12 +15,61 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### ⏸ SEC.11 + SEC.12 ARE BUILT AND WAITING — one combined migration, one push (23 Aug 2026)
+> ### ✅ SEC.11 + SEC.12 ARE LIVE — migrated and deployed together (23 Aug 2026, live 17:35:25 UTC)
 >
-> **Nothing pushed. `origin/main` is unchanged.** Both slices sit on local
-> `main`: SEC.11 (checkout idempotency, `a4f0664`) and SEC.12 (the order-abuse
-> rules). Held deliberately so they migrate and deploy together — Bilel's
-> "design first, deploy everything one time".
+> **`origin/main` = `44627f6`** (`f9a2968..44627f6`, ref-mapped, two commits;
+> **rollback `f9a2968`**). Migration applied to Supabase FIRST, then the push —
+> every column additive and nullable, so the previously-deployed code ran
+> against the new schema for the ~3 minutes in between.
+>
+> **Verified after applying:** all five columns present and nullable, all three
+> indexes present under their exact Prisma names, **63 tables and RLS 60
+> policies / 57 tables UNCHANGED**, merchant data untouched (Tenant 3,
+> SalesOrder 2, FulfillmentOrder 1, LandingPage 2, DraftOrder 3, AdAccount 1,
+> AdSpendDaily 30). Zero rows backfilled, zero flagged, zero stored abuse
+> settings — the defaults live in code.
+>
+> **⚠ APPLIED THROUGH THE SUPABASE MCP, NOT PRISMA — a deviation worth knowing.**
+> The owner credential in `C:/Users/HP/Supabase connection string.TXT` **failed
+> to authenticate (P1000)**: line 1 is the IPv6-only direct host (unusable from
+> this laptop), line 2 has the right shape (`postgres.<ref>` at the eu-west-2
+> pooler) but its password is rejected — stale, rotated, or needing encoding.
+> **Fix that file before the next migration**, or the convention-standard
+> `prisma db push` + `migrate diff` route stays unavailable. The consequence
+> here: the DDL was hand-written to match the `migrate diff` output captured on
+> dev, so **this run has no full zero-drift proof** — only column and index
+> verification. Prod was proven drift-free at the cutover and only LB.57 has
+> migrated since, so the risk was accepted; **re-run `migrate diff` against
+> production as soon as the credential works.**
+>
+> **Live-verified:** build id `-6Ztubz7tY405-tYwNAEx` → `GbfdAYLy40b3IFQXy19Ql`
+> at 17:35:25 UTC. Health 200 `database: ok`, RLS role intact, uploads r2;
+> storefront 200, title intact, 12 scripts; console/login 200.
+> **The decisive functional proof is the localized refusal:** an empty-body POST
+> to a real tenant's checkout now answers **422 in Arabic** where it previously
+> said "Check the form." — the SEC.12 catalogue, live. It wrote nothing.
+>
+> **⚠ The storefront byte-diff is NOT the usual one-region shape, and that is
+> expected.** 503,710 → 504,235 bytes, with chunk renames and Tailwind
+> reordering one `font-variant-numeric` utility group — this range edits files
+> Tailwind scans, and LB.50 inlines the CSS into every page. Checked rather than
+> assumed: **zero console-only strings reached the storefront**
+> (`Flag for review`, `Max orders per device`, `orderAbuseDeviceMode`,
+> `reviewFlaggedAt`, `ipHash` all absent) and the theme markers are intact.
+>
+> **⚠ THE DEVICE KEY IS LIVE IN BLOCK MODE NOW.** A fourth order from one
+> browser inside 24h is refused at checkout, per Bilel's decision. Network =
+> flag, phone = off. `orderAbuseDeviceMode` → `flag` on the ERP settings screen
+> is a per-store change needing no deploy if the first days look wrong.
+>
+> **✔ AND LB.57 HAS NOW FIRED FOR REAL** — found while taking the pre-migration
+> baseline. `ORD-0003`, `source: storefront_abandoned`, `orderType: abandoned`,
+> `status: pending`, raised from a draft at **01:30:38 UTC**, ~15 min after
+> LB.57 went live. Every record above saying it had never been exercised in
+> production is superseded: a real abandoned cart reached the call-centre as a
+> callable lead.
+>
+> <details><summary>The migration as planned (kept for the record)</summary>
 >
 > **⚠ THE COMBINED PRODUCTION MIGRATION, in one run, BEFORE the push** (every
 > column additive and nullable, so the currently-deployed code runs against the
@@ -53,6 +102,8 @@ remain the deep references.
 > [[deploy-marker-buildid]]'s corrected diff rule applies); `/api/health` 200;
 > the ERP settings screen rendering the seven new controls; and one throwaway
 > order confirming a refusal reads in Arabic, not English.
+>
+> </details>
 
 > ### ✅ SEC.10 IS FULLY DEPLOYED — code + env var (23 Aug 2026). ONE CHECK STILL OWED, and it needs two networks
 >

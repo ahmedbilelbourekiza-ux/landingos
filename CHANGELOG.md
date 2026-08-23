@@ -12,9 +12,30 @@ touched, any **migration**, and any **risk**.
 
 ## SEC.12 — one engine, three identity keys, and the saboteur it was redesigned for
 
-**Committed 23 Aug 2026. NOT DEPLOYED — held with SEC.11 for one combined
-migration and one push.** Carries a migration (four additive nullable columns,
-two indexes) applied to DEV only.
+**DEPLOYED 23 Aug 2026 WITH SEC.11, live 17:35:25 UTC** — `origin/main` =
+`44627f6` (`f9a2968..44627f6`, ref-mapped, two commits; rollback `f9a2968`).
+One combined migration applied to Supabase BEFORE the push, then the push:
+`requestKey` + its unique index (SEC.11), `deviceToken`, `ipHash`, two
+indexes, `reviewReason`, `reviewFlaggedAt`. All additive and nullable, no
+DROP, so the previously-deployed code ran against the new schema for the ~3
+minutes in between. **63 tables and RLS 60/57 unchanged; merchant data
+untouched** (Tenant 3, SalesOrder 2, FulfillmentOrder 1, LandingPage 2,
+DraftOrder 3, AdAccount 1, AdSpendDaily 30); zero rows backfilled, zero
+flagged, zero stored settings.
+
+**⚠ The migration went through the Supabase MCP, not Prisma: the owner
+credential file failed to authenticate (P1000).** So the DDL was hand-written
+to match the `migrate diff` output captured on dev, and **this run has no full
+zero-drift proof** — column and index verification only. Full detail and the
+follow-up in HANDOFF §1.
+
+**Live proof beyond the build-id flip:** an empty-body POST to a real tenant's
+checkout answers **422 in Arabic** where it previously said "Check the form.",
+which is the SEC.12 catalogue running in production. The storefront diff is
+NOT the usual single-region shape (503,710 → 504,235 bytes, chunk renames plus
+Tailwind reordering one `font-variant-numeric` group) — expected, because this
+range edits files Tailwind scans and LB.50 inlines the CSS; verified benign by
+grepping the served page for console-only strings, all absent.
 
 **THE BRIEF CHANGED MID-DESIGN, and the first design was wrong.** It was scoped
 as a phone-keyed repeat-order throttle. The real threat is a competitor or
