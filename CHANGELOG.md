@@ -12,10 +12,34 @@ touched, any **migration**, and any **risk**.
 
 ## SEC.10 — the limiter was counting our own router, not the customer
 
-**Committed 23 Aug 2026 as `efc9341`. NOT DEPLOYED — held for Bilel's
-go-ahead.** No migration: zero files under `packages/db`, asserted.
-**Deploying this range needs one Render env var, `TRUST_CLOUDFLARE_CLIENT_IP=1`
-— see "the deploy has two steps" at the end.**
+**CODE DEPLOYED 23 Aug 2026 — `origin/main` = `efc9341` (`9f5dbc7..efc9341`,
+ref-mapped; rollback `9f5dbc7`), build id flipped by 13:35:45 UTC, ~3 min
+after the push.** No migration: zero files under `packages/db`, asserted
+before pushing. **⏳ STEP 2 STILL PENDING — the Render env var
+`TRUST_CLOUDFLARE_CLIENT_IP=1` is Bilel's dashboard edit; see "the deploy has
+two steps" at the end.** Until it is set the range is a strict improvement
+but one hop coarse.
+
+**Live evidence for step 1:** storefront `/dedima` 200 and **byte-identical at
+503,710 with exactly ONE differing region — the 20-byte build id**
+(`j8_Zan8GNgVa8h9V3VUnG` → `jL4cjgSA4BJ-E_jZ6_iT4`), 12 scripts and an
+unchanged chunk-name set, so nothing was renamed and nothing leaked; title
+`dedima · selliora16` intact; `/api/health` 200 `database: ok`, RLS role
+intact, uploads `r2`. **The Render API was NOT consulted — no key exists on
+this machine** (SEC.6 recorded the same gap; the later handoff line assuming
+one is wrong), so the build-id marker is the whole of the liveness proof. It
+is a good one here: a one-region diff is exactly what a code-only range
+should look like.
+
+**Effective ceiling measured on production right after the push, flag still
+off** — 40 empty-body POSTs to a nonexistent tenant (the limiter runs before
+tenant resolution, so budget is consumed and nothing is written): first 429 at
+request **14**, **20 allowed / 20 blocked**, with 404s interleaved among the
+429s. Interleaving means several independent buckets, i.e. per-process state;
+20 allowed against a limit of 10 reads as **~2 instances, not the ~3 assumed
+since SEC.6**. Worth re-reading off the Render dashboard rather than inferred
+— but either way it is one bucket per instance shared by everyone, which is
+precisely what step 2 fixes.
 
 **Found by the pre-launch ad-traffic audit, and the audit could not settle it
 without production.** SEC.6 flagged that the last `X-Forwarded-For` hop "in

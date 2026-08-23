@@ -15,10 +15,36 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### ⏸ SEC.10 IS COMMITTED AND WAITING FOR GO-AHEAD — not deployed (23 Aug 2026)
+> ### ⏳ SEC.10 — CODE IS LIVE, THE ENV VAR IS STILL PENDING (23 Aug 2026)
 >
-> **Local `main` = `efc9341`; `origin/main` is still `9f5dbc7`.** Nothing has
-> been pushed. **No migration** — zero files under `packages/db`, asserted.
+> **`origin/main` = `efc9341`** (`9f5dbc7..efc9341`, ref-mapped; **rollback
+> `9f5dbc7`**), live by **13:35:45 UTC**, ~3 min after the push. **No
+> migration** — zero files under `packages/db`, asserted before pushing.
+> Storefront byte-identical at 503,710 with exactly one differing region (the
+> build id, `j8_Zan8GNgVa8h9V3VUnG` → `jL4cjgSA4BJ-E_jZ6_iT4`); health 200.
+>
+> **⏳ STEP 2 IS NOT DONE: set `TRUST_CLOUDFLARE_CLIENT_IP` = `1` in the Render
+> dashboard.** Until then the limiter keys on Cloudflare's egress rather than
+> the customer, and the ad platforms still receive no IP. Measured on
+> production immediately after the push, flag off: 40 probe POSTs → first 429
+> at request 14, **20 allowed / 20 blocked**, 404s interleaved among the 429s —
+> several per-process buckets, ~10 each, so **~2 instances rather than the ~3
+> assumed since SEC.6**. Confirm the real count on the dashboard.
+>
+> **⚠ The env edit restarts WITHOUT rebuilding, so the build id will NOT flip
+> again on step 2.** That is correct, not a failed deploy — DB.1's cutover
+> recorded the same thing.
+>
+> **⚠ FIRST CHECK AFTER THE ENV VAR, and it is a security check, not a
+> formality:** the whole design rests on Cloudflare SETTING and OVERWRITING
+> `CF-Connecting-IP`. That is Cloudflare's documented behaviour but it has
+> never been verified on this deployment, and a front layer that passed a
+> client-supplied value through would reopen SEC.6 completely. Probe: 40
+> empty-body POSTs with a ROTATING forged `CF-Connecting-IP`. Blocks appearing
+> at the normal threshold ⇒ Cloudflare overwrote them ⇒ safe. Near-zero blocks
+> ⇒ the header is passing through ⇒ **unset the env var immediately**; the
+> flag-off behaviour is the already-improved fallback, so rollback is one
+> dashboard edit and needs no redeploy.
 >
 > **What it fixes, and how it was found.** The pre-launch ad-traffic audit
 > resolved SEC.6's open note by reading `Session.ip` on production (two
