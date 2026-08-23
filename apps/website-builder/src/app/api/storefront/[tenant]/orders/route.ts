@@ -160,11 +160,30 @@ export async function POST(
       // resolve (cleared storage, another device) and that must not fail the
       // sale — matching zero rows is the correct outcome then. Constrained to
       // the same page so a token cannot mark someone else's lead converted.
+      //
+      // LB.57 — the read before the write exists because `updateMany` returns
+      // a COUNT and not the row, and the row is where the abandoned cart's ERP
+      // id lives. The update itself stays `updateMany` so it keeps its atomic
+      // `convertedOrderId: null` guard; the read only supplies the id.
+      let promoteDraftFulfilmentId: string | null = null;
       if (input.draftToken) {
-        await (db as any).draftOrder.updateMany({
+        const draft = await (db as any).draftOrder.findUnique({
+          where: { token: input.draftToken },
+          select: { fulfillment: { select: { id: true, salesOrderId: true } } },
+        });
+
+        const { count } = await (db as any).draftOrder.updateMany({
           where: { token: input.draftToken, landingPageId: page.id, convertedOrderId: null },
           data: { convertedOrderId: order.id, convertedAt: new Date() },
         });
+
+        // Promote only the lead THIS checkout converted. The update matching
+        // exactly one row is the proof — it carries the same-page and
+        // not-already-converted guards — and a fulfilment row that already
+        // holds a sale belongs to another order and is left alone.
+        if (count === 1 && draft?.fulfillment && !draft.fulfillment.salesOrderId) {
+          promoteDraftFulfilmentId = draft.fulfillment.id as string;
+        }
       }
 
       // M-05. The ERP's operational record, in THIS transaction — not over a
@@ -192,7 +211,7 @@ export async function POST(
           shippingMethod: input.shippingMethod,
           productTitle: page.title,
           variants: chosen.map((v: any) => ({ name: v.name, value: v.value })),
-        });
+        }, promoteDraftFulfilmentId);
       }
 
       return {

@@ -496,25 +496,67 @@ export async function storefront(tenantId: string): Promise<Storefront> {
   });
 }
 
-/** Place a real order through the public, anonymous checkout. */
-export async function checkout(slug: string, shop: Storefront, customerName = 'Split Customer') {
+/**
+ * Place a real order through the public, anonymous checkout.
+ *
+ * `extra.draftToken` is what makes a checkout a RECOVERY rather than a fresh
+ * sale — it is the token the storefront's capture hook kept in sessionStorage,
+ * and passing it is how the customer who abandoned a cart is recognised as the
+ * one who came back (LB.57).
+ */
+export async function checkout(
+  slug: string,
+  shop: Storefront,
+  customerName = 'Split Customer',
+  extra: { draftToken?: string; phone?: string } = {},
+) {
   const res = await fetch(`${BASE}/api/storefront/${slug}/orders`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       landingPageId: shop.page.id,
       customerName,
-      phone: phone(),
+      phone: extra.phone ?? phone(),
       wilayaId: shop.wilaya.id,
       baladiaName: shop.baladiaName,
       address: '12 Rue de Test',
       quantity: 2,
       variantIds: [],
       shippingMethod: 'HOME',
+      ...(extra.draftToken ? { draftToken: extra.draftToken } : {}),
     }),
   });
   const body = await res.json().catch(() => null);
   return { status: res.status, body };
+}
+
+/**
+ * A storefront draft token — the per-visit id the capture hook keeps in
+ * sessionStorage. Globally unique because the column is (it is the upsert key
+ * for an unauthenticated endpoint that cannot know the tenant yet).
+ */
+export const draftToken = () => `tok-${uid()}-${Math.random().toString(36).slice(2, 10)}`;
+
+/**
+ * One capture from the storefront order form, exactly as the client's debounce
+ * sends it — every field it currently knows, on every call.
+ *
+ * Always answers 204, whatever it did or refused to do: the endpoint is
+ * background telemetry on a half-filled form and must never show a customer an
+ * error. So a test asserts on the DATABASE, never on this status.
+ */
+export async function draftCapture(
+  slug: string,
+  shop: Storefront,
+  token: string,
+  fields: Record<string, unknown> = {},
+) {
+  const res = await fetch(`${BASE}/api/storefront/${slug}/draft-orders`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token, landingPageId: shop.page.id, ...fields }),
+  });
+  return { status: res.status };
 }
 
 /**

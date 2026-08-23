@@ -7,6 +7,12 @@ import { allowRequest, clientIp, trustedClientIp, draftLimit } from "@/lib/store
 import { DraftBody } from "@/lib/storefront/contract";
 import { triggerDraftOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 import { dispatchTrackingEvent } from "@/lib/tracking/dispatch";
+import { hasErp } from "@/lib/erp/from-sale";
+import {
+  fulfilmentFromDraft,
+  topUpFulfilmentFromDraft,
+  isCallablePhone,
+} from "@/lib/erp/from-draft";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +68,9 @@ export async function POST(
     const fire = await withTenant(tenant.id, async (db) => {
       const page = await (db as any).landingPage.findFirst({
         where: { id: landingPageId, published: true },
-        select: { id: true, slug: true },
+        // `title` for the ERP row (LB.57): the page title is the only product
+        // name a draft can name — it records no catalogue link.
+        select: { id: true, slug: true, title: true },
       });
       if (!page) return null;
 
@@ -78,7 +86,22 @@ export async function POST(
         where: { token },
         update: fields,
         create: { ...fields, token, landingPageId: page.id, tenantId: tenant.id },
-        select: { id: true, notifiedAt: true },
+        // The merged row, not this request's `fields` — a capture may carry
+        // fewer fields than the visitor has already given, and the ERP copy
+        // must mirror what is KNOWN, not what this one POST happened to send.
+        //
+        // `fulfillment` rides along on the upsert the route already performs,
+        // so "does this visitor have an ERP row?" costs no extra query (LB.57).
+        select: {
+          id: true,
+          notifiedAt: true,
+          customerName: true,
+          phone: true,
+          wilaya: true,
+          baladia: true,
+          quantity: true,
+          fulfillment: { select: { id: true } },
+        },
       });
 
       // A Lead is the capture that FIRST carries a phone — which is usually
@@ -86,6 +109,44 @@ export async function POST(
       // seconds before the customer types their number. Firing Lead only on
       // draft_order.created lost every such lead (readiness audit).
       const leadArrived = Boolean(fields.phone) && !previous?.phone;
+
+      /* LB.57 — the call-centre's copy of this lead.
+       *
+       * In THIS transaction, for the same reason the checkout's fulfilment
+       * record is: both rows live in one database, and a network hop between
+       * them means the lead can be captured while the thing an agent would
+       * call from is not.
+       *
+       * NOT gated on `leadArrived`. That flag marks the first capture carrying
+       * ANY phone, and `use-draft-capture` fires at six digits while an
+       * Algerian mobile is ten — so it frequently marks a half-typed, dead
+       * number. The condition that matters is "no row yet AND the number is
+       * callable", which also picks up the visitor whose first debounce caught
+       * half a number and whose second caught the rest. `leadArrived` still
+       * owns the Lead pixel event below, unchanged.
+       *
+       * `hasErp` is read only when there is something to do, so a tenant
+       * without the ERP pays nothing and a visitor who never types a usable
+       * number never reaches it.
+       */
+      if (draft.fulfillment || isCallablePhone(draft.phone)) {
+        if (await hasErp(db)) {
+          const snapshot = {
+            id: draft.id as string,
+            customerName: (draft.customerName ?? null) as string | null,
+            phone: (draft.phone ?? null) as string | null,
+            wilaya: (draft.wilaya ?? null) as string | null,
+            baladia: (draft.baladia ?? null) as string | null,
+            quantity: (draft.quantity ?? null) as number | null,
+            productTitle: page.title as string,
+          };
+          if (draft.fulfillment) {
+            await topUpFulfilmentFromDraft(db, draft.fulfillment.id as string, snapshot);
+          } else {
+            await fulfilmentFromDraft(db, tenant.id, snapshot);
+          }
+        }
+      }
 
       // `draft_order.created` exactly once per visitor — notifiedAt is the
       // guard. Later captures are `draft_order.updated`: an opt-in event for

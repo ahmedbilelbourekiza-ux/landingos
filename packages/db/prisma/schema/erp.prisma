@@ -91,6 +91,25 @@ model FulfillmentOrder {
   salesOrderId String?     @unique
   salesOrder   SalesOrder? @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
 
+  // The abandoned cart this row was raised from (LB.57).
+  //
+  // The exact counterpart of `salesOrderId` above, and unique for the same
+  // reason: it is what makes the draft bridge idempotent IN THE DATABASE
+  // rather than in the route. The storefront's capture endpoint fires on every
+  // keystroke-debounce, so "create one row per visitor" cannot rest on the
+  // application checking first — two captures racing the check would both pass
+  // it. A unique constraint cannot be raced.
+  //
+  // SetNull, matching `salesOrder`: a DraftOrder is CASCADE-deleted with its
+  // landing page, and a lead the call-centre has already phoned must not
+  // vanish because a merchant tidied up a page. The ERP row outlives its
+  // origin, exactly as it does for a deleted sale.
+  //
+  // Nullable because almost no fulfilment order has a draft behind it: sales,
+  // channel webhooks and typed-in orders all arrive without one.
+  draftOrderId String?     @unique
+  draftOrder   DraftOrder? @relation(fields: [draftOrderId], references: [id], onDelete: SetNull)
+
   // --- external origin -------------------------------------------------
   externalId       String? // was shopifyId
   externalName     String? // was shopifyName

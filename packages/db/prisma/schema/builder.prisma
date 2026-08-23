@@ -565,6 +565,15 @@ model DraftOrder {
 
   landingPage LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
 
+  // The ERP's operational record for this lead, when the tenant holds the ERP
+  // (LB.57). The back side of `FulfillmentOrder.draftOrderId`.
+  //
+  // Declared here so the capture route can read "does this visitor already
+  // have an ERP row?" out of the upsert it ALREADY performs, instead of paying
+  // a second query per keystroke-debounce. That is the whole reason the link
+  // is a relation rather than a loose id column.
+  fulfillment FulfillmentOrder?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

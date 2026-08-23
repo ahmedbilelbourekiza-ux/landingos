@@ -87,6 +87,18 @@ export interface SaleSnapshot {
 }
 
 /**
+ * The fields the client-counter sync and the new-order notification read.
+ *
+ * One constant because the row is now selected from two places — the create and
+ * the promotion — and `syncClientFromOrder` silently does nothing useful if it
+ * is handed a shape missing the fields its transitions key off.
+ */
+const ORDER_VIEW = {
+  id: true, reference: true, status: true, deliveryOutcome: true, price: true,
+  phone: true, client: true, wilaya: true, commune: true, createdAt: true,
+} as const;
+
+/**
  * Create the operational record for a sale, in the caller's transaction.
  *
  * Idempotent on `salesOrderId`, which is unique: a retried checkout, or a
@@ -102,6 +114,13 @@ export async function fulfilmentFromSale(
   db: TenantDb,
   tenantId: string,
   sale: SaleSnapshot,
+  /**
+   * The abandoned-cart row this customer already has, if the checkout resolved
+   * one from the draft token (LB.57). Promoted in place rather than duplicated
+   * — see the block below. Null for a customer who never abandoned anything,
+   * which is every caller that predates the draft bridge.
+   */
+  promoteDraftFulfilmentId: string | null = null,
 ): Promise<{ id: string; created: boolean }> {
   const existing = await db.fulfillmentOrder.findUnique({
     where: { salesOrderId: sale.id },
@@ -110,6 +129,85 @@ export async function fulfilmentFromSale(
   if (existing) return { id: existing.id, created: false };
 
   const phone = normalizePhone(sale.phone);
+
+  /* The commercial facts, hoisted because this row now has TWO ways of coming
+   * into being — created fresh, or promoted from the abandoned cart the same
+   * customer left earlier — and both must state the sale identically.
+   *
+   * The money is copied from the SNAPSHOT, never recomputed. The sale is what
+   * the customer agreed to pay; recalculating it here would let a later price
+   * change alter an order that has already been placed. */
+  const commercial = {
+    client: sale.customerName,
+    phone,
+    phoneNormalized: phone,
+    wilaya: sale.wilaya,
+    commune: sale.baladia,
+    product: sale.productTitle,
+    quantity: sale.quantity,
+    unitPrice: sale.productPrice,
+    price: sale.totalPrice,
+    subtotal: sale.productPrice.times(sale.quantity),
+    shippingCost: sale.shippingPrice,
+    lineItems: [
+      {
+        title: sale.productTitle,
+        quantity: sale.quantity,
+        price: sale.productPrice.toString(),
+        variants: sale.variants,
+      },
+    ] as never,
+    deliveryMethod: sale.shippingMethod,
+    note: sale.notes ?? "",
+  };
+
+  /* PROMOTION IN PLACE — LB.57.
+   *
+   * This customer abandoned their cart, the ERP raised a lead for it, an agent
+   * may already have phoned them, and now they have come back and bought.
+   *
+   * Creating a second row here would give the call-centre two records for one
+   * customer: two ORD- numbers, two notifications, and the call history
+   * stranded on the row nobody is working. So the abandoned row BECOMES the
+   * order — keeping its reference, its assignment and its `OrderCall` history,
+   * and gaining the sale.
+   *
+   * The `salesOrderId: null` in the WHERE is the guard and it is ATOMIC: two
+   * checkouts racing one draft cannot both promote, and the loser falls through
+   * to create its own row rather than silently returning someone else's.
+   *
+   * `before` is null on the client sync because the abandoned row was never
+   * counted — `fulfilmentFromDraft` skips the lifetime counters on purpose. So
+   * this is the customer's first counted order whichever branch runs, and
+   * promotion cannot double-count. The two decisions hold each other up.
+   */
+  if (promoteDraftFulfilmentId) {
+    const { count } = await db.fulfillmentOrder.updateMany({
+      where: { id: promoteDraftFulfilmentId, salesOrderId: null },
+      data: {
+        ...commercial,
+        salesOrderId: sale.id,
+        // A placed order now: it leaves the `orderType=abandoned` filter, and
+        // the source records that this sale was RECOVERED rather than sold
+        // outright — which is the one thing a merchant would want to count.
+        orderType: "normal",
+        status: "pending",
+        source: "storefront_recovered",
+      },
+    });
+
+    if (count === 1) {
+      const promoted = await db.fulfillmentOrder.findUnique({
+        where: { id: promoteDraftFulfilmentId },
+        select: { ...ORDER_VIEW, agentUserId: true },
+      });
+      if (promoted) {
+        await syncClientFromOrder(db, tenantId, null, promoted);
+        await notifyNewOrder(db, tenantId, promoted);
+        return { id: promoted.id, created: true };
+      }
+    }
+  }
 
   // The storefront is where most orders come from, so it is the door that
   // matters most for assignment. It must never be the door that FAILS a
@@ -131,39 +229,13 @@ export async function fulfilmentFromSale(
       // or a Shopify import at a glance.
       source: "storefront",
       platform: "landingos",
-      client: sale.customerName,
-      phone,
-      phoneNormalized: phone,
-      wilaya: sale.wilaya,
-      commune: sale.baladia,
-      product: sale.productTitle,
-      quantity: sale.quantity,
-      // The money is copied from the SNAPSHOT, never recomputed. The sale is
-      // what the customer agreed to pay; recalculating it here would let a
-      // later price change alter an order that has already been placed.
-      unitPrice: sale.productPrice,
-      price: sale.totalPrice,
-      subtotal: sale.productPrice.times(sale.quantity),
-      shippingCost: sale.shippingPrice,
-      lineItems: [
-        {
-          title: sale.productTitle,
-          quantity: sale.quantity,
-          price: sale.productPrice.toString(),
-          variants: sale.variants,
-        },
-      ] as never,
-      deliveryMethod: sale.shippingMethod,
-      note: sale.notes ?? "",
+      ...commercial,
       // Arrives unconfirmed, like every other order: a storefront submission is
       // a request to buy, and the call-centre confirming it is the product.
       status: "pending",
       agentUserId,
     },
-    select: {
-      id: true, reference: true, status: true, deliveryOutcome: true, price: true,
-      phone: true, client: true, wilaya: true, commune: true, createdAt: true,
-    },
+    select: ORDER_VIEW,
   });
 
   await syncClientFromOrder(db, tenantId, null, created);
