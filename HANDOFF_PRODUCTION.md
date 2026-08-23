@@ -15,7 +15,21 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### ✅ PF.1 IS LIVE — the AI provider is platform-level (23 Aug 2026, live by 21:18:40 UTC)
+> ### ✅ PF.1c IS LIVE (24 Aug 2026) — Gemini thinking headroom + honest truncation refusal
+>
+> **`origin/main` = `59d930f`** (`dc5cb07..59d930f`, PF.1b preset fix +
+> PF.1c runtime fix; **rollback `dc5cb07`**). Code-only. The platform
+> credential stores `gemini-3.6-flash` (re-installed attended, 23 Aug ~22:59
+> UTC); the adapter now sends `thinkingLevel: "low"` + 4096 thinking
+> headroom over the 2048 answer budget, and truncated answers refuse as
+> "cut off at its token limit" on all three adapters. Verified live via
+> build-id flip → `j_naIRdgN3C6MzuJMB0w2`, health, storefront word-identity,
+> 83 variants warmed. The old plaintext-key tenant AiProvider row was
+> DELETED from prod (0 rows). CHANGELOG §PF.1b/§PF.1c are the records.
+> **⚠ The end-to-end attended proof (one real console generate — the first
+> AI-generated page on the platform) is the remaining step.**
+
+
 >
 > **`origin/main` = `7f6c8e8`** (`91e5020..7f6c8e8`, ref-mapped, one commit;
 > **rollback `91e5020`**). Zero migrations, no env change. One operator-owned,

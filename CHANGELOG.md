@@ -12,8 +12,15 @@ touched, any **migration**, and any **risk**.
 
 ## PF.1c — a reasoning model can no longer starve the answer it is reasoning about
 
-**BUILT 24 Aug 2026 — committed locally, awaiting deploy approval (runtime
-code, unlike PF.1b's install-time preset). Zero migrations.**
+**DEPLOYED 24 Aug 2026** — `origin/main` = `59d930f` (`dc5cb07..59d930f`,
+two commits with PF.1b; **rollback `dc5cb07`**). Code-only, zero migrations.
+Verified live: build id `fn6tSUppxpYNcItAQ7ZT-` → `j_naIRdgN3C6MzuJMB0w2`,
+health 200 `database: ok`, storefront word-multiset IDENTICAL at the same
+byte count, dedima/robe 200 at prior sizes, all 83 image variants
+re-warmed. (The flip verification itself found a tooling bug: the bash
+poll's grep over-escaped the RSC `\"b\":` marker and matched nothing —
+production had deployed normally while the watcher was blind. Extract the
+build id with the python one-liner, or poll a status-code marker.)
 
 **The bug, proven from a raw response, not inferred:** `gemini-3.6-flash`
 (PF.1b's replacement model) is a Gemini 3 REASONING model, and its thinking
