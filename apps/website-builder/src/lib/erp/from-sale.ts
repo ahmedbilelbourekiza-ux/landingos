@@ -121,6 +121,20 @@ export async function fulfilmentFromSale(
    * which is every caller that predates the draft bridge.
    */
   promoteDraftFulfilmentId: string | null = null,
+  /**
+   * SEC.12 — the order-abuse rules' verdict, when they flagged this sale.
+   *
+   * Written onto the ERP row because that is the only screen anyone works
+   * from. Deliberately NOT onto `classification`: that column is a human
+   * verdict travelling with `fakeResponsible` and `fakeAt`, and a rule writing
+   * it would make "who called this fake" meaningless. A suspicion and a
+   * verdict are different facts.
+   *
+   * Applied to BOTH branches below — a promoted abandoned cart is just as
+   * capable of being sabotage as a fresh order, and losing the flag on the
+   * promotion path would make the rule silently weaker for returning visitors.
+   */
+  review: { readonly reason: string; readonly flaggedAt: Date } | null = null,
 ): Promise<{ id: string; created: boolean }> {
   const existing = await db.fulfillmentOrder.findUnique({
     where: { salesOrderId: sale.id },
@@ -193,6 +207,7 @@ export async function fulfilmentFromSale(
         orderType: "normal",
         status: "pending",
         source: "storefront_recovered",
+        ...(review ? { reviewReason: review.reason, reviewFlaggedAt: review.flaggedAt } : {}),
       },
     });
 
@@ -234,6 +249,7 @@ export async function fulfilmentFromSale(
       // a request to buy, and the call-centre confirming it is the product.
       status: "pending",
       agentUserId,
+      ...(review ? { reviewReason: review.reason, reviewFlaggedAt: review.flaggedAt } : {}),
     },
     select: ORDER_VIEW,
   });

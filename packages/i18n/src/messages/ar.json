@@ -595,7 +595,9 @@
       "noCarrier": "بدون شركة توصيل",
       "expressShort": "سريع",
       "saving": "جارٍ الحفظ…",
-      "noAgent": "غير معيّن"
+      "noAgent": "غير معيّن",
+      "review": "مراجعة",
+      "reviewWhy": "علّمته قواعد الحماية: {reason}"
     },
     "order": {
       "title": "الطلب",
@@ -925,7 +927,31 @@
       "channelCarrierHint": "تُستعمل عندما لا تحدد الطلبية القادمة من تلك القناة شركة توصيل. اختيار الطلبية يسبق دائماً.",
       "noChannels": "لا توجد قنوات بيع بعد.",
       "financeEnabled": "إظهار وحدة المالية",
-      "financeEnabledHint": "إيقاف هذا الخيار يزيل شاشة «المالية» من التنقّل لكل من في الشركة. لا يُحذف أي شيء — تبقى السجلات المحفوظة وتظهر مجدداً عند إعادة التفعيل."
+      "financeEnabledHint": "إيقاف هذا الخيار يزيل شاشة «المالية» من التنقّل لكل من في الشركة. لا يُحذف أي شيء — تبقى السجلات المحفوظة وتظهر مجدداً عند إعادة التفعيل.",
+      "orderAbuseWindowMinutes": "نافذة قواعد الحماية (بالدقائق)",
+      "orderAbuseDeviceMode": "الحد حسب الجهاز",
+      "orderAbuseDeviceMax": "أقصى عدد طلبات لكل جهاز",
+      "orderAbuseNetworkMode": "الحد حسب الاتصال",
+      "orderAbuseNetworkMax": "أقصى عدد طلبات لكل اتصال",
+      "orderAbusePhoneMode": "الحد حسب رقم الهاتف",
+      "orderAbusePhoneMax": "أقصى عدد طلبات لكل رقم",
+      "option": {
+        "orderAbuseDeviceMode": {
+          "off": "معطّل",
+          "flag": "تعليم للمراجعة",
+          "block": "رفض الطلب"
+        },
+        "orderAbuseNetworkMode": {
+          "off": "معطّل",
+          "flag": "تعليم للمراجعة",
+          "block": "رفض الطلب"
+        },
+        "orderAbusePhoneMode": {
+          "off": "معطّل",
+          "flag": "تعليم للمراجعة",
+          "block": "رفض الطلب"
+        }
+      }
     },
     "queue": {
       "title": "مكالماتي",
@@ -984,7 +1010,9 @@
       "suspicious": "جودة المكالمة",
       "suspiciousOnly": "المكالمات المُعلَّمة فقط",
       "searchPlaceholder": "طلب أو زبون أو هاتف",
-      "toggle": "تصفية"
+      "toggle": "تصفية",
+      "review": "المراجعة",
+      "reviewFlagged": "مُعلَّم للمراجعة"
     },
     "export": {
       "title": "تصدير",

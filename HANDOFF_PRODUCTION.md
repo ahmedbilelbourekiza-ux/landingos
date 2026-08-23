@@ -15,6 +15,45 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ⏸ SEC.11 + SEC.12 ARE BUILT AND WAITING — one combined migration, one push (23 Aug 2026)
+>
+> **Nothing pushed. `origin/main` is unchanged.** Both slices sit on local
+> `main`: SEC.11 (checkout idempotency, `a4f0664`) and SEC.12 (the order-abuse
+> rules). Held deliberately so they migrate and deploy together — Bilel's
+> "design first, deploy everything one time".
+>
+> **⚠ THE COMBINED PRODUCTION MIGRATION, in one run, BEFORE the push** (every
+> column additive and nullable, so the currently-deployed code runs against the
+> new schema without referencing it — the LB.57 order):
+>
+> | Table | Added |
+> |---|---|
+> | `SalesOrder` | `requestKey` + **UNIQUE `(tenantId, requestKey)`** · `deviceToken` · `ipHash` |
+> | `SalesOrder` | indexes `[tenantId, deviceToken, createdAt]`, `[tenantId, ipHash, createdAt]` |
+> | `FulfillmentOrder` | `reviewReason` · `reviewFlaggedAt` |
+>
+> **`--accept-data-loss` IS required**, for the unique index only. It is safe
+> and the reason is exact: `requestKey` is a NEW column, so all 2 production
+> `SalesOrder` rows take NULL, and **Postgres treats NULLs as distinct in a
+> unique index** — there is nothing for it to collide with. No DROP anywhere in
+> the diff; assert that before running.
+>
+> **No Render env change.** The rules are per-tenant `ProductSetting` rows with
+> defaults in code, so production picks up device=block / network=flag /
+> phone=off with nothing to configure.
+>
+> **⚠ WHAT GOES LIVE THE MOMENT IT DEPLOYS:** the device key defaults to
+> **block**, so a fourth order from one browser inside 24h is refused at
+> checkout. That is Bilel's explicit decision for deliberate sabotage. If the
+> first days look wrong, `orderAbuseDeviceMode` → `flag` on the ERP settings
+> screen is a per-store change needing no deploy.
+>
+> **Post-deploy checks worth running:** the storefront build-id flip (the range
+> touches storefront bundles, so expect chunk renames as well as the id —
+> [[deploy-marker-buildid]]'s corrected diff rule applies); `/api/health` 200;
+> the ERP settings screen rendering the seven new controls; and one throwaway
+> order confirming a refusal reads in Arabic, not English.
+
 > ### ✅ SEC.10 IS FULLY DEPLOYED — code + env var (23 Aug 2026). ONE CHECK STILL OWED, and it needs two networks
 >
 > **`origin/main` = `efc9341`** for the code (records on top), **and

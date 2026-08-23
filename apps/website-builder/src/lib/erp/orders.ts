@@ -236,6 +236,7 @@ export const ORDER_LIST_SELECT = {
   wilaya: true, commune: true, city: true,
   product: true, productVariant: true, quantity: true,
   price: true, status: true, orderType: true, classification: true,
+  reviewReason: true, reviewFlaggedAt: true,
   agentUserId: true, followupUserId: true, followupAssignedAt: true,
   carrierCode: true, deliveryStatus: true, deliveryOutcome: true, deliveryOutcomeAt: true,
   trackingNumber: true, shipmentId: true,
@@ -312,6 +313,10 @@ export interface OrderRowFacts {
   readonly fake: boolean;
   readonly overdue: boolean;
   readonly neverCalled: boolean;
+  /** SEC.12 — which abuse rule flagged this row ("device", "device+network"),
+   * or null. A string rather than a boolean so the badge can say WHY: an agent
+   * seeing "device" knows to look at the other orders from that browser. */
+  readonly review: string | null;
 }
 
 export function orderRowFacts(
@@ -320,6 +325,7 @@ export function orderRowFacts(
     status?: string | null;
     source?: string | null;
     classification?: string | null;
+    reviewReason?: string | null;
     createdAt: Date;
     _count: { calls: number };
   },
@@ -336,6 +342,10 @@ export function orderRowFacts(
       order.status === "abandoned" ||
       order.source === "shopify_abandoned",
     fake: order.classification === "fake",
+    /* SEC.12 — a MACHINE's suspicion, kept separate from `fake` above, which
+     * is a person's verdict. The badge says which rule fired, so an agent sees
+     * "device" rather than an unexplained warning colour. */
+    review: order.reviewReason ?? null,
     neverCalled,
     // NEVER CALLED **and** older than the threshold — not "old". An order
     // somebody has phoned three times is being worked, however old it is, and
@@ -518,6 +528,24 @@ export function orderFilters(params: URLSearchParams): Prisma.FulfillmentOrderWh
     where.calls = { some: { suspicious: true } };
   }
 
+  /* SEC.12 — orders the abuse rules flagged, and the investigation view.
+   *
+   * `review=any` is the badge's filter. `reviewReason` narrows to one rule, so
+   * "everything the device rule caught this week" is a question the list, the
+   * export and analytics all answer from the same vocabulary (D-LP.3) rather
+   * than a screen of its own.
+   *
+   * `deviceToken` is the one that matters after an incident: given one flagged
+   * order, show every order that browser ever placed. For a single sabotage
+   * campaign that is worth more than the flag, because it is what turns "this
+   * looks odd" into "these forty are one person". It reaches through the sale,
+   * since the marker lives on the order the storefront wrote. */
+  if (get("review") === "any") where.reviewReason = { not: null };
+  const reviewReason = get("reviewReason");
+  if (reviewReason) where.reviewReason = { contains: reviewReason };
+  const deviceToken = get("deviceToken");
+  if (deviceToken) where.salesOrder = { is: { deviceToken } };
+
   const search = get("search");
   if (search) {
     // `mode: insensitive` is not optional here. Postgres LIKE is
@@ -595,6 +623,12 @@ export function orderFilterFields(opts: {
       label: t("erp.filters.classification"),
       kind: "select",
       options: [{ value: "fake", label: t("erp.filters.fake") }],
+    },
+    {
+      name: "review",
+      label: t("erp.filters.review"),
+      kind: "select",
+      options: [{ value: "any", label: t("erp.filters.reviewFlagged") }],
     },
     {
       name: "suspicious",

@@ -382,6 +382,23 @@ export default async function ErpOrdersScreen({
                         {t("erp.filters.fake")}
                       </span>
                     )}
+                    {/* SEC.12 — the abuse rules' badge. It NAMES the rule in
+                        its tooltip, because "device" tells an agent where to
+                        look next and an unexplained warning colour does not.
+                        The row stays in the normal queue: hiding a flagged
+                        order would make it invisible to the people actually
+                        working it, which is the LB.23b failure in a costume. */}
+                    {facts.review && (
+                      <span
+                        data-badge="review"
+                        data-review-reason={facts.review}
+                        title={t("erp.row.reviewWhy", { reason: facts.review })}
+                        className="me-1 inline-block rounded-full border px-1.5 py-0.5 text-[10px] leading-none"
+                        style={toneVars("warning")}
+                      >
+                        {t("erp.row.review")}
+                      </span>
+                    )}
                     {facts.overdue && badge("overdue", t("erp.row.overdue"), "danger")}
                     {flagged.has(o.id) && badge("suspicious", t("erp.row.suspicious"), "danger")}
                     {/* The note itself is the tooltip, exactly as the legacy

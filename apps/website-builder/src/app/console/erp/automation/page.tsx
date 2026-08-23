@@ -95,21 +95,32 @@ export default async function ErpAutomationScreen() {
       if (spec.type === "enum") {
         return {
           key,
-          label: t(`erp.settings.${key}`),
+          label: t.has(`erp.settings.${key}`) ? t(`erp.settings.${key}`) : key,
           kind: "enum" as const,
           value: String(value ?? ""),
-          // The route's own list, so an option that would be refused cannot be
-          // offered and one it accepts cannot go missing.
-          options: spec.values.map((v) => ({
-            value: v,
-            label: t(`erp.settings.reservation.${v}`),
-          })),
+          /* The route's own list, so an option that would be refused cannot be
+             offered and one it accepts cannot go missing.
+
+             SEC.12 — the label lookup used to be hardcoded to
+             `erp.settings.reservation.${v}`, which was fine while
+             `reservationMode` was the only enum and a LATENT 500 for the next
+             one: next-intl throws MISSING_MESSAGE on an absent key, so adding
+             an enum setting would have taken the whole settings screen down.
+             Per-setting first, the original namespace second so
+             `reservationMode` is untouched, and the raw value last — an
+             untranslated "block" is honest, where borrowing another setting's
+             label would quietly show the wrong word. */
+          options: spec.values.map((v) => {
+            const own = `erp.settings.option.${key}.${v}`;
+            const legacy = `erp.settings.reservation.${v}`;
+            return { value: v, label: t.has(own) ? t(own) : t.has(legacy) ? t(legacy) : v };
+          }),
         };
       }
       if (spec.type === "number") {
         return {
           key,
-          label: t(`erp.settings.${key}`),
+          label: t.has(`erp.settings.${key}`) ? t(`erp.settings.${key}`) : key,
           kind: "number" as const,
           value: String(value ?? ""),
           // The bounds the route enforces, on the control. Not a substitute for

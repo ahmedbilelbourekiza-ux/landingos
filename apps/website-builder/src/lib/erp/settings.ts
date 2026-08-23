@@ -65,6 +65,34 @@ export const DEFAULT_SETTINGS = {
    * this platform with no way back. Switching it on again restores the screens
    * with their history intact. */
   financeEnabled: true,
+
+  /* SEC.12 — the order-abuse rules.
+   *
+   * ONE window shared by every key, and every key its own mode and count. The
+   * modes differ on purpose and the reasoning is the whole feature:
+   *
+   *   device  — BLOCK. One browser placing order after order with a fresh name
+   *             each time is sabotage, and a false positive costs exactly one
+   *             machine's customer.
+   *   network — FLAG, never block by default. Mobile carriers put many real
+   *             subscribers behind one address, so blocking on the network key
+   *             can take out a whole carrier segment — the same shared-bucket
+   *             failure SEC.10 was fixed for. The device count is what tells a
+   *             carrier apart from a saboteur (see order-abuse.ts).
+   *   phone   — OFF. Unarmed until a merchant wants it: the phone is the field
+   *             a saboteur randomises, so this key catches a different and much
+   *             less urgent case (a real identity ordering repeatedly, across
+   *             channels that have no device marker at all).
+   *
+   * Minutes, like every other period in this file, so the settings screen does
+   * not have one field that quietly means something else. */
+  orderAbuseWindowMinutes: 1440,
+  orderAbuseDeviceMode: "block",
+  orderAbuseDeviceMax: 3,
+  orderAbuseNetworkMode: "flag",
+  orderAbuseNetworkMax: 3,
+  orderAbusePhoneMode: "off",
+  orderAbusePhoneMax: 3,
 } as const;
 
 /* The nav items that ARE the finance module.
@@ -139,6 +167,16 @@ export const SETTINGS_SCHEMA: Record<string, Spec> = {
   workHoursStart: { type: "number", min: 0, max: 23 },
   workHoursEnd: { type: "number", min: 1, max: 24 },
   reservationMode: { type: "enum", values: ["immediate", "on_confirm", "none"] },
+  // SEC.12 — declaring them here is all the settings SCREEN needs; that form
+  // builds its controls from this table, so seven knobs appear without the
+  // page being touched.
+  orderAbuseWindowMinutes: { type: "number", min: 5, max: 43200 },
+  orderAbuseDeviceMode: { type: "enum", values: ["off", "flag", "block"] },
+  orderAbuseDeviceMax: { type: "number", min: 1, max: 100 },
+  orderAbuseNetworkMode: { type: "enum", values: ["off", "flag", "block"] },
+  orderAbuseNetworkMax: { type: "number", min: 1, max: 500 },
+  orderAbusePhoneMode: { type: "enum", values: ["off", "flag", "block"] },
+  orderAbusePhoneMax: { type: "number", min: 1, max: 100 },
   defaultCarrierByChannel: { type: "object" },
   fixedCosts: { type: "array" },
 };

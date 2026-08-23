@@ -64,6 +64,35 @@ function visitorIdentity(): { id: string; isReturning: boolean } {
   }
 }
 
+/**
+ * SEC.12 — the browser's id, for anyone outside this file who needs it.
+ *
+ * ONE accessor, deliberately. The checkout sends this value so an order and
+ * that visitor's page views carry the same marker; if the form read
+ * localStorage itself, the two would be one refactor away from silently
+ * disagreeing and the order-abuse rules would degrade with nothing failing.
+ *
+ * Reads the same key `visitorIdentity` does and mints one when absent, so an
+ * order placed by someone whose first action was the buy button still carries
+ * a marker. It does NOT touch the returning-visitor verdict: that is a
+ * per-session analytics fact and checkout has no business deciding it.
+ */
+export function readVisitorId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const existing = localStorage.getItem(VISITOR_ID_KEY);
+    if (existing) return existing;
+    const id = randomToken();
+    localStorage.setItem(VISITOR_ID_KEY, id);
+    return id;
+  } catch {
+    // Private browsing. No marker rather than a per-call random one: a value
+    // that changes every request is worse than none, because it would look
+    // like a fresh device on every order and quietly defeat the device rule.
+    return null;
+  }
+}
+
 /** The referrer, only when it is another site's. An internal navigation's
  * referrer is this shop, which is evidence of nothing. */
 function crossOriginReferrer(): string | null {

@@ -10,6 +10,127 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## SEC.12 — one engine, three identity keys, and the saboteur it was redesigned for
+
+**Committed 23 Aug 2026. NOT DEPLOYED — held with SEC.11 for one combined
+migration and one push.** Carries a migration (four additive nullable columns,
+two indexes) applied to DEV only.
+
+**THE BRIEF CHANGED MID-DESIGN, and the first design was wrong.** It was scoped
+as a phone-keyed repeat-order throttle. The real threat is a competitor or
+coworker at ONE machine placing order after order with a fresh name, phone and
+address every time — sabotage, not fraud: nobody wants the goods, they want the
+call-centre's day burned and the delivery statistics poisoned. **A phone key
+sees none of it**, because the phone is the field being randomised. The design
+was redone around device and connection identity; the phone key survives as an
+unarmed third key, because it still covers phoned-in and Shopify orders that
+have no device marker at all.
+
+**ONE MECHANISM, NOT THREE FEATURES.** The window, counting, modes, flag column
+and console surface are identical across keys; only the identity differs. A
+fourth key is one entry and one counting function.
+
+| Key | Default | Counts | Identity |
+|---|---|---|---|
+| `device` | **block** | `SalesOrder.deviceToken` | AN.2's `landingos_visitor_id` |
+| `network` | **flag** | `SalesOrder.ipHash` | keyed hash of the customer IP |
+| `phone` | **off** | `FulfillmentOrder.phoneNormalized` | cross-channel, index already existed |
+
+- **The device marker already existed and was already in production.**
+  `landingos_visitor_id` has been minted in localStorage on every storefront
+  page view since AN.2 and written to `StorefrontVisit.visitorToken`; it simply
+  never reached checkout. Reusing it rather than minting a rival cookie is what
+  lets an order and that browser's page views carry the SAME marker — which is
+  what makes an investigation possible. Read through ONE accessor
+  (`readVisitorId`, exported beside `readVisitSource`) so the two identities
+  cannot drift apart in a later refactor.
+- **The network key's discriminator protects customers, not the shop.** Algerian
+  carriers put many subscribers behind one address, so a naive per-IP count
+  would flag a whole segment — the shared-bucket failure SEC.10 was fixed for,
+  one layer up. A carrier and a saboteur have opposite shapes: many orders/many
+  devices versus many orders/one device. The device count is what makes the IP
+  count safe to act on, and the key sits out entirely once an address looks
+  shared (`SHARED_NETWORK_DEVICE_FLOOR`, an internal constant — it cannot be
+  calibrated before launch because nothing has ever recorded an address against
+  an order).
+- **A keyed hash, never the address.** This platform stores no customer IP
+  anywhere; the visit table deliberately holds a meaningless random id instead.
+  HMAC rather than a plain digest because the IPv4 space is exhaustively
+  searchable and an unkeyed hash of an address is a reversible encoding wearing
+  a costume. Rotating `AUTH_SECRET` re-keys it and breaks historical grouping —
+  consistent with how rotation already invalidates every stored secret.
+- **A missing marker is never evidence.** Private browsing sends no device
+  token, and so do plenty of real customers; a rule that read absence as guilt
+  would spend week one flagging privacy-conscious buyers, everyone would learn
+  to ignore the badge, and the feature would be dead inside a fortnight.
+  Tokenless orders are still bounded — they carry an address, so the network key
+  counts them together.
+- **`classification` is never auto-written.** That column is a human verdict
+  travelling with `fakeResponsible`/`fakeAt`; a rule writing it would make "who
+  called this fake" meaningless. `reviewReason` + `reviewFlaggedAt` are the
+  machine's suspicion, and `reviewReason` NAMES the rule ("device",
+  "device+network") so an agent sees why. Flagged rows stay in the normal queue
+  with a badge — hiding them would make them invisible to the people working it.
+- **The English-checkout-error problem is fixed in the same slice**, as the
+  audit asked. Every server-side refusal was hardcoded English arriving on an
+  RTL Arabic page whose own form already spoke Arabic.
+  `lib/storefront/checkout-messages.ts` is a pure per-locale table keyed on the
+  TENANT's locale (a customer has no locale cookie), falling back to Arabic. It
+  is local rather than in `@landingos/i18n` because that catalogue is the
+  CONSOLE's vocabulary and the storefront has no namespace there at all — this
+  is the seam where one would go. A test pins that every catalogue answers for
+  every code, and that the refusal **names no number and accuses nobody**:
+  telling a saboteur the limit hands him the shape to stay under, and telling a
+  real customer they are suspected is an insult from a machine that is sometimes
+  wrong.
+
+**TWO BUGS THE TESTS CAUGHT, both of which would have shipped.**
+
+1. **The carrier discriminator was off by one, and it punished the innocent.**
+   Judging the third customer on a shared address, only two devices were on
+   record, so the address did not yet look shared and that customer was flagged
+   *for arriving third*. The requesting device now counts toward the evidence,
+   which completes it at the moment it is used. Caught by the negative test —
+   the one asserting real customers are LEFT ALONE.
+2. **The settings screen would have 500'd.** `/console/erp/automation` labelled
+   every enum option with a hardcoded `erp.settings.reservation.${v}` key —
+   harmless while `reservationMode` was the only enum, a latent crash for the
+   next one, because next-intl throws MISSING_MESSAGE on an absent key. Now
+   per-setting first, the original namespace second, the raw value last; labels
+   are `t.has`-guarded the same way. **Caught only because the reachability test
+   asserted against the RENDERED settings screen** rather than trusting "the
+   form builds itself from the schema" — which is exactly the claim that was
+   nearly wrong.
+
+- **Files:** `lib/erp/order-abuse.ts` (new) ·
+  `lib/storefront/checkout-messages.ts` (new) · `lib/erp/settings.ts` ·
+  `lib/erp/from-sale.ts` · `lib/erp/orders.ts` · `lib/storefront/contract.ts` ·
+  `api/storefront/[tenant]/orders/route.ts` · `console/erp/orders/page.tsx` ·
+  `console/erp/automation/page.tsx` · `components/landing/visit-beacon.tsx` ·
+  `components/landing/sections/purchase-form.tsx` · three locale catalogues ·
+  `packages/db/prisma/schema/{builder,erp}.prisma` ·
+  `test/erp/order-abuse.test.ts` (new).
+- **`order-abuse.ts` carries no `server-only`** — the calc.ts rule that
+  `ai-quota.ts` and `rate-limit.ts` already follow, so the suite can assert the
+  hashing, modes and window with no server. The consequence is deliberate and
+  documented: the phone arrives ALREADY FOLDED, because `normalizePhone` is
+  `server-only` and importing it would drag the module back out of the suite's
+  reach for one call.
+- **Suites:** new `order-abuse` **26**. Green alongside: checkout-idempotency 8,
+  storefront 95, abandoned-bridge 12, order-split 8, erp/orders 58, screens 172,
+  tracking 17, hardening 30, builder-api 49, builder-sections 75,
+  console-shell 20, webhooks 11, traffic-source 14. `tsc` unchanged at 277.
+
+**Migration (applied to DEV only):** `SalesOrder.deviceToken`,
+`SalesOrder.ipHash`, `FulfillmentOrder.reviewReason`,
+`FulfillmentOrder.reviewFlaggedAt`, plus
+`[tenantId, deviceToken, createdAt]` and `[tenantId, ipHash, createdAt]`. All
+additive and nullable, no DROP. **This delta needs no `--accept-data-loss`** —
+that flag is required only by SEC.11's unique index, which the combined
+production run will include.
+
+---
+
 ## SEC.10 — the limiter was counting our own router, not the customer
 
 **CODE DEPLOYED 23 Aug 2026 — `origin/main` = `efc9341` (`9f5dbc7..efc9341`,

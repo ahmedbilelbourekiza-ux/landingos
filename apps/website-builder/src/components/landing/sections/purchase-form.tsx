@@ -24,7 +24,7 @@ import {
 } from "@/lib/landing/mock-order-form";
 import type { ShippingMethod } from "@/types/landing";
 import { useStorefrontApi, useStorefrontHref } from "@/lib/storefront/api-base";
-import { readVisitSource } from "@/components/landing/visit-beacon";
+import { readVisitorId, readVisitSource } from "@/components/landing/visit-beacon";
 import type { CheckoutBodyInput, CheckoutSuccess, WilayaItem } from "@/lib/storefront/contract";
 
 // The customer-facing checkout.
@@ -316,6 +316,10 @@ export function PurchaseForm({
         ttp: ttp ?? undefined,
         gaClientId: gaClientId ?? undefined,
         draftToken: draft.token ?? undefined,
+        // SEC.12 — the browser's own long-lived id, read through the visit
+        // beacon's accessor so the order and that visitor's page views cannot
+        // end up carrying different markers.
+        deviceToken: readVisitorId() ?? undefined,
         // AN.1 — the SESSION's stored source evidence, not this page's URL:
         // by checkout time the ad click's params are navigations behind us.
         visitSource: readVisitSource() ?? undefined,

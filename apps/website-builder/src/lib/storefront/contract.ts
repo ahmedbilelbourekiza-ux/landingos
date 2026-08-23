@@ -57,6 +57,20 @@ export const CheckoutBody = z.object({
    */
   draftToken: z.string().trim().min(8).max(120).optional(),
   /**
+   * SEC.12 — the browser's own long-lived id (`landingos_visitor_id`), the
+   * SAME value AN.2's visit beacon has been sending since it shipped.
+   *
+   * Not a second identity and not the draft token: the draft token is one
+   * checkout attempt and now retires itself on purchase (SEC.11), while this
+   * one is the machine and outlives everything. Sharing AN.2's value rather
+   * than minting a rival is what lets an order and that visitor's page views
+   * be recognised as the same browser, which is what an investigation needs.
+   *
+   * Optional, and absence is never held against a customer — private browsing
+   * produces none. Bounded like every other anonymous input here.
+   */
+  deviceToken: z.string().trim().min(8).max(120).optional(),
+  /**
    * Ad-attribution identifiers, captured browser-side and used ONLY for
    * server-side conversion events (LB.5). Bounded because they arrive from an
    * anonymous client and are forwarded to third parties. `ttp` and

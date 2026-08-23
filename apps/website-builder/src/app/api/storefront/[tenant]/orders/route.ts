@@ -13,6 +13,15 @@ import { hasErp, fulfilmentFromSale } from "@/lib/erp/from-sale";
 // SEC.11 — the same folding the ERP applies, so "0555 12 34 56" and
 // "0555123456" are one customer to the idempotency guard too.
 import { normalizePhone } from "@/lib/erp/phone";
+import { readSettings } from "@/lib/erp/settings";
+import {
+  evaluateOrderAbuse,
+  hashClientIp,
+  anyRuleArmed,
+  NO_ABUSE,
+  type AbuseVerdict,
+} from "@/lib/erp/order-abuse";
+import { checkoutMessage, type CheckoutErrorCode } from "@/lib/storefront/checkout-messages";
 
 export const dynamic = "force-dynamic";
 
@@ -36,8 +45,24 @@ export const dynamic = "force-dynamic";
 // The body schema lives in `lib/storefront/contract.ts`, shared with the
 // purchase form — see that module for why it may not be re-declared here.
 
-const fail = (status: number, code: string, message: string) =>
-  NextResponse.json({ success: false, error: { code, message } }, { status });
+/**
+ * A refusal, in the SHOP's language.
+ *
+ * Every message here used to be hardcoded English arriving on a right-to-left
+ * Arabic page whose own form already spoke Arabic — found by the readiness
+ * audit, fixed here because a refusal is the worst place to leave a customer
+ * reading a language they did not choose. The code is unchanged and still the
+ * contract; only the prose is now the tenant's.
+ *
+ * `locale` is omitted by the two refusals that happen BEFORE the tenant is
+ * known — the rate-limit bound (deliberately ahead of all database work) and
+ * the unknown-store 404. Those fall back to Arabic, the platform default.
+ */
+const fail = (status: number, code: CheckoutErrorCode, locale?: string | null) =>
+  NextResponse.json(
+    { success: false, error: { code, message: checkoutMessage(locale, code) } },
+    { status },
+  );
 
 /**
  * SEC.11 — the answer to a purchase that was already placed.
@@ -67,18 +92,33 @@ export async function POST(
   // courier and an agent's call, so a script must run out of budget fast. Ten
   // orders in five minutes from one address is nobody's real buying pattern.
   if (!allowRequest("checkout", clientIp(req), checkoutLimit(), 5 * 60 * 1000)) {
-    return fail(429, "RATE_LIMITED", "Too many orders from this connection — wait a few minutes.");
+    return fail(429, "RATE_LIMITED");
   }
 
   const { tenant: slug } = await ctx.params;
   const tenant = await tenantBySlug(slug);
-  if (!tenant) return fail(404, "NOT_FOUND", "That store does not exist.");
+  if (!tenant) return fail(404, "NOT_FOUND");
 
   const parsed = CheckoutBody.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
-    return fail(422, "INVALID_INPUT", parsed.error.issues[0]?.message ?? "Check the form.");
+    /* The zod issue text is developer prose in English and would be a second
+     * untranslated string on the same page. The form validates every field
+     * client-side anyway, so this is a backstop: one clear sentence, the code
+     * unchanged for anything reading it programmatically. */
+    return fail(422, "INVALID_INPUT", tenant.locale);
   }
   const input = parsed.data;
+
+  /* SEC.12 — the two identities, resolved once outside the transaction.
+   *
+   * `endUserIp` rather than `trustedClientIp`: the network key must count a
+   * CUSTOMER's connection, and that function is null unless SEC.10 is
+   * confident the address is the end user's rather than a proxy's. Hashing a
+   * shared proxy address would put every customer in one bucket — the failure
+   * SEC.10 exists to have fixed — so "not confident" correctly means "do not
+   * count", and the key simply sits out. */
+  const deviceToken = input.deviceToken ?? null;
+  const ipHash = hashClientIp(endUserIp(req));
 
   try {
     const result = await withTenant(tenant.id, async (db) => {
@@ -130,16 +170,16 @@ export async function POST(
         include: { setting: true, variants: true },
       });
       // Unpublished, or another tenant's: the same answer either way.
-      if (!page) return { error: fail(404, "NOT_FOUND", "That product is not available.") };
+      if (!page) return { error: fail(404, "NOT_FOUND", tenant.locale) };
 
       const setting = page.setting;
       const homeOk = setting?.homeDeliveryEnabled ?? true;
       const deskOk = setting?.stopDeskEnabled ?? false;
       if (input.shippingMethod === "HOME" && !homeOk) {
-        return { error: fail(422, "METHOD_UNAVAILABLE", "Home delivery is not offered for this product.") };
+        return { error: fail(422, "METHOD_UNAVAILABLE", tenant.locale) };
       }
       if (input.shippingMethod === "DESK" && !deskOk) {
-        return { error: fail(422, "METHOD_UNAVAILABLE", "Stop desk is not offered for this product.") };
+        return { error: fail(422, "METHOD_UNAVAILABLE", tenant.locale) };
       }
 
       // Destination must be a real wilaya WITH a price set by this tenant.
@@ -148,7 +188,7 @@ export async function POST(
         where: { id: input.wilayaId },
         select: { id: true, name: true },
       });
-      if (!wilaya) return { error: fail(422, "UNKNOWN_DESTINATION", "Choose a wilaya.") };
+      if (!wilaya) return { error: fail(422, "UNKNOWN_DESTINATION", tenant.locale) };
 
       /* LB.20 — the SAME resolver `/wilayas` quotes from, so the price the
          customer was shown and the price they are charged cannot differ. A
@@ -156,10 +196,51 @@ export async function POST(
       const prices = await deliveryPricesFor(db as never, page.id);
       const price = prices.get(input.wilayaId);
       if (!price) {
-        return { error: fail(422, "UNDELIVERABLE", "We do not deliver to that wilaya yet.") };
+        return { error: fail(422, "UNDELIVERABLE", tenant.locale) };
       }
 
       const shippingPrice = priceForMethod(price, input.shippingMethod);
+
+      /* SEC.12 — the order-abuse rules, AFTER the idempotency check above and
+       * BEFORE anything is written.
+       *
+       * The ordering is load-bearing in both directions. After idempotency,
+       * because without it six retries of one purchase are six rows and a
+       * threshold of three would refuse a customer for a network problem we
+       * caused. Before the write, because a blocking rule has to be able to
+       * stop the sale rather than annotate it afterwards.
+       *
+       * ERP-ONLY, and `hasErp` is read once here and reused for the fulfilment
+       * bridge below rather than asked twice. The rules live in the ERP's
+       * settings and their whole output is a flag on an ERP row, so a tenant
+       * without the product has nowhere to configure them and nowhere to see
+       * them — half-building it for those tenants would be worse than saying
+       * plainly that it is an ERP feature. */
+      const tenantHasErp = await hasErp(db);
+      let abuse: AbuseVerdict = NO_ABUSE;
+
+      if (tenantHasErp) {
+        const settings = await readSettings(db);
+        // Every key off is the ordinary case and must stay free: no counting
+        // query is issued at all.
+        if (anyRuleArmed(settings)) {
+          abuse = await evaluateOrderAbuse(
+            db,
+            { deviceToken, ipHash, phoneNormalized: normalizePhone(input.phone) || null },
+            settings,
+          );
+          if (abuse.blocked) {
+            /* Logged with the counts because the customer is told none of
+             * them: naming the limit in the response would hand a saboteur
+             * the shape of the rule he has to stay under. */
+            console.warn(
+              `[order-abuse] refused checkout for ${tenant.slug}: ${abuse.reason}`,
+              abuse.counts,
+            );
+            return { error: fail(403, "ORDER_REFUSED", tenant.locale) };
+          }
+        }
+      }
 
       // Variant extras come from the tenant's own rows, never the request.
       // ALL money stays Decimal end to end (M-06): these columns are Decimal,
@@ -203,6 +284,12 @@ export async function POST(
           // or roll back together. Null when the caller sent no token, or when
           // the key resolved to somebody else's order (see above).
           requestKey: keyForInsert,
+          // SEC.12 — the identities the rules count on, stored so the NEXT
+          // order can be judged against this one, and so "every order from
+          // this device" is answerable later. `ipHash` is a keyed hash; the
+          // address itself is never written anywhere.
+          deviceToken,
+          ipHash,
           // AN.1 — attribution snapshot, derived server-side from the
           // session's evidence with the SAME function the visit beacon uses,
           // so an order and the views that led to it cannot name different
@@ -266,7 +353,7 @@ export async function POST(
       //
       // Skipped for a tenant that does not hold the ERP, checked through the
       // registry so nothing here enumerates products.
-      if (await hasErp(db)) {
+      if (tenantHasErp) {
         await fulfilmentFromSale(db, tenant.id, {
           id: order.id,
           customerName: input.customerName,
@@ -282,7 +369,7 @@ export async function POST(
           shippingMethod: input.shippingMethod,
           productTitle: page.title,
           variants: chosen.map((v: any) => ({ name: v.name, value: v.value })),
-        }, promoteDraftFulfilmentId);
+        }, promoteDraftFulfilmentId, abuse.reason ? { reason: abuse.reason, flaggedAt: new Date() } : null);
       }
 
       return {
@@ -397,16 +484,12 @@ export async function POST(
         // cannot hand it back, and we cannot re-run the transaction from here,
         // so this is the one genuinely conflicting case — and it is a retry
         // the customer can win, not a dead end.
-        return fail(
-          409,
-          "CHECKOUT_CONFLICT",
-          "That checkout could not be completed. Refresh the page and try again.",
-        );
+        return fail(409, "CHECKOUT_CONFLICT", tenant.locale);
       }
       // Not our constraint. Fall through.
     }
 
     console.error("[storefront] checkout failed", error);
-    return fail(500, "INTERNAL_ERROR", "We could not place that order. Please try again.");
+    return fail(500, "INTERNAL_ERROR", tenant.locale);
   }
 }

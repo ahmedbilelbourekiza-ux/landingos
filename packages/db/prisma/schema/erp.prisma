@@ -158,6 +158,22 @@ model FulfillmentOrder {
   fakeResponsible String?
   fakeAt         DateTime?
 
+  /* SEC.12 — a MACHINE's suspicion, deliberately not the columns above.
+   *
+   * `classification` is a human verdict: it travels with `fakeResponsible` and
+   * `fakeAt`, and it records that a person decided an order was fake and who
+   * decided it. Writing it from a rule would make "who called this fake"
+   * meaningless and would poison any fake-rate reporting built on it. A
+   * suspicion and a verdict are different facts, so they get different
+   * columns and the rule never touches the verdict.
+   *
+   * `reviewReason` names the rule that fired — "device", "network", "phone",
+   * or several joined — so an agent sees WHY, not just that something did.
+   * Nullable and unset for every order the rules never flagged.
+   */
+  reviewReason    String?
+  reviewFlaggedAt DateTime?
+
   // --- delivery --------------------------------------------------------
   carrierCode     String? // was `delivery`, holding a provider CODE
   carrierId       String? // was providerId

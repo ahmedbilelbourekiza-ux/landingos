@@ -595,7 +595,9 @@
       "noCarrier": "Aucun transporteur",
       "expressShort": "Express",
       "saving": "Enregistrement…",
-      "noAgent": "Non assigné"
+      "noAgent": "Non assigné",
+      "review": "Révision",
+      "reviewWhy": "Signalé par les règles anti-abus : {reason}"
     },
     "order": {
       "title": "Commande",
@@ -925,7 +927,31 @@
       "channelCarrierHint": "Utilisé quand une commande de ce canal ne désigne aucun livreur. Le choix de la commande l’emporte toujours.",
       "noChannels": "Aucun canal de vente pour le moment.",
       "financeEnabled": "Afficher le module Finances",
-      "financeEnabledHint": "Désactiver cette option retire l'écran Finances de la navigation pour toute la société. Rien n'est supprimé — les enregistrements sont conservés et réapparaissent si vous la réactivez."
+      "financeEnabledHint": "Désactiver cette option retire l'écran Finances de la navigation pour toute la société. Rien n'est supprimé — les enregistrements sont conservés et réapparaissent si vous la réactivez.",
+      "orderAbuseWindowMinutes": "Fenêtre des règles anti-abus (minutes)",
+      "orderAbuseDeviceMode": "Limite par appareil",
+      "orderAbuseDeviceMax": "Commandes max par appareil",
+      "orderAbuseNetworkMode": "Limite par connexion",
+      "orderAbuseNetworkMax": "Commandes max par connexion",
+      "orderAbusePhoneMode": "Limite par numéro",
+      "orderAbusePhoneMax": "Commandes max par numéro",
+      "option": {
+        "orderAbuseDeviceMode": {
+          "off": "Désactivé",
+          "flag": "Signaler pour révision",
+          "block": "Refuser la commande"
+        },
+        "orderAbuseNetworkMode": {
+          "off": "Désactivé",
+          "flag": "Signaler pour révision",
+          "block": "Refuser la commande"
+        },
+        "orderAbusePhoneMode": {
+          "off": "Désactivé",
+          "flag": "Signaler pour révision",
+          "block": "Refuser la commande"
+        }
+      }
     },
     "queue": {
       "title": "Mes appels",
@@ -984,7 +1010,9 @@
       "suspicious": "Qualité d’appel",
       "suspiciousOnly": "Appels signalés uniquement",
       "searchPlaceholder": "Commande, client ou téléphone",
-      "toggle": "Filtres"
+      "toggle": "Filtres",
+      "review": "Révision",
+      "reviewFlagged": "Signalé pour révision"
     },
     "export": {
       "title": "Exporter",

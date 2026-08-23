@@ -595,7 +595,9 @@
       "noCarrier": "No carrier",
       "expressShort": "Express",
       "saving": "Saving…",
-      "noAgent": "Unassigned"
+      "noAgent": "Unassigned",
+      "review": "Review",
+      "reviewWhy": "Flagged by the abuse rules: {reason}"
     },
     "order": {
       "title": "Order",
@@ -925,7 +927,31 @@
       "channelCarrierHint": "Used when an order from that channel names no carrier of its own. The order’s own choice always wins.",
       "noChannels": "No sales channels yet.",
       "financeEnabled": "Show the finance module",
-      "financeEnabledHint": "Turning this off removes the Finances screen from the navigation for everyone in this company. Nothing is deleted — saved records are kept and reappear if you turn it back on."
+      "financeEnabledHint": "Turning this off removes the Finances screen from the navigation for everyone in this company. Nothing is deleted — saved records are kept and reappear if you turn it back on.",
+      "orderAbuseWindowMinutes": "Abuse-rule window (minutes)",
+      "orderAbuseDeviceMode": "Limit per device",
+      "orderAbuseDeviceMax": "Max orders per device",
+      "orderAbuseNetworkMode": "Limit per connection",
+      "orderAbuseNetworkMax": "Max orders per connection",
+      "orderAbusePhoneMode": "Limit per phone number",
+      "orderAbusePhoneMax": "Max orders per phone number",
+      "option": {
+        "orderAbuseDeviceMode": {
+          "off": "Off",
+          "flag": "Flag for review",
+          "block": "Refuse the order"
+        },
+        "orderAbuseNetworkMode": {
+          "off": "Off",
+          "flag": "Flag for review",
+          "block": "Refuse the order"
+        },
+        "orderAbusePhoneMode": {
+          "off": "Off",
+          "flag": "Flag for review",
+          "block": "Refuse the order"
+        }
+      }
     },
     "queue": {
       "title": "My calls",
@@ -984,7 +1010,9 @@
       "suspicious": "Call quality",
       "suspiciousOnly": "Flagged calls only",
       "searchPlaceholder": "Order, customer or phone",
-      "toggle": "Filters"
+      "toggle": "Filters",
+      "review": "Review",
+      "reviewFlagged": "Flagged for review"
     },
     "export": {
       "title": "Export",

@@ -522,6 +522,34 @@ model SalesOrder {
    */
   requestKey String?
 
+  /* SEC.12 — the two identities the order-abuse rules count on.
+   *
+   * The threat is one person placing many real-looking orders with a fresh
+   * name, phone and address each time: sabotage rather than fraud, and
+   * invisible to anything keyed on the customer's own details, because those
+   * are exactly what is being randomised.
+   *
+   * `deviceToken` is AN.2's `landingos_visitor_id` — localStorage, origin
+   * scoped, already minted on every storefront page view and already stored on
+   * `StorefrontVisit`. Reusing it rather than minting a second cookie means an
+   * order and that browser's page views carry the SAME marker, which is what
+   * makes an investigation possible at all. Null for a caller that sent none
+   * (private browsing, or any non-browser client).
+   *
+   * `ipHash` is a keyed hash of the customer's address, NEVER the address.
+   * This platform stores no customer IP anywhere — the visit table deliberately
+   * holds a meaningless random id instead — and grouping is the only thing the
+   * rule needs, which is all a hash gives up. Rotating AUTH_SECRET re-keys it
+   * and breaks historical grouping, consistent with how rotation already
+   * invalidates every other stored secret.
+   *
+   * Both are pseudonymous and both are kept: "every order from this device
+   * this month" is the question a sabotage investigation actually asks, and it
+   * is unanswerable if the marker is pruned.
+   */
+  deviceToken String?
+  ipHash      String?
+
   landingPage   LandingPage              @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
   statusHistory SalesOrderStatusHistory[]
 
@@ -538,6 +566,12 @@ model SalesOrder {
   @@index([tenantId, status])
   @@index([tenantId, landingPageId])
   @@index([tenantId, phone])
+  // SEC.12 — the windowed counts seek on the identity and bound on time, so
+  // both columns lead and `createdAt` closes. Unlike the phone key, which rides
+  // `FulfillmentOrder`'s existing `[tenantId, phoneNormalized]`, these two are
+  // new ground and need their own.
+  @@index([tenantId, deviceToken, createdAt])
+  @@index([tenantId, ipHash, createdAt])
 }
 
 // Timestamped record of every status transition, including the initial NEW
