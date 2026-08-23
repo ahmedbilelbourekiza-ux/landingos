@@ -10,6 +10,93 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## LB.57 — the abandoned cart reaches the ERP, so somebody rings the customer
+
+**DEPLOYED 23 Aug 2026, live 01:15:37 UTC** — `origin/main` = `46d6c34`
+(`ab06752..46d6c34`, ref-mapped; rollback `ab06752`), Bilel attending.
+**One migration**, applied to Supabase BEFORE the push: one nullable column,
+its unique index, one SetNull FK. Production re-checked after both steps —
+**63 tables and RLS 57 unchanged**, merchant data untouched (Tenant 3,
+SalesOrder 2, LandingPage 2, DraftOrder 3, AdAccount 1, AdSpendDaily 30).
+
+**What was wrong.** `DraftOrder` had no reader anywhere beneath `api/erp`,
+`console/erp` or `lib/erp` — not one. The storefront captured abandoned carts
+and the *builder* listed them; the call-centre never saw them. The identical
+record arriving from a Shopify store DID become a callable order
+(`lead-capture`), so the platform treated its own storefront worse than
+somebody else's. Nothing failed and nothing logged, because the defect was a
+write that had never been written — which is exactly why every route test
+passed. Found by investigation, not by an alarm.
+
+**The bridge.** `fulfilmentFromDraft` is the counterpart of
+`fulfilmentFromSale`: a domain event inside the capture route's own
+transaction, not a network hop between two products sharing one database.
+Gated on `hasErp`, so a tenant without the ERP still sells and still
+abandons. `price` is FORCED to zero — `DraftBody` accepts no price fields, so
+any figure would be invented — and the client/product lifetime counters are
+deliberately skipped, matching `lead-capture`.
+
+**Idempotency is the DATABASE's.** `FulfillmentOrder.draftOrderId` is unique,
+so two captures racing cannot both win; a check-then-insert would have looked
+safer and been racy. `SetNull` like `salesOrderId`, so a lead an agent has
+already phoned survives its landing page being deleted.
+
+**NOT gated on the route's `leadArrived` flag** — a deliberate deviation.
+`use-draft-capture` fires at SIX digits (`isWorthSaving`) and an Algerian
+mobile is ten, so the first capture carrying a phone frequently carries a
+half-typed, uncallable one. The condition is "no row yet AND the number is
+callable" at `lead-capture`'s own `>= 8` threshold, which also catches the
+visitor whose first debounce got half the number and whose second got the
+rest. Later captures top up BLANKS ONLY — except a corrected phone, which
+replaces the stored one, because this link is per visitor rather than per
+phone.
+
+**DECISION 1 (Bilel): these leads are meant to be WORKED.** They land as
+`orderType: "abandoned"` + `status: "pending"` — active, queued, workable.
+That needed **no change to `TERMINAL_STATUSES`**, and that restraint is the
+point: editing the shared constant would have silently promoted every
+`lead-capture` row into the call queue too, and those come from an
+unauthenticated public endpoint that must never be able to fill it. It is
+also not a new pattern — a Shopify `checkouts/*` webhook has landed exactly
+this way all along (`webhook-route.ts` marks the type, `webhooks.ts` sets the
+status), and `orderRowFacts` flags a row abandoned on `orderType` ALONE.
+
+**DECISION 2 (Bilel): no retroactive backfill.** New drafts only; the one
+existing unconverted draft in production was left untouched.
+
+**Conversion promotes IN PLACE.** The abandoned row BECOMES the order,
+keeping its reference, its agent and its `OrderCall` history, guarded
+atomically by `salesOrderId IS NULL`. Two rows would mean two ORD numbers and
+two notifications for one customer. Because the lead was never counted, the
+promoted sale counts exactly once — the two decisions hold each other up. The
+checkout's `updateMany` kept its atomic guard; a `findUnique` was added
+alongside it purely to supply the id, since `updateMany` returns a count.
+
+**Files:** `src/lib/erp/from-draft.ts` (new), `src/lib/erp/from-sale.ts`,
+`src/app/api/storefront/[tenant]/draft-orders/route.ts`,
+`src/app/api/storefront/[tenant]/orders/route.ts`,
+`packages/db/prisma/schema/{erp,builder}.prisma`,
+`test/erp/abandoned-bridge.test.ts` (new), `test/erp/helpers.ts`.
+
+**Migration:** `FulfillmentOrder.draftOrderId TEXT NULL` + unique index +
+FK to `DraftOrder(id)` ON DELETE SET NULL. Additive; no backfill; no RLS
+change (the table already carries `tenant_isolation`).
+
+**Tests:** 651 green — 12 new, including reachability against the RENDERED
+orders screen and the agent queue (the LB.23b lesson: a route test cannot see
+that nothing reaches the route), the once-only guard, the never-overwrite
+top-up, the partial-phone case, `hasErp:false`, and promotion asserting
+exactly one row survives. A `lead-capture`-shaped row is pinned OUT of the
+queue in the same suite, so decision 1 cannot leak later. `tsc` unchanged at
+its 277 baseline.
+
+**Risk:** the bridge is deployed but has NOT yet fired in production — no
+draft has been captured since the deploy, and `FulfillmentOrder` is still 0.
+Its first real exercise will be the next abandoned cart on the live
+storefront. An attended prod fixture check remains available and unrun.
+
+---
+
 ## DB.1 — the Supabase cutover: production's database moved, attended end to end
 
 **DONE 22–23 Aug 2026 (overnight, Bilel attending and approving each phase).**

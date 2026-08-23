@@ -15,6 +15,56 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✅ 23 Aug 2026 — LB.57 IS LIVE: the abandoned cart now reaches the ERP
+>
+> **`origin/main` = `46d6c34`, live 01:15:37 UTC** (`ab06752..46d6c34`,
+> ref-mapped; **rollback `ab06752`**), Bilel attending. The Supabase cutover
+> banner immediately below remains the DATABASE record and is unchanged by
+> this — LB.57 is the first slice deployed onto Supabase.
+>
+> **ONE MIGRATION, applied to Supabase BEFORE the push** (the safe order: the
+> column is additive and nullable, so the old code ran against the new schema
+> without ever referencing it). `FulfillmentOrder.draftOrderId TEXT NULL` +
+> unique index + FK to `DraftOrder(id)` **ON DELETE SET NULL**. Verified in
+> `information_schema`/`pg_constraint`: nullable YES, `confdeltype = n`.
+> **63 tables and RLS 57 both UNCHANGED** (no new table, and the table already
+> carried `tenant_isolation`). Merchant data untouched across both steps:
+> Tenant 3, SalesOrder 2, LandingPage 2, DraftOrder 3, AdAccount 1,
+> AdSpendDaily 30.
+>
+> **What it fixes.** `DraftOrder` had NO reader anywhere beneath `api/erp`,
+> `console/erp` or `lib/erp`. Abandoned carts reached the builder's list and
+> never the call-centre, while the same record from a Shopify store became a
+> callable order. `fulfilmentFromDraft` is the counterpart of
+> `fulfilmentFromSale` — in the capture route's own transaction, gated on
+> `hasErp`, `price` forced to 0, idempotent on a UNIQUE `draftOrderId`.
+> Conversion PROMOTES IN PLACE, so one customer keeps one ORD number, one
+> agent and one call history. Full reasoning: CHANGELOG §LB.57.
+>
+> **⚠ DEPLOYED BUT NOT YET EXERCISED IN PRODUCTION.** `FulfillmentOrder` is
+> still 0 — decision 2 was NO backfill, so the one existing unconverted draft
+> was deliberately left alone, and no new cart has been abandoned since the
+> deploy. **The first real proof will be the next abandoned cart on the live
+> storefront** (or an attended fixture run, which remains available and
+> unrun). Dev proof is 651 tests green, 12 of them new, including reachability
+> against the RENDERED orders screen and agent queue.
+>
+> **⚠ NO PUBLIC MARKER for this range.** The capture endpoint answers 204
+> whatever it does, and this build inlines its CSS with content-hashed chunks,
+> so there is no build-id token in the HTML. The page checksum is NOT a marker
+> either — measured 23 Aug, it varies over time within one deploy. The Render
+> API `live` entry is the only proof of what is running. See
+> [[deploy-record-gap]].
+>
+> **Decision 1 (Bilel), and the restraint that made it safe:** storefront
+> leads land `orderType: "abandoned"` + `status: "pending"` so they are
+> active, queued and workable — achieved with **NO change to
+> `TERMINAL_STATUSES`**. Editing that shared constant would have dragged every
+> `lead-capture` row into the call queue too, and those come from an
+> unauthenticated public endpoint. A test pins a `lead-capture`-shaped row OUT
+> of the queue so this cannot regress.
+
+
 > ### ⚡ 23 Aug 2026 — THE PRODUCTION DATABASE IS NOW SUPABASE (attended cutover, Bilel approving every phase)
 >
 > **`PLATFORM_DATABASE_URL` on Render now points at Supabase project
