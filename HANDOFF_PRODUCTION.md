@@ -49,12 +49,23 @@ remain the deep references.
 > unrun). Dev proof is 651 tests green, 12 of them new, including reachability
 > against the RENDERED orders screen and agent queue.
 >
-> **⚠ NO PUBLIC MARKER for this range.** The capture endpoint answers 204
-> whatever it does, and this build inlines its CSS with content-hashed chunks,
-> so there is no build-id token in the HTML. The page checksum is NOT a marker
-> either — measured 23 Aug, it varies over time within one deploy. The Render
-> API `live` entry is the only proof of what is running. See
-> [[deploy-record-gap]].
+> **Marker: build id `NSW375b1ScYbs9f4wOjiH`** on
+> `https://selliora1.com/dedima` (200, 503,710 bytes).
+> **⚠ CORRECTION — this record first said the range had NO public marker.**
+> That was wrong, and wrong in an avoidable way: it was measured on the
+> marketing root and `/console/login`, and the build id rides in STOREFRONT
+> flight data, exactly as [[deploy-marker-buildid]] already documented with the
+> `/dedima` command. Because no pre-push baseline was taken, the proof that
+> `46d6c34` went live is the Render API `live` entry, not an id flip — capture
+> the id BEFORE pushing next time. Separately measured and TRUE: the page
+> checksum is NOT a marker, it varies over time within a single deploy.
+>
+> **The marker was then proven on the very next deploy.** The docs commit
+> `c190b06` (live 01:23:21 UTC) flipped the id
+> `NSW375b1ScYbs9f4wOjiH` → `lTKOPsVCC0xtpckU8VQ-7` with the storefront
+> **byte-identical at 503,710** — a new build id and not one other byte
+> changed, which is exactly what a docs-only commit should look like and
+> confirms the id is a real, credential-free deploy marker.
 >
 > **Decision 1 (Bilel), and the restraint that made it safe:** storefront
 > leads land `orderType: "abandoned"` + `status: "pending"` so they are

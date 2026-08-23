@@ -95,6 +95,18 @@ draft has been captured since the deploy, and `FulfillmentOrder` is still 0.
 Its first real exercise will be the next abandoned cart on the live
 storefront. An attended prod fixture check remains available and unrun.
 
+**Marker:** build id `NSW375b1ScYbs9f4wOjiH` on `https://selliora1.com/dedima`
+(200, 503,710 bytes). **Correction to this entry as first written:** it claimed
+the range had no public marker. That was wrong — it was measured on the
+marketing root and `/console/login`, neither of which is a storefront page, and
+[[deploy-marker-buildid]] says plainly that the id rides in STOREFRONT flight
+data. No pre-push baseline was captured for this deploy as a result, so the
+evidence that `46d6c34` went live is the Render API `live` entry rather than an
+id flip. Separately measured and true: the page CHECKSUM is not a marker — it
+varies over time within one deploy. The marker itself was proven on the next
+deploy: docs commit `c190b06` (live 01:23:21 UTC) flipped the id to
+`lTKOPsVCC0xtpckU8VQ-7` with the storefront byte-identical at 503,710.
+
 ---
 
 ## DB.1 — the Supabase cutover: production's database moved, attended end to end
