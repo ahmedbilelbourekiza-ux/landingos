@@ -12,8 +12,33 @@ touched, any **migration**, and any **risk**.
 
 ## PM.3 — the optimizer stops generating variants larger than the source
 
-**Committed 23 Aug 2026. NOT DEPLOYED — held for go-ahead.** No migration, no
-env change: six characters of `next.config.ts`.
+**DEPLOYED 23 Aug 2026, live 18:47 UTC** — `origin/main` = `6acb18a`
+(`ff7dc0d..6acb18a`, ref-mapped, one commit; rollback `ff7dc0d`). No migration
+(zero `packages/db` files, asserted), no env change: one line of
+`next.config.ts`.
+
+**The srcset itself was the deploy marker**, which is better than the build id
+here because it is specific to the change: `w=3840` went from 13 occurrences to
+0 about 3.5 minutes after the push. Build id
+`C6VJgHaH6a96NPZNToUyP` → `S_46wTolg8kV81DMEc6sY`; storefront 200 and
+504,235 → 502,331 bytes (~1.9 KB less srcset text on every page view); title
+intact, 12 scripts, health 200 `database: ok`, console/login 200.
+
+**Verified on production, not inferred:** `w=640` / `w=1080` / `w=1920` all
+serve `image/webp` 200 (72 KB / 158 KB / 214 KB); `w=2048` and `w=3840` now
+answer **400**, which is correct — Next refuses widths outside `deviceSizes`
+and nothing requests them any more.
+
+**An extra win that was not in the plan.** Next sets the `src` fallback to the
+LARGEST `deviceSize`, so **six images on the page were pointing at `w=3840`** —
+meaning any client that ignored the srcset, and the preload path, fetched the
+single most expensive variant. Those six now point at `w=1920`.
+
+**Correction to my own estimate:** I predicted the production page would go
+from 68 optimizer URLs to about 48. The real figure is **68 → 58 (−15%)**. The
+prediction conflated width *occurrences* in the markup (20 removed) with
+*distinct URLs* (10 removed), because the same URL appears in several srcsets.
+The saving is real and smaller than advertised.
 
 **The finding, measured on the live storefront.** One page load asks the image
 optimizer for **68 distinct variants**, and **20 of them (w=2048 ×7, w=3840
