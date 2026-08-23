@@ -4,7 +4,13 @@ import assert from 'node:assert/strict';
 import { asPlatform, withTenant, disconnect, deleteTenant } from '@landingos/db';
 import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } from '@landingos/auth';
 
-import { allowRequest, clientIp, trustedClientIp } from '../src/lib/storefront/rate-limit.ts';
+import {
+  allowRequest,
+  clientIp,
+  trustedClientIp,
+  endUserIp,
+  resolveClientIdentity,
+} from '../src/lib/storefront/rate-limit.ts';
 import { refuseWebhookUrl } from '../src/lib/webhooks/url-guard.ts';
 
 /* =============================================================================
@@ -108,6 +114,213 @@ describe('clientIp — the trusted hop (pure)', () => {
     assert.equal(trustedClientIp(headers({ 'x-forwarded-for': '1.2.3.4, 203.0.113.9' })), '203.0.113.9');
     assert.equal(trustedClientIp(headers({ 'x-forwarded-for': 'junk' })), null);
     assert.equal(trustedClientIp(headers({})), null);
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * SEC.10 — the hop SEC.6 landed on was OUR OWN ROUTER.
+ *
+ * Production is Cloudflare → Render → us, so the chain read out of `Session.ip`
+ * on 23 Aug was, on every single session:
+ *
+ *     <customer, public>, <Cloudflare egress, public>, <Render router, PRIVATE>
+ *
+ * SEC.6's "last entry" was therefore an RFC1918 address identical for every
+ * customer alive: one global bucket per endpoint, and a private address posted
+ * to Meta as `client_ip_address`. These tests pin the two halves of the fix —
+ * trust Cloudflare's own header when configured to, and otherwise skip our
+ * plumbing — and re-pin, under BOTH configurations, the bypass SEC.6 closed.
+ * -------------------------------------------------------------------------- */
+
+/** The exact production shape, with the customer at the far left. */
+const PROD_CHAIN = (customer: string) => `${customer}, 172.71.150.22, 10.203.4.17`;
+
+/** Run `body` with the Cloudflare trust flag forced on or off. */
+function withCloudflareTrust<T>(on: boolean, body: () => T): T {
+  const previous = process.env.TRUST_CLOUDFLARE_CLIENT_IP;
+  if (on) process.env.TRUST_CLOUDFLARE_CLIENT_IP = '1';
+  else delete process.env.TRUST_CLOUDFLARE_CLIENT_IP;
+  try {
+    return body();
+  } finally {
+    if (previous === undefined) delete process.env.TRUST_CLOUDFLARE_CLIENT_IP;
+    else process.env.TRUST_CLOUDFLARE_CLIENT_IP = previous;
+  }
+}
+
+describe('SEC.10 — behind Cloudflare, the customer is the customer again', () => {
+  test('THE BUG: the real production chain no longer collapses onto one private hop', () => {
+    // Three different customers, same infrastructure behind them. Before the
+    // fix all three keyed on 10.203.4.17 and shared one budget.
+    withCloudflareTrust(false, () => {
+      const keys = new Set(
+        ['41.100.1.5', '41.100.2.6', '41.100.3.7'].map((c) => clientIp(headers({ 'x-forwarded-for': PROD_CHAIN(c) }))),
+      );
+      assert.equal(keys.has('10.203.4.17'), false, 'the private Render hop must never be the key');
+      // Without Cloudflare's header the best nameable hop is its egress — one
+      // step coarse, but public, edge-written and no longer global.
+      assert.deepEqual([...keys], ['172.71.150.22']);
+    });
+  });
+
+  test('with the flag on, each customer gets their own bucket and the budget is per person', () => {
+    withCloudflareTrust(true, () => {
+      const bucket = `sec10-${Date.now()}`;
+      // Twelve requests from ONE customer against a limit of 5: five through.
+      let allowed = 0;
+      for (let i = 0; i < 12; i++) {
+        const h = headers({ 'cf-connecting-ip': '41.100.1.5', 'x-forwarded-for': PROD_CHAIN('41.100.1.5') });
+        if (allowRequest(bucket, clientIp(h), 5, 60_000)) allowed++;
+      }
+      assert.equal(allowed, 5, 'one customer is still bounded');
+
+      // A DIFFERENT customer arriving through the same infrastructure is not
+      // punished for the first one — the whole point of the fix.
+      const other = headers({ 'cf-connecting-ip': '41.100.9.9', 'x-forwarded-for': PROD_CHAIN('41.100.9.9') });
+      assert.equal(allowRequest(bucket, clientIp(other), 5, 60_000), true);
+    });
+  });
+
+  test('the Cloudflare header wins over the forwarded chain, and names the end user', () => {
+    withCloudflareTrust(true, () => {
+      const h = headers({ 'cf-connecting-ip': '41.100.1.5', 'x-forwarded-for': PROD_CHAIN('41.100.1.5') });
+      assert.deepEqual(resolveClientIdentity(h), {
+        ip: '41.100.1.5',
+        source: 'cloudflare',
+        isEndUser: true,
+      });
+      assert.equal(endUserIp(h), '41.100.1.5', 'this is what Meta CAPI must receive');
+    });
+  });
+
+  test('THE BYPASS PATH: with the flag off, a forged CF-Connecting-IP is ignored entirely', () => {
+    // The direct-to-origin shape. If this header were believed unconditionally,
+    // rotating it would be SEC.6's bypass with a new header name.
+    withCloudflareTrust(false, () => {
+      const keys = new Set<string>();
+      for (let i = 0; i < 25; i++) {
+        keys.add(clientIp(headers({ 'cf-connecting-ip': `1.2.3.${i}`, 'x-forwarded-for': PROD_CHAIN('41.100.1.5') })));
+      }
+      assert.deepEqual([...keys], ['172.71.150.22'], '25 forged values must collapse to the one edge-written hop');
+    });
+  });
+
+  test('a forged CF-Connecting-IP cannot mint buckets even WITH the flag on, if it is not public', () => {
+    // Behind Cloudflare the header is overwritten, so this cannot happen — the
+    // check is here so a future front layer that passes it through cannot turn
+    // private-address rotation into free buckets.
+    withCloudflareTrust(true, () => {
+      const keys = new Set<string>();
+      for (let i = 1; i < 20; i++) {
+        keys.add(clientIp(headers({ 'cf-connecting-ip': `10.0.0.${i}`, 'x-forwarded-for': PROD_CHAIN('41.100.1.5') })));
+      }
+      assert.deepEqual([...keys], ['172.71.150.22'], 'private forgeries fall through to the chain');
+    });
+  });
+
+  test('SEC.6 STAYS CLOSED under both configurations: a prepended prefix buys nothing', () => {
+    for (const on of [false, true]) {
+      withCloudflareTrust(on, () => {
+        const keys = new Set<string>();
+        for (let i = 0; i < 25; i++) {
+          // Attacker prepends whatever they like; the edge appends the truth.
+          keys.add(clientIp(headers({ 'x-forwarded-for': `9.9.9.${i}, 198.51.100.${i}, 203.0.113.9` })));
+        }
+        assert.deepEqual([...keys], ['203.0.113.9'], `flag=${on}: prefixes must collapse to the appended hop`);
+      });
+    }
+  });
+
+  test('Meta and TikTok get the end user or nothing, never a proxy', () => {
+    withCloudflareTrust(false, () => {
+      const h = headers({ 'x-forwarded-for': PROD_CHAIN('41.100.1.5') });
+      const identity = resolveClientIdentity(h);
+      assert.equal(identity.ip, '172.71.150.22', 'the limiter still gets a usable key');
+      assert.equal(identity.isEndUser, false, 'but it is Cloudflare, not the customer');
+      assert.equal(endUserIp(h), null, 'so no IP is reported rather than a wrong one');
+    });
+    // A single-proxy deployment IS talking to the end user directly.
+    withCloudflareTrust(false, () => {
+      assert.equal(endUserIp(headers({ 'x-forwarded-for': '203.0.113.9' })), '203.0.113.9');
+      assert.equal(endUserIp(headers({ 'x-real-ip': '203.0.113.77' })), '203.0.113.77');
+      assert.equal(endUserIp(headers({})), null);
+    });
+  });
+
+  test('internal ranges are recognised in both families; documentation ranges are not', () => {
+    withCloudflareTrust(false, () => {
+      // Each of these is our own plumbing and must be walked past.
+      const internal = [
+        '10.203.4.17', '127.0.0.1', '172.16.0.1', '172.31.255.254', '192.168.1.1',
+        '169.254.10.10', '100.64.0.1', '100.127.255.255', '0.0.0.0',
+        'fd00::1', 'fc00::abcd', 'fe80::1', '::1', '::ffff:10.0.0.1',
+      ];
+      for (const hop of internal) {
+        assert.equal(
+          clientIp(headers({ 'x-forwarded-for': `203.0.113.9, ${hop}` })),
+          '203.0.113.9',
+          `${hop} should be skipped as infrastructure`,
+        );
+      }
+      // …and each of these is a perfectly ordinary public address that must be
+      // taken as-is, including the reserved-for-documentation blocks the rest
+      // of this suite is written in.
+      const publicIsh = ['203.0.113.9', '198.51.100.4', '2001:db8::1', '::ffff:198.51.100.4', '172.32.0.1', '100.63.255.255', '8.8.8.8'];
+      for (const hop of publicIsh) {
+        assert.equal(
+          clientIp(headers({ 'x-forwarded-for': `1.2.3.4, ${hop}` })),
+          hop,
+          `${hop} should be taken as the nearest hop`,
+        );
+      }
+    });
+  });
+
+  test('an all-internal chain keeps ONE bounded bucket rather than becoming unlimited', () => {
+    withCloudflareTrust(false, () => {
+      // Nothing nameable in here. Fail closed: a stable shared key, and no
+      // claim that any of it is a customer.
+      const h = headers({ 'x-forwarded-for': '10.0.0.1, 10.203.4.17' });
+      assert.deepEqual(resolveClientIdentity(h), {
+        ip: '10.203.4.17',
+        source: 'forwarded',
+        isEndUser: false,
+      });
+      assert.equal(endUserIp(h), null);
+    });
+  });
+
+  test('the walk stops at garbage instead of guessing past it', () => {
+    withCloudflareTrust(false, () => {
+      // `junk` could be hiding anything; reading past it would be trusting a
+      // caller-supplied prefix again. The readable near hop is kept as the key.
+      const h = headers({ 'x-forwarded-for': '203.0.113.9, junk, 10.203.4.17' });
+      assert.equal(clientIp(h), '10.203.4.17');
+      assert.equal(endUserIp(h), null);
+      // And a wholly unreadable header still refuses to reach X-Real-IP.
+      assert.equal(clientIp(headers({ 'x-forwarded-for': 'junk', 'x-real-ip': '203.0.113.77' })), 'unknown');
+    });
+  });
+
+  test('the flag is off unless the deployment says otherwise, and only for real values', () => {
+    const h = headers({ 'cf-connecting-ip': '41.100.1.5', 'x-forwarded-for': PROD_CHAIN('41.100.1.5') });
+    for (const value of [undefined, '', '0', 'false', 'no', 'yes-please']) {
+      const previous = process.env.TRUST_CLOUDFLARE_CLIENT_IP;
+      if (value === undefined) delete process.env.TRUST_CLOUDFLARE_CLIENT_IP;
+      else process.env.TRUST_CLOUDFLARE_CLIENT_IP = value;
+      try {
+        assert.equal(clientIp(h), '172.71.150.22', `TRUST_CLOUDFLARE_CLIENT_IP=${String(value)} must not enable trust`);
+      } finally {
+        if (previous === undefined) delete process.env.TRUST_CLOUDFLARE_CLIENT_IP;
+        else process.env.TRUST_CLOUDFLARE_CLIENT_IP = previous;
+      }
+    }
+    for (const value of ['1', 'true', 'TRUE']) {
+      withCloudflareTrust(false, () => {
+        process.env.TRUST_CLOUDFLARE_CLIENT_IP = value;
+        assert.equal(clientIp(h), '41.100.1.5', `TRUST_CLOUDFLARE_CLIENT_IP=${value} must enable trust`);
+      });
+    }
   });
 });
 

@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { withTenant } from "@landingos/db";
 
 import { tenantBySlug, currentOrigin, storefrontHref } from "@/lib/storefront/resolve-tenant";
-import { allowRequest, clientIp, trustedClientIp, draftLimit } from "@/lib/storefront/rate-limit";
+import { allowRequest, clientIp, endUserIp, draftLimit } from "@/lib/storefront/rate-limit";
 import { DraftBody } from "@/lib/storefront/contract";
 import { triggerDraftOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 import { dispatchTrackingEvent } from "@/lib/tracking/dispatch";
@@ -179,7 +179,9 @@ export async function POST(
           contentId: landingPageId,
           customer: { name: fields.customerName ?? null, phone: fields.phone },
           context: {
-            ip: trustedClientIp(req),
+            // SEC.10 — the END USER's address or nothing; see the checkout
+            // route's note. A Lead carrying a proxy IP matches nobody.
+            ip: endUserIp(req),
             userAgent: req.headers.get("user-agent"),
             fbc: fbc ?? null,
             fbp: fbp ?? null,

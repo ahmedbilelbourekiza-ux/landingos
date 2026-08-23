@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { Prisma, withTenant } from "@landingos/db";
 
 import { tenantBySlug, currentOrigin, storefrontHref } from "@/lib/storefront/resolve-tenant";
-import { allowRequest, clientIp, trustedClientIp, checkoutLimit } from "@/lib/storefront/rate-limit";
+import { allowRequest, clientIp, endUserIp, checkoutLimit } from "@/lib/storefront/rate-limit";
 import { CheckoutBody } from "@/lib/storefront/contract";
 import { deriveSource } from "@/lib/storefront/traffic-source";
 import { deliveryPricesFor, priceForMethod } from "@/lib/storefront/delivery";
@@ -257,7 +257,11 @@ export async function POST(
       quantity: input.quantity,
       customer: { name: input.customerName, phone: input.phone },
       context: {
-        ip: trustedClientIp(req),
+        // SEC.10 — the END USER's address or nothing. Meta and TikTok match on
+        // this field, so a proxy's address is a confident wrong answer rather
+        // than a missing one; between 21 and 23 Aug this sent a private Render
+        // address on every order.
+        ip: endUserIp(req),
         userAgent: req.headers.get("user-agent"),
         fbc: input.fbc ?? null,
         fbp: input.fbp ?? null,

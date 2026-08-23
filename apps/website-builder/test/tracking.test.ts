@@ -398,6 +398,74 @@ describe('server-side conversion events reach every configured platform', { skip
     assert.ok(ga4.path.includes('api_secret=ga4-secret'));
   });
 
+  /* SEC.10 — end to end, through the real route, on the real chain shape.
+   *
+   * Between 21 and 23 Aug every Purchase reaching Meta carried `10.203.4.17`-
+   * shaped junk as `client_ip_address`, because the route read the LAST
+   * forwarded hop and that hop is Render's own router. This drives the actual
+   * three-hop production shape at the HTTP boundary and reads what the stub
+   * was handed.
+   *
+   * The suite mirrors the SERVER's `TRUST_CLOUDFLARE_CLIENT_IP`, the same way
+   * outbound-guard mirrors `OUTBOUND_PRIVATE_ALLOWLIST`: run the server and
+   * the runner with the same value, and both branches below are real. */
+  test('SEC.10 — the ad platforms get the CUSTOMER address or none, never a proxy', async () => {
+    const flag = process.env.TRUST_CLOUDFLARE_CLIENT_IP;
+    const serverTrustsCloudflare = flag === '1' || flag?.toLowerCase() === 'true';
+    const customer = '41.100.77.42';
+
+    // (a) The production shape: customer, Cloudflare egress, Render router.
+    const viaCloudflare = await fetch(`${BASE}/api/storefront/${slug}/orders`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'user-agent': 'TrackTest/1.0',
+        'cf-connecting-ip': customer,
+        'x-forwarded-for': `${customer}, 172.71.150.22, 10.203.4.17`,
+      },
+      body: JSON.stringify({
+        landingPageId: pageId, customerName: 'Chain Buyer', phone: '0555987001',
+        wilayaId, baladiaName: 'Centre', quantity: 1, shippingMethod: 'HOME',
+      }),
+    }).then((r) => r.json());
+    assert.ok(viaCloudflare.success, JSON.stringify(viaCloudflare));
+
+    const chained = await waitFor(() =>
+      hits.find((h) => h.body?.data?.[0]?.event_id === viaCloudflare.data.id && h.path.includes('/999888777666/events')));
+    const chainedIp = chained.body.data[0].user_data.client_ip_address;
+
+    assert.notEqual(chainedIp, '10.203.4.17', 'THE BUG: our own router must never be reported as the customer');
+    assert.notEqual(chainedIp, '172.71.150.22', "and neither may Cloudflare's egress");
+    if (serverTrustsCloudflare) {
+      assert.equal(chainedIp, customer, 'behind Cloudflare the real customer is known and sent');
+    } else {
+      assert.equal(chainedIp, undefined, 'unconfigured, the field is omitted rather than guessed');
+    }
+
+    // (b) The single-proxy shape: whoever the edge saw IS the end user, and
+    //     that address must reach the platforms under either configuration.
+    const direct = '41.100.88.51';
+    const single = await fetch(`${BASE}/api/storefront/${slug}/orders`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': direct },
+      body: JSON.stringify({
+        landingPageId: pageId, customerName: 'Direct Buyer', phone: '0555987002',
+        wilayaId, baladiaName: 'Centre', quantity: 1, shippingMethod: 'HOME',
+      }),
+    }).then((r) => r.json());
+    assert.ok(single.success, JSON.stringify(single));
+
+    const solo = await waitFor(() =>
+      hits.find((h) => h.body?.data?.[0]?.event_id === single.data.id && h.path.includes('/999888777666/events')));
+    assert.equal(solo.body.data[0].user_data.client_ip_address, direct);
+
+    // TikTok reads the same context through its own field name, so a fix that
+    // only reached Meta would show up here.
+    const tt = await waitFor(() =>
+      hits.find((h) => h.body?.data?.[0]?.event_id === single.data.id && h.path.includes('/event/track')));
+    assert.equal(tt.body.data[0].user.ip, direct);
+  });
+
   test('a captured lead fans out as Lead', async () => {
     const token = `tok-${stamp}-tracklead`;
     await fetch(`${BASE}/api/storefront/${slug}/draft-orders`, {
