@@ -10,6 +10,10 @@ import {
   derivedAdMetrics,
   formatSpend,
   META_GRAPH_VERSION,
+  metaReportedRoas,
+  buildReachRequest,
+  parseReachRow,
+  type DailySpendRow,
 } from '../src/lib/ads/spend-math.ts';
 import { toString } from '../src/lib/money.ts';
 
@@ -22,6 +26,9 @@ import { toString } from '../src/lib/money.ts';
  * is in, whether a day is real, and whether a ratio may be produced at all.
  * -------------------------------------------------------------------------- */
 
+/* ME.B widened DailySpendRow; legacy literals spread this to stay honest
+ * about what those windows never reported. */
+const NA = { linkClicks: null, metaPurchases: null, metaPurchaseValue: null } as const;
 const cfg = { token: 'T0KEN', accountId: '730934849575452' };
 const range = { since: '2026-08-01', until: '2026-08-07' };
 
@@ -95,6 +102,7 @@ describe('parseInsightsRows — absent is absent, never zero', () => {
     assert.equal(rows.length, 2);
     assert.deepEqual(rows[0], {
       date: '2026-08-01', spend: '12.34', currency: 'USD', impressions: 1000, clicks: 42,
+      linkClicks: null, metaPurchases: null, metaPurchaseValue: null,
     });
     // A reported 0 is a real day and must survive: the account was live and
     // spent nothing. That is different from a day Meta never mentioned.
@@ -129,7 +137,7 @@ describe('parseInsightsRows — absent is absent, never zero', () => {
 });
 
 describe('summariseSpend — and the currency it refuses to lose', () => {
-  const usd = (date: string, spend: string) => ({ date, spend, currency: 'USD', impressions: 10, clicks: 1 });
+  const usd = (date: string, spend: string) => ({ date, spend, currency: 'USD', impressions: 10, clicks: 1, ...NA });
 
   test('totals exactly, in decimal, with no float drift', () => {
     const s = summariseSpend([usd('2026-08-01', '0.10'), usd('2026-08-02', '0.20')]);
@@ -160,7 +168,7 @@ describe('summariseSpend — and the currency it refuses to lose', () => {
 
 describe('costPerOrder — answerable, or honestly null', () => {
   const summary = summariseSpend([
-    { date: '2026-08-01', spend: '100.00', currency: 'USD', impressions: 0, clicks: 0 },
+    { date: '2026-08-01', spend: '100.00', currency: 'USD', impressions: 0, clicks: 0, ...NA },
   ]);
 
   test('divides in the SPEND currency and says which one', () => {
@@ -201,7 +209,7 @@ describe('crossCurrencyRatio — the refusal, in one place', () => {
 describe('ME.A — derivedAdMetrics: three ratios from stored sums, or honestly null', () => {
   test('CTR, CPC and CPM from a known window, exact to the cent', () => {
     const summary = summariseSpend([
-      { date: '2026-08-01', spend: '12.00', currency: 'USD', impressions: 4000, clicks: 80 },
+      { date: '2026-08-01', spend: '12.00', currency: 'USD', impressions: 4000, clicks: 80, ...NA },
     ]);
     const d = derivedAdMetrics(summary);
     assert.equal(toString(d.ctr!, 2), '2.00'); // 80 of 4000
@@ -211,7 +219,7 @@ describe('ME.A — derivedAdMetrics: three ratios from stored sums, or honestly 
 
   test('impressions with zero clicks is a REAL 0% CTR — only CPC is unanswerable', () => {
     const summary = summariseSpend([
-      { date: '2026-08-01', spend: '5.00', currency: 'USD', impressions: 1000, clicks: 0 },
+      { date: '2026-08-01', spend: '5.00', currency: 'USD', impressions: 1000, clicks: 0, ...NA },
     ]);
     const d = derivedAdMetrics(summary);
     assert.equal(toString(d.ctr!, 2), '0.00');
@@ -221,7 +229,7 @@ describe('ME.A — derivedAdMetrics: three ratios from stored sums, or honestly 
 
   test('zero impressions answers nothing that divides by them', () => {
     const summary = summariseSpend([
-      { date: '2026-08-01', spend: '5.00', currency: 'USD', impressions: 0, clicks: 0 },
+      { date: '2026-08-01', spend: '5.00', currency: 'USD', impressions: 0, clicks: 0, ...NA },
     ]);
     const d = derivedAdMetrics(summary);
     assert.equal(d.ctr, null);
@@ -231,6 +239,105 @@ describe('ME.A — derivedAdMetrics: three ratios from stored sums, or honestly 
 
   test('an empty window (no currency) derives nothing at all', () => {
     const d = derivedAdMetrics(summariseSpend([]));
-    assert.deepEqual(d, { ctr: null, costPerClick: null, cpmPerMille: null });
+    assert.deepEqual(d, { ctr: null, costPerClick: null, cpmPerMille: null, linkCtr: null, costPerLinkClick: null });
+  });
+});
+
+describe('ME.B — the wire asks for the link and attribution fields', () => {
+  test('the daily request names inline_link_clicks, actions and action_values', () => {
+    const wire = buildInsightsRequest({ token: 't', accountId: '123' }, { since: '2026-08-01', until: '2026-08-07' });
+    for (const f of ['inline_link_clicks', 'actions', 'action_values']) {
+      assert.ok(decodeURIComponent(wire.url).includes(f), `${f} must be requested`);
+    }
+  });
+
+  test('the reach request is UN-incremented — reach cannot be summed from days', () => {
+    const wire = buildReachRequest({ token: 't', accountId: '123' }, { since: '2026-08-01', until: '2026-08-07' });
+    assert.ok(!wire.url.includes('time_increment'), 'no daily breakdown on the reach call');
+    assert.ok(decodeURIComponent(wire.url).includes('reach,frequency'));
+    assert.ok(wire.headers.Authorization.startsWith('Bearer '), 'token in the header, never the URL');
+    assert.ok(!wire.url.includes('t='), 'token never rides the query string');
+    assert.throws(() => buildReachRequest({ token: 't', accountId: '12/../x' }, { since: '2026-08-01', until: '2026-08-02' }));
+  });
+});
+
+describe('ME.B — parsing: absent is null, never zero; purchase means purchase', () => {
+  const base = { date_start: '2026-08-01', spend: '10.00', account_currency: 'USD', impressions: '1000', clicks: '50' };
+
+  test('a row with the new fields carries them; a legacy row answers null', () => {
+    const rows = parseInsightsRows({
+      data: [
+        {
+          ...base,
+          inline_link_clicks: '40',
+          actions: [{ action_type: 'lead', value: '9' }, { action_type: 'purchase', value: '3' }],
+          action_values: [{ action_type: 'purchase', value: '45.00' }],
+        },
+        { ...base, date_start: '2026-08-02' },
+      ],
+    });
+    assert.equal(rows[0].linkClicks, 40);
+    assert.equal(rows[0].metaPurchases, 3, 'the lead action must not leak into purchases');
+    assert.equal(rows[0].metaPurchaseValue, '45.00');
+    assert.equal(rows[1].linkClicks, null, 'a pre-ME.B row was never asked — null, not zero');
+    assert.equal(rows[1].metaPurchases, null);
+    assert.equal(rows[1].metaPurchaseValue, null);
+  });
+
+  test('malformed actions answer null rather than inventing attribution', () => {
+    const rows = parseInsightsRows({
+      data: [{ ...base, actions: 'junk', action_values: [{ action_type: 'purchase', value: 'NaNish' }] }],
+    });
+    assert.equal(rows[0].metaPurchases, null);
+    assert.equal(rows[0].metaPurchaseValue, null);
+  });
+
+  test('the reach row parses, and an empty answer is null', () => {
+    assert.deepEqual(parseReachRow({ data: [{ reach: '812', frequency: '1.58' }] }), { reach: 812, frequency: '1.58' });
+    assert.equal(parseReachRow({ data: [] }), null);
+    assert.equal(parseReachRow(null), null);
+    assert.equal(parseReachRow({ data: [{ frequency: '2' }] }), null, 'no reach figure, no row');
+  });
+});
+
+describe('ME.B — sums, the link pair, and the Meta-reported ROAS', () => {
+  const day = (over: Partial<DailySpendRow> = {}): DailySpendRow => ({
+    date: '2026-08-01', spend: '10.00', currency: 'USD', impressions: 1000, clicks: 50,
+    linkClicks: null, metaPurchases: null, metaPurchaseValue: null, ...over,
+  });
+
+  test('a window where nothing reported the field answers null, a partial window sums what was reported', () => {
+    const none = summariseSpend([day(), day({ date: '2026-08-02' })]);
+    assert.equal(none.linkClicks, null);
+    assert.equal(none.metaPurchases, null);
+    assert.equal(none.metaPurchaseValue, null);
+
+    const partial = summariseSpend([
+      day({ linkClicks: 40, metaPurchases: 2, metaPurchaseValue: '30.00' }),
+      day({ date: '2026-08-02' }),
+    ]);
+    assert.equal(partial.linkClicks, 40);
+    assert.equal(partial.metaPurchases, 2);
+    assert.equal(toString(partial.metaPurchaseValue!, 2), '30.00');
+  });
+
+  test('link CTR and cost per link click, exact; null without link data', () => {
+    const s = summariseSpend([day({ spend: '12.00', impressions: 4000, clicks: 80, linkClicks: 60 })]);
+    const d = derivedAdMetrics(s);
+    assert.equal(toString(d.linkCtr!, 2), '1.50'); // 60 of 4000
+    assert.equal(toString(d.costPerLinkClick!, 2), '0.20'); // 12 / 60
+    const bare = derivedAdMetrics(summariseSpend([day()]));
+    assert.equal(bare.linkCtr, null);
+    assert.equal(bare.costPerLinkClick, null);
+  });
+
+  test('Meta-reported ROAS divides Meta\'s own converted value by the spend — same currency by construction', () => {
+    const s = summariseSpend([day({ spend: '10.00', metaPurchaseValue: '45.00' })]);
+    assert.equal(toString(metaReportedRoas(s)!, 2), '4.50');
+    assert.equal(metaReportedRoas(summariseSpend([day()])), null, 'no attributed value, no ratio');
+    assert.equal(metaReportedRoas(summariseSpend([day({ spend: '0', metaPurchaseValue: '45.00' })])), null, 'zero spend is not infinite return');
+    // And the platform's own cross-currency refusal is untouched: DA revenue
+    // against USD spend still has no ratio here.
+    assert.equal(crossCurrencyRatio('USD', 'DZD').ok, false);
   });
 });

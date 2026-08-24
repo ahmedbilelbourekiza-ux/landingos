@@ -6,6 +6,8 @@ import { encryptToken, decryptToken, revealStoredSecret } from "../meta/crypto.t
 import {
   buildInsightsRequest,
   parseInsightsRows,
+  buildReachRequest,
+  parseReachRow,
   type DailySpendRow,
   type DateRange,
   type MetaAdsConfig,
@@ -205,12 +207,21 @@ export async function syncDailySpend(
           currency: row.currency,
           impressions: row.impressions,
           clicks: row.clicks,
+          linkClicks: row.linkClicks,
+          metaPurchases: row.metaPurchases,
+          metaPurchaseValue: row.metaPurchaseValue,
         },
         update: {
           spend: row.spend,
           currency: row.currency,
           impressions: row.impressions,
           clicks: row.clicks,
+          /* ME.B — the LAST word wins here too, including a null: if Meta
+           * stops reporting a field for a restated day, keeping the stale
+           * number would invent attribution the provider withdrew. */
+          linkClicks: row.linkClicks,
+          metaPurchases: row.metaPurchases,
+          metaPurchaseValue: row.metaPurchaseValue,
           syncedAt: new Date(),
         },
       });
@@ -221,6 +232,40 @@ export async function syncDailySpend(
       data: { lastSyncedAt: new Date() },
     });
   });
+
+  /* ME.B — WINDOW-level reach, best-effort AFTER the spend landed: reach is
+   * not additive across days, so it is asked for the window as a whole
+   * (second, un-incremented call) and stored on the ACCOUNT with its own
+   * window length and timestamp. A reach failure must not fail the sync —
+   * the spend above is already real; the reach columns simply keep their
+   * previous window's honest label. */
+  try {
+    const wire = buildReachRequest(cfg, range);
+    const res = await fetch(wire.url, { method: "GET", headers: wire.headers });
+    const json: unknown = await res.json().catch(() => null);
+    const parsed = res.ok ? parseReachRow(json) : null;
+    if (parsed) {
+      const days =
+        Math.round(
+          (new Date(`${range.until}T00:00:00.000Z`).getTime() -
+            new Date(`${range.since}T00:00:00.000Z`).getTime()) /
+            86_400_000,
+        ) + 1;
+      await withTenant(tenantId, (tx) =>
+        tx.adAccount.update({
+          where: { id: adAccountRowId },
+          data: {
+            reach: parsed.reach,
+            frequency: parsed.frequency,
+            reachDays: days,
+            reachSyncedAt: new Date(),
+          },
+        }),
+      );
+    }
+  } catch {
+    // Best-effort by design; the daily sync above already succeeded.
+  }
 
   return { ok: true, written };
 }
@@ -265,6 +310,9 @@ export async function metaChannelPerformance(
         currency: true,
         impressions: true,
         clicks: true,
+        linkClicks: true,
+        metaPurchases: true,
+        metaPurchaseValue: true,
       },
     });
 
@@ -288,6 +336,9 @@ export async function metaChannelPerformance(
         currency: r.currency,
         impressions: r.impressions,
         clicks: r.clicks,
+        linkClicks: (r as any).linkClicks ?? null,
+        metaPurchases: (r as any).metaPurchases ?? null,
+        metaPurchaseValue: (r as any).metaPurchaseValue?.toString() ?? null,
       })),
       orders: orders.length,
       revenueMinor,

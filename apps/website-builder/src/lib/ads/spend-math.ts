@@ -28,7 +28,7 @@
  * and `crossCurrencyRatio` exists only to refuse, in one place, with a reason.
  * ========================================================================== */
 
-import { money, add, div, mul, count, ZERO, toString, type Money } from "../money.ts";
+import { money, add, div, mul, count, isZero, ZERO, toString, type Money } from "../money.ts";
 
 /** What `PlatformCredential["meta-ads"]` holds, once decrypted. `apiBase` is
  * the render-domains/AiProvider stubbing seam — a test points it at a local
@@ -53,6 +53,17 @@ export interface DailySpendRow {
   readonly currency: string;
   readonly impressions: number;
   readonly clicks: number;
+  /* ME.B — null means "not reported for this row", never zero: rows pulled
+   * before these fields existed were never asked the question, and a null
+   * entering an average as 0 would fabricate a free day. `linkClicks` is
+   * inline_link_clicks — the clicks that actually leave for the page (Meta's
+   * `clicks` also counts reactions and profile taps). The meta* pair is
+   * META-ATTRIBUTED (pixel/CAPI, Meta's own attribution windows, value in the
+   * account currency by Meta's own conversion) — labeled "Meta-reported"
+   * wherever shown, never merged with the platform's recorded orders. */
+  readonly linkClicks: number | null;
+  readonly metaPurchases: number | null;
+  readonly metaPurchaseValue: string | null;
 }
 
 export interface WireRequest {
@@ -110,7 +121,10 @@ export function buildInsightsRequest(cfg: MetaAdsConfig, range: DateRange): Wire
   const params = new URLSearchParams({
     time_increment: "1",
     time_range: JSON.stringify({ since: range.since, until: range.until }),
-    fields: "spend,impressions,clicks,account_currency,date_start,date_stop",
+    /* ME.B — inline_link_clicks for real traffic clicks; actions +
+     * action_values for the Meta-attributed purchase pair. All parsed
+     * defensively: an account with no pixel simply lacks them. */
+    fields: "spend,impressions,clicks,inline_link_clicks,actions,action_values,account_currency,date_start,date_stop",
     limit: "500",
   });
 
@@ -156,9 +170,43 @@ export function parseInsightsRows(payload: unknown): DailySpendRow[] {
       currency,
       impressions: asCount(r.impressions),
       clicks: asCount(r.clicks),
+      linkClicks: asNullableCount(r.inline_link_clicks),
+      metaPurchases: readAction(r.actions, asNullableCount),
+      metaPurchaseValue: readAction(r.action_values, asMoneyString),
     });
   }
   return rows;
+}
+
+/** Absent stays null (never zero — see DailySpendRow). */
+function asNullableCount(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null;
+}
+
+function asMoneyString(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  const s = String(value);
+  return /^\d+(\.\d+)?$/.test(s) ? s : null;
+}
+
+/**
+ * ME.B — one entry from Meta's `actions` / `action_values` array shape:
+ * `[{ action_type, value }, …]`. We read `purchase` EXACTLY — the aggregated
+ * pixel/CAPI purchase Meta reports for the account's configured attribution —
+ * and nothing else; a malformed or absent array is null, not zero.
+ */
+function readAction<T>(
+  list: unknown,
+  read: (value: unknown) => T | null,
+  actionType = "purchase",
+): T | null {
+  if (!Array.isArray(list)) return null;
+  const entry = list.find(
+    (a) => (a as { action_type?: unknown } | null)?.action_type === actionType,
+  ) as { value?: unknown } | undefined;
+  return entry === undefined ? null : read(entry.value);
 }
 
 export interface SpendSummary {
@@ -168,6 +216,12 @@ export interface SpendSummary {
   readonly impressions: number;
   readonly clicks: number;
   readonly days: number;
+  /* ME.B — null when NO row in the window reported the field (a pre-ME.B
+   * window, or an account without a pixel); a partial window sums what was
+   * reported. Null and 0 stay distinct all the way to the screen. */
+  readonly linkClicks: number | null;
+  readonly metaPurchases: number | null;
+  readonly metaPurchaseValue: Money | null;
 }
 
 /**
@@ -178,7 +232,10 @@ export interface SpendSummary {
  */
 export function summariseSpend(rows: readonly DailySpendRow[]): SpendSummary {
   if (rows.length === 0) {
-    return { spend: ZERO, currency: null, impressions: 0, clicks: 0, days: 0 };
+    return {
+      spend: ZERO, currency: null, impressions: 0, clicks: 0, days: 0,
+      linkClicks: null, metaPurchases: null, metaPurchaseValue: null,
+    };
   }
   const currency = rows[0]!.currency;
   let spend = ZERO;
@@ -195,7 +252,24 @@ export function summariseSpend(rows: readonly DailySpendRow[]): SpendSummary {
     impressions += r.impressions;
     clicks += r.clicks;
   }
-  return { spend, currency, impressions, clicks, days: rows.length };
+
+  /* ME.B — sum what was reported; a window where NOTHING reported the field
+   * answers null, not zero. */
+  let linkClicks: number | null = null;
+  let metaPurchases: number | null = null;
+  let metaPurchaseValue: Money | null = null;
+  for (const r of rows) {
+    if (r.linkClicks !== null) linkClicks = (linkClicks ?? 0) + r.linkClicks;
+    if (r.metaPurchases !== null) metaPurchases = (metaPurchases ?? 0) + r.metaPurchases;
+    if (r.metaPurchaseValue !== null) {
+      metaPurchaseValue = add(metaPurchaseValue ?? ZERO, money(r.metaPurchaseValue));
+    }
+  }
+
+  return {
+    spend, currency, impressions, clicks, days: rows.length,
+    linkClicks, metaPurchases, metaPurchaseValue,
+  };
 }
 
 export interface CostPerOrder {
@@ -235,19 +309,84 @@ export interface DerivedAdMetrics {
   readonly costPerClick: Money | null;
   /** Spend per 1000 impressions, in the spend's currency. */
   readonly cpmPerMille: Money | null;
+  /* ME.B — the LINK pair, from inline_link_clicks: the truer traffic
+   * numbers. Null whenever the window reported no link clicks at all
+   * (pre-ME.B rows); a reported 0 with impressions is a real 0% link CTR. */
+  readonly linkCtr: Money | null;
+  readonly costPerLinkClick: Money | null;
 }
 
 export function derivedAdMetrics(summary: SpendSummary): DerivedAdMetrics {
   // No rows → no currency → nothing derivable (the summary's own rule).
-  if (!summary.currency) return { ctr: null, costPerClick: null, cpmPerMille: null };
+  if (!summary.currency) {
+    return { ctr: null, costPerClick: null, cpmPerMille: null, linkCtr: null, costPerLinkClick: null };
+  }
   const impressions = count(summary.impressions);
   const clicks = count(summary.clicks);
+  const link = summary.linkClicks;
   return {
     ctr: summary.impressions > 0 ? div(mul(clicks, count(100)), impressions) : null,
     costPerClick: summary.clicks > 0 ? div(summary.spend, clicks) : null,
     cpmPerMille:
       summary.impressions > 0 ? div(mul(summary.spend, count(1000)), impressions) : null,
+    linkCtr:
+      link !== null && summary.impressions > 0
+        ? div(mul(count(link), count(100)), impressions)
+        : null,
+    costPerLinkClick: link !== null && link > 0 ? div(summary.spend, count(link)) : null,
   };
+}
+
+/**
+ * ME.B — Meta-reported ROAS: Meta's own attributed purchase value over the
+ * spend, BOTH in the account currency by Meta's own conversion — so the ratio
+ * is currency-honest in a way the platform's DA revenue never can be against
+ * USD spend (`crossCurrencyRatio` still refuses that one). It is Meta's
+ * number about Meta's attribution, and every surface that shows it says
+ * "Meta-reported". Null when there is no attributed value or no spend.
+ */
+export function metaReportedRoas(summary: SpendSummary): Money | null {
+  if (!summary.currency || summary.metaPurchaseValue === null) return null;
+  if (isZero(summary.spend)) return null;
+  return div(summary.metaPurchaseValue, summary.spend);
+}
+
+/* -----------------------------------------------------------------------------
+ * ME.B — WINDOW-level reach: the second, un-incremented insights call.
+ *
+ * Reach is NOT additive across days (one person seen on three days is one
+ * person), so it cannot be summed from the daily rows — it must be asked for
+ * the window as a whole. Same endpoint, same auth, NO time_increment.
+ * -------------------------------------------------------------------------- */
+export function buildReachRequest(cfg: MetaAdsConfig, range: DateRange): WireRequest {
+  assertDate(range.since, "since");
+  assertDate(range.until, "until");
+  if (range.until < range.since) {
+    throw new Error(`until (${range.until}) precedes since (${range.since})`);
+  }
+  if (!/^\d+$/.test(cfg.accountId)) {
+    throw new Error(`accountId must be digits only, got ${JSON.stringify(cfg.accountId)}`);
+  }
+  const base = (cfg.apiBase ?? "https://graph.facebook.com").replace(/\/+$/, "");
+  const params = new URLSearchParams({
+    time_range: JSON.stringify({ since: range.since, until: range.until }),
+    fields: "reach,frequency",
+  });
+  return {
+    url: `${base}/${META_GRAPH_VERSION}/act_${cfg.accountId}/insights?${params.toString()}`,
+    headers: { Authorization: `Bearer ${cfg.token}` },
+  };
+}
+
+/** The single aggregate row → {reach, frequency}, or null when unusable. */
+export function parseReachRow(payload: unknown): { reach: number; frequency: string } | null {
+  const data = (payload as { data?: unknown } | null)?.data;
+  if (!Array.isArray(data) || data.length === 0) return null;
+  const r = data[0] as Record<string, unknown>;
+  const reach = asNullableCount(r.reach);
+  if (reach === null) return null;
+  const frequency = asMoneyString(r.frequency) ?? "0";
+  return { reach, frequency };
 }
 
 /**

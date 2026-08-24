@@ -481,10 +481,16 @@ describe('ME.A — derived ad metrics on the Traffic screen', { skip }, () => {
         data: {
           tenantId: tenantA, adAccountId: accountA, date: day,
           spend: '12.00', currency: 'USD', impressions: 4000, clicks: 80,
+          linkClicks: 60, metaPurchases: 3, metaPurchaseValue: '54.00',
         },
       });
       await (tx as any).adAccount.update({
-        where: { id: accountA }, data: { lastSyncedAt: new Date() },
+        where: { id: accountA },
+        data: {
+          lastSyncedAt: new Date(),
+          // ME.B — the window-level reach pair, as the reach call stores it.
+          reach: 812, frequency: '1.58', reachDays: 7, reachSyncedAt: new Date(),
+        },
       });
     });
     try {
@@ -495,6 +501,18 @@ describe('ME.A — derived ad metrics on the Traffic screen', { skip }, () => {
       assert.ok(html.includes('0.15'), 'CPC is 12.00 / 80, exactly');
       assert.ok(html.includes('data-testid="analytics-ad-cpm"'));
       assert.ok(html.includes('3.00'), 'CPM is 12.00 per 4 thousand, exactly');
+      // ME.B — the link pair, exact.
+      assert.ok(html.includes('data-testid="analytics-ad-link-clicks"'));
+      assert.ok(html.includes('1.50%'), 'link CTR is 60 of 4000, exactly');
+      assert.ok(html.includes('0.20'), 'cost per link click is 12.00 / 60, exactly');
+      // ME.B — the Meta-reported pair carries its label (D4), and the ROAS is
+      // Meta's value over the spend: 54 / 12.
+      assert.ok(html.includes('data-testid="analytics-ad-meta-reported"'));
+      assert.ok(html.includes('4.50'), 'Meta-reported ROAS is 54.00 / 12.00, exactly');
+      // ME.B — reach with its OWN window label, never this view's (D5).
+      assert.ok(html.includes('data-testid="analytics-ad-reach"'));
+      assert.ok(html.includes('812'));
+      assert.ok(html.includes('1.58'));
       // TS.4 — the manage disclosure carries rotate+disconnect for a role
       // the routes admit; the numbers stay outside it.
       assert.ok(html.includes('data-testid="ad-account-manage"'), 'the manage disclosure must render for an owner');
@@ -503,16 +521,94 @@ describe('ME.A — derived ad metrics on the Traffic screen', { skip }, () => {
       await withTenant(tenantA, async (tx) => {
         await (tx as any).adSpendDaily.deleteMany({ where: { adAccountId: accountA } });
         await (tx as any).adAccount.update({
-          where: { id: accountA }, data: { lastSyncedAt: null },
+          where: { id: accountA },
+          data: { lastSyncedAt: null, reach: null, frequency: null, reachDays: null, reachSyncedAt: null },
         });
       });
     }
   });
 
-  test('with nothing synced, none of the three renders — no 0.00 for an unanswerable ratio', async () => {
+  test('with nothing synced, none of the derived figures renders — no 0.00 for an unanswerable ratio', async () => {
     const html = await screen(tokens.ownerA);
     assert.ok(!html.includes('data-testid="analytics-ad-ctr"'));
     assert.ok(!html.includes('data-testid="analytics-ad-cpc"'));
     assert.ok(!html.includes('data-testid="analytics-ad-cpm"'));
+    assert.ok(!html.includes('data-testid="analytics-ad-link-clicks"'));
+    assert.ok(!html.includes('data-testid="analytics-ad-meta-reported"'));
+    assert.ok(!html.includes('data-testid="analytics-ad-reach"'));
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * ME.B — the sync loop itself, against a local stub standing in for Meta
+ * (`cfg.apiBase`, the module's own test seam): the daily upsert carries the
+ * new fields, the SECOND (un-incremented) call stores window reach on the
+ * ACCOUNT, and a reach failure never fails the spend sync that already
+ * happened.
+ * -------------------------------------------------------------------------- */
+describe('ME.B — syncDailySpend writes the new fields, and reach is best-effort', { skip }, () => {
+  test('daily fields land on the row, reach lands on the account, reach failure stays quiet', async () => {
+    const { createServer } = await import('node:http');
+    const { syncDailySpend } = await import('../src/lib/ads/meta-ads.ts');
+    const behaviour = { reachStatus: 200 };
+    const stub = createServer((req, res) => {
+      res.setHeader('content-type', 'application/json');
+      const url = req.url ?? '';
+      if (url.includes('time_increment')) {
+        res.end(JSON.stringify({ data: [{
+          date_start: '2026-08-20', spend: '9.00', account_currency: 'USD',
+          impressions: '3000', clicks: '90', inline_link_clicks: '70',
+          actions: [{ action_type: 'purchase', value: '2' }],
+          action_values: [{ action_type: 'purchase', value: '31.50' }],
+        }] }));
+      } else {
+        res.statusCode = behaviour.reachStatus;
+        res.end(behaviour.reachStatus === 200
+          ? JSON.stringify({ data: [{ reach: '640', frequency: '1.31' }] })
+          : JSON.stringify({ error: { message: 'stub says no' } }));
+      }
+    });
+    await new Promise<void>((r) => stub.listen(0, '127.0.0.1', r));
+    const apiBase = `http://127.0.0.1:${(stub.address() as any).port}`;
+
+    const acc: any = await withTenant(tenantA, (tx) =>
+      (tx as any).adAccount.create({
+        data: { tenantId: tenantA, provider: 'meta', accountId: '777777777', name: 'sync stub', currency: 'USD' },
+        select: { id: true },
+      }),
+    );
+    try {
+      const first = await syncDailySpend(tenantA, acc.id, { token: 'tkn', accountId: '777777777', apiBase }, { since: '2026-08-14', until: '2026-08-20' });
+      assert.equal(first.ok, true, JSON.stringify(first));
+      const row: any = await withTenant(tenantA, (tx) =>
+        (tx as any).adSpendDaily.findFirst({ where: { adAccountId: acc.id } }),
+      );
+      assert.equal(row.linkClicks, 70);
+      assert.equal(row.metaPurchases, 2);
+      assert.equal(row.metaPurchaseValue.toString(), '31.5');
+      const account: any = await withTenant(tenantA, (tx) =>
+        (tx as any).adAccount.findUnique({ where: { id: acc.id }, select: { reach: true, frequency: true, reachDays: true, reachSyncedAt: true } }),
+      );
+      assert.equal(account.reach, 640);
+      assert.equal(account.frequency.toString(), '1.31');
+      assert.equal(account.reachDays, 7, 'the reach window carries ITS OWN length');
+      assert.ok(account.reachSyncedAt);
+
+      // A reach failure must not fail the sync, and must not clobber the
+      // last honest reach.
+      behaviour.reachStatus = 500;
+      const second = await syncDailySpend(tenantA, acc.id, { token: 'tkn', accountId: '777777777', apiBase }, { since: '2026-08-14', until: '2026-08-20' });
+      assert.equal(second.ok, true, 'the spend sync succeeded; reach is best-effort');
+      const after: any = await withTenant(tenantA, (tx) =>
+        (tx as any).adAccount.findUnique({ where: { id: acc.id }, select: { reach: true } }),
+      );
+      assert.equal(after.reach, 640, 'the previous window\'s reach survives a failed refresh');
+    } finally {
+      await withTenant(tenantA, async (tx) => {
+        await (tx as any).adSpendDaily.deleteMany({ where: { adAccountId: acc.id } });
+        await (tx as any).adAccount.delete({ where: { id: acc.id } });
+      });
+      await new Promise<void>((r) => stub.close(() => r()));
+    }
   });
 });

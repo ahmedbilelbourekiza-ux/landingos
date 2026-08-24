@@ -213,7 +213,14 @@
       "trackingOff": "تتبع سلوك الزوار متوقف لهذه الصفحة.",
       "trackingOffHint": "فعّله لترى التمرير والوصول إلى الاستمارة والتفاعل — متاح أيضاً من قسم العرض في المحرر.",
       "enableTracking": "تفعيل تتبع السلوك",
-      "enablingTracking": "جارٍ التفعيل…"
+      "enablingTracking": "جارٍ التفعيل…",
+      "adSpendLinkClicks": "نقرات الرابط",
+      "adSpendMetaReported": "حسب تقرير Meta",
+      "adSpendMetaPurchases": "مشتريات",
+      "adSpendMetaRoas": "ROAS",
+      "adSpendReach": "أشخاص تم الوصول إليهم",
+      "adSpendFrequency": "متوسط التكرار",
+      "adSpendReachWindow": "آخر تحديث، نافذة {days} يوماً"
     },
     "newPage": {
       "title": "صفحة هبوط جديدة",

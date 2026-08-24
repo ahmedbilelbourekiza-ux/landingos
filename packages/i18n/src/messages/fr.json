@@ -213,7 +213,14 @@
       "trackingOff": "Le suivi du comportement des visiteurs est désactivé pour cette page.",
       "trackingOffHint": "Activez-le pour voir le défilement, l’atteinte du formulaire et l’engagement — aussi dans la section Affichage de l’éditeur.",
       "enableTracking": "Activer le suivi du comportement",
-      "enablingTracking": "Activation…"
+      "enablingTracking": "Activation…",
+      "adSpendLinkClicks": "clics sur le lien",
+      "adSpendMetaReported": "Selon Meta",
+      "adSpendMetaPurchases": "achats",
+      "adSpendMetaRoas": "ROAS",
+      "adSpendReach": "Personnes touchées",
+      "adSpendFrequency": "fréquence moy.",
+      "adSpendReachWindow": "dernier rafraîchissement, fenêtre de {days} jours"
     },
     "newPage": {
       "title": "Nouvelle page de vente",

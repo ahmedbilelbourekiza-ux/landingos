@@ -102,6 +102,13 @@ describe('adSpendPanel — four states, never one zero', () => {
     assert.equal(panel.ctr, '5.00'); // 10 of 200
     assert.equal(panel.costPerClick, '4.00'); // 40 / 10
     assert.equal(panel.cpmPerMille, '200.00'); // 40 / 0.2 thousand
+    /* ME.B — rows that never reported the link/attribution fields answer
+     * null at the panel too: null is "never asked", not zero. */
+    assert.equal(panel.linkClicks, null);
+    assert.equal(panel.linkCtr, null);
+    assert.equal(panel.metaPurchases, null);
+    assert.equal(panel.metaRoas, null);
+    assert.equal(panel.reach, null);
   });
 
   test('ME.A — a synced-but-empty window derives nothing, and none of it renders as zero', async () => {

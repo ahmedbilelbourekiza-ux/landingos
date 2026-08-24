@@ -213,7 +213,14 @@
       "trackingOff": "Visitor behavior tracking is off for this page.",
       "trackingOffHint": "Turn it on to see scrolling, form reach and engagement — also available in the editor’s Display section.",
       "enableTracking": "Turn on behavior tracking",
-      "enablingTracking": "Turning on…"
+      "enablingTracking": "Turning on…",
+      "adSpendLinkClicks": "link clicks",
+      "adSpendMetaReported": "Meta-reported",
+      "adSpendMetaPurchases": "purchases",
+      "adSpendMetaRoas": "ROAS",
+      "adSpendReach": "People reached",
+      "adSpendFrequency": "avg. frequency",
+      "adSpendReachWindow": "last refresh, {days}-day window"
     },
     "newPage": {
       "title": "New landing page",

@@ -802,6 +802,17 @@ model AdAccount {
   // "synced and found nothing", which a zero-row spend table cannot.
   lastSyncedAt DateTime?
 
+  /* ME.B — WINDOW-level reach of the last refreshed window. Reach is NOT
+   * additive across days (the same person seen twice is one person), so it
+   * cannot live on the daily rows — it is fetched by a second, un-incremented
+   * insights call per refresh and stored here with ITS OWN window length and
+   * timestamp, and the screen labels it exactly that way. All nullable:
+   * accounts refreshed before ME.B simply have no reach yet. */
+  reach         Int?
+  frequency     Decimal?
+  reachDays     Int?
+  reachSyncedAt DateTime?
+
   dailySpend AdSpendDaily[]
 
   createdAt DateTime @default(now())
@@ -833,6 +844,18 @@ model AdSpendDaily {
 
   impressions Int @default(0)
   clicks      Int @default(0)
+
+  /* ME.B — nullable, additive, and null is NOT zero: rows pulled before these
+   * fields existed were never asked the question. linkClicks is Meta's
+   * inline_link_clicks — the clicks that actually leave for the page, where
+   * clicks counts reactions and profile taps too. The two meta* columns are
+   * META-ATTRIBUTED results (pixel/CAPI, Meta's attribution windows, values
+   * converted by Meta into the account currency) — never to be summed or
+   * compared 1:1 with the platform's own recorded orders; the screen labels
+   * them "Meta-reported" wherever they appear. */
+  linkClicks        Int?
+  metaPurchases     Int?
+  metaPurchaseValue Decimal?
 
   // When WE last wrote this row. Not the same as `date`, and the difference is
   // how a stale window is spotted.

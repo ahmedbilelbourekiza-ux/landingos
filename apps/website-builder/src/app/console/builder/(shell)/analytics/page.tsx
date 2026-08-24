@@ -460,6 +460,22 @@ export default async function BuilderAnalyticsScreen({
                   </span>
                 </span>
               )}
+              {/* ME.B — the link pair: the clicks that actually leave for the
+                  page (Meta's `clicks` also counts reactions). Null = the
+                  window predates the field; skipped, never zeroed. */}
+              {adSpend.linkClicks !== null && (
+                <span data-testid="analytics-ad-link-clicks">
+                  <span className="font-semibold tabular-nums">{adSpend.linkClicks}</span>{" "}
+                  <span className="text-muted-foreground">
+                    {t("builder.analytics.adSpendLinkClicks")}
+                    {adSpend.linkCtr !== null && (
+                      <span dir="ltr"> · {`${adSpend.linkCtr}%`}</span>
+                    )}
+                    {adSpend.costPerLinkClick !== null &&
+                      ` · ${adSpend.costPerLinkClick} ${adSpend.currency}`}
+                  </span>
+                </span>
+              )}
               <span>
                 <span className="font-semibold tabular-nums">{adSpend.orders}</span>{" "}
                 <span className="text-muted-foreground">
@@ -481,6 +497,39 @@ export default async function BuilderAnalyticsScreen({
                 )}
               </span>
             </div>
+            {/* ME.B — the META-REPORTED line: pixel/CAPI attribution, values
+                converted by Meta into the account currency. Labeled as Meta's
+                own numbers everywhere they appear (D4) — a merchant must never
+                read them as the platform's recorded orders, which live in the
+                tables below with their own attribution. */}
+            {(adSpend.metaPurchases !== null || adSpend.metaRoas !== null) && (
+              <p className="text-xs text-muted-foreground" data-testid="analytics-ad-meta-reported">
+                <span className="font-medium text-foreground">
+                  {t("builder.analytics.adSpendMetaReported")}:
+                </span>{" "}
+                {adSpend.metaPurchases !== null &&
+                  `${adSpend.metaPurchases} ${t("builder.analytics.adSpendMetaPurchases")}`}
+                {adSpend.metaPurchases !== null && adSpend.metaRoas !== null && " · "}
+                {adSpend.metaRoas !== null && (
+                  <span dir="ltr">{`${t("builder.analytics.adSpendMetaRoas")} ${adSpend.metaRoas}`}</span>
+                )}
+              </p>
+            )}
+            {/* ME.B — window-level reach of the LAST refreshed window (D5):
+                not additive across days, so it carries its own window length
+                rather than pretending to be this view's window. */}
+            {adSpend.reach !== null && (
+              <p className="text-xs text-muted-foreground" data-testid="analytics-ad-reach">
+                {t("builder.analytics.adSpendReach")}:{" "}
+                <span className="font-medium text-foreground tabular-nums" dir="ltr">
+                  {formatNumber(adSpend.reach.people, locale)}
+                </span>{" "}
+                · {t("builder.analytics.adSpendFrequency")}:{" "}
+                <span className="tabular-nums" dir="ltr">{adSpend.reach.frequency}</span>
+                {adSpend.reach.days !== null &&
+                  ` (${t("builder.analytics.adSpendReachWindow", { days: adSpend.reach.days })})`}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               {t("builder.analytics.adSpendAccount")}: {adSpend.accountName} ·{" "}
               {t("builder.analytics.adSpendSynced")}:{" "}

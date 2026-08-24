@@ -3,6 +3,7 @@ import {
   costPerOrder,
   crossCurrencyRatio,
   derivedAdMetrics,
+  metaReportedRoas,
   type DailySpendRow,
 } from "../ads/spend-math.ts";
 import { toString } from "../money.ts";
@@ -61,6 +62,18 @@ export type AdSpendPanel =
       readonly ctr: string | null;
       readonly costPerClick: string | null;
       readonly cpmPerMille: string | null;
+      /* ME.B — the link pair (inline_link_clicks) and the META-REPORTED pair
+       * (pixel/CAPI attribution, values converted by Meta into the account
+       * currency). Null = not reported for this window, and every surface
+       * labels the meta* figures "Meta-reported" — they are Meta's numbers
+       * about Meta's attribution, never the platform's own orders. */
+      readonly linkClicks: number | null;
+      readonly linkCtr: string | null;
+      readonly costPerLinkClick: string | null;
+      readonly metaPurchases: number | null;
+      readonly metaRoas: string | null;
+      /** Window-level reach of the LAST refreshed window, with its own days. */
+      readonly reach: { readonly people: number; readonly frequency: string; readonly days: number | null } | null;
       /** Set when spend and revenue currencies differ — the honest refusal. */
       readonly ratioRefusal: string | null;
     };
@@ -73,6 +86,9 @@ interface SpendClient {
       accountId: string;
       currency: string;
       lastSyncedAt: Date | null;
+      reach: number | null;
+      frequency: { toString(): string } | null;
+      reachDays: number | null;
     } | null>;
   };
   adSpendDaily: {
@@ -83,6 +99,9 @@ interface SpendClient {
         currency: string;
         impressions: number;
         clicks: number;
+        linkClicks: number | null;
+        metaPurchases: number | null;
+        metaPurchaseValue: { toString(): string } | null;
       }[]
     >;
   };
@@ -100,7 +119,7 @@ export async function adSpendPanel(
 ): Promise<AdSpendPanel> {
   const account = await db.adAccount.findFirst({
     where: { provider: "meta", isActive: true },
-    select: { id: true, name: true, accountId: true, currency: true, lastSyncedAt: true },
+    select: { id: true, name: true, accountId: true, currency: true, lastSyncedAt: true, reach: true, frequency: true, reachDays: true },
     orderBy: { createdAt: "asc" },
   });
   if (!account) return { state: "unconfigured" };
@@ -118,7 +137,7 @@ export async function adSpendPanel(
 
   const stored = await db.adSpendDaily.findMany({
     where: { adAccountId: account.id, date: { gte: range.since, lt: range.until } },
-    select: { date: true, spend: true, currency: true, impressions: true, clicks: true },
+    select: { date: true, spend: true, currency: true, impressions: true, clicks: true, linkClicks: true, metaPurchases: true, metaPurchaseValue: true },
     orderBy: { date: "asc" },
   });
 
@@ -128,6 +147,9 @@ export async function adSpendPanel(
     currency: r.currency,
     impressions: r.impressions,
     clicks: r.clicks,
+    linkClicks: r.linkClicks ?? null,
+    metaPurchases: r.metaPurchases ?? null,
+    metaPurchaseValue: r.metaPurchaseValue?.toString() ?? null,
   }));
 
   const summary = summariseSpend(rows);
@@ -149,6 +171,10 @@ export async function adSpendPanel(
 
   const cpo = costPerOrder(summary, orders);
   const derived = derivedAdMetrics(summary);
+  const roas = metaReportedRoas(summary);
+  /* Fakes in the suite may omit the reach columns entirely; undefined and
+   * null both read as "no reach stored". */
+  const reachPeople = account.reach ?? null;
   const verdict = crossCurrencyRatio(currency, storeCurrency);
 
   return {
@@ -167,6 +193,19 @@ export async function adSpendPanel(
     ctr: derived.ctr === null ? null : toString(derived.ctr, 2),
     costPerClick: derived.costPerClick === null ? null : toString(derived.costPerClick, 2),
     cpmPerMille: derived.cpmPerMille === null ? null : toString(derived.cpmPerMille, 2),
+    linkClicks: summary.linkClicks,
+    linkCtr: derived.linkCtr === null ? null : toString(derived.linkCtr, 2),
+    costPerLinkClick:
+      derived.costPerLinkClick === null ? null : toString(derived.costPerLinkClick, 2),
+    metaPurchases: summary.metaPurchases,
+    metaRoas: roas === null ? null : toString(roas, 2),
+    reach: reachPeople === null
+      ? null
+      : {
+          people: reachPeople,
+          frequency: account.frequency?.toString() ?? "0",
+          days: account.reachDays ?? null,
+        },
     ratioRefusal: verdict.ok ? null : verdict.reason,
   };
 }
