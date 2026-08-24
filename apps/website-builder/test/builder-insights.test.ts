@@ -148,6 +148,7 @@ describe('POST /api/builder/landings/[id]/analyze (end to end)', { skip }, () =>
   let tenantId = '';
   let pageId = '';
   let thinPageId = '';
+  let barePageId = '';
   let faqIds: string[] = [];
   const userIds: string[] = [];
   const tokens: Record<string, string> = {};
@@ -338,6 +339,29 @@ describe('POST /api/builder/landings/[id]/analyze (end to end)', { skip }, () =>
           ...(i < 5 ? { phone: '0550000000' } : {}),
         })),
       });
+
+      /* TS.1 — the LB.6.d page: rich traffic, NO behavior opt-in, not one
+       * measured view. This is what every production page actually was when
+       * the button was found missing; the suite's old fixture only ever
+       * exercised the measured world, which is why "renders WITH data"
+       * passed while the screen was invisible without it. */
+      const bare = await (tx as any).landingPage.create({
+        data: {
+          tenantId, title: 'صفحة زيارات بلا سلوك', slug: 'bh3-bare',
+          status: 'PUBLISHED', published: true, price: 2000,
+        },
+        select: { id: true },
+      });
+      barePageId = bare.id;
+      await (tx as any).storefrontVisit.createMany({
+        data: Array.from({ length: 120 }, (_, i) => ({
+          tenantId,
+          landingPageId: barePageId,
+          pageKind: 'landing',
+          visitorToken: `bh3-bare-v-${stamp}-${i}`,
+          sourceChannel: 'tiktok',
+        })),
+      });
     });
   });
 
@@ -518,5 +542,128 @@ describe('POST /api/builder/landings/[id]/analyze (end to end)', { skip }, () =>
     // The grounded finding is on the page; the refused one never is.
     assert.ok(html.includes('فُتح 14 مرة'));
     assert.ok(!html.includes('424242'));
+  });
+
+  /* -------------------------------------------------------------------------
+   * TS.1 — the reverse reachability the old suite could not see: the screen
+   * WITHOUT measured behavior. Every production page was in this state when
+   * the button was reported missing (LB.6.d recorded the gap on 19 Aug; the
+   * fixture above only ever proved "renders WITH data").
+   * ---------------------------------------------------------------------- */
+
+  test('TS.1 — a page with traffic and NO behavior is analyzable end to end; behavior metrics are not citable for it', async () => {
+    // The bare page's citable vocabulary is views/orders/drafts only — its
+    // summary carries behavior: null, so a recommendation leaning on a
+    // behavior key must be dropped exactly as an invented number is.
+    behaviour.status = 200;
+    behaviour.answer = JSON.stringify({
+      recommendations: [
+        {
+          section: 'general',
+          finding: 'الصفحة تجلب 120 زيارة في النافذة بدون أي طلب مسجل.',
+          suggestion: 'جرّب تبسيط أول شاشة وإبراز زر الطلب مباشرة.',
+          metric: 'views',
+          value: 120,
+        },
+        {
+          section: 'form',
+          finding: 'توصية تستشهد بمقياس سلوك غير موجود لهذه الصفحة.',
+          suggestion: 'يجب أن تُسقط آلياً لأن نصف السلوك غير مُقاس هنا.',
+          metric: 'behavior.measured',
+          value: 0,
+        },
+      ],
+    });
+    const before = ((await ledger()) as any[]).length;
+    const res = await api(`/api/builder/landings/${barePageId}/analyze`, tokens.owner);
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.equal(res.body.data.recommendations.length, 1);
+    assert.equal(res.body.data.recommendations[0].metric, 'views');
+    assert.equal(((await ledger()) as any[]).length, before + 1);
+
+    const stored: any = await withTenant(tenantId, (tx) =>
+      (tx as any).landingInsight.findFirst({ where: { landingPageId: barePageId } }),
+    );
+    assert.equal(stored.inputSummary.behavior, null, 'no measured views must read as null, never zeros');
+  });
+
+  test('TS.1 — the analyze control is REACHABLE for a page with traffic and no behavior; a zero-traffic page gets no card', async () => {
+    const html = await fetch(BASE + '/console/builder/analytics?days=30', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    }).then((r) => r.text());
+    // The LB.6.d page: card + button, despite zero measured behavior. This
+    // exact assertion is what the shipped screen failed for every production
+    // page — the section hung off the behavior table.
+    assert.ok(html.includes(`data-testid="insight-${barePageId}"`));
+    assert.ok(html.includes(`data-testid="analyze-page-${barePageId}"`));
+    // No traffic at all: nothing to analyze, honestly absent — the pages
+    // table's own empty state owns that story.
+    assert.ok(!html.includes(`data-testid="insight-${thinPageId}"`));
+  });
+
+  test('TS.1 — a store with traffic and zero measured behavior sees the remedy copy, the floor hint, and no dead control', async () => {
+    // Production's exact shape on 23 Aug (24 unmeasured views, nothing opted
+    // in), as its own tenant so the measured fixture above cannot leak into
+    // what this screen shows. Self-contained: created and swept here.
+    const t2 = await asPlatform().tenant.create({
+      data: { slug: `ts1-${stamp}`, name: 'TS1 Empty World' },
+    });
+    let t2UserId = '';
+    try {
+      await withTenant(t2.id, async (tx) => {
+        await (tx as any).subscription.create({
+          data: { tenantId: t2.id, status: 'ACTIVE', entitlements: ['product.website-builder'] },
+        });
+        const page = await (tx as any).landingPage.create({
+          data: {
+            tenantId: t2.id, title: 'منتج بدون قياس', slug: 'ts1-plain',
+            status: 'PUBLISHED', published: true, price: 3000,
+          },
+          select: { id: true },
+        });
+        await (tx as any).storefrontVisit.createMany({
+          data: Array.from({ length: 24 }, (_, i) => ({
+            tenantId: t2.id,
+            landingPageId: page.id,
+            pageKind: 'landing',
+            visitorToken: `ts1-v-${stamp}-${i}`,
+            sourceChannel: 'facebook',
+          })),
+        });
+      });
+      const email = `ts1-owner-${stamp}@landingos.test`;
+      const u = await asPlatform().user.create({
+        data: { email, name: email, passwordHash: await hashPassword('x') },
+      });
+      t2UserId = u.id;
+      await withTenant(t2.id, (tx) =>
+        (tx as any).membership.create({ data: { tenantId: t2.id, userId: u.id, role: 'OWNER', permissions: [] } }),
+      );
+      const { token } = await createSession(u.id, t2.id);
+
+      const html = await fetch(BASE + '/console/builder/analytics', {
+        headers: { cookie: `${SESSION_COOKIE}=${token}` },
+      }).then((r) => r.text());
+
+      // The behavior table renders its EMPTY state now — and the empty state
+      // is the remedy: it names the editor's Display-section toggle. This
+      // copy existed, translated, since BH.2 and was unreachable until TS.1.
+      assert.ok(html.includes('data-testid="analytics-behavior"'));
+      assert.ok(html.includes('فعّل تحليل سلوك الزوار'), 'the opt-in remedy must reach the merchant');
+      // The AI section renders too; below the floor the hint replaces the
+      // button, so nothing on this screen is a dead control.
+      assert.ok(html.includes('data-testid="analytics-insights"'));
+      assert.ok(html.includes('data-testid="insight-insufficient"'));
+      assert.ok(!html.includes('data-testid="analyze-page-'));
+    } finally {
+      if (t2UserId) {
+        await destroySessionsForUser(t2UserId);
+        await withTenant(t2.id, (tx) =>
+          (tx as any).membership.deleteMany({ where: { userId: t2UserId } }),
+        ).catch(() => {});
+        await asPlatform().user.delete({ where: { id: t2UserId } }).catch(() => {});
+      }
+      await deleteTenant(t2.id).catch(() => {});
+    }
   });
 });

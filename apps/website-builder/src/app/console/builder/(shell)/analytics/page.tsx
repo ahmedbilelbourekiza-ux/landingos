@@ -73,12 +73,20 @@ export default async function BuilderAnalyticsScreen({
   const { data, insights, spend: adSpend } = await withTenant(session.auth!.tenantId, async (db) => {
     await pruneExpiredVisits(db);
     const analytics = await storefrontAnalytics(db, range);
-    /* BH.3 — the newest stored analysis per measured page. DISTINCT ON is
-     * what this wants; Prisma's shape for it is one ordered findMany kept
-     * first-per-page here (the list is bounded by the behavior table). */
-    const insightRows = analytics.behaviorByPage.length
+    /* BH.3 — the newest stored analysis per landing page WITH TRAFFIC. TS.1:
+     * keyed off byPage, not behaviorByPage — the analyze API never required
+     * behavior (the summary's behavior half is honestly null without it), so
+     * the read surface must not either; keyed off the behavior table, the
+     * whole section was invisible until a page opted in, which no production
+     * page ever had (the LB.6.d finding). DISTINCT ON is what this wants;
+     * Prisma's shape for it is one ordered findMany kept first-per-page here
+     * (bounded by pages that had views or orders in the window). */
+    const insightPageIds = analytics.byPage
+      .map((r) => r.landingPageId)
+      .filter((id): id is string => id !== null);
+    const insightRows = insightPageIds.length
       ? await (db as any).landingInsight.findMany({
-          where: { landingPageId: { in: analytics.behaviorByPage.map((r) => r.landingPageId) } },
+          where: { landingPageId: { in: insightPageIds } },
           orderBy: { createdAt: "desc" },
           select: {
             id: true, landingPageId: true, windowDays: true,
@@ -154,6 +162,18 @@ export default async function BuilderAnalyticsScreen({
       ? t("builder.analytics.storeHome")
       : t("builder.analytics.categoryPages");
   };
+
+  /* TS.1 — the landing pages with traffic in the window (views, or orders
+   * without a counted view). This is what the behavior and AI sections key
+   * off now: "this store has landing traffic" is the honest precondition for
+   * both, where "a page already opted into behavior" — the old wrapper — hid
+   * the AI feature and its own remedy copy from every merchant who had not
+   * found the editor toggle yet. Store-level rows (home, category) stay out:
+   * behavior and analysis are landing-page features by design. */
+  const landingTraffic = data.byPage.filter(
+    (row): row is (typeof data.byPage)[number] & { landingPageId: string } =>
+      row.landingPageId !== null,
+  );
 
   return (
     <PageBody>
@@ -399,8 +419,14 @@ export default async function BuilderAnalyticsScreen({
       {/* BH.2 — behavior, over MEASURED views only (pages that opted in via
           the editor's Display section AND whose visitors' exit flush landed).
           Rates render with their denominator so a 100% from three views
-          cannot masquerade as knowledge. */}
-      {data.behaviorByPage.length > 0 && (
+          cannot masquerade as knowledge.
+
+          TS.1 — rendered whenever landing traffic exists, so the EMPTY state
+          finally reaches the merchant: `behaviorEmpty` names the editor
+          toggle, and it sat dead behind the old `behaviorByPage.length`
+          wrapper — the one merchant who needed the sentence (tracking off,
+          traffic arriving) was exactly the one who could never see it. */}
+      {landingTraffic.length > 0 && (
         <DataTable
           testId="analytics-behavior"
           empty={t("builder.analytics.behaviorEmpty")}
@@ -472,12 +498,18 @@ export default async function BuilderAnalyticsScreen({
         />
       )}
 
-      {/* BH.3 — AI recommendations, per measured page: on-demand, cooldown
-          re-shown, quota-gated (AQ.1), aggregates-only by construction. The
-          stored insight renders beside the button that made it; each claim
-          carries the number it rests on, because claims without numbers were
-          refused before storage. */}
-      {data.behaviorByPage.length > 0 && (
+      {/* BH.3 — AI recommendations: on-demand, cooldown re-shown, quota-gated
+          (AQ.1), aggregates-only by construction. The stored insight renders
+          beside the button that made it; each claim carries the number it
+          rests on, because claims without numbers were refused before storage.
+
+          TS.1 — offered per LANDING PAGE WITH TRAFFIC (the LB.6.d proposal,
+          finally taken): the analyze API always gated on VIEWS, never on
+          behavior, but this section hung off `behaviorByPage` — so with
+          behavior opt-in default-off, no production merchant had ever seen
+          the button. A page below the floor gets the honest hint instead of
+          the control, exactly as before. */}
+      {landingTraffic.length > 0 && (
         <section className="space-y-4" data-testid="analytics-insights">
           <div>
             <h2 className="text-sm font-semibold tracking-tight">
@@ -487,10 +519,9 @@ export default async function BuilderAnalyticsScreen({
               {t("builder.analytics.insightIntro")}
             </p>
           </div>
-          {data.behaviorByPage.map((row) => {
+          {landingTraffic.map((row) => {
             const insight = insights.get(row.landingPageId);
-            const views =
-              data.byPage.find((p) => p.landingPageId === row.landingPageId)?.views ?? 0;
+            const views = row.views;
             const recommendations = (insight?.recommendations ?? []) as InsightRecommendationData[];
             const summaryViews = (insight?.inputSummary as { views?: number } | null)?.views ?? 0;
             return (
