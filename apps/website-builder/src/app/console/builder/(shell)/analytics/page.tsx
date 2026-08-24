@@ -25,6 +25,7 @@ import { PageHeader, PageBody, Section } from "@/components/console/ui/primitive
 import { KpiTile, PeriodTabs, RankList } from "@/components/console/erp/dashboard-parts";
 import { DataTable } from "@/components/console/data-table";
 import { AnalyzePageButton } from "@/components/console/builder/analyze-page-button";
+import { EnableTrackingButton } from "@/components/console/builder/enable-tracking-button";
 import { RefreshSpendButton } from "@/components/console/builder/refresh-spend-button";
 import { ConnectAdAccountPanel } from "@/components/console/builder/connect-ad-account";
 import { DisconnectAdAccountButton } from "@/components/console/builder/disconnect-ad-account";
@@ -68,6 +69,12 @@ export default async function BuilderAnalyticsScreen({
   // is reachable on orders:read, and a control that can only answer 403 is
   // the reachability defect in reverse.
   const maySpendOnAi = can(session.auth!, "website-builder:ai:spend");
+
+  /* TS.3 / D2 — the per-card enable-tracking control writes through the
+   * order-form route, which is gated on pages:write; rendering it for anyone
+   * else would be the dead-control defect. Non-writers get the editor
+   * pointer sentence instead. */
+  const mayWritePages = can(session.auth!, "website-builder:pages:write");
 
   // SEC.9 (LB.23 review) — the connect form and Refresh call routes gated on
   // `platform:integrations:manage`, which only OWNER/ADMIN hold by role,
@@ -162,6 +169,7 @@ export default async function BuilderAnalyticsScreen({
     confirm: t("builder.analytics.adAccountDisconnectConfirm"),
   };
 
+  const trackingErrors = actionErrors(t);
   const insightErrors = actionErrors(t);
   insightErrors.NO_AI_PROVIDER = t("builder.newPage.ai.noProvider");
   insightErrors.AI_UPSTREAM_ERROR = t("builder.newPage.ai.upstreamFailed");
@@ -538,155 +546,82 @@ export default async function BuilderAnalyticsScreen({
         )}
       </Section>
 
-      <DataTable
-        testId="analytics-pages"
-        empty={t("builder.analytics.emptyPages")}
-        rows={data.byPage}
-        rowKey={(row) => `${row.pageKind}:${row.landingPageId ?? "-"}`}
-        columns={[
-          { id: "page", header: t("builder.analytics.colPage"), cell: pageLabel },
-          {
-            id: "views",
-            header: t("builder.analytics.colViews"),
-            align: "end",
-            numeric: true,
-            cell: (row) => row.views,
-          },
-          {
-            id: "orders",
-            header: t("builder.analytics.colOrders"),
-            align: "end",
-            numeric: true,
-            cell: (row) => row.orders,
-          },
-        ]}
-      />
-
-      {/* BH.2 — behavior, over MEASURED views only (pages that opted in via
-          the editor's Display section AND whose visitors' exit flush landed).
-          Rates render with their denominator so a 100% from three views
-          cannot masquerade as knowledge.
-
-          TS.1 — rendered whenever landing traffic exists, so the EMPTY state
-          finally reaches the merchant: `behaviorEmpty` names the editor
-          toggle, and it sat dead behind the old `behaviorByPage.length`
-          wrapper — the one merchant who needed the sentence (tracking off,
-          traffic arriving) was exactly the one who could never see it. */}
+      {/* =====================================================================
+          TS.3 — ONE CARD PER LANDING PAGE, replacing the three stacked tables
+          that each repeated the same page names (traffic row, behavior row,
+          insight card). A card carries the page's whole story: traffic and
+          conversion in the header; when measured, the funnel, the scroll
+          drop-off, the engagement chips and the most-opened questions (the
+          screen finally shows what the AI's input already contained); when
+          tracking is off, the remedy — with D2's enable control for whoever
+          holds pages:write, and the editor pointer for whoever does not (a
+          control that can only 403 is the dead-control defect). The AI
+          recommendations render on the card, exactly as TS.1 wired them.
+          ===================================================================== */}
       {landingTraffic.length > 0 && (
-        <DataTable
-          testId="analytics-behavior"
-          empty={t("builder.analytics.behaviorEmpty")}
-          rows={data.behaviorByPage}
-          rowKey={(row) => row.landingPageId}
-          columns={[
-            { id: "page", header: t("builder.analytics.colPage"), cell: (row) => row.title ?? "—" },
-            {
-              id: "measured",
-              header: t("builder.analytics.colMeasured"),
-              align: "end",
-              numeric: true,
-              cell: (row) => row.measured,
-            },
-            {
-              id: "sawForm",
-              header: t("builder.analytics.colSawForm"),
-              align: "end",
-              numeric: true,
-              cell: (row) =>
-                `${row.sawForm} (${Math.round((row.sawForm / row.measured) * 100)}%)`,
-            },
-            {
-              id: "reached",
-              header: t("builder.analytics.colReached"),
-              cell: (row) => (
-                <span className="text-xs text-muted-foreground" dir="ltr">
-                  {["hero", "description", "reviews", "faq", "footer"]
-                    .filter((s) => row.furthest[s])
-                    .map((s) => `${t(`builder.analytics.section.${s}` as never)} ${row.furthest[s]}`)
-                    .join(" · ") || "—"}
-                </span>
-              ),
-            },
-            {
-              id: "engagement",
-              header: t("builder.analytics.colEngagement"),
-              cell: (row) => (
-                <span className="text-xs text-muted-foreground" dir="ltr">
-                  {[
-                    row.galleryChanges ? `${t("builder.analytics.gallery")} ${row.galleryChanges}` : null,
-                    row.faqOpens ? `FAQ ${row.faqOpens}` : null,
-                    row.variantChanges ? `${t("builder.analytics.variants")} ${row.variantChanges}` : null,
-                    row.stickyBuyClicks ? `${t("builder.analytics.stickyTaps")} ${row.stickyBuyClicks}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ") || "—"}
-                </span>
-              ),
-            },
-            {
-              id: "whatsapp",
-              // NOT folded into orders/conversion (user decision §BH): a
-              // WhatsApp sale never touches the checkout, so it stays its
-              // own honestly-labelled column.
-              header: t("builder.analytics.colWhatsapp"),
-              align: "end",
-              numeric: true,
-              cell: (row) => row.whatsappClicks,
-            },
-            {
-              id: "time",
-              header: t("builder.analytics.colAvgTime"),
-              align: "end",
-              numeric: true,
-              cell: (row) => `${Math.round(row.avgActiveMs / 1000)}s`,
-            },
-          ]}
-        />
-      )}
-
-      {/* BH.3 — AI recommendations: on-demand, cooldown re-shown, quota-gated
-          (AQ.1), aggregates-only by construction. The stored insight renders
-          beside the button that made it; each claim carries the number it
-          rests on, because claims without numbers were refused before storage.
-
-          TS.1 — offered per LANDING PAGE WITH TRAFFIC (the LB.6.d proposal,
-          finally taken): the analyze API always gated on VIEWS, never on
-          behavior, but this section hung off `behaviorByPage` — so with
-          behavior opt-in default-off, no production merchant had ever seen
-          the button. A page below the floor gets the honest hint instead of
-          the control, exactly as before. */}
-      {landingTraffic.length > 0 && (
-        <section className="space-y-4" data-testid="analytics-insights">
+        <section className="space-y-4" data-testid="analytics-page-cards">
           <div>
             <h2 className="text-sm font-semibold tracking-tight">
-              {t("builder.analytics.insightHeading")}
+              {t("builder.analytics.pagesTitle")}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {t("builder.analytics.insightIntro")}
             </p>
           </div>
           {landingTraffic.map((row) => {
+            const behavior =
+              data.behaviorByPage.find((b) => b.landingPageId === row.landingPageId) ?? null;
+            const drafts = data.draftsByPage[row.landingPageId] ?? { started: 0, withPhone: 0 };
+            const faqTop = (data.faqOpensByPage[row.landingPageId] ?? []).slice(0, 3);
             const insight = insights.get(row.landingPageId);
             const views = row.views;
+            const pageConv = conversionRate(row.orders, row.views);
             const recommendations = (insight?.recommendations ?? []) as InsightRecommendationData[];
             const summaryViews = (insight?.inputSummary as { views?: number } | null)?.views ?? 0;
+
+            /* The funnel, bars scaled to VIEWS. Denominators differ mid-funnel
+               (sawForm counts measured views only) and the row labels say so
+               rather than pretending one basis. */
+            const funnel: { key: string; label: string; count: number }[] = [
+              { key: "viewed", label: t("builder.analytics.funnelViewed"), count: views },
+              ...(behavior
+                ? [{
+                    key: "sawForm",
+                    label: t("builder.analytics.funnelSawForm", { measured: behavior.measured }),
+                    count: behavior.sawForm,
+                  }]
+                : []),
+              { key: "drafts", label: t("builder.analytics.funnelDrafts"), count: drafts.started },
+              { key: "phone", label: t("builder.analytics.funnelPhone"), count: drafts.withPhone },
+              { key: "ordered", label: t("builder.analytics.funnelOrdered"), count: row.orders },
+            ];
+            const funnelMax = Math.max(views, 1);
+
+            /* "Reached at least": cumulative from the deep end of `furthest`
+               (a view that stopped at FAQ also saw everything above it). */
+            const landmarkOrder = ["hero", "description", "reviews", "faq", "footer"] as const;
+            let cumulative = 0;
+            const reached = behavior
+              ? [...landmarkOrder].reverse().map((s) => {
+                  cumulative += behavior.furthest[s] ?? 0;
+                  return { section: s, count: cumulative };
+                }).reverse()
+              : [];
+
             return (
               <div
                 key={row.landingPageId}
-                data-testid={`insight-${row.landingPageId}`}
-                className="rounded-lg border border-border bg-surface-raised p-4"
+                data-testid={`page-card-${row.landingPageId}`}
+                className="space-y-4 rounded-lg border border-border bg-surface-raised p-4"
               >
+                {/* Header: identity + traffic + the analyze slot. */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <span className="font-medium">{row.title ?? "—"}</span>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {insight
-                        ? t("builder.analytics.insightMeta", {
-                            date: formatDate(insight.createdAt, locale),
-                            days: insight.windowDays,
-                            views: summaryViews,
-                          })
-                        : t("builder.analytics.insightNone")}
+                    <p className="mt-0.5 text-xs text-muted-foreground" dir="ltr">
+                      {formatNumber(views, locale)} {t("builder.analytics.views")} ·{" "}
+                      {formatNumber(row.orders, locale)} {t("builder.analytics.orders")}
+                      {pageConv !== null && ` · ${pageConv.toFixed(1)}%`}
                     </p>
                   </div>
                   {views < INSIGHT_MIN_VIEWS ? (
@@ -707,23 +642,172 @@ export default async function BuilderAnalyticsScreen({
                     />
                   ) : null}
                 </div>
-                {recommendations.length > 0 && (
-                  <ul className="mt-3 space-y-3">
-                    {recommendations.map((rec, i) => (
-                      <li key={i} className="rounded-md border border-border p-3 text-sm">
-                        <span className="me-2 rounded bg-accent px-1.5 py-0.5 text-xs font-medium">
-                          {t(`builder.analytics.section.${rec.section}` as never)}
+
+                {behavior ? (
+                  <>
+                    {/* The funnel. Bars are server-rendered divs (the PM.1
+                        no-chart-library rule); the exact counts stay printed. */}
+                    <div className="space-y-1.5" data-testid={`funnel-${row.landingPageId}`}>
+                      {funnel.map((step) => (
+                        <div
+                          key={step.key}
+                          className="grid grid-cols-[minmax(7rem,11rem)_1fr_auto] items-center gap-2 text-xs"
+                        >
+                          <span className="truncate text-muted-foreground">{step.label}</span>
+                          <span className="h-3 overflow-hidden rounded-sm bg-surface-subtle" aria-hidden="true">
+                            <span
+                              className="block h-full rounded-sm"
+                              style={{
+                                inlineSize: `${Math.min(100, Math.max(step.count > 0 ? 2 : 0, (step.count / funnelMax) * 100))}%`,
+                                backgroundColor: "color-mix(in oklab, var(--primary) 22%, transparent)",
+                              }}
+                            />
+                          </span>
+                          <span className="tabular-nums text-muted-foreground" dir="ltr">
+                            {formatNumber(step.count, locale)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Scroll drop-off: how many measured views got AT LEAST
+                        this far. Cumulative, so it only ever descends. */}
+                    {reached.some((r) => r.count > 0) && (
+                      <p className="text-xs text-muted-foreground" dir="ltr" data-testid={`reached-${row.landingPageId}`}>
+                        <span className="font-medium text-foreground">{t("builder.analytics.reachedTitle")}:</span>{" "}
+                        {reached
+                          .map(
+                            (r) =>
+                              `${t(`builder.analytics.section.${r.section}` as never)} ${Math.round((r.count / behavior.measured) * 100)}%`,
+                          )
+                          .join(" · ")}{" "}
+                        <span className="opacity-70">
+                          ({t("builder.analytics.measuredOf", { measured: behavior.measured })})
                         </span>
-                        <span>{rec.finding}</span>
-                        <p className="mt-1 text-muted-foreground">{rec.suggestion}</p>
-                      </li>
-                    ))}
-                  </ul>
+                      </p>
+                    )}
+
+                    {/* Engagement chips + WhatsApp (its own signal, never a
+                        conversion — user decision §BH) + average time. */}
+                    <p className="text-xs text-muted-foreground" dir="ltr">
+                      {[
+                        behavior.galleryChanges ? `${t("builder.analytics.gallery")} ${behavior.galleryChanges}` : null,
+                        behavior.faqOpens ? `FAQ ${behavior.faqOpens}` : null,
+                        behavior.variantChanges ? `${t("builder.analytics.variants")} ${behavior.variantChanges}` : null,
+                        behavior.stickyBuyClicks ? `${t("builder.analytics.stickyTaps")} ${behavior.stickyBuyClicks}` : null,
+                        behavior.whatsappClicks ? `${t("builder.analytics.colWhatsapp")} ${behavior.whatsappClicks}` : null,
+                        `${t("builder.analytics.colAvgTime")} ${Math.round(behavior.avgActiveMs / 1000)}s`,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+
+                    {/* The most-opened questions — the AI's best input signal,
+                        finally readable by the merchant directly. */}
+                    {faqTop.length > 0 && (
+                      <div className="text-xs" data-testid={`faq-opens-${row.landingPageId}`}>
+                        <span className="font-medium">{t("builder.analytics.topQuestions")}</span>
+                        <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                          {faqTop.map((q, i) => (
+                            <li key={i} className="flex items-baseline justify-between gap-3">
+                              <span className="truncate">{q.question}</span>
+                              <span className="tabular-nums" dir="ltr">{q.opens}×</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* Tracking off: the remedy, on the card, with the control
+                     beside it for whoever the route admits (D2). D3 — flipping
+                     it on for real pages — stays the merchant's own act. */
+                  <div
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed border-border p-3"
+                    data-testid={`behavior-off-${row.landingPageId}`}
+                  >
+                    <p className="text-xs text-muted-foreground">
+                      {t("builder.analytics.trackingOff")}{" "}
+                      <span className="opacity-80">{t("builder.analytics.trackingOffHint")}</span>
+                    </p>
+                    {mayWritePages && (
+                      <EnableTrackingButton
+                        landingPageId={row.landingPageId}
+                        labels={{
+                          enable: t("builder.analytics.enableTracking"),
+                          enabling: t("builder.analytics.enablingTracking"),
+                        }}
+                        errors={trackingErrors}
+                      />
+                    )}
+                  </div>
                 )}
+
+                {/* BH.3 — the stored recommendations, exactly as TS.1 wired
+                    them: newest analysis, each claim with its section chip. */}
+                <div data-testid={`insight-${row.landingPageId}`}>
+                  <p className="text-xs text-muted-foreground">
+                    {insight
+                      ? t("builder.analytics.insightMeta", {
+                          date: formatDate(insight.createdAt, locale),
+                          days: insight.windowDays,
+                          views: summaryViews,
+                        })
+                      : t("builder.analytics.insightNone")}
+                  </p>
+                  {recommendations.length > 0 && (
+                    <ul className="mt-2 space-y-3">
+                      {recommendations.map((rec, i) => (
+                        <li key={i} className="rounded-md border border-border p-3 text-sm">
+                          <span className="me-2 rounded bg-accent px-1.5 py-0.5 text-xs font-medium">
+                            {t(`builder.analytics.section.${rec.section}` as never)}
+                          </span>
+                          <span>{rec.finding}</span>
+                          <p className="mt-1 text-muted-foreground">{rec.suggestion}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             );
           })}
         </section>
+      )}
+
+      {/* Store-level traffic (home, category listings): a small plain table —
+          these have no behavior, no drafts and no analysis by design. */}
+      {data.byPage.some((r) => r.landingPageId === null) && (
+        <DataTable
+          testId="analytics-pages"
+          empty={t("builder.analytics.emptyPages")}
+          rows={data.byPage.filter((r) => r.landingPageId === null)}
+          rowKey={(row) => `${row.pageKind}:-`}
+          columns={[
+            { id: "page", header: t("builder.analytics.colPage"), cell: pageLabel },
+            {
+              id: "views",
+              header: t("builder.analytics.colViews"),
+              align: "end",
+              numeric: true,
+              cell: (row) => row.views,
+            },
+            {
+              id: "orders",
+              header: t("builder.analytics.colOrders"),
+              align: "end",
+              numeric: true,
+              cell: (row) => row.orders,
+            },
+          ]}
+        />
+      )}
+      {/* A store with NO traffic at all keeps the honest empty line the pages
+          table used to carry. */}
+      {data.byPage.length === 0 && (
+        <p className="text-sm text-muted-foreground" data-testid="analytics-empty">
+          {t("builder.analytics.emptyPages")}
+        </p>
       )}
 
       {/* TS.4 — channels as a RankList: what a source breakdown is read FOR

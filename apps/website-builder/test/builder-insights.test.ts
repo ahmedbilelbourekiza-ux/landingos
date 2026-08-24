@@ -536,7 +536,7 @@ describe('POST /api/builder/landings/[id]/analyze (end to end)', { skip }, () =>
     const html = await fetch(BASE + '/console/builder/analytics?days=30', {
       headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
     }).then((r) => r.text());
-    assert.ok(html.includes('data-testid="analytics-insights"'));
+    assert.ok(html.includes('data-testid="analytics-page-cards"'));
     assert.ok(html.includes(`data-testid="insight-${pageId}"`));
     assert.ok(html.includes(`data-testid="analyze-page-${pageId}"`));
     // The grounded finding is on the page; the refused one never is.
@@ -648,11 +648,15 @@ describe('POST /api/builder/landings/[id]/analyze (end to end)', { skip }, () =>
       // The behavior table renders its EMPTY state now — and the empty state
       // is the remedy: it names the editor's Display-section toggle. This
       // copy existed, translated, since BH.2 and was unreachable until TS.1.
-      assert.ok(html.includes('data-testid="analytics-behavior"'));
-      assert.ok(html.includes('فعّل تحليل سلوك الزوار'), 'the opt-in remedy must reach the merchant');
+      /* TS.3 — the remedy lives ON the page card now, with D2's enable
+       * control beside it for a pages:write holder (this owner). The old
+       * behavior table and its dead-copy empty state are gone. */
+      assert.ok(html.includes('data-testid="behavior-off-'), 'the tracking-off state must render on the card');
+      assert.ok(html.includes('تتبع سلوك الزوار متوقف'), 'the remedy copy must reach the merchant');
+      assert.ok(html.includes('data-testid="enable-tracking-'), 'the enable control must render for a pages:write holder');
       // The AI section renders too; below the floor the hint replaces the
       // button, so nothing on this screen is a dead control.
-      assert.ok(html.includes('data-testid="analytics-insights"'));
+      assert.ok(html.includes('data-testid="analytics-page-cards"'));
       assert.ok(html.includes('data-testid="insight-insufficient"'));
       assert.ok(!html.includes('data-testid="analyze-page-'));
     } finally {

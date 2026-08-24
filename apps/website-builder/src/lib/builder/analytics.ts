@@ -199,6 +199,16 @@ export interface StorefrontAnalytics {
   byPage: PageTrafficRow[];
   byChannel: ChannelRow[];
   behaviorByPage: PageBehaviorRow[];
+  /* TS.3 — the drafts funnel per landing page (started / left a phone),
+   * windowed like everything else. Until now this pair was computed only for
+   * the AI's input (insight-summary) — the screen finally shows what the
+   * model already saw. Keyed by landingPageId; pages without drafts are
+   * absent, and absent must render as 0 here (a count, not a rate). */
+  draftsByPage: Record<string, { started: number; withPhone: number }>;
+  /* TS.3 — per-question FAQ opens per page, measured views only, sorted by
+   * opens desc. The insight-summary's unnest, widened to every page in one
+   * query instead of per-page on demand. */
+  faqOpensByPage: Record<string, { question: string; opens: number }[]>;
 }
 
 /** `db` is a tenant-scoped Prisma client (forTenant / a withTenant binding).
@@ -368,6 +378,65 @@ export async function storefrontAnalytics(
     }));
   behaviorByPage.sort((a, b) => b.measured - a.measured);
 
+  /* TS.3 — the drafts funnel, per page. Two groupBys; rows with no page id
+   * (store-level drafts do not exist, but the column is nullable) drop out. */
+  const draftGroups = await db.draftOrder.groupBy({
+    by: ["landingPageId"],
+    where: inWindow,
+    _count: { _all: true },
+  });
+  const draftPhoneGroups = await db.draftOrder.groupBy({
+    by: ["landingPageId"],
+    where: { ...inWindow, phone: { not: null } },
+    _count: { _all: true },
+  });
+  const draftsByPage: Record<string, { started: number; withPhone: number }> = {};
+  for (const g of draftGroups) {
+    if (!g.landingPageId) continue;
+    draftsByPage[g.landingPageId] = { started: g._count._all, withPhone: 0 };
+  }
+  for (const g of draftPhoneGroups) {
+    if (!g.landingPageId || !draftsByPage[g.landingPageId]) continue;
+    draftsByPage[g.landingPageId]!.withPhone = g._count._all;
+  }
+
+  /* TS.3 — which questions get opened, per page: ONE unnest over the window
+   * (insight-summary's per-page SQL, widened), joined to the question text.
+   * Only pages with measured views can have opens, so the query is skipped
+   * when nothing is measured. Sorted by opens desc; the screen shows the top
+   * few. Raw SQL is safe here for the same reason the uniques aggregate is —
+   * the withTenant binding pins RLS to this connection. */
+  const faqOpensByPage: Record<string, { question: string; opens: number }[]> = {};
+  if (behaviorByPage.length > 0) {
+    const openRows = (await db.$queryRaw`
+      SELECT "landingPageId", elem AS "faqId", COUNT(*)::int AS "opens"
+      FROM "StorefrontVisit",
+           jsonb_array_elements_text("faqOpenedIds") AS elem
+      WHERE "createdAt" >= ${range.since}
+        AND "createdAt" < ${range.until}
+        AND "activeMs" IS NOT NULL
+        AND "landingPageId" IS NOT NULL
+      GROUP BY "landingPageId", elem
+    `) as Array<{ landingPageId: string; faqId: string; opens: number }>;
+    if (openRows.length > 0) {
+      const questions = await db.landingFAQ.findMany({
+        where: { id: { in: [...new Set(openRows.map((r) => r.faqId))] } },
+        select: { id: true, question: true },
+      });
+      const questionById = new Map<string, string>(
+        questions.map((q: any) => [q.id, q.question]),
+      );
+      for (const row of openRows) {
+        const question = questionById.get(row.faqId);
+        if (!question) continue; // a deleted question's old opens name nothing
+        (faqOpensByPage[row.landingPageId] ??= []).push({ question, opens: row.opens });
+      }
+      for (const list of Object.values(faqOpensByPage)) {
+        list.sort((a, b) => b.opens - a.opens);
+      }
+    }
+  }
+
   return {
     totals: {
       views: byPage.reduce((sum, row) => sum + row.views, 0),
@@ -379,6 +448,8 @@ export async function storefrontAnalytics(
     byPage,
     byChannel,
     behaviorByPage,
+    draftsByPage,
+    faqOpensByPage,
   };
 }
 
