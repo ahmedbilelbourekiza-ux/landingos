@@ -16,13 +16,13 @@ import {
 import { adSpendPanel } from "@/lib/builder/ad-spend-panel";
 import { pruneExpiredVisits } from "@/lib/storefront/visit-retention";
 import { INSIGHT_MIN_VIEWS, type InsightRecommendationData } from "@/lib/landing/ai-insight";
-import { PageHeader, PageBody } from "@/components/console/ui/primitives";
+import { PageHeader, PageBody, Section } from "@/components/console/ui/primitives";
 /* TS.2 — the console's ONE analytics language (PM.1's dashboard-parts):
  * KpiTile with its previous-window delta, PeriodTabs as URL-driven links.
  * Imported across the erp/ boundary deliberately — these are pure renders
  * over props with no ERP semantics, and a second copy for the builder is how
  * two dashboards drift apart. */
-import { KpiTile, PeriodTabs } from "@/components/console/erp/dashboard-parts";
+import { KpiTile, PeriodTabs, RankList } from "@/components/console/erp/dashboard-parts";
 import { DataTable } from "@/components/console/data-table";
 import { AnalyzePageButton } from "@/components/console/builder/analyze-page-button";
 import { RefreshSpendButton } from "@/components/console/builder/refresh-spend-button";
@@ -334,8 +334,15 @@ export default async function BuilderAnalyticsScreen({
           in DA. Nothing here converts: the profit calculator already owns
           that, with the rate the manager types. The note says so on the
           screen rather than leaving a bare number to be misread. */}
-      <section className="space-y-2" data-testid="analytics-ad-spend">
-        <h2 className="text-sm font-semibold">{t("builder.analytics.adSpendTitle")}</h2>
+      {/* TS.4 — the console's Section primitive, and the numbers separated
+          from the plumbing: reading spend is the everyday act, managing the
+          credential is not, so rotate/disconnect live behind one quiet
+          "Manage account" disclosure — EXCEPT where a control is the state's
+          own remedy (unconfigured keeps the connect form open; never-synced
+          keeps Refresh and the token field in the open, because that state's
+          commonest cause is exactly a missing token). Permissions unchanged:
+          the disclosure renders only for whoever the routes admit. */}
+      <Section title={t("builder.analytics.adSpendTitle")} testId="analytics-ad-spend">
 
         {adSpend.state === "unconfigured" ? (
           <>
@@ -383,15 +390,24 @@ export default async function BuilderAnalyticsScreen({
                 }}
               />
             )}
-            {/* SEC.9's DELETE finally gets its door — found button-less by the
-                deploy's own verification pass. Here too: a token pasted into
-                the wrong account is this state's commonest mistake. */}
+            {/* SEC.9's DELETE keeps its door — found button-less by the
+                deploy's own verification pass. TS.4 tucks it behind the
+                manage disclosure: a token pasted into the wrong account is
+                this state's commonest mistake, but disconnecting is still
+                the rarer act than pasting the right one. */}
             {mayManageIntegrations && (
-              <DisconnectAdAccountButton
-                adAccountId={adSpend.adAccountId}
-                labels={disconnectLabels}
-                errors={spendErrors}
-              />
+              <details data-testid="ad-account-manage" className="pt-1">
+                <summary className="tap cursor-pointer list-none text-xs font-medium text-muted-foreground hover:text-foreground">
+                  {t("builder.analytics.adSpendManage")}
+                </summary>
+                <div className="mt-2 space-y-2">
+                  <DisconnectAdAccountButton
+                    adAccountId={adSpend.adAccountId}
+                    labels={disconnectLabels}
+                    errors={spendErrors}
+                  />
+                </div>
+              </details>
             )}
           </>
         ) : (
@@ -489,32 +505,38 @@ export default async function BuilderAnalyticsScreen({
                 errors={spendErrors}
               />
             )}
-            {/* Collapsed here: nothing is broken, but a token expires or gets
-                revoked, and rotating it must not require database access. */}
-            {mayManageIntegrations && (
-              <ConnectAdAccountPanel
-                errors={spendErrors}
-                labels={adAccountLabels}
-                existing={{
-                  accountId: adSpend.accountRef,
-                  name: adSpend.accountName,
-                  currency: adSpend.currency,
-                }}
-              />
-            )}
-            {/* And the exit, beside the rotation door it complements: rotate
-                when the token changed hands, disconnect when the account did.
+            {/* TS.4 — the plumbing behind one door. Nothing here is broken
+                in this state, so rotating the token (it expires, it gets
+                revoked — must not require database access) and the exit
+                beside it live in the manage disclosure: rotate when the
+                token changed hands, disconnect when the account did.
                 Route-gated to the same permission; confirm says the cascade. */}
             {mayManageIntegrations && (
-              <DisconnectAdAccountButton
-                adAccountId={adSpend.adAccountId}
-                labels={disconnectLabels}
-                errors={spendErrors}
-              />
+              <details data-testid="ad-account-manage" className="pt-1">
+                <summary className="tap cursor-pointer list-none text-xs font-medium text-muted-foreground hover:text-foreground">
+                  {t("builder.analytics.adSpendManage")}
+                </summary>
+                <div className="mt-2 space-y-2">
+                  <ConnectAdAccountPanel
+                    errors={spendErrors}
+                    labels={adAccountLabels}
+                    existing={{
+                      accountId: adSpend.accountRef,
+                      name: adSpend.accountName,
+                      currency: adSpend.currency,
+                    }}
+                  />
+                  <DisconnectAdAccountButton
+                    adAccountId={adSpend.adAccountId}
+                    labels={disconnectLabels}
+                    errors={spendErrors}
+                  />
+                </div>
+              </details>
             )}
           </>
         )}
-      </section>
+      </Section>
 
       <DataTable
         testId="analytics-pages"
@@ -704,34 +726,36 @@ export default async function BuilderAnalyticsScreen({
         </section>
       )}
 
-      <DataTable
+      {/* TS.4 — channels as a RankList: what a source breakdown is read FOR
+          is a comparison of magnitudes, not of digits (the PM.1 argument for
+          agents, applied to traffic sources). Share is of the LONGEST bar so
+          the leader reads full-width; views stay printed for the one time
+          somebody needs the exact figure, with orders and the per-channel
+          conversion beside them. */}
+      <Section
+        title={t("builder.analytics.channelsTitle")}
         testId="analytics-channels"
-        empty={t("builder.analytics.emptyChannels")}
-        rows={data.byChannel}
-        rowKey={(row) => row.channel}
-        rowAttrs={(row) => ({ "data-channel": row.channel })}
-        columns={[
-          {
-            id: "channel",
-            header: t("builder.analytics.colChannel"),
-            cell: (row) => channelLabel(row.channel),
-          },
-          {
-            id: "views",
-            header: t("builder.analytics.colViews"),
-            align: "end",
-            numeric: true,
-            cell: (row) => row.views,
-          },
-          {
-            id: "orders",
-            header: t("builder.analytics.colOrders"),
-            align: "end",
-            numeric: true,
-            cell: (row) => row.orders,
-          },
-        ]}
-      />
+      >
+        <RankList
+          testId="analytics-channels-rank"
+          emptyLabel={t("builder.analytics.emptyChannels")}
+          rows={(() => {
+            const maxViews = Math.max(...data.byChannel.map((c) => c.views), 1);
+            return data.byChannel.map((row) => {
+              const channelConv = conversionRate(row.orders, row.views);
+              return {
+                key: row.channel,
+                label: channelLabel(row.channel),
+                sub:
+                  `${formatNumber(row.orders, locale)} ${t("builder.analytics.orders")}` +
+                  (channelConv === null ? "" : ` · ${channelConv.toFixed(1)}%`),
+                value: formatNumber(row.views, locale),
+                share: (row.views / maxViews) * 100,
+              };
+            });
+          })()}
+        />
+      </Section>
     </PageBody>
   );
 }

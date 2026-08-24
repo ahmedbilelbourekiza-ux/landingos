@@ -351,6 +351,9 @@ describe('the token field is reachable from the screen', { skip }, () => {
     assert.ok(!html.includes('data-testid="refresh-spend"'), 'no refresh trigger for a viewer');
     // tenantA HAS an account here, so the exit exists — but not for this role.
     assert.ok(!html.includes('disconnect-ad-account'), 'no disconnect control for a viewer');
+    // TS.4 — and no empty manage disclosure either: the wrapper is gated
+    // with the controls it wraps.
+    assert.ok(!html.includes('ad-account-manage'), 'no manage disclosure for a viewer');
   });
 
   test('a MANAGER is likewise offered none of the manage controls', async () => {
@@ -492,6 +495,9 @@ describe('ME.A — derived ad metrics on the Traffic screen', { skip }, () => {
       assert.ok(html.includes('0.15'), 'CPC is 12.00 / 80, exactly');
       assert.ok(html.includes('data-testid="analytics-ad-cpm"'));
       assert.ok(html.includes('3.00'), 'CPM is 12.00 per 4 thousand, exactly');
+      // TS.4 — the manage disclosure carries rotate+disconnect for a role
+      // the routes admit; the numbers stay outside it.
+      assert.ok(html.includes('data-testid="ad-account-manage"'), 'the manage disclosure must render for an owner');
     } finally {
       // Leave the fixture as the earlier describes shaped it: unsynced, no rows.
       await withTenant(tenantA, async (tx) => {

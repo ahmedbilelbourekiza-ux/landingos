@@ -115,7 +115,6 @@
       "colPage": "Page",
       "colViews": "Views",
       "colOrders": "Orders",
-      "colChannel": "Traffic source",
       "storeHome": "Store home",
       "categoryPages": "Category pages",
       "emptyPages": "No page views recorded yet. Views start counting from the moment this feature is live — share a page link to see the first ones.",
@@ -198,7 +197,9 @@
       "customApply": "Apply",
       "vsPrevious": "vs the period before",
       "noPrevious": "no earlier data to compare",
-      "kpiConversion": "Conversion"
+      "kpiConversion": "Conversion",
+      "adSpendManage": "Manage account",
+      "channelsTitle": "Traffic sources"
     },
     "newPage": {
       "title": "New landing page",

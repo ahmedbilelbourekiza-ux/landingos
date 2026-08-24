@@ -115,7 +115,6 @@
       "colPage": "Page",
       "colViews": "Vues",
       "colOrders": "Commandes",
-      "colChannel": "Source de trafic",
       "storeHome": "Accueil de la boutique",
       "categoryPages": "Pages de catégorie",
       "emptyPages": "Aucune vue enregistrée pour l'instant. Le comptage démarre dès la mise en ligne de cette fonction — partagez le lien d'une page pour voir les premières vues.",
@@ -198,7 +197,9 @@
       "customApply": "Appliquer",
       "vsPrevious": "vs la période précédente",
       "noPrevious": "pas de données antérieures à comparer",
-      "kpiConversion": "Conversion"
+      "kpiConversion": "Conversion",
+      "adSpendManage": "Gérer le compte",
+      "channelsTitle": "Sources de trafic"
     },
     "newPage": {
       "title": "Nouvelle page de vente",

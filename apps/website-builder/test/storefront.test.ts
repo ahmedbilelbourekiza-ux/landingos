@@ -2019,6 +2019,8 @@ describe('TS.2 — bounded windows bound the QUERIES, and the screen renders the
       assert.ok(html.includes('data-testid="analytics-custom-range"'));
       assert.ok(html.includes('data-testid="analytics-custom-from"'));
       assert.ok(html.includes('data-testid="analytics-custom-to"'));
+      // TS.4 — the channels section renders as the RankList surface.
+      assert.ok(html.includes('data-testid="analytics-channels"'));
       // The legacy bare-days URL still answers (no 500, same screen).
       const legacy = await fetch(`${BASE}/console/builder/analytics?days=30`, {
         headers: { cookie: `${SESSION_COOKIE}=${token}` },
