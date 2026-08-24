@@ -16,6 +16,7 @@ export const mockLandingPage: LandingPageData = {
   oldPrice: 79,
   currency: "USD",
   buttonText: "Order Now — Pay on Delivery",
+  announcement: null,
   seoTitle: "Lumière Vitamin C Serum | Brightening Anti-Aging Serum",
   seoDescription:
     "Premium vitamin C serum for brighter, more even skin. Cash on delivery available. 30-day warranty.",

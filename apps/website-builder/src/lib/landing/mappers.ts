@@ -245,6 +245,13 @@ export function toPreviewState(page: LandingWithRelations): PreviewState {
 // Convert a Prisma landing page to the LandingPageData shape for the public
 // LandingTemplate.
 export function toLandingPageData(page: LandingWithRelations): LandingPageData {
+  /* Task-1 (24 Aug) — the LIVE page resolves the button label exactly as the
+   * editor PREVIEW always has (`toPreviewState`): the General section's
+   * `ctaButtonText` when set, the legacy `buttonText` column otherwise. Before
+   * this, the two mappers read different columns and a General-section button
+   * edit changed the preview but never the storefront. One resolved value
+   * feeds BOTH the sticky bar and the order form, so they cannot disagree. */
+  const buttonText = page.ctaButtonText ?? page.buttonText;
   return {
     id: page.id,
     title: page.title,
@@ -254,7 +261,12 @@ export function toLandingPageData(page: LandingWithRelations): LandingPageData {
     price: page.price.toNumber(),
     oldPrice: page.oldPrice?.toNumber() ?? null,
     currency: page.currency,
-    buttonText: page.buttonText,
+    buttonText,
+    /* Task-1 — stored and previewed since the port, mapped to the live page
+     * never: the announcement bar hardcoded its default line. Null stays
+     * null (= "never set"), so the bar's default behavior is explicit at the
+     * component, not invented here. */
+    announcement: page.announcement,
     seoTitle: page.seoTitle,
     seoDescription: page.seoDescription,
     facebookPixel: page.facebookPixel,
@@ -302,6 +314,11 @@ export function toLandingPageData(page: LandingWithRelations): LandingPageData {
           stopDeskEnabled: page.setting.stopDeskEnabled,
         }
       : null,
+    /* Deliberately the LEGACY column, not the resolved value above — mirroring
+     * `toPreviewState` exactly (its config fallback is `page.buttonText` too):
+     * the order form's label is the order-form section's own field (JSON
+     * config, legacy column fallback), while General's `ctaButtonText` drives
+     * the page-level CTA surfaces. Preview and live must disagree nowhere. */
     orderForm: parseOrderFormConfig(page.setting, page.buttonText),
   };
 }

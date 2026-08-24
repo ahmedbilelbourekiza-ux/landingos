@@ -1801,3 +1801,71 @@ describe('in-page behavior lands on the view row, only where the page opted in (
     assert.ok(!data.behaviorByPage.some((b: any) => b.landingPageId === publishedB));
   });
 });
+
+/* =============================================================================
+ * Task-1 (24 Aug 2026) — General-section edits reach the page customers see.
+ *
+ * The announcement bar hardcoded its line and the template mounted it
+ * propless, so `LandingPage.announcement` — stored and previewed since the
+ * port — never rendered publicly; and the General section saves its button
+ * label as `ctaButtonText`, which the live mapper never read (the preview
+ * resolves `ctaButtonText ?? buttonText`; the live page read only the legacy
+ * column). Both were WYSIWYG lies: the editor showed the edit, the storefront
+ * ignored it. These tests read the real public HTML, so a re-divergence of
+ * preview and live mappers fails here, not in a merchant report.
+ * ========================================================================== */
+
+describe('Task-1 — General-section announcement and button label render publicly', { skip }, () => {
+  const ANN = `عرض اليوم — توصيل نصف السعر ANNREG-${stamp}`;
+  const CTA = `اشتري حالاً CTAREG-${stamp}`;
+  const DEFAULT_ANN = 'توصيل مجاني · الدفع عند الاستلام';
+
+  test('an announcement the merchant wrote replaces the default line on the public page', async () => {
+    await withTenant(tenantA, (db) =>
+      (db as any).landingPage.create({
+        data: {
+          tenantId: tenantA, title: 'Announced Product', slug: `ann-${stamp}`,
+          price: 2100, published: true, status: 'PUBLISHED',
+          announcement: ANN,
+          ctaButtonText: CTA,
+          // The sticky bar is the page-level CTA surface that renders
+          // `buttonText` into the HTML — mount it so the label is observable.
+          setting: { create: { tenantId: tenantA, stickyBuyButton: true } },
+        },
+      }),
+    );
+    const html = await fetch(`${BASE}/${slugA}/ann-${stamp}`).then((r) => r.text());
+    assert.ok(html.includes(ANN), 'the merchant announcement must reach the public page');
+    assert.ok(!html.includes(DEFAULT_ANN), 'the default line must not render beside a merchant announcement');
+    // SEC/LB precedent: assert the POSITIVE neighbor too — the bar rendered
+    // the merchant's text, not nothing.
+    assert.ok(html.includes(`CTAREG-${stamp}`), "the General section's button label must reach the page-level CTA");
+  });
+
+  test('a page that never set either field keeps the default bar and the legacy button label', async () => {
+    // `shared-item` (fixture): announcement null, ctaButtonText null,
+    // buttonText at its schema default. This pins that the fix changed
+    // NOTHING for the pages production has today.
+    const html = await fetch(`${BASE}/${slugA}/shared-item`).then((r) => r.text());
+    assert.ok(html.includes(DEFAULT_ANN), 'unset announcement keeps the default line byte-for-byte');
+    assert.ok(html.includes('اطلب الآن'), 'unset ctaButtonText keeps the legacy button label');
+  });
+
+  test('the live resolution is ctaButtonText ?? buttonText — exactly the preview\'s', async () => {
+    // A page with ONLY the legacy column customized: the live page must show
+    // it (cta null falls back), so the fix cannot have re-keyed the button
+    // onto ctaButtonText alone.
+    await withTenant(tenantA, (db) =>
+      (db as any).landingPage.create({
+        data: {
+          tenantId: tenantA, title: 'Legacy Button', slug: `legacy-btn-${stamp}`,
+          price: 1900, published: true, status: 'PUBLISHED',
+          buttonText: `اطلب فوراً LEGACY-${stamp}`,
+          setting: { create: { tenantId: tenantA, stickyBuyButton: true } },
+        },
+      }),
+    );
+    const html = await fetch(`${BASE}/${slugA}/legacy-btn-${stamp}`).then((r) => r.text());
+    assert.ok(html.includes(`LEGACY-${stamp}`), 'a null ctaButtonText must fall back to the legacy buttonText');
+  });
+});

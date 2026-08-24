@@ -50,7 +50,7 @@ export function LandingTemplate({
           failure mode held CONTENT hostage. The sections' animations are CSS
           on keyed/conditional mounts now — their end state is always
           visible, and ~40KB gz of runtime left the customer's phone. */}
-      <AnnouncementBar />
+      <AnnouncementBar text={page.announcement} />
       <SiteNav store={store} />
       <main className="flex-1">
         <ProductSection page={page} store={orderStore} />

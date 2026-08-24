@@ -38,7 +38,14 @@ export function previewToLandingPage(preview: PreviewState): LandingPageData {
     price: pricing.price,
     oldPrice: pricing.oldPrice,
     currency: pricing.currency,
-    buttonText: orderForm.config.buttonText,
+    /* Task-1 — the General section's label first, exactly like the live
+     * mapper (`ctaButtonText ?? buttonText` — general.buttonText is that
+     * resolved value in the editor); the order-form config label is the
+     * fallback this preview always had. */
+    buttonText: general.buttonText || orderForm.config.buttonText,
+    /* Task-1 — the template preview shows the merchant's announcement the
+     * same way the live page now does; empty = the bar's default line. */
+    announcement: general.announcement || null,
     seoTitle: null,
     seoDescription: null,
     facebookPixel: null,

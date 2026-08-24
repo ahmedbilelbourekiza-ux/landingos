@@ -102,6 +102,11 @@ export interface LandingPageData {
   oldPrice: number | null;
   currency: string;
   buttonText: string;
+  /** The merchant's announcement-bar text (General section). Null = never
+   * set; the bar then shows its default line. Task-1 (24 Aug): this field
+   * existed in storage and the editor PREVIEW since the port, but the live
+   * template never received it — the bar hardcoded its default. */
+  announcement: string | null;
   seoTitle: string | null;
   seoDescription: string | null;
   facebookPixel: string | null;
