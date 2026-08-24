@@ -15,6 +15,35 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ⚠ OVERNIGHT 24 Aug 2026 — FIX.ANN + THE WHOLE TRAFFIC-REDESIGN BATCH IS BUILT, **NOT DEPLOYED**
+>
+> **Local `main` leads `origin/main` (`8f1dfb3` + TS.1's two commits) by
+> NINE code commits — nothing pushed, production untouched, awaiting
+> Bilel's explicit go-ahead per instruction.** The batch: **FIX.ANN**
+> (the announcement bar + General button label never reached the live
+> page — preview/live mapper divergence; reproduced on dev through the
+> real route, fixed, pinned by public-HTML regression tests) and the
+> slices **ME.A → TS.2 → TS.4 → TS.3(+D2) → OV.1 → ME.B → BH.4 → ME.C**.
+> CHANGELOG §FIX.ANN+batch is the index; each commit carries the full
+> record.
+>
+> **⚠ THREE DEV-ONLY MIGRATIONS AWAIT PROD APPROVAL** — SQL previews in
+> `docs/migrations-pending/` (ME.B 7 nullable cols · BH.4 6 nullable
+> cols · ME.C one new table). **Prod deploy order: apply the three
+> previews + `apply-rls` (57→58) FIRST, then one push of the range.**
+> All additive-nullable — running prod code is safe during the window.
+> Dev (`ep-gentle-sky`) already carries all three; dev RLS 58/58.
+>
+> Final-tree suites all green (16 suites; counts in the CHANGELOG entry);
+> tsc 275 unchanged. **Post-deploy attended checks owed:** the
+> announcement bar on the real editor→storefront loop; the redesigned
+> Traffic screen + Overview widget rendered authed; one real Refresh
+> spend pulling link clicks/reach/campaigns (needs the real token, and
+> `TRUST_CLOUDFLARE_CLIENT_IP` stays as-is in Render). **Bilel's items
+> unchanged: D3 (flip behavior tracking on — the new card control makes
+> it one click), {{campaign.name}} UTM tagging in Ads Manager (not
+> retroactive).**
+
 > ### ✅ TS.1 IS LIVE (24 Aug 2026, 01:09:52 UTC) — the BH.3 analyze button is finally VISIBLE
 >
 > **`origin/main` = `782c9e0`** (`8f1dfb3..782c9e0`, one commit; **rollback

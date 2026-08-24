@@ -10,6 +10,45 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## FIX.ANN + the Traffic-redesign batch (ME.A · TS.2 · TS.4 · TS.3+D2 · OV.1 · ME.B · BH.4 · ME.C) — built overnight 24 Aug 2026, NOT DEPLOYED
+
+**NINE local commits (`8f1dfb3..` local main), NOT pushed — production
+untouched by instruction ("stop before any production migration or deploy").
+Each commit carries its full record; this entry is the index. ⚠ THREE
+migrations are applied to DEV ONLY and previewed for prod in
+`docs/migrations-pending/` (ME.B: 7 nullable columns · BH.4: 6 nullable
+columns · ME.C: ONE new table `AdSpendCampaignDaily` → prod `apply-rls`
+must run, RLS 57→58; dev is already 58/58). All additive-nullable, so the
+running production code is safe against the applied schema during the
+deploy window. Deploy order: the three SQL previews + apply-rls FIRST,
+then one push of the whole range.**
+
+| Commit | Slice | Schema |
+|---|---|---|
+| `c6f8886` | **FIX.ANN** — Bilel's announcement-bar bug: the live component hardcoded its line and the template mounted it propless, while the editor preview read the field — a WYSIWYG lie, REPRODUCED through the real route on dev before fixing. Same class found on the General button label (`ctaButtonText` saved, live read only legacy `buttonText`) — fixed with the preview's own resolution. Every other General field verified propagating. Regression tests read the real public HTML (storefront 95→98) | none |
+| `e593bb2` | **ME.A** — CTR / cost-per-click / CPM derived from stored sums; nulls skipped, never 0.00 | none |
+| `3194bab` | **TS.2** — KpiTile band with previous-window deltas; today/yesterday/3d/week/month + custom (clamped to the 30-day retention); every query honors the window's exclusive end; boundary semantics pinned against the ERP's at a fixed clock | none |
+| `d0ba976` | **TS.4** — channels as RankList; ad-spend in a Section with the credential plumbing behind one "Manage account" disclosure (each state's remedy stays in the open) | none |
+| `f7ea156` | **TS.3 + D2** — one card per landing page (funnel, scroll drop-off, engagement, most-opened FAQ questions, AI recommendations); the enable-tracking control on the card's tracking-off state, pages:write-gated, one-way, writing through the editor's own route. D3 untouched | none |
+| `e4a88f4` | **OV.1** — the Overview traffic widget: views+delta, conversion, top source, spend — computed with the SAME analyticsRange("week") the Traffic screen defaults to | none |
+| `afc6884` | **ME.B** — inline link clicks, Meta-reported purchases/ROAS (labeled, per D4), window-level reach via the second un-incremented call (D5); null-is-not-zero end to end | 7 cols (dev) |
+| `29a2230` | **BH.4** — utm_campaign/content/medium into the session bundle + order snapshot; deviceClass; exitSection (visible-at-flush, not furthest) | 6 cols (dev) |
+| `e37ce67` | **ME.C** — `AdSpendCampaignDaily` + level=campaign sync (best-effort third call) + "Spend by campaign" RankList. Spend-side only until Ads-Manager tagging exists | 1 table (dev, RLS 58) |
+
+**Final-tree suites (all green):** storefront 111 · builder-insights 17 ·
+builder-sections 76 · builder-ai 33 · builder-versions 28 · ads-spend 33 ·
+ads-panel 10 · ads-routes 30 · console-shell 20 · hardening 30 ·
+tracking 17 · theme-contrast 21 · erp/order-abuse 26 ·
+erp/checkout-idempotency 8 · i18n 22 · `tsc` 275 unchanged.
+**⚠ Harness lesson recorded (pre-existing, not this batch):**
+`erp/order-abuse` and `tracking` need OPPOSITE server envs —
+`TRUST_CLOUDFLARE_CLIENT_IP=1` for order-abuse (2 reds without it,
+reproduced on a clean tree), UNSET for tracking's SEC.10 omitted-IP test
+(1 red with it). Run them against separately-started servers; production
+is unaffected either way. Memory updated. (tracking's E2E half can also
+silently half-skip to "pass 9" if its 48790 stub loses a bind race —
+rerun before believing that shape.)
+
 ## TS.1 — the analyze button stops hiding behind an opt-in it never needed
 
 **DEPLOYED 24 Aug 2026, live 01:09:52 UTC** — `origin/main` = **`782c9e0`**
