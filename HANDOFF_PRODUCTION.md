@@ -15,34 +15,34 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### ⚠ OVERNIGHT 24 Aug 2026 — FIX.ANN + THE WHOLE TRAFFIC-REDESIGN BATCH IS BUILT, **NOT DEPLOYED**
+> ### ✅ THE OVERNIGHT BATCH IS LIVE (24 Aug 2026, 06:27:48 UTC) — FIX.ANN + ALL EIGHT TRAFFIC SLICES
 >
-> **Local `main` leads `origin/main` (`8f1dfb3` + TS.1's two commits) by
-> NINE code commits — nothing pushed, production untouched, awaiting
-> Bilel's explicit go-ahead per instruction.** The batch: **FIX.ANN**
-> (the announcement bar + General button label never reached the live
-> page — preview/live mapper divergence; reproduced on dev through the
-> real route, fixed, pinned by public-HTML regression tests) and the
-> slices **ME.A → TS.2 → TS.4 → TS.3(+D2) → OV.1 → ME.B → BH.4 → ME.C**.
-> CHANGELOG §FIX.ANN+batch is the index; each commit carries the full
-> record.
+> **`origin/main` = `c2a3c27`** (`680328e..c2a3c27`, ten commits;
+> **rollback `782c9e0`** = TS.1). Migrate-then-deploy on Bilel's morning
+> go: the three migrations applied to Supabase via the MCP first —
+> **production is now 64 tables, RLS 58/58** (was 63/57), all 14 new
+> columns present, FORCE RLS + explicit `landingos_app` GRANT on the new
+> `AdSpendCampaignDaily`, merchant data untouched (Tenant 3, SalesOrder 2,
+> LandingPage 3, AdSpendDaily 30) — then one push of the range.
 >
-> **⚠ THREE DEV-ONLY MIGRATIONS AWAIT PROD APPROVAL** — SQL previews in
-> `docs/migrations-pending/` (ME.B 7 nullable cols · BH.4 6 nullable
-> cols · ME.C one new table). **Prod deploy order: apply the three
-> previews + `apply-rls` (57→58) FIRST, then one push of the range.**
-> All additive-nullable — running prod code is safe during the window.
-> Dev (`ep-gentle-sky`) already carries all three; dev RLS 58/58.
+> **Verified live on the public storefront:** build id
+> `gFb0iew3zUcTBU0aOKYtU` → `HRZcIC3GeDX7rHjcAgmov`; health 200; **the
+> announcement bug is PROVEN FIXED on the real pages** — dedima renders
+> Bilel's own typed announcement (`خصم 34%…`, absent at baseline minutes
+> before) with the hardcoded line gone; robe (unset) keeps the default
+> line; robeelegante renders its announcement AND its distinct CTA label
+> (the twin fix). Variants re-warmed across all three pages. CHANGELOG
+> §FIX.ANN+batch carries the full record; each commit is a slice record.
 >
-> Final-tree suites all green (16 suites; counts in the CHANGELOG entry);
-> tsc 275 unchanged. **Post-deploy attended checks owed:** the
-> announcement bar on the real editor→storefront loop; the redesigned
-> Traffic screen + Overview widget rendered authed; one real Refresh
-> spend pulling link clicks/reach/campaigns (needs the real token, and
-> `TRUST_CLOUDFLARE_CLIENT_IP` stays as-is in Render). **Bilel's items
-> unchanged: D3 (flip behavior tracking on — the new card control makes
-> it one click), {{campaign.name}} UTM tagging in Ads Manager (not
-> retroactive).**
+> **⚠ Owed attended (Bilel, in the console):** open the redesigned
+> Traffic screen + Overview widget; run one real **Refresh spend** (now
+> three Meta calls — daily, campaign, reach — on the real token) to fill
+> `AdSpendCampaignDaily`, link clicks and reach; optionally D3 — the
+> per-page "Turn on behavior tracking" is one click on each page card.
+> **Bilel's operational item:** `{{campaign.name}}` UTM tagging in Ads
+> Manager (not retroactive — BH.4 captures it from the first tagged
+> click). Open product one-liner: should an UNSET announcement eventually
+> hide the bar instead of showing the default line?
 
 > ### ✅ TS.1 IS LIVE (24 Aug 2026, 01:09:52 UTC) — the BH.3 analyze button is finally VISIBLE
 >

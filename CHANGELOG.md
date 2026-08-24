@@ -10,18 +10,41 @@ touched, any **migration**, and any **risk**.
 
 ---
 
-## FIX.ANN + the Traffic-redesign batch (ME.A · TS.2 · TS.4 · TS.3+D2 · OV.1 · ME.B · BH.4 · ME.C) — built overnight 24 Aug 2026, NOT DEPLOYED
+## FIX.ANN + the Traffic-redesign batch (ME.A · TS.2 · TS.4 · TS.3+D2 · OV.1 · ME.B · BH.4 · ME.C) — built overnight 24 Aug 2026, **DEPLOYED 24 Aug 06:27:48 UTC on Bilel's go**
 
-**NINE local commits (`8f1dfb3..` local main), NOT pushed — production
-untouched by instruction ("stop before any production migration or deploy").
-Each commit carries its full record; this entry is the index. ⚠ THREE
-migrations are applied to DEV ONLY and previewed for prod in
-`docs/migrations-pending/` (ME.B: 7 nullable columns · BH.4: 6 nullable
-columns · ME.C: ONE new table `AdSpendCampaignDaily` → prod `apply-rls`
-must run, RLS 57→58; dev is already 58/58). All additive-nullable, so the
-running production code is safe against the applied schema during the
-deploy window. Deploy order: the three SQL previews + apply-rls FIRST,
-then one push of the whole range.**
+**✅ LIVE: `origin/main` = `c2a3c27`** (`680328e..c2a3c27`, ten commits —
+nine code + the batch record; **rollback `782c9e0`**, the TS.1 deploy).
+Migrate-then-deploy, per the standing pattern:
+
+- **Migrations applied to Supabase prod via the MCP, 24 Aug ~06:20 UTC**,
+  as three named migrations (`meb_ad_metrics_columns`,
+  `bh4_capture_columns`, `mec_campaign_spend_table` — the last one carries
+  the `tenant_isolation` policy ENABLE+FORCE and an explicit
+  `landingos_app` GRANT, since default privileges are per-creating-role and
+  the MCP creates as postgres). **Verified after: 64 tables (was 63), RLS
+  58/58 (was 57), all 14 new columns present, FORCE RLS true on the new
+  table, app grants 4/4, merchant data untouched (Tenant 3, SalesOrder 2,
+  LandingPage 3, AdSpendDaily 30).**
+- **Verified live (public, measured):** Render `live` = `c2a3c27`; build id
+  `gFb0iew3zUcTBU0aOKYtU` → `HRZcIC3GeDX7rHjcAgmov`; health 200. **The
+  FIX.ANN proof, on the real pages: dedima now renders the merchant's own
+  announcement (`خصم 34%…`) and the hardcoded default line is GONE — the
+  page carried the bug at baseline minutes earlier; robe (announcement
+  unset) keeps the default line byte-for-byte; robeelegante renders both
+  its announcement and its distinct General-section CTA label (`اضغطي هنا
+  للطلب الآن`) — the twin fix, live.** Storefront sizes moved exactly as
+  expected (+~1.5KB per page carrying new text). Image variants re-warmed
+  across all three pages post-deploy.
+- **Deployed but dormant until used:** `AdSpendCampaignDaily` 0 rows,
+  reach/linkClicks columns null — the next real "Refresh spend" (attended,
+  real token) makes the three Meta calls and fills them. The BH.4 capture
+  columns fill from real traffic from this hour forward.
+
+Original overnight state (superseded above): built dev-first with
+production untouched, three migrations previewed in
+`docs/migrations-pending/`, awaiting the explicit go — which arrived on
+the morning of 24 Aug. Each commit carries its full slice record; the
+table below is the index.
 
 | Commit | Slice | Schema |
 |---|---|---|
