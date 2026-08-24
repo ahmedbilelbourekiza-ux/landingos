@@ -112,8 +112,6 @@
       "returningVisitors": "عائدون",
       "orders": "طلبات",
       "rangeLabel": "الفترة الزمنية",
-      "range7": "7 أيام",
-      "range30": "30 يومًا",
       "colPage": "الصفحة",
       "colViews": "المشاهدات",
       "colOrders": "الطلبات",
@@ -186,7 +184,21 @@
       "adAccountDisconnectConfirm": "هل تريد فصل هذا الحساب الإعلاني؟ سيُحذف الرمز المحفوظ وسجل الإنفاق المستورد. إعادة الربط تعيد استيراد الفترة من جديد.",
       "adSpendCtr": "نسبة النقر CTR",
       "adSpendCostPerClick": "تكلفة النقرة",
-      "adSpendCpm": "لكل 1000 ظهور"
+      "adSpendCpm": "لكل 1000 ظهور",
+      "range": {
+        "today": "اليوم",
+        "yesterday": "أمس",
+        "3d": "3 أيام",
+        "week": "7 أيام",
+        "month": "30 يوماً"
+      },
+      "rangeCustom": "مخصص",
+      "customFrom": "من",
+      "customTo": "إلى",
+      "customApply": "تطبيق",
+      "vsPrevious": "مقارنة بالفترة السابقة",
+      "noPrevious": "لا بيانات سابقة للمقارنة",
+      "kpiConversion": "نسبة التحويل"
     },
     "newPage": {
       "title": "صفحة هبوط جديدة",

@@ -15,7 +15,7 @@ import { adSpendPanel, META_ORDER_CHANNELS } from '../src/lib/builder/ad-spend-p
  * run with a stub — no database, no network.
  * -------------------------------------------------------------------------- */
 
-const RANGE = { days: 7, since: new Date('2026-08-14T00:00:00.000Z') };
+const RANGE = { days: 7, since: new Date('2026-08-14T00:00:00.000Z'), until: new Date('2026-08-21T00:00:00.000Z') };
 
 function client(opts: {
   account?: { id: string; name: string; currency?: string; lastSyncedAt: Date | null } | null;
@@ -175,6 +175,6 @@ describe('the order side counts BOTH Meta placements', () => {
     assert.deepEqual(c.captured.orderWhere.sourceChannel, { in: ['facebook', 'instagram'] });
     // And the window must match the spend window, or the ratio compares
     // different periods.
-    assert.deepEqual(c.captured.orderWhere.createdAt, { gte: RANGE.since });
+    assert.deepEqual(c.captured.orderWhere.createdAt, { gte: RANGE.since, lt: RANGE.until });
   });
 });

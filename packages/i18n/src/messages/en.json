@@ -112,8 +112,6 @@
       "returningVisitors": "returning",
       "orders": "orders",
       "rangeLabel": "Time range",
-      "range7": "7 days",
-      "range30": "30 days",
       "colPage": "Page",
       "colViews": "Views",
       "colOrders": "Orders",
@@ -186,7 +184,21 @@
       "adAccountDisconnectConfirm": "Disconnect this advertising account? The stored token and the pulled spend history are deleted. Re-connecting pulls the window again.",
       "adSpendCtr": "CTR",
       "adSpendCostPerClick": "cost per click",
-      "adSpendCpm": "per 1000 impressions"
+      "adSpendCpm": "per 1000 impressions",
+      "range": {
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "3d": "3 days",
+        "week": "7 days",
+        "month": "30 days"
+      },
+      "rangeCustom": "Custom",
+      "customFrom": "From",
+      "customTo": "To",
+      "customApply": "Apply",
+      "vsPrevious": "vs the period before",
+      "noPrevious": "no earlier data to compare",
+      "kpiConversion": "Conversion"
     },
     "newPage": {
       "title": "New landing page",

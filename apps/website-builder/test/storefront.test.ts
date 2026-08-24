@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
 
 import { asPlatform, withTenant, disconnect, deleteTenant } from '@landingos/db';
+import { createSession, destroySessionsForUser, hashPassword, SESSION_COOKIE } from '@landingos/auth';
 
 /* =============================================================================
  * The public storefront (M-17, R-08).
@@ -1539,7 +1540,7 @@ describe('first-party page views and their traffic source (AN.1)', { skip }, () 
     // arithmetic, so THIS is where the numbers are pinned.
     const { storefrontAnalytics, analyticsRange } = await import('../src/lib/builder/analytics.ts');
     const data = await withTenant(tenantA, (db) =>
-      storefrontAnalytics(db, analyticsRange('7')),
+      storefrontAnalytics(db, analyticsRange({ days: '7' })),
     );
 
     const pageRow = data.byPage.find((row: any) => row.landingPageId === publishedA);
@@ -1650,7 +1651,7 @@ describe('visit retention and returning visitors (AN.2)', { skip }, () => {
 
     const { storefrontAnalytics, analyticsRange } = await import('../src/lib/builder/analytics.ts');
     const data = await withTenant(tenantA, (db) =>
-      storefrontAnalytics(db, analyticsRange('7')),
+      storefrontAnalytics(db, analyticsRange({ days: '7' })),
     );
 
     // Relative assertions — the suite's earlier fixtures share this tenant.
@@ -1777,7 +1778,7 @@ describe('in-page behavior lands on the view row, only where the page opted in (
   test('the behavior aggregates the screen renders come from these rows, measured-only', async () => {
     const { storefrontAnalytics, analyticsRange } = await import('../src/lib/builder/analytics.ts');
     const data = await withTenant(tenantA, (db) =>
-      storefrontAnalytics(db, analyticsRange('7')),
+      storefrontAnalytics(db, analyticsRange({ days: '7' })),
     );
 
     const row = data.behaviorByPage.find((b: any) => b.landingPageId === publishedA);
@@ -1867,5 +1868,168 @@ describe('Task-1 — General-section announcement and button label render public
     );
     const html = await fetch(`${BASE}/${slugA}/legacy-btn-${stamp}`).then((r) => r.text());
     assert.ok(html.includes(`LEGACY-${stamp}`), 'a null ctaButtonText must fall back to the legacy buttonText');
+  });
+});
+
+/* =============================================================================
+ * TS.2 — the period vocabulary, its clamps, and the KPI band.
+ *
+ * The boundary semantics deliberately MATCH lib/erp/orders.ts `rangeBounds`
+ * (server-zone start-of-day, half-open windows) — that module is server-only
+ * and cannot be imported here, so these tests pin the SAME semantics at a
+ * fixed clock. If either convention moves, this file names the other.
+ * ========================================================================== */
+
+describe("TS.2 — analyticsRange: the ERP's day boundaries, traffic's additions, the retention clamp", () => {
+  // A fixed clock mid-afternoon, so "today so far" is a partial day.
+  const NOW = new Date(2026, 7, 24, 15, 30, 45, 123); // 24 Aug 2026 15:30:45 local
+  const dayStart = (d: number, m = 7, y = 2026) => new Date(y, m, d).getTime();
+
+  test("today / yesterday / week / month carry rangeBounds' own boundaries", async () => {
+    const { analyticsRange } = await import('../src/lib/builder/analytics.ts');
+    const today = analyticsRange({ range: 'today' }, NOW);
+    assert.equal(today.since.getTime(), dayStart(24));
+    assert.equal(today.until.getTime(), NOW.getTime() + 1, 'open windows end at now+1ms');
+    assert.equal(today.days, 1);
+
+    const yd = analyticsRange({ range: 'yesterday' }, NOW);
+    assert.equal(yd.since.getTime(), dayStart(23));
+    assert.equal(yd.until.getTime(), dayStart(24), 'yesterday ends where today begins — half-open, one day, never two');
+
+    const week = analyticsRange({ range: 'week' }, NOW);
+    assert.equal(week.since.getTime(), dayStart(18), 'week = today plus the 6 days before it');
+    assert.equal(week.days, 7);
+
+    const month = analyticsRange({ range: 'month' }, NOW);
+    assert.equal(month.since.getTime(), dayStart(26, 6), '30 days back from today start');
+    assert.equal(month.days, 30);
+  });
+
+  test("3d is traffic's own: today plus the two days before", async () => {
+    const { analyticsRange } = await import('../src/lib/builder/analytics.ts');
+    const r = analyticsRange({ range: '3d' }, NOW);
+    assert.equal(r.since.getTime(), dayStart(22));
+    assert.equal(r.days, 3);
+  });
+
+  test('legacy ?days= bookmarks keep working; anything else is the 7-day default', async () => {
+    const { analyticsRange } = await import('../src/lib/builder/analytics.ts');
+    assert.equal(analyticsRange({ days: '30' }, NOW).period, 'month');
+    assert.equal(analyticsRange({ days: '7' }, NOW).period, 'week');
+    assert.equal(analyticsRange(undefined, NOW).period, 'week');
+    assert.equal(analyticsRange({ range: 'nonsense' }, NOW).period, 'week');
+  });
+
+  test('custom: inclusive picker days become a half-open window; swapped inputs are read as meant', async () => {
+    const { analyticsRange } = await import('../src/lib/builder/analytics.ts');
+    const r = analyticsRange({ range: 'custom', from: '2026-08-10', to: '2026-08-12' }, NOW);
+    assert.equal(r.since.getTime(), dayStart(10));
+    assert.equal(r.until.getTime(), dayStart(13), 'the whole of the 12th is inside');
+    assert.equal(r.days, 3);
+    assert.equal(r.from, '2026-08-10');
+    assert.equal(r.to, '2026-08-12');
+    const swapped = analyticsRange({ range: 'custom', from: '2026-08-12', to: '2026-08-10' }, NOW);
+    assert.equal(swapped.since.getTime(), dayStart(10));
+    assert.equal(swapped.until.getTime(), dayStart(13));
+  });
+
+  test('custom is CLAMPED to the 30-day retention window — the rows behind it live no longer', async () => {
+    const { analyticsRange } = await import('../src/lib/builder/analytics.ts');
+    // Far past: floored to the retention window's start.
+    const old = analyticsRange({ range: 'custom', from: '2026-01-01', to: '2026-08-24' }, NOW);
+    assert.equal(old.since.getTime(), dayStart(26, 6), 'the window may not start before the retention floor');
+    // A future end is nothing to count: capped at today.
+    const future = analyticsRange({ range: 'custom', from: '2026-08-20', to: '2026-09-15' }, NOW);
+    assert.equal(future.until.getTime(), dayStart(25), 'capped at the whole of today');
+    // Malformed input renders the default screen, not an error.
+    assert.equal(analyticsRange({ range: 'custom', from: 'garbage', to: '2026-08-24' }, NOW).period, 'week');
+  });
+
+  test('previousWindow is the same span, immediately before, sharing the boundary', async () => {
+    const { analyticsRange, previousWindow } = await import('../src/lib/builder/analytics.ts');
+    const r = analyticsRange({ range: 'week' }, NOW);
+    const prev = previousWindow(r);
+    assert.equal(prev.until.getTime(), r.since.getTime());
+    assert.equal(r.until.getTime() - r.since.getTime(), prev.until.getTime() - prev.since.getTime());
+  });
+
+  test('percentDelta and conversionRate refuse zero denominators rather than inventing figures', async () => {
+    const { percentDelta, conversionRate } = await import('../src/lib/builder/analytics.ts');
+    assert.equal(percentDelta(10, 0), null, '+100% against zero is arithmetic, not information');
+    assert.equal(percentDelta(15, 10), 50);
+    assert.equal(conversionRate(3, 0), null);
+    assert.equal(conversionRate(3, 120), 2.5);
+  });
+});
+
+describe('TS.2 — bounded windows bound the QUERIES, and the screen renders the band', { skip }, () => {
+  test("a yesterday window counts yesterday's rows and none of today's", async () => {
+    const { storefrontAnalytics, analyticsRange, analyticsComparison, previousWindow } =
+      await import('../src/lib/builder/analytics.ts');
+    const now = new Date();
+    const yesterdayNoon = new Date(
+      new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - 12 * 60 * 60 * 1000,
+    );
+    await withTenant(tenantB, async (db) => {
+      await (db as any).storefrontVisit.createMany({
+        data: [
+          { tenantId: tenantB, landingPageId: publishedB, pageKind: 'landing',
+            visitorToken: `ts2-y-${stamp}`, sourceChannel: 'direct', createdAt: yesterdayNoon },
+          { tenantId: tenantB, landingPageId: publishedB, pageKind: 'landing',
+            visitorToken: `ts2-t-${stamp}`, sourceChannel: 'direct' },
+        ],
+      });
+      const yd = await storefrontAnalytics(db, analyticsRange({ range: 'yesterday' }));
+      const td = await storefrontAnalytics(db, analyticsRange({ range: 'today' }));
+      assert.equal(yd.totals.views, 1, 'yesterday holds exactly the yesterday row');
+      assert.equal(td.totals.views, 1, 'today holds exactly the today row');
+      /* The comparison helper reads the same half-open windows. Today's
+       * previous window is SPAN-MATCHED (the ERP dashboard rule): at 09:00 it
+       * is yesterday 00:00-09:00, not the whole day — so the test plants a
+       * row just inside the computed window rather than assuming a full day. */
+      const win = previousWindow(analyticsRange({ range: 'today' }));
+      await (db as any).storefrontVisit.create({
+        data: { tenantId: tenantB, landingPageId: publishedB, pageKind: 'landing',
+          visitorToken: `ts2-p-${stamp}`, sourceChannel: 'direct',
+          createdAt: new Date(win.since.getTime() + 1000) },
+      });
+      const prev = await analyticsComparison(db, win);
+      assert.ok(prev.views >= 1, 'the planted row sits inside the span-matched previous window');
+    });
+  });
+
+  test('the screen renders the KPI band, the ERP-style period tabs, and the custom form', async () => {
+    const created = await asPlatform().user.create({
+      data: { email: `ts2-owner-${stamp}@landingos.test`, name: 'ts2', passwordHash: await hashPassword('x') },
+    });
+    await withTenant(tenantA, (tx) =>
+      (tx as any).membership.create({ data: { tenantId: tenantA, userId: created.id, role: 'OWNER', permissions: [] } }),
+    );
+    const { token } = await createSession(created.id, tenantA);
+    try {
+      const html = await fetch(`${BASE}/console/builder/analytics?range=today`, {
+        headers: { cookie: `${SESSION_COOKIE}=${token}` },
+      }).then((r) => r.text());
+      for (const kpi of ['traffic-views', 'traffic-visitors', 'traffic-orders', 'traffic-conversion']) {
+        assert.ok(html.includes(`data-kpi="${kpi}"`), `${kpi} tile must render`);
+      }
+      for (const p of ['today', 'yesterday', '3d', 'week', 'month']) {
+        assert.ok(html.includes(`data-period="${p}"`), `period link ${p} must render`);
+      }
+      assert.ok(html.includes('data-testid="analytics-custom-range"'));
+      assert.ok(html.includes('data-testid="analytics-custom-from"'));
+      assert.ok(html.includes('data-testid="analytics-custom-to"'));
+      // The legacy bare-days URL still answers (no 500, same screen).
+      const legacy = await fetch(`${BASE}/console/builder/analytics?days=30`, {
+        headers: { cookie: `${SESSION_COOKIE}=${token}` },
+      });
+      assert.equal(legacy.status, 200);
+    } finally {
+      await destroySessionsForUser(created.id);
+      await withTenant(tenantA, (tx) =>
+        (tx as any).membership.deleteMany({ where: { userId: created.id } }),
+      ).catch(() => {});
+      await asPlatform().user.delete({ where: { id: created.id } }).catch(() => {});
+    }
   });
 });

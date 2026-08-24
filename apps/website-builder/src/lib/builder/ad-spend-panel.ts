@@ -95,7 +95,7 @@ interface SpendClient {
  */
 export async function adSpendPanel(
   db: SpendClient,
-  range: { readonly days: number; readonly since: Date },
+  range: { readonly days: number; readonly since: Date; readonly until: Date },
   storeCurrency: string,
 ): Promise<AdSpendPanel> {
   const account = await db.adAccount.findFirst({
@@ -117,7 +117,7 @@ export async function adSpendPanel(
   }
 
   const stored = await db.adSpendDaily.findMany({
-    where: { adAccountId: account.id, date: { gte: range.since } },
+    where: { adAccountId: account.id, date: { gte: range.since, lt: range.until } },
     select: { date: true, spend: true, currency: true, impressions: true, clicks: true },
     orderBy: { date: "asc" },
   });
@@ -135,7 +135,7 @@ export async function adSpendPanel(
   const orders = await db.salesOrder.count({
     where: {
       sourceChannel: { in: [...META_ORDER_CHANNELS] },
-      createdAt: { gte: range.since },
+      createdAt: { gte: range.since, lt: range.until },
     },
   });
 

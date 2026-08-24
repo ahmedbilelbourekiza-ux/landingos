@@ -112,8 +112,6 @@
       "returningVisitors": "de retour",
       "orders": "commandes",
       "rangeLabel": "Période",
-      "range7": "7 jours",
-      "range30": "30 jours",
       "colPage": "Page",
       "colViews": "Vues",
       "colOrders": "Commandes",
@@ -186,7 +184,21 @@
       "adAccountDisconnectConfirm": "Déconnecter ce compte publicitaire ? Le jeton enregistré et l'historique de dépenses importé seront supprimés. Une reconnexion réimporte la période à nouveau.",
       "adSpendCtr": "CTR",
       "adSpendCostPerClick": "coût par clic",
-      "adSpendCpm": "pour 1000 impressions"
+      "adSpendCpm": "pour 1000 impressions",
+      "range": {
+        "today": "Aujourd’hui",
+        "yesterday": "Hier",
+        "3d": "3 jours",
+        "week": "7 jours",
+        "month": "30 jours"
+      },
+      "rangeCustom": "Personnalisé",
+      "customFrom": "Du",
+      "customTo": "Au",
+      "customApply": "Appliquer",
+      "vsPrevious": "vs la période précédente",
+      "noPrevious": "pas de données antérieures à comparer",
+      "kpiConversion": "Conversion"
     },
     "newPage": {
       "title": "Nouvelle page de vente",

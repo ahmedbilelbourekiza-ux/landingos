@@ -1,16 +1,28 @@
-import Link from "next/link";
-
 import { can } from "@landingos/auth";
 import { withTenant } from "@landingos/db";
-import { formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
+import { formatDate, formatNumber, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
 import { actionErrors } from "@/lib/console/action-errors";
-import { analyticsRange, storefrontAnalytics } from "@/lib/builder/analytics";
+import {
+  analyticsRange,
+  storefrontAnalytics,
+  analyticsComparison,
+  previousWindow,
+  percentDelta,
+  conversionRate,
+  ANALYTICS_PERIODS,
+} from "@/lib/builder/analytics";
 import { adSpendPanel } from "@/lib/builder/ad-spend-panel";
 import { pruneExpiredVisits } from "@/lib/storefront/visit-retention";
 import { INSIGHT_MIN_VIEWS, type InsightRecommendationData } from "@/lib/landing/ai-insight";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
+/* TS.2 — the console's ONE analytics language (PM.1's dashboard-parts):
+ * KpiTile with its previous-window delta, PeriodTabs as URL-driven links.
+ * Imported across the erp/ boundary deliberately — these are pure renders
+ * over props with no ERP semantics, and a second copy for the builder is how
+ * two dashboards drift apart. */
+import { KpiTile, PeriodTabs } from "@/components/console/erp/dashboard-parts";
 import { DataTable } from "@/components/console/data-table";
 import { AnalyzePageButton } from "@/components/console/builder/analyze-page-button";
 import { RefreshSpendButton } from "@/components/console/builder/refresh-spend-button";
@@ -42,14 +54,14 @@ const CHANNEL_BRANDS: Record<string, string> = {
 export default async function BuilderAnalyticsScreen({
   searchParams,
 }: {
-  searchParams: Promise<{ days?: string }>;
+  searchParams: Promise<{ days?: string; range?: string; from?: string; to?: string }>;
 }) {
   const { session, locale: rawLocale, t } = await requireProduct(
     "website-builder",
     "/console/builder/analytics",
   );
   const locale = isLocale(rawLocale) ? rawLocale : DEFAULT_LOCALE;
-  const range = analyticsRange((await searchParams).days);
+  const range = analyticsRange(await searchParams);
 
   // SEC.8 — the analyze button bills the tenant's AI key, which is its own
   // permission now. Without it the button is not rendered at all: this screen
@@ -70,9 +82,13 @@ export default async function BuilderAnalyticsScreen({
    * prune runs FIRST, in the same transaction — AN.2's read-path retention:
    * whoever looks at analytics sweeps their own expired rows, so this screen
    * never reports over data the retention rule says should be gone. */
-  const { data, insights, spend: adSpend } = await withTenant(session.auth!.tenantId, async (db) => {
+  const { data, insights, spend: adSpend, prev } = await withTenant(session.auth!.tenantId, async (db) => {
     await pruneExpiredVisits(db);
     const analytics = await storefrontAnalytics(db, range);
+    /* TS.2 — the same-length window immediately before, for the KPI deltas:
+       three cheap aggregates on the same binding, never a second full
+       storefrontAnalytics. */
+    const comparison = await analyticsComparison(db, previousWindow(range));
     /* BH.3 — the newest stored analysis per landing page WITH TRAFFIC. TS.1:
      * keyed off byPage, not behaviorByPage — the analyze API never required
      * behavior (the summary's behavior half is honestly null without it), so
@@ -108,7 +124,7 @@ export default async function BuilderAnalyticsScreen({
       select: { currency: true },
     });
     const spend = await adSpendPanel(db as never, range, tenantRow?.currency ?? "DZD");
-    return { data: analytics, insights: newestPerPage, spend };
+    return { data: analytics, insights: newestPerPage, spend, prev: comparison };
   });
 
   const channelLabel = (channel: string) =>
@@ -163,6 +179,13 @@ export default async function BuilderAnalyticsScreen({
       : t("builder.analytics.categoryPages");
   };
 
+  /* TS.2 — conversion as orders per 100 views, in this window and the one
+   * before; the delta is POINTS (a rate compares by difference). Null when a
+   * window has no views — never a rate over a zero denominator. */
+  const conv = conversionRate(data.totals.orders, data.totals.views);
+  const prevConv = conversionRate(prev.orders, prev.views);
+  const convDelta = conv !== null && prevConv !== null ? conv - prevConv : null;
+
   /* TS.1 — the landing pages with traffic in the window (views, or orders
    * without a counted view). This is what the behavior and AI sections key
    * off now: "this store has landing traffic" is the honest precondition for
@@ -185,48 +208,120 @@ export default async function BuilderAnalyticsScreen({
           half-hides it. */}
       <p className="text-sm text-muted-foreground">{t("builder.analytics.basis")}</p>
 
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-wrap gap-4 text-sm" data-testid="analytics-totals">
-          <span>
-            <span className="font-semibold tabular-nums">{data.totals.views}</span>{" "}
-            <span className="text-muted-foreground">{t("builder.analytics.views")}</span>
-          </span>
-          {/* AN.2 — visitors split new/returning; the two halves sum to the
-              total by construction (returning = seen before their session
-              began; new = the remainder). */}
-          <span data-testid="analytics-visitors">
-            <span className="font-semibold tabular-nums">{data.totals.visitors}</span>{" "}
-            <span className="text-muted-foreground">{t("builder.analytics.visitors")}</span>
-          </span>
-          <span data-testid="analytics-new">
-            <span className="font-semibold tabular-nums">{data.totals.newVisitors}</span>{" "}
-            <span className="text-muted-foreground">{t("builder.analytics.newVisitors")}</span>
-          </span>
-          <span data-testid="analytics-returning">
-            <span className="font-semibold tabular-nums">{data.totals.returningVisitors}</span>{" "}
-            <span className="text-muted-foreground">{t("builder.analytics.returningVisitors")}</span>
-          </span>
-          <span>
-            <span className="font-semibold tabular-nums">{data.totals.orders}</span>{" "}
-            <span className="text-muted-foreground">{t("builder.analytics.orders")}</span>
-          </span>
-        </div>
-        <nav className="flex gap-1 text-sm" aria-label={t("builder.analytics.rangeLabel")}>
-          {[7, 30].map((days) => (
-            <Link
-              key={days}
-              href={days === 7 ? "?" : `?days=${days}`}
-              data-testid={`analytics-range-${days}`}
-              className={
-                range.days === days
-                  ? "rounded-md bg-accent px-3 py-1 font-medium"
-                  : "rounded-md px-3 py-1 text-muted-foreground hover:text-foreground"
-              }
-            >
-              {t(days === 7 ? "builder.analytics.range7" : "builder.analytics.range30")}
-            </Link>
-          ))}
-        </nav>
+      {/* TS.2 — the period, ERP-style: five words as URL-driven links (the
+          ERP order list's own vocabulary plus traffic's 3d), and a custom
+          from/to as a plain GET form — the range belongs in the URL, so it
+          can be bookmarked and read back by the server, and the form needs
+          no JavaScript to work. Custom is CLAMPED to the last 30 days: the
+          raw rows behind every number here live exactly that long (the
+          basis line above says so), and the post-clamp echo in the inputs
+          is how a clamp is communicated. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <PeriodTabs
+          basePath="/console/builder/analytics"
+          active={range.period}
+          label={t("builder.analytics.rangeLabel")}
+          options={ANALYTICS_PERIODS.map((value) => ({
+            value,
+            label: t(`builder.analytics.range.${value}` as never),
+          }))}
+        />
+        <details
+          data-testid="analytics-custom-range"
+          className="relative"
+          open={range.period === "custom" || undefined}
+        >
+          <summary
+            className={`tap cursor-pointer list-none rounded-md border border-border px-3 py-1.5 text-xs font-medium ${
+              range.period === "custom" ? "bg-surface-raised text-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t("builder.analytics.rangeCustom")}
+          </summary>
+          <form
+            method="get"
+            action="/console/builder/analytics"
+            className="mt-2 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-surface-raised p-3 text-sm sm:absolute sm:end-0 sm:z-10 sm:mt-1 sm:shadow-e1"
+          >
+            <input type="hidden" name="range" value="custom" />
+            <label className="grid gap-1 text-xs text-muted-foreground">
+              {t("builder.analytics.customFrom")}
+              <input
+                type="date"
+                name="from"
+                required
+                defaultValue={range.from}
+                className="ui-input h-8 text-sm"
+                data-testid="analytics-custom-from"
+              />
+            </label>
+            <label className="grid gap-1 text-xs text-muted-foreground">
+              {t("builder.analytics.customTo")}
+              <input
+                type="date"
+                name="to"
+                required
+                defaultValue={range.to}
+                className="ui-input h-8 text-sm"
+                data-testid="analytics-custom-to"
+              />
+            </label>
+            <button type="submit" className="ui-btn ui-btn-default ui-btn-sm tap">
+              {t("builder.analytics.customApply")}
+            </button>
+          </form>
+        </details>
+      </div>
+
+      {/* TS.2 — the KPI band, in the console's one analytics language
+          (PM.1's KpiTile): each figure with its delta against the
+          same-length window before, rates with their denominators. */}
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" data-testid="analytics-totals">
+        <KpiTile
+          id="traffic-views"
+          label={t("builder.analytics.views")}
+          value={formatNumber(data.totals.views, locale)}
+          delta={percentDelta(data.totals.views, prev.views)}
+          deltaKind="percent"
+          riseIsGood
+          comparison={t("builder.analytics.vsPrevious")}
+          noComparison={t("builder.analytics.noPrevious")}
+        />
+        <KpiTile
+          id="traffic-visitors"
+          label={t("builder.analytics.visitors")}
+          value={formatNumber(data.totals.visitors, locale)}
+          sub={`${formatNumber(data.totals.newVisitors, locale)} ${t("builder.analytics.newVisitors")} · ${formatNumber(data.totals.returningVisitors, locale)} ${t("builder.analytics.returningVisitors")}`}
+          subId="traffic-visitor-split"
+          delta={percentDelta(data.totals.visitors, prev.visitors)}
+          deltaKind="percent"
+          riseIsGood
+          comparison={t("builder.analytics.vsPrevious")}
+          noComparison={t("builder.analytics.noPrevious")}
+        />
+        <KpiTile
+          id="traffic-orders"
+          label={t("builder.analytics.orders")}
+          value={formatNumber(data.totals.orders, locale)}
+          delta={percentDelta(data.totals.orders, prev.orders)}
+          deltaKind="percent"
+          riseIsGood
+          comparison={t("builder.analytics.vsPrevious")}
+          noComparison={t("builder.analytics.noPrevious")}
+        />
+        <KpiTile
+          id="traffic-conversion"
+          label={t("builder.analytics.kpiConversion")}
+          value={conv === null ? "—" : conv.toFixed(1)}
+          suffix={conv === null ? undefined : "%"}
+          sub={`${formatNumber(data.totals.orders, locale)} / ${formatNumber(data.totals.views, locale)}`}
+          subId="traffic-conversion-of"
+          delta={convDelta}
+          deltaKind="points"
+          riseIsGood
+          comparison={t("builder.analytics.vsPrevious")}
+          noComparison={t("builder.analytics.noPrevious")}
+        />
       </div>
 
       {/* LB.23 — real ad spend, pulled from Meta, beside the orders AN.1
