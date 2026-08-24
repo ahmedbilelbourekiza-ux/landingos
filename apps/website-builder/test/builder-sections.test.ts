@@ -710,6 +710,46 @@ describe('platform settings screens', { skip }, () => {
     assert.match(html, /data-testid="builder-overview"/);
     assert.match(html, new RegExp(`sec-a-${stamp}`), "the tenant's own name");
   });
+
+  test('OV.1 — the traffic widget: one quiet line without views, real tiles with them', async () => {
+    const overview = () =>
+      fetch(BASE + '/console/builder', {
+        headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+      }).then((r) => r.text());
+
+    // No views yet: the widget renders its one quiet line, never zero tiles.
+    let html = await overview();
+    assert.match(html, /data-testid="builder-traffic"/);
+    assert.match(html, /data-testid="builder-traffic-none"/);
+    assert.ok(!html.includes('data-kpi="ov-traffic-views"'));
+
+    // Three views this week (facebook leading) and one the week before.
+    await withTenant(tenant, (tx) =>
+      (tx as any).storefrontVisit.createMany({
+        data: [
+          { tenantId: tenant, landingPageId: pageId, pageKind: 'landing', visitorToken: `ov-a-${stamp}`, sourceChannel: 'facebook' },
+          { tenantId: tenant, landingPageId: pageId, pageKind: 'landing', visitorToken: `ov-b-${stamp}`, sourceChannel: 'facebook' },
+          { tenantId: tenant, landingPageId: pageId, pageKind: 'landing', visitorToken: `ov-c-${stamp}`, sourceChannel: 'direct' },
+          { tenantId: tenant, landingPageId: pageId, pageKind: 'landing', visitorToken: `ov-d-${stamp}`, sourceChannel: 'direct',
+            createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) },
+        ],
+      }),
+    );
+    try {
+      html = await overview();
+      assert.ok(html.includes('data-kpi="ov-traffic-views"'), 'the views tile must render');
+      assert.ok(html.includes('data-kpi="ov-traffic-conversion"'), 'the conversion tile renders for an orders reader');
+      assert.ok(html.includes('data-kpi="ov-traffic-source"'), 'the top-source tile must render');
+      assert.ok(html.includes('Facebook'), 'the leading source is the brand name');
+      assert.ok(!html.includes('data-testid="builder-traffic-none"'));
+      // No ad account in this fixture: the spend tile must be honestly absent.
+      assert.ok(!html.includes('data-kpi="ov-traffic-spend"'));
+    } finally {
+      await withTenant(tenant, (tx) =>
+        (tx as any).storefrontVisit.deleteMany({ where: { visitorToken: { startsWith: 'ov-' } } }),
+      );
+    }
+  });
 });
 
 describe('the landing editor moved, not rewritten', { skip }, () => {

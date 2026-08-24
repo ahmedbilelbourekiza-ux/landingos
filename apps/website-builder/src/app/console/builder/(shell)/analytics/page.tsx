@@ -12,6 +12,7 @@ import {
   percentDelta,
   conversionRate,
   ANALYTICS_PERIODS,
+  CHANNEL_BRANDS,
 } from "@/lib/builder/analytics";
 import { adSpendPanel } from "@/lib/builder/ad-spend-panel";
 import { pruneExpiredVisits } from "@/lib/storefront/visit-retention";
@@ -42,15 +43,6 @@ export const dynamic = "force-dynamic";
  * arithmetic. Channel labels: platform names are brand names and stay
  * untranslated; only direct/other/unattributed are locale words.
  * ========================================================================== */
-
-const CHANNEL_BRANDS: Record<string, string> = {
-  facebook: "Facebook",
-  instagram: "Instagram",
-  tiktok: "TikTok",
-  google: "Google",
-  whatsapp: "WhatsApp",
-  telegram: "Telegram",
-};
 
 export default async function BuilderAnalyticsScreen({
   searchParams,

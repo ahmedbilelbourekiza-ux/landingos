@@ -83,7 +83,14 @@
       "noOrdersYetHint": "Les commandes passées sur vos pages publiées apparaissent ici.",
       "firstPageTitle": "Créez votre première page de vente",
       "firstPageHint": "Un titre, une adresse et un prix suffisent pour commencer — tout le reste se modifie ensuite dans l'éditeur.",
-      "createPage": "Créer une page"
+      "createPage": "Créer une page",
+      "trafficTitle": "Trafic · 7 derniers jours",
+      "trafficView": "Voir le trafic",
+      "trafficNone": "Aucune vue ces 7 derniers jours — partagez un lien ou lancez une publicité pour voir les premières.",
+      "trafficViews": "Vues",
+      "trafficTopSource": "Source principale",
+      "trafficShare": "{share}% des vues",
+      "trafficLast7": "7 derniers jours"
     },
     "orders": {
       "colCustomer": "Client",

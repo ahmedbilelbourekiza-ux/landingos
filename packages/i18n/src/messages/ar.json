@@ -83,7 +83,14 @@
       "noOrdersYetHint": "تظهر هنا الطلبات المقدَّمة عبر صفحاتك المنشورة.",
       "firstPageTitle": "أنشئ صفحتك الأولى",
       "firstPageHint": "يكفي عنوان وعنوان ويب وسعر للبدء — وكل ما عدا ذلك يُعدَّل لاحقاً في المحرِّر.",
-      "createPage": "إنشاء صفحة"
+      "createPage": "إنشاء صفحة",
+      "trafficTitle": "الزيارات · آخر 7 أيام",
+      "trafficView": "عرض الزيارات",
+      "trafficNone": "لا مشاهدات في آخر 7 أيام بعد — شارك رابط صفحة أو شغّل إعلاناً لترى الأولى.",
+      "trafficViews": "المشاهدات",
+      "trafficTopSource": "المصدر الأول",
+      "trafficShare": "{share}% من المشاهدات",
+      "trafficLast7": "آخر 7 أيام"
     },
     "orders": {
       "colCustomer": "العميل",

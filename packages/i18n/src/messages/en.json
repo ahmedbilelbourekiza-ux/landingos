@@ -83,7 +83,14 @@
       "noOrdersYetHint": "Orders placed on your published pages appear here.",
       "firstPageTitle": "Create your first landing page",
       "firstPageHint": "A title, an address and a price are enough to start — everything else is edited afterwards in the editor.",
-      "createPage": "Create a page"
+      "createPage": "Create a page",
+      "trafficTitle": "Traffic · last 7 days",
+      "trafficView": "View traffic",
+      "trafficNone": "No page views in the last 7 days yet — share a page link or run an ad to see the first ones.",
+      "trafficViews": "Views",
+      "trafficTopSource": "Top source",
+      "trafficShare": "{share}% of views",
+      "trafficLast7": "last 7 days"
     },
     "orders": {
       "colCustomer": "Customer",

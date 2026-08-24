@@ -35,6 +35,19 @@
  * would silently report over rows the retention rule already removed. The
  * screen's counting-basis line states the 30-day retention.
  * -------------------------------------------------------------------------- */
+/** Channel display names: platform names are BRANDS and stay untranslated
+ * everywhere; only direct/other/unattributed are locale words (the screens
+ * translate those via builder.analytics.channel.*). Shared here so the
+ * Traffic screen and the Overview widget cannot drift. */
+export const CHANNEL_BRANDS: Record<string, string> = {
+  facebook: "Facebook",
+  instagram: "Instagram",
+  tiktok: "TikTok",
+  google: "Google",
+  whatsapp: "WhatsApp",
+  telegram: "Telegram",
+};
+
 export const ANALYTICS_PERIODS = ["today", "yesterday", "3d", "week", "month"] as const;
 export type AnalyticsPeriod = (typeof ANALYTICS_PERIODS)[number] | "custom";
 

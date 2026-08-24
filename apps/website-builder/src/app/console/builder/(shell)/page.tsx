@@ -9,6 +9,19 @@ import { resolveStatus, toneVars } from "@landingos/ui";
 import { formatMoney, formatNumber, formatDate, isLocale, DEFAULT_LOCALE } from "@landingos/i18n";
 
 import { requireProduct } from "@/lib/console/product-page";
+/* OV.1 — the traffic widget speaks the SAME definitions as the screen it
+ * links to: analyticsRange("week") for the window (so the tile can never
+ * disagree with the Traffic screen it opens), the same delta rules, the same
+ * channel brand names. KpiTile is the console's one analytics tile (PM.1). */
+import {
+  analyticsRange,
+  previousWindow,
+  percentDelta,
+  conversionRate,
+  CHANNEL_BRANDS,
+} from "@/lib/builder/analytics";
+import { adSpendPanel } from "@/lib/builder/ad-spend-panel";
+import { KpiTile } from "@/components/console/erp/dashboard-parts";
 import {
   PageHeader, PageBody, Section, Notice, EmptyState, Stat, StatGrid,
 } from "@/components/console/ui/primitives";
@@ -51,7 +64,18 @@ export default async function BuilderOverview() {
      how the manifest nav-walk test caught this page answering 500 on the
      documented Neon connection limit. One `groupBy` per table answers what
      four counts asked. */
-  const { pageGroups, orderGroups, abandoned, abandonedWithPhone, recent } = await withTenant(
+  /* OV.1 — the traffic widget's window: the SAME "week" the Traffic screen
+     defaults to (one function, one answer — the tile must not disagree with
+     the screen it opens). */
+  const trafficRange = analyticsRange({ range: "week" });
+  const trafficPrev = previousWindow(trafficRange);
+  const inWeek = { createdAt: { gte: trafficRange.since, lt: trafficRange.until } };
+  const inPrev = { createdAt: { gte: trafficPrev.since, lt: trafficPrev.until } };
+
+  const {
+    pageGroups, orderGroups, abandoned, abandonedWithPhone, recent,
+    weekViews, prevViews, weekOrders, prevOrders, weekChannels, spend,
+  } = await withTenant(
     session.auth!.tenantId,
     async (db) => ({
       pageGroups: await db.landingPage.groupBy({ by: ["published"], _count: { _all: true } }),
@@ -81,6 +105,21 @@ export default async function BuilderOverview() {
             },
           })
         : [],
+      /* OV.1 — six cheap aggregates, deliberately NOT storefrontAnalytics:
+         that module runs a dozen queries for tables this widget never shows,
+         and this screen was specifically rebuilt (D-PM.1.3) to consolidate
+         its counts after nine parallel bindings 500'd under suite load.
+         Same binding, sequential, like everything above. */
+      weekViews: await (db as any).storefrontVisit.count({ where: inWeek }),
+      prevViews: await (db as any).storefrontVisit.count({ where: inPrev }),
+      weekOrders: mayReadOrders ? await db.salesOrder.count({ where: inWeek }) : 0,
+      prevOrders: mayReadOrders ? await db.salesOrder.count({ where: inPrev }) : 0,
+      weekChannels: (await (db as any).storefrontVisit.groupBy({
+        by: ["sourceChannel"],
+        where: inWeek,
+        _count: { _all: true },
+      })) as { sourceChannel: string; _count: { _all: number } }[],
+      spend: await adSpendPanel(db as never, trafficRange, session.tenant?.currency ?? "DZD"),
     }),
   );
 
@@ -94,6 +133,16 @@ export default async function BuilderOverview() {
   // order that arrived is.
   const earned = deliveredGroup?._sum.totalPrice ?? 0;
   const draftPages = pages - published;
+
+  /* OV.1 — the widget's derived figures: conversion in points (a rate
+     compares by difference), the leading source by views. */
+  const weekConv = mayReadOrders ? conversionRate(weekOrders, weekViews) : null;
+  const prevWeekConv = mayReadOrders ? conversionRate(prevOrders, prevViews) : null;
+  const weekConvDelta =
+    weekConv !== null && prevWeekConv !== null ? weekConv - prevWeekConv : null;
+  const topChannel = weekChannels
+    .map((g) => ({ channel: g.sourceChannel, views: g._count._all }))
+    .sort((a, b) => b.views - a.views)[0] ?? null;
 
   /* 1 — what needs a person. Rendered only when non-zero, like the ERP's
      attention panel: a grid of zeros is furniture. */
@@ -202,6 +251,92 @@ export default async function BuilderOverview() {
             <span className="font-medium">{t("builder.overview.allClear")}</span>{" "}
             <span className="opacity-80">{t("builder.overview.allClearHint")}</span>
           </Notice>
+        )}
+
+        {/* OV.1 — traffic, the last 7 days, in the console's analytics
+            language: views with their week-over-week delta, conversion with
+            its denominators, the leading source, and real ad spend when an
+            account is connected. Every figure clicks through to the Traffic
+            screen, whose default window is THIS window by construction. A
+            store with no views yet gets one quiet line, not four zero tiles. */}
+        {pages > 0 && (
+          <Section
+            title={t("builder.overview.trafficTitle")}
+            testId="builder-traffic"
+            actions={
+              <Link href="/console/builder/analytics" className="ui-btn ui-btn-default ui-btn-sm tap">
+                {t("builder.overview.trafficView")}
+              </Link>
+            }
+          >
+            {weekViews === 0 ? (
+              <p className="py-2 text-sm text-muted-foreground" data-testid="builder-traffic-none">
+                {t("builder.overview.trafficNone")}
+              </p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                <KpiTile
+                  id="ov-traffic-views"
+                  label={t("builder.overview.trafficViews")}
+                  value={formatNumber(weekViews, locale)}
+                  delta={percentDelta(weekViews, prevViews)}
+                  deltaKind="percent"
+                  riseIsGood
+                  comparison={t("builder.analytics.vsPrevious")}
+                  noComparison={t("builder.analytics.noPrevious")}
+                  href="/console/builder/analytics"
+                />
+                {mayReadOrders && (
+                  <KpiTile
+                    id="ov-traffic-conversion"
+                    label={t("builder.analytics.kpiConversion")}
+                    value={weekConv === null ? "—" : weekConv.toFixed(1)}
+                    suffix={weekConv === null ? undefined : "%"}
+                    sub={`${formatNumber(weekOrders, locale)} / ${formatNumber(weekViews, locale)}`}
+                    delta={weekConvDelta}
+                    deltaKind="points"
+                    riseIsGood
+                    comparison={t("builder.analytics.vsPrevious")}
+                    noComparison={t("builder.analytics.noPrevious")}
+                    href="/console/builder/analytics"
+                  />
+                )}
+                {topChannel && (
+                  <KpiTile
+                    id="ov-traffic-source"
+                    label={t("builder.overview.trafficTopSource")}
+                    value={
+                      CHANNEL_BRANDS[topChannel.channel] ??
+                      t(`builder.analytics.channel.${topChannel.channel}` as never)
+                    }
+                    sub={t("builder.overview.trafficShare", {
+                      share: Math.round((topChannel.views / weekViews) * 100),
+                    })}
+                    delta={null}
+                    deltaKind="percent"
+                    riseIsGood
+                    comparison=""
+                    noComparison={t("builder.overview.trafficLast7")}
+                    href="/console/builder/analytics"
+                  />
+                )}
+                {spend.state === "ready" && (
+                  <KpiTile
+                    id="ov-traffic-spend"
+                    label={t("builder.analytics.adSpendTitle")}
+                    value={spend.spend}
+                    sub={`${spend.currency} · ${formatNumber(spend.orders, locale)} ${t("builder.analytics.adSpendOrders")}`}
+                    delta={null}
+                    deltaKind="percent"
+                    riseIsGood={false}
+                    comparison=""
+                    noComparison={t("builder.overview.trafficLast7")}
+                    href="/console/builder/analytics"
+                  />
+                )}
+              </div>
+            )}
+          </Section>
         )}
 
         {/* 2 — what the shop has. */}
