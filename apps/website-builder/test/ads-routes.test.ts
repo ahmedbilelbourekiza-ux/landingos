@@ -453,3 +453,60 @@ describe('SEC.9 — disconnecting an account (the documented act, now real)', { 
     assert.equal(r.status, 404);
   });
 });
+
+/* -----------------------------------------------------------------------------
+ * ME.A — the derived trio (CTR / CPC / CPM) on the rendered screen.
+ *
+ * Reachability both directions, per the standing lesson: the numbers render in
+ * the READY state with exact values from known sums, and none of them render
+ * when the window cannot answer (no synced spend).
+ * -------------------------------------------------------------------------- */
+describe('ME.A — derived ad metrics on the Traffic screen', { skip }, () => {
+  const screen = async (tok: string) => {
+    const r = await fetch(BASE + '/console/builder/analytics', {
+      headers: { cookie: `${SESSION_COOKIE}=${tok}` },
+    });
+    return await r.text();
+  };
+
+  test('a synced window renders CTR, cost per click and CPM with the spend currency', async () => {
+    // Make accountA READY: synced, one in-window day with round numbers.
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const day = new Date(`${yesterday.toISOString().slice(0, 10)}T00:00:00.000Z`);
+    await withTenant(tenantA, async (tx) => {
+      await (tx as any).adSpendDaily.create({
+        data: {
+          tenantId: tenantA, adAccountId: accountA, date: day,
+          spend: '12.00', currency: 'USD', impressions: 4000, clicks: 80,
+        },
+      });
+      await (tx as any).adAccount.update({
+        where: { id: accountA }, data: { lastSyncedAt: new Date() },
+      });
+    });
+    try {
+      const html = await screen(tokens.ownerA);
+      assert.ok(html.includes('data-testid="analytics-ad-ctr"'), 'CTR must render in the ready state');
+      assert.ok(html.includes('2.00%'), 'CTR is 80 of 4000, exactly');
+      assert.ok(html.includes('data-testid="analytics-ad-cpc"'));
+      assert.ok(html.includes('0.15'), 'CPC is 12.00 / 80, exactly');
+      assert.ok(html.includes('data-testid="analytics-ad-cpm"'));
+      assert.ok(html.includes('3.00'), 'CPM is 12.00 per 4 thousand, exactly');
+    } finally {
+      // Leave the fixture as the earlier describes shaped it: unsynced, no rows.
+      await withTenant(tenantA, async (tx) => {
+        await (tx as any).adSpendDaily.deleteMany({ where: { adAccountId: accountA } });
+        await (tx as any).adAccount.update({
+          where: { id: accountA }, data: { lastSyncedAt: null },
+        });
+      });
+    }
+  });
+
+  test('with nothing synced, none of the three renders — no 0.00 for an unanswerable ratio', async () => {
+    const html = await screen(tokens.ownerA);
+    assert.ok(!html.includes('data-testid="analytics-ad-ctr"'));
+    assert.ok(!html.includes('data-testid="analytics-ad-cpc"'));
+    assert.ok(!html.includes('data-testid="analytics-ad-cpm"'));
+  });
+});

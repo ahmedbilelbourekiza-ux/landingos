@@ -183,7 +183,10 @@
       "adAccountSaving": "جارٍ الحفظ…",
       "adAccountDisconnect": "فصل الحساب",
       "adAccountDisconnecting": "جارٍ الفصل…",
-      "adAccountDisconnectConfirm": "هل تريد فصل هذا الحساب الإعلاني؟ سيُحذف الرمز المحفوظ وسجل الإنفاق المستورد. إعادة الربط تعيد استيراد الفترة من جديد."
+      "adAccountDisconnectConfirm": "هل تريد فصل هذا الحساب الإعلاني؟ سيُحذف الرمز المحفوظ وسجل الإنفاق المستورد. إعادة الربط تعيد استيراد الفترة من جديد.",
+      "adSpendCtr": "نسبة النقر CTR",
+      "adSpendCostPerClick": "تكلفة النقرة",
+      "adSpendCpm": "لكل 1000 ظهور"
     },
     "newPage": {
       "title": "صفحة هبوط جديدة",

@@ -320,6 +320,35 @@ export default async function BuilderAnalyticsScreen({
                   {t("builder.analytics.adSpendClicks")}
                 </span>
               </span>
+              {/* ME.A — the derived trio, from the SAME stored sums (no new
+                  fetch): CTR as a percentage, CPC/CPM in the spend's own
+                  currency like every money figure here. A null is SKIPPED —
+                  an unanswerable ratio must not render as 0.00. */}
+              {adSpend.ctr !== null && (
+                <span data-testid="analytics-ad-ctr">
+                  {/* One template literal, one text node: `{v}%` SSRs as
+                      `2.00<!-- -->%`, which breaks copy-paste and any exact
+                      text assertion. */}
+                  <span className="font-semibold tabular-nums" dir="ltr">{`${adSpend.ctr}%`}</span>{" "}
+                  <span className="text-muted-foreground">{t("builder.analytics.adSpendCtr")}</span>
+                </span>
+              )}
+              {adSpend.costPerClick !== null && (
+                <span data-testid="analytics-ad-cpc">
+                  <span className="font-semibold tabular-nums">{adSpend.costPerClick}</span>{" "}
+                  <span className="text-muted-foreground">
+                    {adSpend.currency} {t("builder.analytics.adSpendCostPerClick")}
+                  </span>
+                </span>
+              )}
+              {adSpend.cpmPerMille !== null && (
+                <span data-testid="analytics-ad-cpm">
+                  <span className="font-semibold tabular-nums">{adSpend.cpmPerMille}</span>{" "}
+                  <span className="text-muted-foreground">
+                    {adSpend.currency} {t("builder.analytics.adSpendCpm")}
+                  </span>
+                </span>
+              )}
               <span>
                 <span className="font-semibold tabular-nums">{adSpend.orders}</span>{" "}
                 <span className="text-muted-foreground">

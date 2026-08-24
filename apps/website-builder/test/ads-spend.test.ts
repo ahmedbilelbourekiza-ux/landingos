@@ -7,6 +7,7 @@ import {
   summariseSpend,
   costPerOrder,
   crossCurrencyRatio,
+  derivedAdMetrics,
   formatSpend,
   META_GRAPH_VERSION,
 } from '../src/lib/ads/spend-math.ts';
@@ -194,5 +195,42 @@ describe('crossCurrencyRatio — the refusal, in one place', () => {
 
   test('same currency on both sides is allowed', () => {
     assert.equal(crossCurrencyRatio('USD', 'USD').ok, true);
+  });
+});
+
+describe('ME.A — derivedAdMetrics: three ratios from stored sums, or honestly null', () => {
+  test('CTR, CPC and CPM from a known window, exact to the cent', () => {
+    const summary = summariseSpend([
+      { date: '2026-08-01', spend: '12.00', currency: 'USD', impressions: 4000, clicks: 80 },
+    ]);
+    const d = derivedAdMetrics(summary);
+    assert.equal(toString(d.ctr!, 2), '2.00'); // 80 of 4000
+    assert.equal(toString(d.costPerClick!, 2), '0.15'); // 12 / 80
+    assert.equal(toString(d.cpmPerMille!, 2), '3.00'); // 12 / 4 thousand
+  });
+
+  test('impressions with zero clicks is a REAL 0% CTR — only CPC is unanswerable', () => {
+    const summary = summariseSpend([
+      { date: '2026-08-01', spend: '5.00', currency: 'USD', impressions: 1000, clicks: 0 },
+    ]);
+    const d = derivedAdMetrics(summary);
+    assert.equal(toString(d.ctr!, 2), '0.00');
+    assert.equal(d.costPerClick, null);
+    assert.equal(toString(d.cpmPerMille!, 2), '5.00');
+  });
+
+  test('zero impressions answers nothing that divides by them', () => {
+    const summary = summariseSpend([
+      { date: '2026-08-01', spend: '5.00', currency: 'USD', impressions: 0, clicks: 0 },
+    ]);
+    const d = derivedAdMetrics(summary);
+    assert.equal(d.ctr, null);
+    assert.equal(d.costPerClick, null);
+    assert.equal(d.cpmPerMille, null);
+  });
+
+  test('an empty window (no currency) derives nothing at all', () => {
+    const d = derivedAdMetrics(summariseSpend([]));
+    assert.deepEqual(d, { ctr: null, costPerClick: null, cpmPerMille: null });
   });
 });

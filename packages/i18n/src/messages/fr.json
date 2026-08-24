@@ -183,7 +183,10 @@
       "adAccountSaving": "Enregistrement…",
       "adAccountDisconnect": "Déconnecter le compte",
       "adAccountDisconnecting": "Déconnexion…",
-      "adAccountDisconnectConfirm": "Déconnecter ce compte publicitaire ? Le jeton enregistré et l'historique de dépenses importé seront supprimés. Une reconnexion réimporte la période à nouveau."
+      "adAccountDisconnectConfirm": "Déconnecter ce compte publicitaire ? Le jeton enregistré et l'historique de dépenses importé seront supprimés. Une reconnexion réimporte la période à nouveau.",
+      "adSpendCtr": "CTR",
+      "adSpendCostPerClick": "coût par clic",
+      "adSpendCpm": "pour 1000 impressions"
     },
     "newPage": {
       "title": "Nouvelle page de vente",

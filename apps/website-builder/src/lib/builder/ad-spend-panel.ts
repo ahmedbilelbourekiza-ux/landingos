@@ -2,6 +2,7 @@ import {
   summariseSpend,
   costPerOrder,
   crossCurrencyRatio,
+  derivedAdMetrics,
   type DailySpendRow,
 } from "../ads/spend-math.ts";
 import { toString } from "../money.ts";
@@ -52,6 +53,14 @@ export type AdSpendPanel =
       readonly orders: number;
       /** Null when unanswerable (no spend rows, or zero orders). */
       readonly costPerOrder: string | null;
+      /* ME.A — derived from the same stored sums (spend/impressions/clicks);
+       * formatted here so the screen never does arithmetic. CTR is a
+       * percentage; the two costs are in `currency`. Null = not answerable
+       * (zero denominator), and the screen SKIPS a null rather than
+       * rendering 0.00 for it. */
+      readonly ctr: string | null;
+      readonly costPerClick: string | null;
+      readonly cpmPerMille: string | null;
       /** Set when spend and revenue currencies differ — the honest refusal. */
       readonly ratioRefusal: string | null;
     };
@@ -139,6 +148,7 @@ export async function adSpendPanel(
   const currency = summary.currency ?? account.currency;
 
   const cpo = costPerOrder(summary, orders);
+  const derived = derivedAdMetrics(summary);
   const verdict = crossCurrencyRatio(currency, storeCurrency);
 
   return {
@@ -154,6 +164,9 @@ export async function adSpendPanel(
     clicks: summary.clicks,
     orders,
     costPerOrder: cpo ? toString(cpo.value, 2) : null,
+    ctr: derived.ctr === null ? null : toString(derived.ctr, 2),
+    costPerClick: derived.costPerClick === null ? null : toString(derived.costPerClick, 2),
+    cpmPerMille: derived.cpmPerMille === null ? null : toString(derived.cpmPerMille, 2),
     ratioRefusal: verdict.ok ? null : verdict.reason,
   };
 }

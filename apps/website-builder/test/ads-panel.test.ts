@@ -97,6 +97,24 @@ describe('adSpendPanel — four states, never one zero', () => {
     assert.equal(panel.clicks, 10);
     assert.equal(panel.orders, 8);
     assert.equal(panel.costPerOrder, '5.00');
+    /* ME.A — the derived trio ride the same ready state, formatted. The
+     * fixture's two days: spend 40.00, impressions 200, clicks 10. */
+    assert.equal(panel.ctr, '5.00'); // 10 of 200
+    assert.equal(panel.costPerClick, '4.00'); // 40 / 10
+    assert.equal(panel.cpmPerMille, '200.00'); // 40 / 0.2 thousand
+  });
+
+  test('ME.A — a synced-but-empty window derives nothing, and none of it renders as zero', async () => {
+    const { db } = client({
+      account: { id: 'a1', name: 'Atlas Accounts 6', lastSyncedAt: new Date('2026-08-20T09:00:00Z') },
+      spend: [],
+      orders: 0,
+    });
+    const panel = await adSpendPanel(db as never, RANGE, 'DZD') as any;
+    assert.equal(panel.state, 'ready');
+    assert.equal(panel.ctr, null);
+    assert.equal(panel.costPerClick, null);
+    assert.equal(panel.cpmPerMille, null);
   });
 });
 

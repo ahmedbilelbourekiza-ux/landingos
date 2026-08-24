@@ -28,7 +28,7 @@
  * and `crossCurrencyRatio` exists only to refuse, in one place, with a reason.
  * ========================================================================== */
 
-import { money, add, div, count, ZERO, toString, type Money } from "../money.ts";
+import { money, add, div, mul, count, ZERO, toString, type Money } from "../money.ts";
 
 /** What `PlatformCredential["meta-ads"]` holds, once decrypted. `apiBase` is
  * the render-domains/AiProvider stubbing seam — a test points it at a local
@@ -213,6 +213,41 @@ export function costPerOrder(summary: SpendSummary, orders: number): CostPerOrde
   if (!summary.currency) return null;
   if (!Number.isFinite(orders) || orders <= 0) return null;
   return { value: div(summary.spend, count(orders)), currency: summary.currency };
+}
+
+/* -----------------------------------------------------------------------------
+ * ME.A — the three ratios every ad buyer reads, derived from sums already
+ * stored. NO new fetch, NO new columns: CTR, CPC and CPM are ratios of the
+ * window's totals, so they equal what Meta itself reports for the same range
+ * (Meta computes them from the same sums). Each is null when its denominator
+ * is zero — "not answerable", never 0.00 or ∞ — with one deliberate
+ * exception: impressions with zero clicks IS a real 0% CTR, not an unknown.
+ *
+ * Units, stated because the numbers sit side by side: CTR is unit-less (a
+ * percentage of impressions); CPC and CPM are in the SPEND's currency, which
+ * the caller already carries next to every other money figure. `cpmPerMille`
+ * is cost per THOUSAND impressions, the industry's own definition.
+ * -------------------------------------------------------------------------- */
+export interface DerivedAdMetrics {
+  /** Clicks per 100 impressions. Null only when there are no impressions. */
+  readonly ctr: Money | null;
+  /** Spend per click, in the spend's currency. Null when there are no clicks. */
+  readonly costPerClick: Money | null;
+  /** Spend per 1000 impressions, in the spend's currency. */
+  readonly cpmPerMille: Money | null;
+}
+
+export function derivedAdMetrics(summary: SpendSummary): DerivedAdMetrics {
+  // No rows → no currency → nothing derivable (the summary's own rule).
+  if (!summary.currency) return { ctr: null, costPerClick: null, cpmPerMille: null };
+  const impressions = count(summary.impressions);
+  const clicks = count(summary.clicks);
+  return {
+    ctr: summary.impressions > 0 ? div(mul(clicks, count(100)), impressions) : null,
+    costPerClick: summary.clicks > 0 ? div(summary.spend, clicks) : null,
+    cpmPerMille:
+      summary.impressions > 0 ? div(mul(summary.spend, count(1000)), impressions) : null,
+  };
 }
 
 /**
