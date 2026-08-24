@@ -10,6 +10,71 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## TS.1 — the analyze button stops hiding behind an opt-in it never needed
+
+**DEPLOYED 24 Aug 2026, live 01:09:52 UTC** — `origin/main` = **`782c9e0`**
+(`8f1dfb3..782c9e0`, one commit; **rollback `8f1dfb3`**). Code-only, ZERO
+migrations (asserted: `git diff --name-only` touches nothing under
+`packages/db`; two files total).
+
+**The finding (23 Aug investigation, design brief "Traffic Screen
+Redesign"):** BH.3 was deployed, its route worked, its button and section
+existed — and the whole read surface hung off `behaviorByPage.length > 0`,
+which requires a page with `behaviorTracking` opted in AND a landed exit
+beacon. Opt-in is default-off (§BH decision) and read-only prod counts
+showed 0 of 2 pages opted in, 0 measured visits of 24, 0 stored insights —
+**the section had never rendered in production for anyone.** LB.6.d had
+recorded exactly this on 19 Aug ("noted as a small proposal, not built");
+Bilel reported the missing button on 23 Aug. Worse, the remedy copy
+(`builder.analytics.behaviorEmpty`, translated ×3 since BH.2 — "turn it on
+in the editor's Display section") was dead behind the same wrapper: the one
+merchant who needed the sentence was exactly the one who could never see it.
+
+**The fix, in `analytics/page.tsx` only:**
+- The AI-recommendations section and the behavior table now key off
+  **landing pages WITH TRAFFIC in the window** (views, or orders without a
+  counted view) — the LB.6.d proposal taken as recorded. The analyze API
+  always gated on VIEWS, never behavior; the summary's behavior half is
+  honestly null without opt-in. Below the 100-view floor the existing hint
+  replaces the button, exactly as before. Store-level rows (home/category)
+  stay out: landing-page features by design.
+- The behavior table renders its EMPTY state at last, so `behaviorEmpty`
+  finally reaches the merchant. The insight query re-keys off the same
+  pages-with-traffic list (bounded as before).
+- NOT built, deliberately: the on-screen enable-tracking control (design
+  brief decision D2) — still Bilel's call, as is flipping the toggle on for
+  the two live pages (D3).
+
+**Reverse reachability pinned (the LB.23b lesson, applied the other way —
+the old suite only ever proved "renders WITH data"):** a traffic-only page
+is analyzable end to end (201, `behavior: null` stored, a recommendation
+citing `behavior.measured` dropped as ungrounded); its card and button
+render; a zero-traffic page gets no card; and a prod-shaped tenant (24
+unmeasured views, its own fixture tenant, swept) sees the remedy copy, the
+floor hint, and no dead control.
+
+- **Files:** `console/builder/(shell)/analytics/page.tsx` ·
+  `test/builder-insights.test.ts`.
+- **Suites at this tree:** builder-insights **17** (14→17) · ads-routes 27 ·
+  console-shell 20 · `tsc` unchanged at 275. (Two transient reds on early
+  runs were Neon dev stalls — P1001 pooler drop, P2028 20.4s transaction
+  expiry on the first heavy call after server start; green twice on rerun,
+  per the judge-per-file rule.)
+- **Verified live:** Render `live` = `782c9e0` (API), build id
+  `wiuQbKFlKI6WGdg-D1LgA` → `so76o81N8Z04h4ktIREQC`, health 200
+  `database: ok`, dedima 200 at **502,330 B byte-identical except the
+  21-byte build id** (console-only change — the strongest possible
+  no-regression marker for the storefront), all **83 `/_next/image`
+  variants re-warmed to 200**.
+- **⚠ Owed:** the authed screen itself has no public marker — the attended
+  confirmation is Bilel opening `/console/builder/analytics` and seeing the
+  behavior empty-state + the AI section with its "N of 100 views" hint
+  (dedima is under the floor today; the button appears when a page crosses
+  100 views in the window, for `ai:spend` holders).
+- **Context:** slice 1 of the Traffic-screen redesign plan (design brief
+  artifact "Traffic Screen Redesign", 23 Aug: TS.1 → ME.A → TS.2 → TS.4 →
+  TS.3 → OV.1 → ME.B → BH.4 → ME.C, decisions D1–D9).
+
 ## PF.1c — a reasoning model can no longer starve the answer it is reasoning about
 
 **DEPLOYED 24 Aug 2026** — `origin/main` = `59d930f` (`dc5cb07..59d930f`,

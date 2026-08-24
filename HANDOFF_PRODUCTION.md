@@ -15,6 +15,28 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✅ TS.1 IS LIVE (24 Aug 2026, 01:09:52 UTC) — the BH.3 analyze button is finally VISIBLE
+>
+> **`origin/main` = `782c9e0`** (`8f1dfb3..782c9e0`, one commit; **rollback
+> `8f1dfb3`**). Code-only, zero migrations, two files. The BH.3 read surface
+> (AI-recommendations section + Analyze button + the behavior table's empty
+> state) no longer hangs off `behaviorByPage` — it renders per **landing
+> page with traffic in the window**, the LB.6.d proposal. Prod had 0 pages
+> opted in / 0 measured visits, so the deployed feature had NEVER rendered
+> for anyone until this. Verified live: Render `live` = `782c9e0`, build id
+> `wiuQbKFlKI6WGdg-D1LgA` → `so76o81N8Z04h4ktIREQC`, health 200, dedima 200
+> at 502,330 B **byte-identical except the build id**, 83 variants
+> re-warmed. Suites: builder-insights 14→17 (reverse reachability incl. a
+> prod-shaped 24-view tenant), ads-routes 27, console-shell 20, tsc 275.
+> CHANGELOG §TS.1 is the record; the 23 Aug design brief (artifact "Traffic
+> Screen Redesign") is the plan this is slice 1 of.
+> **⚠ Owed attended:** open `/console/builder/analytics` — expect the
+> behavior table's empty state (it names the editor's Display toggle) + the
+> AI section with the "N of 100 views" hint per page (dedima under the
+> floor today). **Open decisions D2/D3 (design brief): the on-screen
+> enable-tracking control was deliberately NOT built; turning tracking on
+> for the two live pages is Bilel's.**
+
 > ### ✅ PF.1c IS LIVE (24 Aug 2026) — Gemini thinking headroom + honest truncation refusal
 >
 > **`origin/main` = `59d930f`** (`dc5cb07..59d930f`, PF.1b preset fix +
