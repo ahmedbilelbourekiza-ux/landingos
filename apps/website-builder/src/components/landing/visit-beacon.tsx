@@ -112,6 +112,13 @@ function captureOrRecallEvidence(): SourceEvidenceInput | null {
     fbclid: params.get("fbclid"),
     ttclid: params.get("ttclid"),
     gclid: params.get("gclid"),
+    /* BH.4 — the rest of the UTM triplet rides the same bundle. They are
+     * DETAIL, not evidence: explicitness stays keyed on utm_source and the
+     * click ids, so a bare utm_campaign cannot overwrite a stored session
+     * bundle — it simply travels with whichever bundle wins. */
+    utmCampaign: params.get("utm_campaign"),
+    utmContent: params.get("utm_content"),
+    utmMedium: params.get("utm_medium"),
   };
   const hasExplicit = Boolean(
     explicit.utmSource || explicit.fbclid || explicit.ttclid || explicit.gclid,
@@ -127,9 +134,15 @@ function captureOrRecallEvidence(): SourceEvidenceInput | null {
     if (stored) return JSON.parse(stored) as SourceEvidenceInput;
     // No explicit evidence, nothing stored: the referrer IS the session's
     // evidence (an organic share, a bio link) — store it so it survives the
-    // internal navigations that erase it.
+    // internal navigations that erase it. BH.4: any bare campaign detail on
+    // this first URL is kept too.
     const referrer = crossOriginReferrer();
-    const bundle: SourceEvidenceInput = { referrer };
+    const bundle: SourceEvidenceInput = {
+      referrer,
+      utmCampaign: explicit.utmCampaign,
+      utmContent: explicit.utmContent,
+      utmMedium: explicit.utmMedium,
+    };
     sessionStorage.setItem(SOURCE_KEY, JSON.stringify(bundle));
     return bundle;
   } catch {
@@ -175,6 +188,11 @@ interface BehaviorState {
   endpoint: string;
   viewId: string;
   furthestRank: number;
+  /* BH.4 — the landmarks currently intersecting, and the last one entered:
+   * at flush, the deepest VISIBLE landmark is the exit section (fallback:
+   * the last entered, for a fast exit mid-scroll). */
+  visibleSections: Set<string>;
+  lastEnteredSection: string | null;
   sawForm: boolean;
   galleryChanges: number;
   galleryDeepestIndex: number;
@@ -235,9 +253,19 @@ function behaviorFlush() {
     b.visibleSince = document.visibilityState === "visible" ? now : null;
   }
 
+  /* BH.4 — the exit section: the deepest landmark still on screen at this
+     flush; a fast exit mid-scroll falls back to the last landmark entered.
+     `furthestSection` stays "how far they ever got" — this is "where they
+     actually were when they left". */
+  const visibleDeepest = [...b.visibleSections].sort(
+    (x, y) => (SECTION_RANKS[y] ?? 0) - (SECTION_RANKS[x] ?? 0),
+  )[0];
+  const exitSection = visibleDeepest ?? b.lastEnteredSection ?? undefined;
+
   const body = JSON.stringify({
     viewId: b.viewId,
     furthestSection: b.furthestRank > 0 ? SECTION_NAMES[b.furthestRank - 1] : undefined,
+    exitSection,
     sawForm: b.sawForm || undefined,
     galleryChanges: b.galleryChanges || undefined,
     galleryDeepestIndex: b.galleryChanges > 0 ? b.galleryDeepestIndex : undefined,
@@ -270,6 +298,8 @@ function armBehavior(endpoint: string, viewId: string): () => void {
     endpoint,
     viewId,
     furthestRank: 0,
+    visibleSections: new Set<string>(),
+    lastEnteredSection: null,
     sawForm: false,
     galleryChanges: 0,
     galleryDeepestIndex: 0,
@@ -292,9 +322,17 @@ function armBehavior(endpoint: string, viewId: string): () => void {
       const b = behavior;
       if (!b) return;
       for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
         const section = (entry.target as HTMLElement).dataset.bhSection;
+        /* BH.4 — leave events matter now: the set of CURRENTLY visible
+           landmarks is what the exit flush reads its exit section from. */
+        if (section && !entry.isIntersecting) {
+          b.visibleSections.delete(section);
+          continue;
+        }
+        if (!entry.isIntersecting) continue;
         if (section) {
+          b.visibleSections.add(section);
+          b.lastEnteredSection = section;
           const rank = SECTION_RANKS[section] ?? 0;
           if (rank > b.furthestRank) b.furthestRank = rank;
         }
@@ -382,6 +420,11 @@ export function VisitBeacon({
       source: captureOrRecallEvidence() ?? undefined,
       isReturning,
       viewId,
+      /* BH.4 — the device CLASS, from the viewport at arrival: 768px is the
+       * template's own tablet breakpoint. A class, not a width — the server
+       * enum refuses anything else, and ad traffic reads in exactly these
+       * two words. */
+      deviceClass: window.innerWidth < 768 ? "mobile" : "desktop",
     };
 
     void fetch(endpoint, {

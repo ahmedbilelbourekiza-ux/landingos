@@ -28,6 +28,12 @@ import { z } from "zod";
  */
 export const SourceEvidenceBody = z.object({
   utmSource: z.string().trim().max(200).optional().nullable(),
+  /* BH.4 — the rest of the UTM triplet. utm_campaign is the future join key
+   * to campaign-level spend; stored raw like utmSource, bounded like every
+   * anonymous input. */
+  utmCampaign: z.string().trim().max(200).optional().nullable(),
+  utmContent: z.string().trim().max(200).optional().nullable(),
+  utmMedium: z.string().trim().max(200).optional().nullable(),
   fbclid: z.string().trim().max(500).optional().nullable(),
   ttclid: z.string().trim().max(500).optional().nullable(),
   gclid: z.string().trim().max(500).optional().nullable(),
@@ -152,6 +158,9 @@ export const VisitBody = z.object({
   /** Present exactly when pageKind is "landing". */
   landingPageId: z.string().min(1).optional(),
   source: SourceEvidenceBody.optional(),
+  /* BH.4 — the device CLASS, decided client-side from the viewport at
+   * arrival. An enum so junk cannot reach a GROUP BY column. */
+  deviceClass: z.enum(['mobile', 'desktop']).optional(),
   /** AN.2 — true when the visitor id existed before this session began.
    * Client-decided (localStorage outlives the 30-day row retention, so this
    * stays honest past the prune horizon); a strict boolean, so junk fails
@@ -181,6 +190,10 @@ export const BH_SECTIONS = ["hero", "description", "reviews", "faq", "footer"] a
 export const VisitBehaviorBody = z.object({
   viewId: z.string().trim().min(8).max(120),
   furthestSection: z.enum(BH_SECTIONS).optional(),
+  /* BH.4 — the deepest landmark still visible AT the exit flush: where the
+   * visitor actually was when they left, where furthest is only how far
+   * they ever got. Same vocabulary, same opt-in enforcement. */
+  exitSection: z.enum(BH_SECTIONS).optional(),
   sawForm: z.boolean().optional(),
   galleryChanges: z.number().int().min(0).max(5000).optional(),
   galleryDeepestIndex: z.number().int().min(0).max(500).optional(),

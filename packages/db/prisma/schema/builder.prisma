@@ -493,6 +493,10 @@ model SalesOrder {
    * order so "sales by source" survives any future pruning of raw visits. */
   sourceChannel String?
   sourceDetail  String?
+  /* BH.4 — the campaign snapshot, taken at checkout from the SAME session
+   * bundle the views were attributed with. Null until ad links carry
+   * utm_campaign (Ads Manager tagging — operational, not retroactive). */
+  utmCampaign   String?
 
   /* SEC.11 — the idempotency key for ONE intended purchase.
    *
@@ -704,6 +708,18 @@ model StorefrontVisit {
   // the contract; for labels and for re-deriving if the mapping grows.
   sourceDetail  String?
 
+  /* BH.4 — the rest of the UTM triplet, stored raw and bounded like
+   * sourceDetail: utm_campaign is the future join key to campaign-level
+   * spend (ME.C); content/medium are the per-creative detail. Null until ad
+   * links carry them (Ads Manager tagging — operational, not retroactive). */
+  utmCampaign String?
+  utmContent  String?
+  utmMedium   String?
+  /* BH.4 — "mobile" | "desktop", decided client-side from the viewport at
+   * arrival (the vocabulary is enforced at the contract). Nullable: rows
+   * from before the field, and any beacon that omits it. */
+  deviceClass String?
+
   /* ---------------------------------------------------------------------------
    * BH.1 — in-page behavior, flushed ONCE-per-view-lifecycle onto the SAME
    * row (no events table: volume does not multiply, the 30-day prune covers
@@ -721,6 +737,10 @@ model StorefrontVisit {
 
   // The deepest landmark meaningfully entered: hero|description|reviews|faq|footer.
   furthestSection String?
+  /* BH.4 — where the visitor actually WAS when they left: the deepest
+   * landmark still visible at the exit flush (furthestSection is only how
+   * far they ever got). Same vocabulary, same opt-in, same nullability. */
+  exitSection String?
   // The buy button became visible — the funnel's hinge.
   sawForm Boolean?
 

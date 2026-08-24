@@ -47,7 +47,7 @@ export async function POST(
   const parsed = VisitBody.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return new NextResponse(null, { status: 204 });
 
-  const { token, pageKind, landingPageId, source, isReturning, viewId } = parsed.data;
+  const { token, pageKind, landingPageId, source, isReturning, viewId, deviceClass } = parsed.data;
   const derived = deriveSource(source ?? {});
 
   try {
@@ -76,6 +76,14 @@ export async function POST(
           isReturning,
           sourceChannel: derived.channel,
           sourceDetail: derived.detail,
+          /* BH.4 — the campaign triplet, RAW as sent (bounded at the
+             contract): detail beside the derived channel, and the future
+             join key to campaign-level spend. The device class arrives as a
+             contract-enforced enum. */
+          utmCampaign: source?.utmCampaign ?? null,
+          utmContent: source?.utmContent ?? null,
+          utmMedium: source?.utmMedium ?? null,
+          deviceClass: deviceClass ?? null,
           // BH.1 — the address the exit beacon will update this row by.
           viewId: viewId ?? null,
         },

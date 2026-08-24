@@ -2035,3 +2035,123 @@ describe('TS.2 — bounded windows bound the QUERIES, and the screen renders the
     }
   });
 });
+
+/* =============================================================================
+ * BH.4 — the new capture: campaign triplet + device class on arrival, the
+ * exit section on the behavior flush, and the campaign snapshot on the order.
+ * Everything through the REAL routes; the client collector's half (URL params
+ * → bundle, viewport → class, visible-landmarks → exit) runs only in a
+ * browser and is noted for the attended check.
+ * ========================================================================== */
+
+describe('BH.4 — arrivals carry campaign detail and device class; orders snapshot the campaign', { skip }, () => {
+  test('the full bundle lands on the visit row; a bare arrival stays null, not empty-string', async () => {
+    const viewTag = `bh4-full-${stamp}`;
+    const r = await post(`/api/storefront/${slugA}/visits`, {
+      token: viewTag, pageKind: 'landing', landingPageId: publishedA,
+      deviceClass: 'mobile',
+      source: {
+        utmSource: 'facebook', utmCampaign: 'summer-launch-x',
+        utmContent: 'video-ad-1', utmMedium: 'paid-social',
+      },
+    });
+    assert.equal(r.status, 204);
+    const row: any = await withTenant(tenantA, (db) =>
+      (db as any).storefrontVisit.findFirst({ where: { visitorToken: viewTag } }),
+    );
+    assert.equal(row.sourceChannel, 'facebook', 'the channel still derives from utm_source');
+    assert.equal(row.utmCampaign, 'summer-launch-x');
+    assert.equal(row.utmContent, 'video-ad-1');
+    assert.equal(row.utmMedium, 'paid-social');
+    assert.equal(row.deviceClass, 'mobile');
+
+    const bareTag = `bh4-bare-${stamp}`;
+    await post(`/api/storefront/${slugA}/visits`, {
+      token: bareTag, pageKind: 'landing', landingPageId: publishedA,
+    });
+    const bare: any = await withTenant(tenantA, (db) =>
+      (db as any).storefrontVisit.findFirst({ where: { visitorToken: bareTag } }),
+    );
+    assert.equal(bare.utmCampaign, null, 'never asked is null, not \'\'');
+    assert.equal(bare.deviceClass, null);
+  });
+
+  test('junk is refused whole: an oversize campaign or an invented device class drops the beacon', async () => {
+    for (const body of [
+      { token: `bh4-junk1-${stamp}`, pageKind: 'landing', landingPageId: publishedA,
+        source: { utmCampaign: 'x'.repeat(201) } },
+      { token: `bh4-junk2-${stamp}`, pageKind: 'landing', landingPageId: publishedA,
+        deviceClass: 'tablet' },
+    ] as const) {
+      const r = await post(`/api/storefront/${slugA}/visits`, body);
+      assert.equal(r.status, 204, 'a background beacon never errors at a customer');
+      const row = await withTenant(tenantA, (db) =>
+        (db as any).storefrontVisit.findFirst({ where: { visitorToken: body.token } }),
+      );
+      assert.equal(row, null, 'the malformed beacon must be dropped whole, not half-recorded');
+    }
+  });
+
+  test('the exit flush lands exitSection on an opted-in page, with the same vocabulary', async () => {
+    const page: any = await withTenant(tenantA, (db) =>
+      (db as any).landingPage.create({
+        data: {
+          tenantId: tenantA, title: 'BH4 Exit', slug: `bh4-exit-${stamp}`,
+          price: 1500, published: true, status: 'PUBLISHED',
+          setting: { create: { tenantId: tenantA, behaviorTracking: true } },
+        },
+        select: { id: true },
+      }),
+    );
+    const viewId = `bh4-view-${stamp}`;
+    await post(`/api/storefront/${slugA}/visits`, {
+      token: `bh4-exit-v-${stamp}`, pageKind: 'landing', landingPageId: page.id, viewId,
+    });
+    const r = await post(`/api/storefront/${slugA}/visits/behavior`, {
+      viewId, activeMs: 4200, furthestSection: 'faq', exitSection: 'reviews',
+    });
+    assert.equal(r.status, 204);
+    const row: any = await withTenant(tenantA, (db) =>
+      (db as any).storefrontVisit.findFirst({ where: { viewId } }),
+    );
+    assert.equal(row.exitSection, 'reviews', 'where they WERE at exit');
+    assert.equal(row.furthestSection, 'faq', 'how far they ever GOT — the two are different facts');
+  });
+
+  test('a checkout snapshots utmCampaign from the same session bundle — and only from it', async () => {
+    const r = await post(`/api/storefront/${slugA}/orders`, {
+      landingPageId: publishedA,
+      customerName: 'Campaign Buyer',
+      phone: '0555020406',
+      wilayaId,
+      baladiaName: 'Centre',
+      quantity: 1,
+      shippingMethod: 'HOME',
+      variantIds: [],
+      visitSource: { utmSource: 'facebook', utmCampaign: 'summer-launch-x' },
+    });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    const order: any = await withTenant(tenantA, (db) =>
+      (db as any).salesOrder.findUnique({ where: { id: r.body.data.id } }),
+    );
+    assert.equal(order.sourceChannel, 'facebook');
+    assert.equal(order.utmCampaign, 'summer-launch-x');
+
+    // No bundle, no campaign: null, never a guess.
+    const r2 = await post(`/api/storefront/${slugA}/orders`, {
+      landingPageId: publishedA,
+      customerName: 'No Bundle',
+      phone: '0555020407',
+      wilayaId,
+      baladiaName: 'Centre',
+      quantity: 1,
+      shippingMethod: 'HOME',
+      variantIds: [],
+    });
+    assert.equal(r2.status, 201, JSON.stringify(r2.body));
+    const order2: any = await withTenant(tenantA, (db) =>
+      (db as any).salesOrder.findUnique({ where: { id: r2.body.data.id } }),
+    );
+    assert.equal(order2.utmCampaign, null);
+  });
+});

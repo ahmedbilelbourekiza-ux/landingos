@@ -298,7 +298,14 @@ export async function POST(
           ...(input.visitSource
             ? (() => {
                 const derived = deriveSource(input.visitSource);
-                return { sourceChannel: derived.channel, sourceDetail: derived.detail };
+                return {
+                  sourceChannel: derived.channel,
+                  sourceDetail: derived.detail,
+                  /* BH.4 — the campaign snapshot rides the same bundle the
+                     views were attributed with, so an order can never name a
+                     campaign its session did not carry. */
+                  utmCampaign: input.visitSource.utmCampaign ?? null,
+                };
               })()
             : {}),
         },
