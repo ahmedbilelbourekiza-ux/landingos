@@ -834,6 +834,7 @@ model AdAccount {
   reachSyncedAt DateTime?
 
   dailySpend AdSpendDaily[]
+  campaignSpend AdSpendCampaignDaily[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -882,6 +883,47 @@ model AdSpendDaily {
   syncedAt DateTime @default(now())
 
   @@unique([tenantId, adAccountId, date])
+  @@index([tenantId, date])
+}
+
+/* =============================================================================
+ * ME.C — one CAMPAIGN's spend for one day, as Meta reported it.
+ *
+ * A separate table, not columns on AdSpendDaily: campaign rows multiply the
+ * grain (day x campaign), and the account-level row must keep meaning what it
+ * always has. Spend-side ONLY today — joining ORDERS to campaigns needs the
+ * ad links tagged with {{campaign.name}} (BH.4 captures utm_campaign when
+ * they are), and until then this table honestly answers "where did the money
+ * go" without pretending to answer "what did it buy".
+ *
+ * Same discipline as AdSpendDaily: the provider's day, the account currency
+ * unconverted, idempotent upserts where the LAST word wins.
+ * ========================================================================== */
+model AdSpendCampaignDaily {
+  id       String @id @default(cuid())
+  tenantId String
+
+  adAccountId String
+  adAccount   AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+
+  date DateTime @db.Date
+
+  /* Meta's own ids and names, verbatim. The NAME is stored per row because a
+   * campaign can be renamed — the id is the identity, the name is that day's
+   * label. */
+  campaignId   String
+  campaignName String
+
+  spend    Decimal
+  currency String
+
+  impressions Int  @default(0)
+  clicks      Int  @default(0)
+  linkClicks  Int?
+
+  syncedAt DateTime @default(now())
+
+  @@unique([tenantId, adAccountId, date, campaignId])
   @@index([tenantId, date])
 }
 

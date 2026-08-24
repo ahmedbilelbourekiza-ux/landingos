@@ -8,6 +8,8 @@ import {
   parseInsightsRows,
   buildReachRequest,
   parseReachRow,
+  buildCampaignInsightsRequest,
+  parseCampaignRows,
   type DailySpendRow,
   type DateRange,
   type MetaAdsConfig,
@@ -232,6 +234,49 @@ export async function syncDailySpend(
       data: { lastSyncedAt: new Date() },
     });
   });
+
+  /* ME.C — CAMPAIGN rows, best-effort like reach: the account-level sync
+   * above is the primary record and already succeeded; a campaign-call
+   * failure leaves the campaign table stale rather than failing the refresh.
+   * Idempotent on (tenant, account, date, campaign) — the LAST word wins,
+   * name included (campaigns get renamed; the id is the identity). */
+  try {
+    const wire = buildCampaignInsightsRequest(cfg, range);
+    const res = await fetch(wire.url, { method: 'GET', headers: wire.headers });
+    const json: unknown = await res.json().catch(() => null);
+    const campaignRows = res.ok ? parseCampaignRows(json) : [];
+    if (campaignRows.length > 0) {
+      await withTenant(tenantId, async (tx) => {
+        for (const row of campaignRows) {
+          // The PROVIDER's day at UTC midnight — the AdSpendDaily rule.
+          const date = new Date(`${row.date}T00:00:00.000Z`);
+          await (tx as any).adSpendCampaignDaily.upsert({
+            where: {
+              tenantId_adAccountId_date_campaignId: {
+                tenantId, adAccountId: adAccountRowId, date, campaignId: row.campaignId,
+              },
+            },
+            create: {
+              tenantId, adAccountId: adAccountRowId, date,
+              campaignId: row.campaignId, campaignName: row.campaignName,
+              spend: row.spend, currency: row.currency,
+              impressions: row.impressions, clicks: row.clicks,
+              linkClicks: row.linkClicks,
+            },
+            update: {
+              campaignName: row.campaignName,
+              spend: row.spend, currency: row.currency,
+              impressions: row.impressions, clicks: row.clicks,
+              linkClicks: row.linkClicks,
+              syncedAt: new Date(),
+            },
+          });
+        }
+      });
+    }
+  } catch {
+    // Best-effort by design.
+  }
 
   /* ME.B — WINDOW-level reach, best-effort AFTER the spend landed: reach is
    * not additive across days, so it is asked for the window as a whole

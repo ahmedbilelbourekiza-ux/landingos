@@ -413,3 +413,59 @@ export function crossCurrencyRatio(
 export function formatSpend(value: Money, currency: string): string {
   return `${toString(value, 2)} ${currency}`;
 }
+
+/* -----------------------------------------------------------------------------
+ * ME.C — CAMPAIGN-level spend: the same daily insights call at
+ * `level=campaign`, so a day answers one row PER CAMPAIGN with Meta's own id
+ * and name. Spend-side only, deliberately: joining ORDERS to campaigns needs
+ * the ad links tagged with {{campaign.name}} first (BH.4 captures
+ * utm_campaign when they are), and this table honestly answers "where did
+ * the money go" without pretending to answer "what did it buy".
+ * -------------------------------------------------------------------------- */
+export interface CampaignSpendRow extends DailySpendRow {
+  readonly campaignId: string;
+  readonly campaignName: string;
+}
+
+export function buildCampaignInsightsRequest(cfg: MetaAdsConfig, range: DateRange): WireRequest {
+  const base = buildInsightsRequest(cfg, range);
+  const url = new URL(base.url);
+  url.searchParams.set("level", "campaign");
+  url.searchParams.set(
+    "fields",
+    "campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,account_currency,date_start,date_stop",
+  );
+  return { url: url.toString(), headers: base.headers };
+}
+
+/** Campaign rows: the daily parser's rules plus a REQUIRED campaign identity —
+ * a row that cannot say which campaign it is belongs to no campaign, not to a
+ * made-up one. */
+export function parseCampaignRows(payload: unknown): CampaignSpendRow[] {
+  const days = parseInsightsRows(payload);
+  const data = (payload as { data?: unknown } | null)?.data;
+  if (!Array.isArray(data)) return [];
+  const out: CampaignSpendRow[] = [];
+  // parseInsightsRows drops unusable rows, so re-walk the raw list pairing
+  // each SURVIVING day with its campaign identity by original position.
+  let cursor = 0;
+  for (const raw of data) {
+    const r = raw as Record<string, unknown>;
+    const date = typeof r.date_start === "string" ? r.date_start : null;
+    const spend = r.spend;
+    const currency = typeof r.account_currency === "string" ? r.account_currency : "";
+    const usable =
+      date && DATE_RE.test(date) &&
+      spend !== undefined && spend !== null && spend !== "" &&
+      /^\d+(\.\d+)?$/.test(String(spend)) && currency;
+    if (!usable) continue;
+    const day = days[cursor++];
+    if (!day) break;
+    const campaignId = typeof r.campaign_id === "string" && r.campaign_id ? r.campaign_id : null;
+    const campaignName =
+      typeof r.campaign_name === "string" && r.campaign_name ? r.campaign_name : null;
+    if (!campaignId || !campaignName) continue;
+    out.push({ ...day, campaignId, campaignName });
+  }
+  return out;
+}

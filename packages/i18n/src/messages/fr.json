@@ -220,7 +220,8 @@
       "adSpendMetaRoas": "ROAS",
       "adSpendReach": "Personnes touchées",
       "adSpendFrequency": "fréquence moy.",
-      "adSpendReachWindow": "dernier rafraîchissement, fenêtre de {days} jours"
+      "adSpendReachWindow": "dernier rafraîchissement, fenêtre de {days} jours",
+      "adSpendCampaignsTitle": "Dépense par campagne"
     },
     "newPage": {
       "title": "Nouvelle page de vente",

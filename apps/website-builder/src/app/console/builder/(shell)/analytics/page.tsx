@@ -530,6 +530,26 @@ export default async function BuilderAnalyticsScreen({
                   ` (${t("builder.analytics.adSpendReachWindow", { days: adSpend.reach.days })})`}
               </p>
             )}
+            {/* ME.C — where the money went, campaign by campaign: spend-side
+                only, with Meta's own names. The orders join waits for tagged
+                links ({{campaign.name}} in Ads Manager + BH.4's capture) —
+                this list answers "where did it go", not "what did it buy". */}
+            {adSpend.campaigns.length > 0 && (
+              <div className="space-y-1.5" data-testid="analytics-ad-campaigns">
+                <p className="text-xs font-medium">{t("builder.analytics.adSpendCampaignsTitle")}</p>
+                <RankList
+                  testId="analytics-ad-campaigns-rank"
+                  emptyLabel=""
+                  rows={adSpend.campaigns.map((c, i) => ({
+                    key: `${i}-${c.name}`,
+                    label: c.name,
+                    sub: `${formatNumber(c.clicks, locale)} ${t("builder.analytics.adSpendClicks")}`,
+                    value: `${c.spend} ${adSpend.currency}`,
+                    share: c.share,
+                  }))}
+                />
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
               {t("builder.analytics.adSpendAccount")}: {adSpend.accountName} ·{" "}
               {t("builder.analytics.adSpendSynced")}:{" "}

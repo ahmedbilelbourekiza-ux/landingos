@@ -492,6 +492,17 @@ describe('ME.A — derived ad metrics on the Traffic screen', { skip }, () => {
           reach: 812, frequency: '1.58', reachDays: 7, reachSyncedAt: new Date(),
         },
       });
+      // ME.C — two campaigns in the window.
+      await (tx as any).adSpendCampaignDaily.createMany({
+        data: [
+          { tenantId: tenantA, adAccountId: accountA, date: day,
+            campaignId: 'scr-c1', campaignName: 'Summer Screen', spend: '9.00', currency: 'USD',
+            impressions: 3000, clicks: 60, linkClicks: 45 },
+          { tenantId: tenantA, adAccountId: accountA, date: day,
+            campaignId: 'scr-c2', campaignName: 'Retarget Screen', spend: '3.00', currency: 'USD',
+            impressions: 1000, clicks: 20, linkClicks: 15 },
+        ],
+      });
     });
     try {
       const html = await screen(tokens.ownerA);
@@ -513,6 +524,11 @@ describe('ME.A — derived ad metrics on the Traffic screen', { skip }, () => {
       assert.ok(html.includes('data-testid="analytics-ad-reach"'));
       assert.ok(html.includes('812'));
       assert.ok(html.includes('1.58'));
+      // ME.C — the campaign list renders with Meta's names and exact spend.
+      assert.ok(html.includes('data-testid="analytics-ad-campaigns"'));
+      assert.ok(html.includes('Summer Screen'));
+      assert.ok(html.includes('9.00 USD'));
+      assert.ok(html.includes('Retarget Screen'));
       // TS.4 — the manage disclosure carries rotate+disconnect for a role
       // the routes admit; the numbers stay outside it.
       assert.ok(html.includes('data-testid="ad-account-manage"'), 'the manage disclosure must render for an owner');
@@ -520,6 +536,7 @@ describe('ME.A — derived ad metrics on the Traffic screen', { skip }, () => {
       // Leave the fixture as the earlier describes shaped it: unsynced, no rows.
       await withTenant(tenantA, async (tx) => {
         await (tx as any).adSpendDaily.deleteMany({ where: { adAccountId: accountA } });
+        await (tx as any).adSpendCampaignDaily.deleteMany({ where: { adAccountId: accountA } });
         await (tx as any).adAccount.update({
           where: { id: accountA },
           data: { lastSyncedAt: null, reach: null, frequency: null, reachDays: null, reachSyncedAt: null },
@@ -554,7 +571,14 @@ describe('ME.B — syncDailySpend writes the new fields, and reach is best-effor
     const stub = createServer((req, res) => {
       res.setHeader('content-type', 'application/json');
       const url = req.url ?? '';
-      if (url.includes('time_increment')) {
+      if (url.includes('level=campaign')) {
+        res.end(JSON.stringify({ data: [
+          { date_start: '2026-08-20', spend: '6.00', account_currency: 'USD',
+            impressions: '2000', clicks: '60', campaign_id: 'c-sum', campaign_name: 'Summer X' },
+          { date_start: '2026-08-20', spend: '3.00', account_currency: 'USD',
+            impressions: '1000', clicks: '30', campaign_id: 'c-ret', campaign_name: 'Retarget' },
+        ] }));
+      } else if (url.includes('time_increment')) {
         res.end(JSON.stringify({ data: [{
           date_start: '2026-08-20', spend: '9.00', account_currency: 'USD',
           impressions: '3000', clicks: '90', inline_link_clicks: '70',
@@ -593,6 +617,16 @@ describe('ME.B — syncDailySpend writes the new fields, and reach is best-effor
       assert.equal(account.frequency.toString(), '1.31');
       assert.equal(account.reachDays, 7, 'the reach window carries ITS OWN length');
       assert.ok(account.reachSyncedAt);
+
+      // ME.C — the campaign call landed one row per campaign per day.
+      const campaignRows: any = await withTenant(tenantA, (tx) =>
+        (tx as any).adSpendCampaignDaily.findMany({ where: { adAccountId: acc.id }, orderBy: { campaignId: 'asc' } }),
+      );
+      assert.equal(campaignRows.length, 2);
+      assert.equal(campaignRows[0].campaignName, 'Retarget');
+      assert.equal(campaignRows[0].spend.toString(), '3');
+      assert.equal(campaignRows[1].campaignId, 'c-sum');
+      assert.equal(campaignRows[1].date.toISOString().slice(0, 10), '2026-08-20', 'the PROVIDER day, not now');
 
       // A reach failure must not fail the sync, and must not clobber the
       // last honest reach.

@@ -6,7 +6,7 @@ import {
   metaReportedRoas,
   type DailySpendRow,
 } from "../ads/spend-math.ts";
-import { toString } from "../money.ts";
+import { toString, add, money, ZERO, type Money } from "../money.ts";
 
 /* =============================================================================
  * LB.23 read side — what the Traffic screen shows about ad spend.
@@ -72,6 +72,16 @@ export type AdSpendPanel =
       readonly costPerLinkClick: string | null;
       readonly metaPurchases: number | null;
       readonly metaRoas: string | null;
+      /* ME.C — top campaigns by spend in the window, aggregated from the
+       * campaign table (spend-side only; the orders join waits for tagged
+       * links). Share is of the LARGEST campaign, for the screen's bars.
+       * Empty when the campaign call has never landed rows. */
+      readonly campaigns: readonly {
+        readonly name: string;
+        readonly spend: string;
+        readonly clicks: number;
+        readonly share: number;
+      }[];
       /** Window-level reach of the LAST refreshed window, with its own days. */
       readonly reach: { readonly people: number; readonly frequency: string; readonly days: number | null } | null;
       /** Set when spend and revenue currencies differ — the honest refusal. */
@@ -103,6 +113,11 @@ interface SpendClient {
         metaPurchases: number | null;
         metaPurchaseValue: { toString(): string } | null;
       }[]
+    >;
+  };
+  adSpendCampaignDaily: {
+    findMany(args: unknown): Promise<
+      { campaignId: string; campaignName: string; spend: { toString(): string }; clicks: number }[]
     >;
   };
   salesOrder: { count(args: unknown): Promise<number> };
@@ -172,6 +187,31 @@ export async function adSpendPanel(
   const cpo = costPerOrder(summary, orders);
   const derived = derivedAdMetrics(summary);
   const roas = metaReportedRoas(summary);
+
+  /* ME.C — the window's campaigns, aggregated by ID (the identity; the name
+   * is whatever the latest row called it) and ranked by spend. Bounded to
+   * the top six — a screen list, not an export. Number() here is for the
+   * share RATIO only; every displayed figure keeps the exact string. */
+  const campaignStored = await db.adSpendCampaignDaily.findMany({
+    where: { adAccountId: account.id, date: { gte: range.since, lt: range.until } },
+    select: { campaignId: true, campaignName: true, spend: true, clicks: true },
+  });
+  const byCampaign = new Map<string, { name: string; spend: Money; clicks: number }>();
+  for (const row of campaignStored) {
+    const entry = byCampaign.get(row.campaignId) ?? { name: row.campaignName, spend: ZERO, clicks: 0 };
+    entry.name = row.campaignName;
+    entry.spend = add(entry.spend, money(row.spend.toString()));
+    entry.clicks += row.clicks;
+    byCampaign.set(row.campaignId, entry);
+  }
+  const ranked = [...byCampaign.values()].sort((a, b) => (a.spend < b.spend ? 1 : a.spend > b.spend ? -1 : 0)).slice(0, 6);
+  const maxSpend = ranked[0] ? Number(toString(ranked[0].spend, 2)) : 0;
+  const campaigns = ranked.map((c) => ({
+    name: c.name,
+    spend: toString(c.spend, 2),
+    clicks: c.clicks,
+    share: maxSpend > 0 ? (Number(toString(c.spend, 2)) / maxSpend) * 100 : 0,
+  }));
   /* Fakes in the suite may omit the reach columns entirely; undefined and
    * null both read as "no reach stored". */
   const reachPeople = account.reach ?? null;
@@ -199,6 +239,7 @@ export async function adSpendPanel(
       derived.costPerLinkClick === null ? null : toString(derived.costPerLinkClick, 2),
     metaPurchases: summary.metaPurchases,
     metaRoas: roas === null ? null : toString(roas, 2),
+    campaigns,
     reach: reachPeople === null
       ? null
       : {

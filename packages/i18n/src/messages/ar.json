@@ -220,7 +220,8 @@
       "adSpendMetaRoas": "ROAS",
       "adSpendReach": "أشخاص تم الوصول إليهم",
       "adSpendFrequency": "متوسط التكرار",
-      "adSpendReachWindow": "آخر تحديث، نافذة {days} يوماً"
+      "adSpendReachWindow": "آخر تحديث، نافذة {days} يوماً",
+      "adSpendCampaignsTitle": "الإنفاق حسب الحملة"
     },
     "newPage": {
       "title": "صفحة هبوط جديدة",

@@ -20,6 +20,7 @@ const RANGE = { days: 7, since: new Date('2026-08-14T00:00:00.000Z'), until: new
 function client(opts: {
   account?: { id: string; name: string; currency?: string; lastSyncedAt: Date | null } | null;
   spend?: { date: string; spend: string; currency: string; impressions: number; clicks: number }[];
+  campaigns?: { campaignId: string; campaignName: string; spend: string; clicks: number }[];
   orders?: number;
 }) {
   const captured: { orderWhere?: any } = {};
@@ -39,6 +40,10 @@ function client(opts: {
             impressions: r.impressions,
             clicks: r.clicks,
           })),
+      },
+      adSpendCampaignDaily: {
+        findMany: async () =>
+          (opts.campaigns ?? []).map((c) => ({ ...c, spend: { toString: () => c.spend } })),
       },
       salesOrder: {
         count: async (args: any) => {
@@ -109,6 +114,28 @@ describe('adSpendPanel — four states, never one zero', () => {
     assert.equal(panel.metaPurchases, null);
     assert.equal(panel.metaRoas, null);
     assert.equal(panel.reach, null);
+  });
+
+  test('ME.C — campaigns aggregate by ID across days, rename keeps the identity, ranked by spend', async () => {
+    const { db } = client({
+      account: { id: 'a1', name: 'A6', lastSyncedAt: new Date('2026-08-20T09:00:00Z') },
+      spend: [day('2026-08-15', '10.00')],
+      campaigns: [
+        { campaignId: 'c1', campaignName: 'Summer X', spend: '6.00', clicks: 30 },
+        { campaignId: 'c1', campaignName: 'Summer X v2', spend: '4.00', clicks: 20 },
+        { campaignId: 'c2', campaignName: 'Retarget', spend: '2.50', clicks: 5 },
+      ],
+      orders: 1,
+    });
+    const panel = await adSpendPanel(db as never, RANGE, 'DZD') as any;
+    assert.equal(panel.campaigns.length, 2, 'two identities, not three rows');
+    assert.equal(panel.campaigns[0].name, 'Summer X v2', 'the LATEST name labels the identity');
+    assert.equal(panel.campaigns[0].spend, '10.00');
+    assert.equal(panel.campaigns[0].clicks, 50);
+    assert.equal(panel.campaigns[0].share, 100, 'the leader reads full width');
+    assert.equal(panel.campaigns[1].spend, '2.50');
+    assert.equal(panel.campaigns[1].clicks, 5);
+    assert.ok(panel.campaigns[1].share > 0 && panel.campaigns[1].share < 30);
   });
 
   test('ME.A — a synced-but-empty window derives nothing, and none of it renders as zero', async () => {

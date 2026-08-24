@@ -13,6 +13,8 @@ import {
   metaReportedRoas,
   buildReachRequest,
   parseReachRow,
+  buildCampaignInsightsRequest,
+  parseCampaignRows,
   type DailySpendRow,
 } from '../src/lib/ads/spend-math.ts';
 import { toString } from '../src/lib/money.ts';
@@ -339,5 +341,29 @@ describe('ME.B — sums, the link pair, and the Meta-reported ROAS', () => {
     // And the platform's own cross-currency refusal is untouched: DA revenue
     // against USD spend still has no ratio here.
     assert.equal(crossCurrencyRatio('USD', 'DZD').ok, false);
+  });
+});
+
+describe('ME.C — campaign wire and parse: identity required, spend-side only', () => {
+  test('the campaign request is the daily call at level=campaign, with the identity fields', () => {
+    const wire = buildCampaignInsightsRequest({ token: 't', accountId: '123' }, { since: '2026-08-01', until: '2026-08-07' });
+    assert.ok(wire.url.includes('level=campaign'));
+    assert.ok(wire.url.includes('time_increment=1'), 'still one row per day per campaign');
+    assert.ok(decodeURIComponent(wire.url).includes('campaign_id,campaign_name'));
+    assert.ok(!wire.url.includes('T0KEN') && wire.headers.Authorization === 'Bearer t');
+  });
+
+  test('a row that cannot name its campaign belongs to no campaign — dropped, not invented', () => {
+    const rows = parseCampaignRows({
+      data: [
+        { date_start: '2026-08-01', spend: '5.00', account_currency: 'USD', impressions: '100', clicks: '9', campaign_id: 'c1', campaign_name: 'Summer X' },
+        { date_start: '2026-08-01', spend: '3.00', account_currency: 'USD', impressions: '50', clicks: '4' },
+        { date_start: 'junk', spend: '1.00', account_currency: 'USD', campaign_id: 'c9', campaign_name: 'Broken Day' },
+      ],
+    });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].campaignId, 'c1');
+    assert.equal(rows[0].campaignName, 'Summer X');
+    assert.equal(rows[0].spend, '5.00');
   });
 });

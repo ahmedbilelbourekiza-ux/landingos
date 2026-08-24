@@ -220,7 +220,8 @@
       "adSpendMetaRoas": "ROAS",
       "adSpendReach": "People reached",
       "adSpendFrequency": "avg. frequency",
-      "adSpendReachWindow": "last refresh, {days}-day window"
+      "adSpendReachWindow": "last refresh, {days}-day window",
+      "adSpendCampaignsTitle": "Spend by campaign"
     },
     "newPage": {
       "title": "New landing page",
