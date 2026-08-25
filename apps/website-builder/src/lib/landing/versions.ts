@@ -94,6 +94,7 @@ export const HISTORY_RELATIONS = [
  */
 export const REFERENCE_RELATIONS = ["category", "theme", "brand"] as const;
 
+
 /** Prisma client accessor for each snapshotted relation. */
 export const RELATION_MODEL: Readonly<Record<string, string>> = {
   media: "landingMedia",
@@ -270,17 +271,27 @@ export async function takeVersion(
     select: { id: true, createdAt: true },
   });
 
-  const surplus = await db.landingPageVersion.findMany({
-    where: { landingPageId },
-    orderBy: { createdAt: "desc" },
-    skip: MAX_VERSIONS_PER_PAGE,
-    select: { id: true },
-  });
-  if (surplus.length) {
-    await db.landingPageVersion.deleteMany({
-      where: { id: { in: surplus.map((row: any) => row.id) } },
-    });
-  }
+  /* VH.1 — prune in ONE statement instead of a read and then a delete.
+   *
+   * The read existed to name the surplus ids for the delete's `IN`, and in the
+   * overwhelmingly common case — a page under the cap — it found nothing and
+   * the delete never ran, so the pair cost a round trip per checkpoint to
+   * discover there was nothing to do. Postgres can answer the whole question
+   * itself, and `createdAt DESC OFFSET n` is the same ordering the read used.
+   *
+   * Raw SQL because Prisma has no way to express a delete driven by a
+   * subquery, the same reason `lockOpenLots` is raw. The tenant predicate is
+   * left to row-level security, which is what that function does too — adding
+   * one here would be a weaker copy of a rule that already holds. */
+  await db.$executeRaw`
+    DELETE FROM "LandingPageVersion"
+    WHERE "id" IN (
+      SELECT "id" FROM "LandingPageVersion"
+      WHERE "landingPageId" = ${landingPageId}
+      ORDER BY "createdAt" DESC
+      OFFSET ${MAX_VERSIONS_PER_PAGE}
+    )
+  `;
 
   return version;
 }
@@ -372,33 +383,53 @@ export async function restoreVersion(
   const skip = new Set<string>([...STATUS_COLUMNS, "slug"]);
   const data = restorableColumns("LandingPage", snapshot, skip);
 
-  // Dangling references: check, then drop what no longer exists.
+  /* VH.1 — the four "has the world moved on?" questions, in ONE statement.
+   *
+   * They were four sequential awaits: three reference lookups and the slug
+   * clash. Prisma queues everything onto the single connection `withTenant`
+   * pinned, so `Promise.all` would have bought nothing here — the note on
+   * `publish-to-erp` says exactly that — and the only way to spend fewer round
+   * trips is to ask fewer times.
+   *
+   * Raw, and therefore under row-level security like every other statement on
+   * this connection: a category, theme or brand belonging to another tenant is
+   * invisible here and correctly reads as "gone", which is the same answer the
+   * per-model lookups gave. `EXISTS` rather than a row, because the only thing
+   * anyone does with the answer is decide whether to drop the column. */
+  const nullIfBlank = (value: unknown) =>
+    typeof value === "string" && value ? value : null;
+  const wantedSlug = nullIfBlank(snapshot.slug);
+  const [worldNow] = (await db.$queryRaw`
+    SELECT
+      EXISTS (SELECT 1 FROM "Category"     WHERE "id" = ${nullIfBlank(snapshot.categoryId)}) AS "category",
+      EXISTS (SELECT 1 FROM "LandingTheme" WHERE "id" = ${nullIfBlank(snapshot.themeId)})    AS "theme",
+      EXISTS (SELECT 1 FROM "Brand"        WHERE "id" = ${nullIfBlank(snapshot.brandId)})    AS "brand",
+      EXISTS (
+        SELECT 1 FROM "LandingPage"
+        WHERE "slug" = ${wantedSlug} AND "id" <> ${landingPageId}
+      ) AS "slug_taken"
+  `) as [{ category: boolean; theme: boolean; brand: boolean; slug_taken: boolean }];
+
+  // Dangling references: drop what no longer exists. A column that was never
+  // set has nothing to drop — "absent" and "gone" are different, and only the
+  // second is worth telling the merchant about.
   const droppedReferences: string[] = [];
-  for (const [column, accessor] of [
-    ["categoryId", "category"],
-    ["themeId", "landingTheme"],
-    ["brandId", "brand"],
+  for (const [column, present] of [
+    ["categoryId", worldNow.category],
+    ["themeId", worldNow.theme],
+    ["brandId", worldNow.brand],
   ] as const) {
-    const id = (snapshot as any)[column];
-    if (!id) continue;
-    const found = await db[accessor].findUnique({ where: { id }, select: { id: true } });
-    if (!found) {
-      data[column] = null;
-      droppedReferences.push(column);
-    }
+    if (!(snapshot as any)[column]) continue;
+    if (present) continue;
+    data[column] = null;
+    droppedReferences.push(column);
   }
 
   // The slug, if nothing else has claimed it meanwhile.
   let slugRestored = false;
-  if (typeof snapshot.slug === "string" && snapshot.slug) {
-    const clash = await db.landingPage.findFirst({
-      where: { slug: snapshot.slug, NOT: { id: landingPageId } },
-      select: { id: true },
-    });
-    if (!clash) {
-      data.slug = snapshot.slug;
-      slugRestored = true;
-    }
+  if (wantedSlug && !worldNow.slug_taken) {
+    data.slug = wantedSlug;
+    slugRestored = true;
   }
 
   await db.landingPage.updateMany({

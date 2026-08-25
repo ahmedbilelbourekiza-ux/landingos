@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { forTenant } from "@landingos/db";
+import { withTenant } from "@landingos/db";
 import { can } from "@landingos/auth";
 
 import { requireProduct } from "@/lib/console/product-page";
@@ -41,7 +41,25 @@ export default async function ConsoleEditLandingPage({
   // Reading is not enough to open an editor: every control in it writes.
   if (!can(session.auth!, "website-builder:pages:write")) notFound();
 
-  const page = await forTenant(session.auth!.tenantId).landingPage.findUnique({
+  /* VH.1 — ONE transaction for everything this screen reads.
+   *
+   * It used to be four `forTenant()` calls, and that helper's own note says
+   * why that costs: "Each call is its own transaction". MEASURED against dev
+   * with a query-logging client: four separate calls emit **16 statements and
+   * pin 4 pooled connections**; the same four reads on one client emit **7 and
+   * pin 1**. On the pinned-transaction model this codebase runs on, the
+   * statement count IS the latency (D-PM.1.3, LB.51), so this is the editor's
+   * open cost — and a restore pays it a second time through the deliberate
+   * `window.location.reload()` that follows it.
+   *
+   * `notFound()` is thrown AFTER the transaction closes, not inside it: it is
+   * Next's control-flow exception, and raising it mid-transaction would abort
+   * the transaction to say something the caller could say a line later.
+   */
+  const { page, settings, integrations, publicOrigin } = await withTenant(
+    session.auth!.tenantId,
+    async (db) => {
+      const page = await (db as any).landingPage.findUnique({
     where: { id },
     include: {
       media: { orderBy: { displayOrder: "asc" } },
@@ -57,14 +75,11 @@ export default async function ConsoleEditLandingPage({
     },
   });
 
-  // Another tenant's id simply does not resolve under the binding, so this is
-  // a 404 rather than a leak that the row exists elsewhere.
-  if (!page) notFound();
-
-  // The store identity the preview drawer renders in the template's nav and
-  // footer. Read here rather than in the drawer because the drawer is a client
-  // component and this is the same query the published page already makes.
-  const settings = await forTenant(session.auth!.tenantId).storeSettings.findUnique({
+      // The store identity the preview drawer renders in the template's nav
+      // and footer. Read here rather than in the drawer because the drawer is
+      // a client component and this is the same query the published page
+      // already makes.
+      const settings = await (db as any).storeSettings.findUnique({
     where: { tenantId: session.auth!.tenantId },
     select: {
       storeName: true, storeDescription: true, logo: true,
@@ -77,10 +92,22 @@ export default async function ConsoleEditLandingPage({
    * page linked to one stays linked, and listing only active rows would drop
    * that link the next time the section saved. No secret is selected —
    * `serverToken` and `testCode` never leave the server. */
-  const integrations = await forTenant(session.auth!.tenantId).trackingIntegration.findMany({
+      const integrations = await (db as any).trackingIntegration.findMany({
     select: { id: true, provider: true, label: true, publicId: true, isActive: true },
     orderBy: { createdAt: "asc" },
   });
+
+      // View / Copy Link speak the tenant's own domain once one is verified
+      // and primary; the platform-prefixed path otherwise (LB.46).
+      const publicOrigin = await primaryPublicOrigin(db);
+
+      return { page, settings, integrations, publicOrigin };
+    },
+  );
+
+  // Another tenant's id simply does not resolve under the binding, so this is
+  // a 404 rather than a leak that the row exists elsewhere.
+  if (!page) notFound();
 
   /* The column verbatim. `null` means "every active integration" and an array
    * means exactly itself, including an empty one — the section renders all
@@ -90,10 +117,6 @@ export default async function ConsoleEditLandingPage({
         (v): v is string => typeof v === "string",
       )
     : null;
-
-  // View / Copy Link speak the tenant's own domain once one is verified and
-  // primary; the platform-prefixed path otherwise (LB.46).
-  const publicOrigin = await primaryPublicOrigin(forTenant(session.auth!.tenantId));
 
   return (
     // Two providers, because the editor renders both worlds at once: its own
