@@ -954,3 +954,162 @@ describe('slugify refuses to reduce a title to a bare number (pure)', () => {
     assert.equal(slugCharset('Not A Slug!'), 'not-a-slug');
   });
 });
+
+/* =============================================================================
+ * BULK.1 — acting on several landing pages at once.
+ *
+ * The value is in the PARTIAL result. Deleting refuses any page that has ever
+ * been ordered from (LB.33), so a mixed selection is the normal case, not the
+ * exotic one — and a bar that answered "that did not work" would leave the
+ * merchant hunting for the one page by hand, which is the job they were trying
+ * to avoid.
+ * ========================================================================== */
+describe('BULK.1 — bulk actions over the pages list', { skip }, () => {
+  const makePage = async (title: string) => {
+    const r = await api('/api/builder/landings', tokens.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({ title, slug: `bulk-${stamp}-${Math.random().toString(36).slice(2, 8)}`, price: 1000 }),
+    });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    return r.body.data.id as string;
+  };
+
+  const statusOf = (id: string) =>
+    withTenant(tenantA, (db) =>
+      (db as any).landingPage.findUnique({ where: { id }, select: { status: true, published: true } }),
+    ) as Promise<{ status: string; published: boolean } | null>;
+
+  test('several pages archive in one request, and archiving unpublishes', async () => {
+    const ids = [await makePage('Bulk A'), await makePage('Bulk B')];
+    // Put one of them live first, so the unpublish half is actually exercised.
+    await withTenant(tenantA, (db) =>
+      (db as any).landingPage.update({
+        where: { id: ids[0] },
+        data: { status: 'PUBLISHED', published: true },
+      }),
+    );
+
+    const r = await api('/api/builder/landings/bulk', tokens.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'archive', ids }),
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.data.done, 2);
+
+    for (const id of ids) {
+      const row = await statusOf(id);
+      assert.equal(row!.status, 'ARCHIVED');
+      assert.equal(row!.published, false, 'archiving must take it off the storefront (LB.34)');
+    }
+  });
+
+  test('restoring lands on DRAFT, never straight back on the storefront', async () => {
+    /* Publishing is its own decision with its own permission — a bulk restore
+       must not make it silently for twenty pages at once. LB.34's rule. */
+    const id = await makePage('Bulk Restore');
+    await api('/api/builder/landings/bulk', tokens.ownerA, {
+      method: 'POST', body: JSON.stringify({ action: 'archive', ids: [id] }),
+    });
+    const r = await api('/api/builder/landings/bulk', tokens.ownerA, {
+      method: 'POST', body: JSON.stringify({ action: 'restore', ids: [id] }),
+    });
+    assert.equal(r.status, 200);
+
+    const row = await statusOf(id);
+    assert.equal(row!.status, 'DRAFT');
+    assert.equal(row!.published, false);
+  });
+
+  test('a page already where it is being sent is UNCHANGED, not an error', async () => {
+    const id = await makePage('Bulk Idempotent');
+    await api('/api/builder/landings/bulk', tokens.ownerA, {
+      method: 'POST', body: JSON.stringify({ action: 'archive', ids: [id] }),
+    });
+    const again = await api('/api/builder/landings/bulk', tokens.ownerA, {
+      method: 'POST', body: JSON.stringify({ action: 'archive', ids: [id] }),
+    });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.data.unchanged, 1);
+    assert.equal(again.body.data.done, 0);
+  });
+
+  test('THE POINT: a mixed delete keeps what has orders, deletes the rest, and NAMES the survivor', async () => {
+    const orderless = await makePage('Bulk Orderless');
+    const sold = await makePage('Bulk Sold');
+    // One real order against the second page — LB.33's refusal condition.
+    await withTenant(tenantA, (db) =>
+      (db as any).salesOrder.create({
+        data: {
+          tenantId: tenantA, landingPageId: sold,
+          customerName: 'Buyer', phone: '0555000111', wilaya: 'Alger', baladia: 'Centre',
+          address: 'x', quantity: 1, productPrice: 1000, shippingPrice: 0, totalPrice: 1000,
+        },
+      }),
+    );
+
+    const r = await api('/api/builder/landings/bulk', tokens.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'delete', ids: [orderless, sold] }),
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.data.done, 1, 'the orderless page should have gone');
+    assert.deepEqual(
+      r.body.data.hasOrders, [sold],
+      'the refused page must be NAMED, not merely counted — otherwise the merchant hunts for it',
+    );
+
+    // And the revenue history is intact, which is what the refusal protects.
+    assert.equal(await statusOf(orderless), null, 'the orderless page survived a delete');
+    assert.ok(await statusOf(sold), 'a page with orders was deleted — its orders went with it');
+  });
+
+  test("another tenant's ids are not found, and are not touched", async () => {
+    const mine = await makePage('Bulk Mine');
+    const r = await api('/api/builder/landings/bulk', tokens.ownerA, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'archive', ids: [mine, pageB] }),
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.done, 1);
+    assert.equal(r.body.data.notFound, 1, "another tenant's page must simply not resolve");
+
+    const theirs = await withTenant(tenantB, (db) =>
+      (db as any).landingPage.findUnique({ where: { id: pageB }, select: { status: true } }),
+    );
+    assert.notEqual((theirs as any).status, 'ARCHIVED', "tenant B's page was archived by tenant A");
+  });
+
+  test('a reader gets neither the bar nor the checkboxes, and the route refuses them', async () => {
+    // D-06.2 — reachability, both halves. The LB.23b lesson: a route test
+    // cannot see that nothing reaches the route, and a control that 403s is
+    // worse than an absent one.
+    const html = await fetch(BASE + '/console/builder/pages', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.viewerA}` },
+    }).then((r) => r.text());
+    assert.ok(!html.includes('data-testid="page-bulk-bar"'), 'a reader was offered the bulk bar');
+    assert.ok(!html.includes('data-testid="page-select"'), 'a reader was offered checkboxes');
+
+    const refused = await api('/api/builder/landings/bulk', tokens.viewerA, {
+      method: 'POST', body: JSON.stringify({ action: 'archive', ids: [pageA] }),
+    });
+    assert.equal(refused.status, 403);
+  });
+
+  test('a writer IS offered the bar and a checkbox per row', async () => {
+    await makePage('Bulk Visible');
+    const html = await fetch(BASE + '/console/builder/pages', {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.ownerA}` },
+    }).then((r) => r.text());
+    assert.match(html, /data-testid="page-bulk-bar"/);
+    assert.match(html, /data-testid="page-select"/);
+    assert.match(html, /name="pageId"/, 'the checkboxes must be the FORM inputs the bar reads');
+  });
+
+  test('the id list is bounded, so one request cannot be a whole-table sweep', async () => {
+    const tooMany = Array.from({ length: 101 }, (_, i) => `id-${i}`);
+    const r = await api('/api/builder/landings/bulk', tokens.ownerA, {
+      method: 'POST', body: JSON.stringify({ action: 'archive', ids: tooMany }),
+    });
+    assert.equal(r.status, 422);
+  });
+});

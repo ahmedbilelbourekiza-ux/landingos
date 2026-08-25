@@ -11,6 +11,7 @@ import { PageHeader, PageBody, EmptyState } from "@/components/console/ui/primit
 import { DataTable, StatusPill } from "@/components/console/data-table";
 import { PageRowActions } from "@/components/console/builder/page-row-actions";
 import { PublishToErpPanel } from "@/components/console/builder/publish-to-erp";
+import { PageBulkBar } from "@/components/console/builder/page-bulk";
 import { actionErrors } from "@/lib/console/action-errors";
 
 export const dynamic = "force-dynamic";
@@ -139,6 +140,33 @@ export default async function BuilderPagesScreen({
           }
         />
       ) : (
+      /* BULK.1 — the selection is a FORM wrapping the SERVER-rendered table
+         (OrderBulkBar's rule), so the list keeps its query-side filtering, its
+         archived scope and its 50-row window, and nothing mirrors which rows
+         are ticked. The bar gates itself: a reader gets this same table with
+         no bar and no checkboxes, from ONE copy of it (D-06.2).
+
+         A plain block comment rather than a braced JSX one: this sits in the
+         ternary's EXPRESSION position, where braces are not JSX children. */
+      <PageBulkBar
+        errors={errors}
+        canWrite={mayEdit}
+        canSend={Boolean(hasErpProduct)}
+        archivedView={showArchived}
+        s={{
+          saving: t("common.saving"),
+          selected: t("builder.pages.bulkSelected"),
+          selectAll: t("builder.pages.bulkSelectAll"),
+          sendToManager: t("builder.pages.publishToErp"),
+          archive: t("builder.pages.archive"),
+          restore: t("builder.pages.restore"),
+          delete: t("builder.pages.delete"),
+          deleteConfirm: t("builder.pages.bulkDeleteConfirm"),
+          outcome: t("builder.pages.bulkOutcome"),
+          refusedHasOrders: t("builder.pages.bulkRefusedHasOrders"),
+          nothingSelected: t("builder.pages.bulkNothingSelected"),
+        }}
+      >
       <DataTable
         testId="landings-table"
         empty={t("common.empty")}
@@ -146,6 +174,27 @@ export default async function BuilderPagesScreen({
         rowKey={(p) => p.id}
         rowAttrs={(p) => ({ "data-page-id": p.id })}
         columns={[
+          /* BULK.1 — a PLAIN checkbox, named `pageId`, because the bar reads
+             the selection with `FormData` rather than mirroring it in state.
+             Rendered only for a writer, so a reader's table is unchanged. */
+          ...(mayEdit
+            ? [
+                {
+                  id: "select",
+                  header: "",
+                  cell: (p: (typeof pages)[number]) => (
+                    <input
+                      type="checkbox"
+                      name="pageId"
+                      value={p.id}
+                      data-testid="page-select"
+                      aria-label={p.title}
+                      className="size-4"
+                    />
+                  ),
+                },
+              ]
+            : []),
           {
             id: "title",
             // The column says what the CELL holds. It used to reuse the nav
@@ -232,6 +281,7 @@ export default async function BuilderPagesScreen({
             : []),
         ]}
       />
+      </PageBulkBar>
       )}
       </PageBody>
     </>
