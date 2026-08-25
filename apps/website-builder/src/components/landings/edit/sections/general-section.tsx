@@ -18,6 +18,7 @@ import {
 } from "@/components/landings/edit/section";
 import { Field } from "./field";
 import { useBuilderApi } from "@/lib/builder/api-base";
+import { CategoryField } from "./category-field";
 import { actionErrors, FALLBACK } from "@/lib/console/action-errors";
 
 export interface GeneralPreviewValues {
@@ -277,18 +278,19 @@ export function GeneralSection({
 
         {/* `builder.pages.colCategory` rather than a second wording — the
             pages list already names this concept for the same rows. */}
+        {/* CAT.1 — one field that types, picks and suggests, replacing a
+            `<select>` that could only offer what already existed. Creating a
+            category used to mean leaving the editor for the Categories screen
+            and coming back; that round trip was the chore. */}
         <Field label={t("builder.pages.colCategory")} htmlFor="categoryId" hint={t("common.optional")}>
-          <select
-            id="categoryId"
-            value={categoryIdValue ?? ""}
-            onChange={(e) => setValue("categoryId", e.target.value || null, { shouldValidate: true })}
-            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-          >
-            <option value="">{t("builder.editor.uncategorized")}</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          <CategoryField
+            categories={categories}
+            value={categoryIdValue ?? null}
+            onChange={(id) => setValue("categoryId", id, { shouldValidate: true })}
+            onCategoryCreated={(created) => setCategories((list) => [...list, created])}
+            productName={titleValue ?? ""}
+            description={descriptionValue ?? ""}
+          />
         </Field>
 
         {/* LB.36 — the brand this page sells under. Rendered only when the

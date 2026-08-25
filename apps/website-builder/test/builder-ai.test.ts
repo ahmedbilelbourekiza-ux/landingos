@@ -820,4 +820,83 @@ describe('POST /api/builder/landings/generate (end to end)', { skip }, () => {
     const res = await api('/api/builder/landings/generate', tokens.owner, generateBody());
     assert.equal(res.status, 201, JSON.stringify(res.body));
   });
+
+  /* ---------------------------------------------------------------------------
+   * CAT.1 — the category suggestion, through the real route
+   *
+   * Inside this describe deliberately: it needs the same stub "model", the
+   * same platform credential and the same tenants the generation tests set up,
+   * and a second copy of that harness is a second thing to keep in step.
+   * ------------------------------------------------------------------------ */
+
+  test('CAT.1 — suggests a category, preferring one the shop already has', async () => {
+    const existing = (await withTenant(tenantA, (tx) =>
+      (tx as any).category.create({
+        data: { tenantId: tenantA, name: 'Montres', slug: `montres-${stamp}` },
+        select: { id: true },
+      }),
+    )) as { id: string };
+
+    behaviour.status = 200;
+    behaviour.answer = JSON.stringify({
+      suggestions: [{ name: 'montres', reason: 'it is a watch' }, { name: 'Sacs' }],
+    });
+
+    const res = await api('/api/builder/categories/suggest', tokens.owner, {
+      productName: 'Montre Élégante Pro',
+      description: 'Une montre pour homme',
+    });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+
+    const [first, second] = res.body.data.suggestions;
+    // Case-folded back onto the shop's OWN category, under the shop's spelling.
+    assert.equal(first.existingId, existing.id);
+    assert.equal(first.name, 'Montres');
+    assert.equal(first.reason, 'it is a watch');
+    // And a genuinely new one is offered as new, with no id to accept blindly.
+    assert.equal(second.name, 'Sacs');
+    assert.equal(second.existingId, null);
+  });
+
+  test('CAT.1 — suggesting writes NOTHING: a category is a public URL', async () => {
+    /* The product rule, enforced rather than trusted. A category becomes a
+       storefront listing, an entry in the shop's nav and a URL in the sitemap,
+       so one appearing because a model thought of it is a change to the shop
+       that nobody approved. */
+    const before = await withTenant(tenantA, (tx) => (tx as any).category.count());
+
+    behaviour.status = 200;
+    behaviour.answer = JSON.stringify({ suggestions: [{ name: 'Brand New Thing' }] });
+    const res = await api('/api/builder/categories/suggest', tokens.owner, {
+      productName: 'Something else entirely',
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.suggestions[0].existingId, null);
+
+    const after = await withTenant(tenantA, (tx) => (tx as any).category.count());
+    assert.equal(after, before, 'the suggestion created a category by itself');
+  });
+
+  test('CAT.1 — a MANAGER may edit pages but may not spend: 403, before any model call', async () => {
+    // SEC.8's rule, and the third spender inherits it. Checked before the
+    // provider is even read, so the wallet is never half-open.
+    const hitsBefore = hits.length;
+    const res = await api('/api/builder/categories/suggest', tokens.manager, {
+      productName: 'Montre',
+    });
+    assert.equal(res.status, 403, JSON.stringify(res.body));
+    assert.equal(res.body.error.code, 'AI_SPEND_FORBIDDEN');
+    assert.equal(hits.length, hitsBefore, 'the model was contacted for a refused request');
+  });
+
+  test('CAT.1 — a model answering prose is a 502, not a crash', async () => {
+    behaviour.status = 200;
+    behaviour.answer = 'I think this belongs in Watches.';
+    const res = await api('/api/builder/categories/suggest', tokens.owner, {
+      productName: 'Montre',
+    });
+    assert.equal(res.status, 502);
+    assert.equal(res.body.error.code, 'AI_INVALID_OUTPUT');
+  });
+
 });

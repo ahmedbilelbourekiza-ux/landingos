@@ -64,7 +64,10 @@ export const DEFAULT_MONTHLY_AI_CALLS = 200;
 export const AI_QUOTA_PRODUCT = "platform-ai";
 export const AI_QUOTA_LIMIT_KEY = "monthlyCallLimit";
 
-export type AiCallKind = "landing_generation" | "behavior_insight";
+/* CAT.1 adds the third spender. The union is the vocabulary of what the
+ * allowance is spent ON, and it is worth keeping closed: an untyped string
+ * would let a new caller invent a kind nobody can report against. */
+export type AiCallKind = "landing_generation" | "behavior_insight" | "category_suggestion";
 
 export interface AiUsage {
   readonly limit: number;
