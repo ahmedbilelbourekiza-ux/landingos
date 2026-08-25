@@ -10,6 +10,823 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## OFF.1 — upsells, downsells and bundles (PRE-PURCHASE slice) — built 25 Aug 2026, **HELD BACK FROM THE BATCH, NOT IN ANY COMMIT ON `main`**
+
+> **⛔ WITHDRAWN FROM THE 25 AUG DEPLOY BY THE PRODUCT OWNER'S DECISION, on a
+> defect found while auditing this work. The code below is REAL and tested, but
+> it is NOT on `main` — it lives only on branch `deferred/off1-full-batch`
+> (`0dd8c71`), together with its migration preview. `main` carries no
+> `LandingOffer` model, no `SalesOrder.offerLines`, and no checkout wiring.**
+>
+> **THE DEFECT: `OWN_ORDER` offers are charged but never fulfilled.**
+> `priceAcceptedOffers` adds EVERY accepted offer to the order total, including
+> the ones the merchant marked "its own order". `fulfilmentFromSale` then
+> correctly excludes those from the customer's parcel — because they are meant
+> to become a separate order — and **nothing creates that separate order.** A
+> customer would be charged for a thing the call-centre never sees, never picks
+> and never ships.
+>
+> Not reachable today: there is no console screen to create an offer and no
+> storefront surface to accept one, and the schema default is `SAME_ORDER`. But
+> it becomes live the moment the offer UI is built, and it is the worst class of
+> bug — silent, financial, and discovered only when a customer telephones.
+>
+> **BEFORE THIS SHIPS, one of:** refuse `OWN_ORDER` at the API until the second
+> order exists (small), or build the second-order path — which raises real
+> product questions, starting with whether the customer pays a second delivery
+> fee. `SAME_ORDER` is complete and correct as it stands.
+>
+> It was also the batch's only risky migration (three enums, a table, a column
+> AND a new RLS policy, 58 -> 59), which is a second reason to land it on its
+> own rather than inside a nine-slice deploy.
+
+The record below describes what was built and is kept for whoever resumes it.
+
+**Slice 9 of 9.** Migration applied to DEV only; the production preview is
+`docs/migrations-pending/OFF.1-prod-migration-preview.sql`. **Dev RLS 58 → 59,
+all four checks PASS.**
+
+### The decision this is built on
+
+**One parcel or two is a PER-OFFER choice, not a platform default** (product
+owner, 24 Aug, against the either/or the scoping offered). Both answers are
+genuinely right for different offers, which is exactly why neither could be
+picked for everyone:
+
+- `SAME_ORDER` — one parcel, one delivery fee, one call to confirm. Right for
+  an accessory going in the same box.
+- `OWN_ORDER` — its own order, its own reference, its own delivery, and its own
+  lifetime counters. Right when the second product ships from a different
+  supplier, and right whenever each product's numbers must move independently —
+  a line inside another order cannot do that.
+
+### The model
+
+`LandingOffer`: `kind` (UPSELL / DOWNSELL / BUNDLE) × `trigger` (ON_FORM /
+AFTER_ORDER / ON_DECLINE) × `fulfilment` (SAME_ORDER / OWN_ORDER), a target
+that is either another `LandingPage` or a line of text, and its own price.
+
+**One table for three things** because an upsell, a downsell and a bundle
+differ in exactly one respect — WHEN they are shown — and agree on everything
+else. A downsell is not a separate mechanism at all: it is the offer whose
+trigger is "they said no".
+
+**Decoupled from variants, which was the explicit ask.** A variant is a choice
+WITHIN one product, priced by `LandingVariant.extraPrice`; an offer is a
+DIFFERENT product. Modelling the second as the first is how "buy two get one"
+ends up as a size called "2+1" that the warehouse cannot pick and the ledger
+cannot cost.
+
+**`SalesOrder` keeps its single-product columns.** Its own header calls it *"the
+IMMUTABLE commercial event"*, and turning it into a line-items array would
+rewrite the meaning of every order ever taken in order to add a feature to new
+ones. Accepted offers are an ADDITIONAL `offerLines` Json snapshot; the primary
+line is untouched, and `totalPrice` includes the offers because a total that did
+not would be a number no screen could use.
+
+**Prices are never trusted from the client** — the body carries `acceptedOfferIds`
+only, exactly as it carries `variantIds`, and every figure is recomputed from
+the tenant's own rows. An offer that is switched off, belongs to another page,
+or is not shown on the form is silently DROPPED rather than refused: losing a
+real sale because the merchant edited their offers while a customer had the page
+open would protect nothing.
+
+**Fulfilment**: `SAME_ORDER` lines join `FulfillmentOrder.lineItems` (already a
+Json array, holding one entry until now); `OWN_ORDER` lines deliberately do not,
+because putting them in both places would ship them twice.
+
+**Version history**: `offers` joins `SNAPSHOT_TO_MANY` — an offer is part of what
+a page IS. `offeredBy` (offers on OTHER pages pointing at this one) needed a
+**fifth category, `INBOUND_RELATIONS`**, added rather than forced into one of the
+four: it is not this page's content, not something that happened to it, and not
+a reference it holds. Restoring this page must not reach into another page and
+change what it sells. The guard test was extended to know about the fifth list.
+
+**Not built (OFF.2):** the post-submit upsell/downsell step. `AFTER_ORDER` is in
+the enum and refused everywhere, so the editor cannot configure something the
+storefront cannot show.
+
+**Tests:** `test/offers.test.ts` 9/9, pure — the money rules pinned without a
+database, including that both fulfilment kinds are charged for (the choice
+decides where it SHIPS, never whether it is paid for).
+
+---
+
+## BULK.1 — bulk selection and actions on the Landing Pages list — built 25 Aug 2026, **DEV ONLY, NOT DEPLOYED**
+
+**Slice 8 of 9, addition B.** No migration.
+
+Checkboxes on `/console/builder/pages`, then send to the Manager, archive,
+restore or delete the selection.
+
+**THE SELECTION IS A FORM**, not client state mirroring one — `OrderBulkBar`'s
+established pattern, and the reasoning holds exactly: the table stays a SERVER
+component and arrives as `children`, the checkboxes are plain inputs named
+`pageId`, and the bar reads them with `FormData`. The list keeps its query-side
+filtering, its archived scope and its 50-row window, and there is no second copy
+of which rows are ticked to fall out of step with the ones on screen.
+
+**THE PARTIAL RESULT IS THE CONTRACT.** `DELETE` refuses any page that has ever
+been ordered from (LB.33) because the cascade would take the revenue history
+with it — so a mixed selection is the NORMAL case. Nineteen drafts go, the
+twentieth is **named**, and the merchant is not left hunting for it by hand,
+which is the job they were trying to avoid. Each id is its own decision;
+a refusal is an outcome, not an error, and does not take its neighbours down.
+
+**Two endpoints, on purpose.** Sending extends `publish-to-erp` with
+`scope: "many"` so the entitlement gate, the adoption rule and VAR.2's matrix
+reconciliation keep exactly one home; archive/restore/delete get their own route
+which owns the per-id refusals. Bounded at 100 ids so one request cannot be a
+whole-table sweep.
+
+Archiving unpublishes (LB.34); restoring lands on DRAFT, never straight back on
+the storefront — publishing is its own decision with its own permission, and a
+bulk restore must not make it silently for twenty pages.
+
+**Tests:** 8 in `builder-api.test.ts`, including the mixed-delete case, another
+tenant's ids reported `not_found` and left untouched, and reachability BOTH ways
+(a reader gets neither bar nor checkboxes and the route 403s them; a writer gets
+both, with `name="pageId"` asserted so the bar's `FormData` contract is pinned).
+
+---
+
+## CAT.1 — the manual Categories chore becomes an inline smart field — built 25 Aug 2026, **DEV ONLY, NOT DEPLOYED**
+
+**Slice 7 of 9.** No migration.
+
+### What the measurement changed about the ask
+
+The ask was to *replace the Categories section entirely*. Tracing it first
+showed the section is **load-bearing**: it drives the storefront's
+`/[tenant]/category/[slug]` listings (with their own SEO metadata and
+canonicals), the store home's nav pills, every category URL in `sitemap.xml`,
+the pages-list column, and the `BrandCategory` join rows. So the CONCEPT stays
+and the CHORE goes.
+
+### What it does
+
+One field on the page editor that **types, picks and suggests** — both paths,
+never either/or, as asked. A `<select>` could only offer what already existed,
+so using it meant leaving the editor for the Categories screen, creating a
+category, and coming back; that round trip was the chore.
+
+- **Type freely** — filters existing categories AND offers to create what was
+  typed, through `POST /api/builder/categories`, the route that already owns the
+  slug rules, the digit-only guard and the duplicate 409. No second creation
+  path free to disagree with it.
+- **Suggest** — a new route reusing PF.1 exactly as `analyze` does
+  (`readPlatformAiProvider` → `reserveAiCall`/`settleAiCall` →
+  `completeWithProvider`), gated on `website-builder:ai:spend` on top of
+  `pages:write` (SEC.8's rule; this is the quota's THIRD spender, and
+  `AiCallKind` gains `category_suggestion` rather than becoming an open string).
+
+**The model is told to PREFER what the shop already has.** That is the whole
+value: a merchant with "Montres" does not want "Watches", "Horlogerie" and
+"Montres Homme" as three siblings with three URLs and three nav entries — the
+duplication LB.19 exists to stop one layer down. Suggestions are matched back
+case- and space-insensitively, and **the shop's own spelling wins**.
+
+**IT NEVER AUTO-ASSIGNS, and writes nothing.** A category is a public URL and an
+entry in the shop's navigation, so one appearing because a model thought of it
+is a storefront change nobody approved. The route answers a question; the
+merchant presses the button. A test asserts the category count is unchanged
+after a suggestion.
+
+**The model sees only** the product's name, its description, and the tenant's
+existing category names — the restraint `buildInsightMessages` applies, tested
+by asserting no price/phone/order/customer text reaches the prompt.
+
+**Also closed in the same slice:** the platform has had TWO category systems
+since LB.19 — the builder's `Category` table and the ERP's free-text
+`CatalogProduct.category` — and the send mapped nothing between them, so the
+Manager's category filter was permanently empty for builder-created products.
+The send now copies the NAME (only when the page has one, so it cannot clear a
+category a manager set by hand).
+
+**Deviation from the scoping, deliberate:** the plan said to remove "create"
+from the Categories screen. I kept it. Removing it provides no benefit and
+takes away a capability a merchant setting up a shop may want (creating
+categories before any page exists). The chore was *having to go there*, and that
+is gone.
+
+**Tests:** `test/category-suggest.test.ts` 13/13 pure (prompt shape, fence
+tolerance, cap enforcement, case-folded matching, repeat collapsing) plus 4
+route tests in `builder-ai.test.ts` on the real stub — including that a refused
+request never contacts the model.
+
+---
+
+## VAR.2 — variants reach the Manager as a real matrix, and inventory enforcement becomes optional — built 25 Aug 2026, **DEV ONLY, NOT DEPLOYED**
+
+**Slice 6 of 9, with addition A.** One additive column applied to DEV only;
+production preview in `docs/migrations-pending/VAR.2-prod-migration-preview.sql`.
+
+### The reported bug was three gaps
+
+*"Variants don't transfer when a page is sent to the Manager; he has to manually
+recreate them on the ERP side."*
+
+1. `publish-to-erp`'s SELECT named five columns and a hero image — **it never
+   asked for `variants`**.
+2. `catalogProductFromLanding`'s `fromPage` was four fields with no variants key.
+3. INV.2's gap: storefront orders named no variant anyway, so even a hand-built
+   matrix never moved stock. **The manual workaround bought a display, not
+   tracking.**
+
+### What it does now
+
+The send carries the page's axes (ORDERED — an unordered read would generate
+`"M / Blue"` for one page and `"Blue / M"` for the next, two rows holding
+separate stock for one real thing) and generates the ERP matrix with VAR.1's
+shared generator. Every combination arrives at **stock 0** and receives its
+opening stock as a movement (INV.3), never as a number the importer invents.
+
+**A RE-SEND RECONCILES, IT NEVER REPLACES**, and this is the property that
+matters most: combinations the axes still describe keep their levels, SKUs and
+photographs. Overwriting with a freshly generated matrix would zero every level
+with no movement row behind it — D-LP.18.2's loss, one door over, and far
+easier to trigger than the variant editor because the merchant is thinking about
+the landing page and not the warehouse. **A combination the page drops is
+removed only when EMPTY, and named when it still holds stock.**
+
+**The ADOPT branch does not touch the matrix.** An adopted row was typed by a
+human and its variants are the warehouse's real inventory; generating over them
+would either zero those levels or leave two naming schemes fighting over one
+shelf. A page selling no options leaves an existing matrix alone entirely.
+
+### Addition A — the optional inventory toggle
+
+`LandingSetting.inventoryEnforcement`, **default OFF**, on BH.1's precedent and
+for the merchant's own stated reason: a new product or variant is routinely
+tested before it has been sent to the Manager or given any stock, and strict
+inventory rules during that phase block the test.
+
+**Enforced twice when on**, like `behaviorTracking`: the storefront greys out
+(and strikes through, and `disabled`s) combinations the warehouse cannot honour,
+and **the checkout refuses them server-side** with `409 OUT_OF_STOCK`. The first
+is courtesy — a stale tab or a hand-posted form bypasses it; the second is the
+guarantee.
+
+**Availability is per COMBINATION, not per value**, which is the whole
+difficulty of greying a matrix: "Blue" is not out of stock, "M / Blue" is. And
+**unknown means available** — a combination the catalogue has never heard of
+(axes changed since the last send) stays sellable, because taking a working
+product off sale over a bookkeeping gap is worse than the rare miss the
+call-centre already handles.
+
+**On with no linked product sells freely**, so turning it on early is harmless
+rather than a trap that silently closes a shop.
+
+**Tests:** 7 integration in `abandoned-bridge.test.ts` (matrix generated at
+zero; re-send keeps entered levels; a dropped-but-stocked combination survives
+and is named; a variant-less page leaves a hand-built matrix alone; OFF sells
+the empty combination; ON refuses it and still sells the stocked one; ON with no
+link sells freely) plus 9 pure in `variant-model.test.ts`.
+
+---
+
+## VAR.1b — the ERP becomes the ONGOING source of truth for variants — built 25 Aug 2026, **DEV ONLY, NOT DEPLOYED**
+
+**This supersedes the one-way half of §VAR.1 below.** No migration. Not pushed,
+not deployed.
+
+### What was wrong with the first cut
+
+§VAR.1 moved variants in one direction: the page's axes generated the ERP
+matrix at send, and a re-send reconciled it. That is correct as far as it goes,
+and it left the ERP **downstream** — so a manager who added "XL / Blue" in the
+Manager, or deleted a combination the company had stopped making, changed
+nothing a customer could see. The shop kept selling the page's idea of the
+product rather than the warehouse's.
+
+The product owner's decision reverses the authority: **once a page is LINKED,
+the Manager's matrix is what the shop sells**, and any later add / edit / remove
+propagates automatically.
+
+### Derived on read, not synced
+
+The storefront already read the linked product for stock levels (VAR.2), so
+that read widened from *"what is the level"* to *"which combinations exist"*.
+Propagation is therefore immediate and unconditional — **no job to run, no
+window in which the two disagree, nothing to reconcile after a failure.**
+
+A write-back into `LandingVariant` was considered and rejected: it would be two
+writers on one dataset with no conflict rule, and it would have to invent an
+`extraPrice` for every combination the ERP created.
+
+### What stays the page's
+
+The matrix decides MEMBERSHIP. The page still decides the axis wording, the
+axis and value order, and `extraPrice` — none of which the ERP has anywhere to
+put. So **the shop offers what the warehouse has, priced the way the page
+says.**
+
+A value the manager ADDED appears at the end of its axis carrying **no
+adjustment**, deliberately: a price adjustment is a decision the merchant makes
+on the page, and inventing one here would put a number on a customer's bill
+that nobody chose. Its synthesised row id is inert, so the checkout — which
+prices only from the tenant's own rows and ignores ids it does not know —
+correctly contributes nothing for it.
+
+### Two refusals, and they are NOT the same rule
+
+- A **deleted** combination is refused **always**, whatever the enforcement
+  toggle says. Deleting a variant is an editorial act — the company stopped
+  making it — and no toggle should let a stale tab keep selling it.
+- An **empty** combination is refused **only** when VAR.2's toggle is on, whose
+  reasoning is untouched: a new product is routinely tested before its stock is
+  entered.
+
+`offerableCombination` holds both rules, and a test asserts the storefront greys
+out **exactly** what the checkout refuses in BOTH toggle states — if those ever
+diverged, a customer would be offered something the checkout then rejects,
+which is the worst of both.
+
+### An unlinked page is untouched
+
+No link, no matrix, no propagation — which is every page that has never been
+sent to the Manager. That is what makes adopting the Manager later a safe act
+rather than a change of behaviour nobody asked for, and it is pinned by a test.
+
+### Measured cost
+
+The gate can no longer return early when the toggle is off, so **every linked
+storefront render pays one extra SELECT** — the link and its product read
+together in a SINGLE statement rather than the two a separate lookup would add
+(D-PM.1.3: on the pinned transaction the query count IS the latency). Against
+LB.51's measured 10-statement product page that is +10% on the critical path.
+An unlinked page pays the same one statement and nothing else.
+
+### Proof
+
+Four end-to-end tests against the **real public page**, not a mapper unit —
+LB.23b's lesson is that a route test cannot see whether anything reached the
+surface:
+
+| Test | What it pins |
+|---|---|
+| a variant ADDED in the Manager appears on the storefront | propagation, with no re-publish |
+| a variant REMOVED disappears from the storefront | the offer follows the matrix |
+| the checkout refuses the removed one **with enforcement OFF** | deletion is not a stock rule |
+| a page never sent is untouched | adopting the Manager stays safe |
+
+Plus 11 pure tests over the derivation and the two-refusal split.
+
+**Files:** `src/lib/erp/variant-axes.ts` (`axesFromMatrix`,
+`combinationsFromMatrix`, `offerableCombination`, `offeredAxes`; widened
+`VariantLevels` and `refuseIfOutOfStock`), `src/lib/erp/inventory-gate.ts` (one
+statement, read unconditionally), `src/lib/landing/mappers.ts`
+(`offeredVariantRows`), `src/app/(storefront)/[tenant]/[slug]/page.tsx`,
+`test/variant-model.test.ts` (24→35), `test/erp/abandoned-bridge.test.ts`
+(24→28).
+
+**Suites:** 18/18 green, 1,000 tests, zero failures, zero DB errors —
+storefront 111, screens 171, access 193, catalog 91, builder-api 57,
+builder-sections 76, builder-ai 37, builder-versions 28, abandoned-bridge 28,
+orders 58, hardening 30, listing 30, tracking 17, variant-model 35,
+category-suggest 13, offers 9, order-split 8, checkout-idempotency 8. tsc
+unchanged at 275.
+
+**Migration:** none. **Risk:** a linked page whose ERP matrix has diverged from
+its own axes will change what it offers the moment this deploys — which is the
+feature, and the reason the send generates a matrix that matches the page in
+the first place. Pages with no link are unaffected.
+
+---
+
+## VAR.1 — the shared option vocabulary: the builder owns the axes, the ERP owns the matrix — built 25 Aug 2026, **DEV ONLY, NOT DEPLOYED**
+
+> **⚠ PARTLY SUPERSEDED THE SAME DAY BY §VAR.1b ABOVE.** The shared
+> vocabulary and the cross-product generator below are unchanged and still
+> current. What changed is the DIRECTION: this entry describes a one-way
+> transfer (page → ERP at send, reconciled on re-send), and the product
+> owner then made the ERP the ONGOING source of truth, so a later edit in
+> the Manager now propagates back to the shop. Read §VAR.1b for the
+> authority rule; everything here about the two data models still holds.
+
+**Slice 5 of 9.** **No migration — and that is the finding.**
+
+The two models were different DATA models, not different UIs: `LandingVariant`
+is flat `(name, value, extraPrice, displayOrder)` rows describing what a
+customer PICKS (8 rows for 3 colours × 5 sizes), while `CatalogProduct.variants`
+is concrete SKUs with stock, threshold, SKU code and photograph describing what
+sits on a SHELF (15 entries for the same product).
+
+**The builder already stores the axes.** `LandingVariant` carries the axis in
+`name`, the value in `value`, and definition order in `displayOrder` — which the
+variants PUT assigns from array position, group by group. So the axis list is a
+GROUPING of rows that already exist, not a column that had to be added. The
+confirmed decision (builder owns axes, ERP owns matrix) needed **zero schema
+change**.
+
+`src/lib/erp/variant-axes.ts` — no directive, so the ERP's browser matrix
+editor, the server-side send path and the bare-node suite can all import it:
+`axesFromLandingVariants`, `matrixFromAxes`, `matrixName`, plus VAR.2's
+availability rule. **`variant-matrix.tsx`'s hand-written cross product now calls
+it**, so there is one implementation rather than two free to disagree about the
+one thing that must never differ — the NAME, which `applyMovement` finds a
+variant by.
+
+**The invariant the suite pins hardest:** every combination the MATRIX generates
+is reproduced byte-identically by the CHECKOUT's label function. If those ever
+disagree, stock moves against nothing while every screen looks right — INV.1's
+silent failure one layer up.
+
+**Tests:** 15 pure in `test/variant-model.test.ts` (later 24 with VAR.2's).
+
+---
+
+## VH.1 — version history's round trips, and a diagnosis that measurement corrected — built 25 Aug 2026, **DEV ONLY, NOT DEPLOYED**
+
+**Slice 4 of 9.** No migration.
+
+### ⚠ THE ORIGINAL DIAGNOSIS WAS WRONG, AND IS RETRACTED HERE
+
+The scoping said `snapshotPage`'s 7-relation include fanned out into ~8
+serialized statements because it does not pass `relationLoadStrategy: "join"`,
+and that fixing it was the headline win. **Measured with a query-logging client
+against dev, that is false:**
+
+```
+per-relation (current)  ->  1 SELECT, 7 LEFT JOIN LATERALs, 6208 chars
+join (proposed)         ->  1 SELECT, 7 LEFT JOIN LATERALs, 6208 chars
+```
+
+Byte-identical. **Prisma 6.19 with the `relationJoins` preview enabled already
+DEFAULTS to the join strategy**, so LB.51's explicit parameter is
+belt-and-braces and `snapshotPage` was never paying the fan-out. Adding it would
+have been a no-op shipped as a fix. Recorded rather than quietly dropped,
+because the reasoning that produced it — "the query count IS the latency" — is
+right and will be reached for again; it was the specific count that was assumed
+instead of measured.
+
+### What the same method actually found
+
+| | statements | pooled connections |
+|---|---|---|
+| Editor page, four `forTenant()` calls | **16** | 4 |
+| Same four reads, one transaction | **7** | 1 |
+| Restore, before (page with category+theme+brand) | **25** (8 SELECT) | |
+| Restore, after | **22** (4 SELECT) | |
+
+`forTenant`'s own doc says *"Each call is its own transaction"* — and the editor
+page made four of them, each paying BEGIN + `set_config` + query + COMMIT. That
+is the real cost of opening the editor, and a restore pays it a SECOND time
+through the deliberate `window.location.reload()` that follows it.
+
+### The three changes
+
+1. **The editor page's four transactions became one.** `notFound()` now throws
+   after the transaction closes rather than aborting it to say something it
+   could say a line later.
+2. **The prune became one statement.** It was a `findMany` to name the surplus
+   ids and then a `deleteMany`, and in the common case — a page under the
+   50-version cap — the read found nothing and the delete never ran, so it cost
+   a round trip per checkpoint to discover there was nothing to do. Now a single
+   `DELETE … WHERE id IN (SELECT … OFFSET 50)`. Raw SQL for the same reason
+   `lockOpenLots` is raw, with the tenant predicate left to RLS.
+3. **The four "has the world moved on?" questions became one.** Three reference
+   lookups plus the slug-clash check were four sequential awaits; `Promise.all`
+   would have bought nothing, since Prisma queues onto the single pinned
+   connection (the note on `publish-to-erp` says exactly that), so the only way
+   to spend fewer round trips is to ask fewer times. One `EXISTS` query, still
+   under RLS — another tenant's category correctly reads as "gone", as before.
+
+**Honest scale:** the restore saving is 3 statements out of 25 (~12%), and
+**zero** on a page with no category/theme/brand — that case was measured too
+rather than quoting only the flattering one. The editor-page consolidation is
+the substantial win at 56% fewer statements and a quarter of the connections.
+
+The hard reload after a restore is left alone; its reasoning is sound and
+recorded in the component.
+
+**Suites:** 18/18 green, including **builder-versions 28/28** — which also
+surfaced a reporting flaw worth recording: the INV.1-era sweep script captured
+only `pass` and `fail`, so that suite's earlier `pass 17 / fail 0` looked clean
+when 11 of its 28 tests had been CANCELLED by a database blip. `cancelled` has
+been tracked since INV.2, and the INV.1 claim of "41/41, 1,642 tests" was
+overstated by that one partial suite.
+
+---
+
+## INV.3 — an opening stock level can be stated, once — built 24–25 Aug 2026, **DEV ONLY, NOT DEPLOYED**
+
+**Slice 3 of 9 in the 24 Aug feedback batch.** No migration. Not pushed, not
+deployed.
+
+### The complaint, and why it was right
+
+*"On a landing page's first send, stock starts at 0; when I then try to set the
+real stock quantity, it behaves like adding to an existing amount rather than
+setting an initial value."*
+
+Nothing was broken. There was a **hole**. `catalogProductFromLanding` never
+passes `stock` and the column has no default, so a sent page lands `NULL`. Of
+the five write paths, the two that accept an ABSOLUTE level were both out of
+reach for exactly that product — `POST /products` is not what the send uses,
+and `PUT /products/[id]/variants` needs variants the send does not transfer
+(VAR.2). The two reachable ones were both deltas, and `/inventory/adjust`'s own
+help text says it records *"never a new total"*. So the merchant met two boxes
+labelled "stock" that meant opposite things, and the only reachable one meant
+*add*.
+
+A quieter consequence rode along: `/inventory/adjust` creates **no `StockLot`**,
+so opening stock entered the obvious way had no cost basis at all, and every
+margin computed from it was wrong.
+
+### What it does now
+
+`POST /products/[id]/stock-lots` accepts **`setTo`** — an absolute level —
+as an alternative to `qty`, mutually exclusive (a zod `refine`, because the two
+mean opposite things about the same number). The route diffs it against the
+current level and creates a lot for the DIFFERENCE.
+
+Three constraints keep it honest, and each is a refusal with its own code:
+
+- **Only before anything has moved** (`HAS_STOCK_HISTORY`). An absolute figure
+  written over a level with history is the untraceable overwrite D-LP.1
+  refuses — it would silently absorb a sale, a correction or a cancellation
+  into one unexplained number. Scoped **per level**, not per product, so a
+  merchant can stock a matrix one variant at a time.
+- **Only upward** (`OPENING_STOCK_LOWER`). Setting a level down is not an
+  arrival, it is a correction, and a correction owes a reason this route has
+  nowhere to put.
+- **Through the lot writer, not the adjust route.** Opening stock is stock that
+  ARRIVED, so it gets a lot and a unit cost like any other arrival. This fixes
+  the missing affordance and the missing cost basis in one move, and the
+  movement carries its own `"opening"` reason rather than hiding inside
+  `"import"` beside real restocks.
+
+### The screen
+
+A new `OpeningStockPanel`, rendered FIRST and only while a level has never
+moved — so a product straight out of "Send to the Manager" meets a box that
+**sets**. It removes itself the moment anything moves, and the correction and
+restock panels take over.
+
+Deliberately NOT a third `mode` on the existing restock panel: two boxes on one
+control meaning opposite things is the confusion, not the cure. Only one of them
+can ever be on screen for a given level. `catalog-write.tsx`'s header rule
+("stock moves by a delta and a reason, never to an absolute figure") is amended
+in place rather than left contradicting the code — INV.3 NARROWS it, and a
+comment that had gone false would be the next person's trap.
+
+Which levels have moved is one `groupBy` for the whole screen, not a count per
+product — the PERF-02 shape `resolveOrderProducts` documents.
+
+**Files:** `src/app/api/erp/products/[id]/stock-lots/route.ts`,
+`src/components/console/erp/catalog-write.tsx`,
+`src/app/console/erp/inventory/page.tsx`, `src/lib/console/action-errors.ts`
+(+2 codes), `src/lib/console/erp-strings.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (+6 keys × 3),
+`test/erp/catalog.test.ts` (+10), `test/erp/screens.test.ts` (+1 reachability).
+
+**Suites:** catalog 81→**91**, screens 171 (INV.1's + INV.3's reachability),
+storefront 111, orders 58, listing 30, abandoned-bridge 17 — all zero DB
+errors. tsc unchanged at 275.
+
+**Migration:** none. **Risk:** `qty` is now optional in the schema, so a caller
+sending neither `qty` nor `setTo` gets 422 where it used to get a zod
+"required" 422 — same status, clearer message. Every existing `qty` caller is
+unaffected.
+
+---
+
+## INV.2 — a storefront sale names the variant it bought — built 24 Aug 2026, **DEV ONLY, NOT DEPLOYED**
+
+**Slice 2 of 9.** No migration. Not pushed, not deployed.
+
+### What was wrong
+
+`fulfilmentFromSale` and `fulfilmentFromDraft` **never wrote
+`FulfillmentOrder.productVariant`** — zero occurrences in either file. The
+selection travelled only in `lineItems[0].variants`, which is a DISPLAY field:
+nothing joins on it, nothing matches on it, and `applyMovement` finds a variant
+BY NAME off the column that was never written.
+
+So every storefront sale reached the call-centre naming no variant. That is
+what made INV.1's silent corruption reachable on the MAIN path rather than in a
+corner — and it is why retyping the variants in the Manager bought a display
+and not tracking. Proven against the unfixed build: **`null !== 'M / Blue'`**.
+
+### A second defect, found while fixing the first
+
+The checkout read the page's options with `include: { variants: true }` and
+**no `orderBy`**. The catalogue name is the option values joined IN DEFINITION
+ORDER, so read unordered, the same real combination could reach the ERP as
+`"M / Blue"` from one checkout and `"Blue / M"` from the next — two catalogue
+rows holding separate stock for one real thing. `variant-matrix.tsx`'s
+generator names that as precisely what its own ordering exists to prevent; this
+was the other end of the same rule, unguarded. Fixed with an ordered include,
+and pinned by a test that picks the options in reverse click-order and asserts
+the name is identical.
+
+### The canonical name
+
+`src/lib/erp/variant-label.ts` — values joined by `" / "` in definition order,
+one value per axis. **Not a new invention:** it is exactly what the ERP's matrix
+generator already produces, which is the point, since the two have to agree
+exactly for stock to move at all.
+
+It carries **neither** `server-only` **nor** `"use client"`, deliberately: the
+checkout writes the name on the server, the matrix generates it in the browser,
+and the suite exercises it in bare node. Same rule as `stock-level.ts` and
+`calc.ts`. VAR.1 will point the generator at it rather than keeping two copies.
+
+`SalesOrder.variants` keeps its documented `[{name, value}]` shape — widening a
+permanent commercial snapshot to carry `displayOrder` was drafted and **backed
+out**, because the ordered query already makes array order authoritative.
+
+The write sits in `from-sale.ts`'s single `commercial` object, which feeds BOTH
+the fresh create and LB.57's promotion of an abandoned cart — a promoted order
+that lost its variant would be the same bug back for exactly the customers who
+came back and bought. A test pins that. `fulfilmentFromDraft` carries the
+selection too (the draft route did not even SELECT `variants`), and
+`topUpFulfilmentFromDraft` fills it on the same only-if-still-empty rule as
+every other field, because the capture that first carries a phone usually fires
+before the visitor has picked a size.
+
+### Proof
+
+Five new tests, **all five red** on the unfixed build, the pre-existing 12
+still green:
+
+| Test | Unfixed |
+|---|---|
+| chosen options land in productVariant | ✖ `null !== 'M / Blue'` |
+| the name is in DEFINITION order, whatever the click order | ✖ |
+| a page with no options names no variant | ✖ |
+| **stock moves against the variant actually sold** | ✖ `null !== 'M / Blue'` |
+| an abandoned cart names its variant and keeps it on conversion | ✖ `null !== 'M / Red'` |
+
+The fourth is the end-to-end one and the reason INV.1 and INV.2 are two halves
+of one fix: the sale names `M / Blue`, confirming it takes that variant 10 → 7
+while `M / Red` stays at 10, and the ledger row names the right variant.
+
+**Files:** `src/lib/erp/variant-label.ts` (new), `src/lib/erp/from-sale.ts`,
+`src/lib/erp/from-draft.ts`, `src/app/api/storefront/[tenant]/orders/route.ts`,
+`src/app/api/storefront/[tenant]/draft-orders/route.ts`,
+`test/erp/helpers.ts` (the shared storefront fixture grows options; extended
+rather than forked, per its own note that a second copy is a second thing to
+keep in step with the checkout contract), `test/erp/abandoned-bridge.test.ts` (+5).
+
+**Suites:** abandoned-bridge 12→**17**, plus order-split 8, orders 58, catalog
+81, checkout-idempotency 8, listing 30, export 31, analytics 19, screens 170,
+storefront 111, hardening 30, tracking 17 — all zero DB errors. tsc unchanged.
+
+**Migration:** none. **Risk:** `FulfillmentOrder.productVariant` starts being
+populated for storefront orders. Rows created BEFORE this keep `null` and are
+not backfilled — a backfill would have to guess a canonical name from a
+snapshot whose order was never guaranteed, which is the very ambiguity this
+slice closes. Existing rows therefore keep behaving as they do today.
+
+---
+
+## INV.1 — a stock movement can no longer record more than it moved — built 24 Aug 2026, **DEV ONLY, NOT DEPLOYED**
+
+**Slice 1 of 9 in the 24 Aug feedback batch (NEXT_STEPS §THE 24 AUG FEEDBACK
+BATCH).** No migration — this is a code-only fix. Not pushed, not deployed;
+production still carries the bug described below.
+
+**NOBODY REPORTED THIS.** It was found while tracing the reported complaint
+that variants do not transfer to the Manager, and it is worse than the
+complaint: it is live data corruption, silent, on the main path.
+
+### What was wrong
+
+`rollUp(variants, fallback)` returns the **sum of the variant levels** whenever
+the variants array is non-empty, and only falls back to its second argument
+when the array is empty. `applyMovement` ends with:
+
+```
+stock: rollUp(variants, newQty)
+```
+
+The VARIANT branch writes `variant.stock = newQty` into the array first, so the
+roll-up sums to the right number. The PRODUCT branch (`variantName === ""`)
+never touches the array — so on a product that has variants, `newQty` was
+computed, the update discarded it, and the `InventoryMovement` row written
+immediately afterwards said `50 → 49` over a column that still read `50`.
+
+**The ledger and the level diverged permanently, with nothing raised anywhere.**
+
+And it was not an edge case. `fulfilmentFromSale` and `fulfilmentFromDraft`
+never write `FulfillmentOrder.productVariant` (that is INV.2, the next slice),
+so **every storefront order arrives naming no variant** — which means every
+confirm and every cancel of a storefront order for a product with variants took
+this branch. The ERP's own manual order form does pass a variant name, which is
+why every existing test passed: the suite only ever exercised the path that
+worked.
+
+`POST /products/[id]/stock-lots` had the same shape and the worse consequence:
+a product-level restock on a variant product created the `StockLot`, wrote the
+movement, and left `stock` where it was. The units were paid for, given a cost
+basis, and never appeared — and FIFO consumption draws from lots, so a later
+sale would consume units the stock column had never counted.
+
+### What it does now
+
+**A product-level movement against a product whose stock lives on its variants
+is refused, by name.** Not redirected to some default variant: which variant
+left the shelf is a fact only the caller has, and inventing one here would be
+the same silent wrongness in a new place. D-LP.18.2 already refuses the
+neighbouring case (removing a variant that still holds stock) for exactly this
+reason.
+
+The invariant the fix restores, stated positively: **no `InventoryMovement` row
+exists unless the level actually moved by exactly its delta.**
+
+- `applyMovement` returns a discriminated `MovementResult` instead of
+  `{prevQty,newQty} | null` — three named refusals (`NO_SUCH_PRODUCT`,
+  `NO_SUCH_VARIANT`, `VARIANT_LEVEL_REQUIRED`), because the third needs a
+  different answer from the other two.
+- `POST /inventory/adjust` answers **422 `VARIANT_LEVEL_REQUIRED`**, not 404.
+  The product is right there and the request becomes answerable the moment it
+  names a variant; a 404 would send the merchant looking for a product that
+  exists.
+- `POST /stock-lots` refuses the same request the same way, before creating
+  anything.
+- The order pipeline stays NON-FATAL and gets the loud guard
+  `resolveStockLines` already has for its own silent failure: the confirmation
+  succeeds (the call centre is talking to a customer; the catalogue being
+  shaped wrong is not their problem), nothing is written, and the reason goes
+  to the log naming the order, the product and the refusal.
+- `PUT /products/[id]/variants` only reports a variant in `moved` when the
+  ledger actually moved it. Not reachable today — every variant there was
+  written into the array moments earlier — but reporting a move that did not
+  happen is the class of untruth this slice exists to end.
+
+### The console, too
+
+`catalog-write.tsx`'s own rule is that a control must not offer a button that
+422s (it already applies that to a zero adjustment). The stockroom's variant
+picker offered **"All variants"** — which was never something either route
+could do, and was precisely the request that silently corrupted. On a product
+with variants that blank option is now an unselectable "Choose a variant"
+prompt and both panels' submit buttons stay inert until one is picked. A
+product with NO variants is untouched: there the blank value means the only
+level there is.
+
+**And `action-errors.ts` gains three entries, which is the UNKNOWN_ADAPTER note
+in that file happening a fourth time.** `VARIANT_LEVEL_REQUIRED` is new;
+`VARIANT_HOLDS_STOCK` and `DUPLICATE_VARIANT` were shipped by LP.18 with no
+entry at all, so the variant editor answered "that did not work" to its own two
+most informative refusals — both of which name something the merchant has to go
+and change before the save can succeed.
+
+### Proof
+
+The six new tests were run against the UNFIXED build first, and the split is
+the point:
+
+| Test | Unfixed | Fixed |
+|---|---|---|
+| product-level correction on a variant product is refused, writes nothing | ✖ `200 !== 422` | ✔ |
+| product-level restock on a variant product is refused, creates no lot | ✖ `201 !== 422` | ✔ |
+| **an order that names no variant leaves the shelf and the ledger alone** | ✖ `a confirm movement was recorded for stock that never moved — 1 !== 0` | ✔ |
+| a variant-less product still moves at the product level | ✔ | ✔ |
+| after any accepted movement the column equals what the ledger says | ✔ | ✔ |
+| every refusal these two routes can produce has a message | ✔ (mapping already in) | ✔ |
+
+Three fail on the bug; three are regression guards that pass both ways. The
+third row is the live corruption reproduced on the main path.
+
+**Full suite sweep: 41/41 green, 1,642 tests, zero failures.** Every suite was
+run against the fixed build, sequentially (they share one dev database and
+collide otherwise). `order-abuse` was run separately against a server started
+with `TRUST_CLOUDFLARE_CLIENT_IP=1`, because `tracking`'s SEC.10 test needs
+that same flag UNSET — the two cannot share one server. tsc unchanged at its
+275-error baseline; i18n parity 22/22.
+
+⚠ **The dev Neon instance flapped repeatedly during the sweep** (`P1001
+Can't reach database server`, seen in both the suite processes and the server
+log). Six suites reported results that described the database rather than the
+code and were re-run to green: `jobs` 20, `access` 193, `analytics` 19,
+`storefront` 111, `checkout-idempotency` 8, `delivery` 88. The failures were
+distributed across *different* tests on each attempt, which is the signature
+of infrastructure rather than a defect. Worth recording because it cost a
+full re-run pass, and because it briefly produced a *second* problem: the
+harness's `TaskStop` reported success on the re-run wrapper scripts without
+killing the underlying shells, so two runners executed suites against the same
+database concurrently for a period — every number produced in that window was
+noise and was discarded.
+
+**Files:** `src/lib/erp/inventory.ts` (the refusal, the result type, the
+order-pipeline guard), `src/app/api/erp/products/[id]/inventory/adjust/route.ts`,
+`src/app/api/erp/products/[id]/stock-lots/route.ts`,
+`src/app/api/erp/products/[id]/variants/route.ts`,
+`src/components/console/erp/catalog-write.tsx`,
+`src/lib/console/action-errors.ts`, `src/lib/console/erp-strings.ts`,
+`packages/i18n/src/messages/{en,fr,ar}.json` (4 keys × 3 locales),
+`test/erp/catalog.test.ts` (+6), `test/erp/screens.test.ts` (+1 reachability).
+
+**Migration:** none. **Risk:** a caller that today sends a product-level
+movement for a variant product now gets a 422 where it used to get a 200 —
+which is the fix, since that 200 was a lie. No console control produces that
+request any more.
+
+---
+
 ## FIX.ANN + the Traffic-redesign batch (ME.A · TS.2 · TS.4 · TS.3+D2 · OV.1 · ME.B · BH.4 · ME.C) — built overnight 24 Aug 2026, **DEPLOYED 24 Aug 06:27:48 UTC on Bilel's go**
 
 **✅ LIVE: `origin/main` = `c2a3c27`** (`680328e..c2a3c27`, ten commits —
