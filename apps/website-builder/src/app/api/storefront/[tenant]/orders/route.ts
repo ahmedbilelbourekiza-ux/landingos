@@ -10,6 +10,8 @@ import { deliveryPricesFor, priceForMethod } from "@/lib/storefront/delivery";
 import { triggerOrderWebhook } from "@/lib/webhooks/tenant-triggers";
 import { dispatchTrackingEvent } from "@/lib/tracking/dispatch";
 import { hasErp, fulfilmentFromSale } from "@/lib/erp/from-sale";
+// VAR.2 — the inventory toggle's server-side half.
+import { variantLevelsFor, refuseIfOutOfStock } from "@/lib/erp/inventory-gate";
 // SEC.11 — the same folding the ERP applies, so "0555 12 34 56" and
 // "0555123456" are one customer to the idempotency guard too.
 import { normalizePhone } from "@/lib/erp/phone";
@@ -167,7 +169,20 @@ export async function POST(
       }
       const page = await (db as any).landingPage.findFirst({
         where: { id: input.landingPageId, published: true, status: "PUBLISHED" },
-        include: { setting: true, variants: true },
+        /* INV.2 — `variants` is ORDERED now, and that is not cosmetic.
+         *
+         * The chosen options become the catalogue name this sale's stock moves
+         * against ("M / Blue"), and that name is the values joined IN
+         * DEFINITION ORDER. Read unordered, the snapshot's axis order was
+         * whatever Postgres returned, so the same real combination could reach
+         * the ERP as "M / Blue" from one checkout and "Blue / M" from the next
+         * — two names, two catalogue rows, stock split across both. The matrix
+         * generator's own comment names this as the thing its ordering exists
+         * to prevent; this is the other end of the same rule. */
+        include: {
+          setting: true,
+          variants: { orderBy: { displayOrder: "asc" } },
+        },
       });
       // Unpublished, or another tenant's: the same answer either way.
       if (!page) return { error: fail(404, "NOT_FOUND", tenant.locale) };
@@ -247,6 +262,26 @@ export async function POST(
       // and float arithmetic here would store dust (19.99 × 3 = 59.9700…006)
       // into the permanent commercial snapshot.
       const chosen = page.variants.filter((v: any) => input.variantIds.includes(v.id));
+
+      /* VAR.2 (addition A) — the half of the inventory toggle that is a
+       * guarantee rather than a courtesy.
+       *
+       * The storefront greys out combinations the warehouse cannot honour, and
+       * that is worth doing, but it is only advice: a stale tab, a
+       * back-button, or anyone posting this form by hand bypasses it entirely.
+       * This is the check that cannot be walked around, and it sits INSIDE the
+       * transaction that writes the order, before any of it is written.
+       *
+       * Silent when the merchant has not opted in, and silent when the page
+       * has never been sent to the Manager — with no linked product there are
+       * no levels, and refusing every order over that would close a working
+       * shop rather than protect one. */
+      const levels = await variantLevelsFor(db, page.id, Boolean(setting?.inventoryEnforcement));
+      const soldOut = refuseIfOutOfStock(
+        levels,
+        chosen.map((v: any) => ({ name: v.name, value: v.value, displayOrder: v.displayOrder })),
+      );
+      if (soldOut) return { error: fail(409, "OUT_OF_STOCK", tenant.locale) };
       const extras = chosen.reduce(
         (sum: Prisma.Decimal, v: any) => sum.plus(v.extraPrice ?? 0),
         new Prisma.Decimal(0),
@@ -258,6 +293,8 @@ export async function POST(
          above it false: the dropdown quoted the company's rate and this line
          charged nothing. One resolver, one answer — D-LB.20.1. */
       const shipping = new Prisma.Decimal(shippingPrice);
+
+
       const total = unitPrice.times(input.quantity).plus(shipping);
 
       const order = await (db as any).salesOrder.create({
@@ -375,6 +412,11 @@ export async function POST(
           totalPrice: total,
           shippingMethod: input.shippingMethod,
           productTitle: page.title,
+          // Shape unchanged, deliberately: `[{name, value}]` is what the
+          // schema documents for this snapshot and what every reader expects.
+          // The ORDER is now definition order (the include above), which is
+          // what INV.2's label needs — so the name is stable without widening
+          // a permanent commercial record.
           variants: chosen.map((v: any) => ({ name: v.name, value: v.value })),
         }, promoteDraftFulfilmentId, abuse.reason ? { reason: abuse.reason, flaggedAt: new Date() } : null);
       }

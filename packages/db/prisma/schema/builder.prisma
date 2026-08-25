@@ -251,6 +251,27 @@ model LandingSetting {
    * and the behavior route refuses the update server-side without it — a
    * beacon cannot opt a page in from the outside. */
   behaviorTracking Boolean @default(false)
+  /* VAR.2 — does this page REFUSE to sell a variant the warehouse is out of?
+   *
+   * OPT-IN PER PAGE, default off, on BH.1's precedent above and for a reason
+   * the merchant gave: a new product or a new variant is routinely tested
+   * before it has ever been sent to the Manager or given any stock, and
+   * strict inventory rules during that phase block the test. Off, the page
+   * behaves exactly as every page does today — it sells whatever is chosen
+   * and the call-centre sorts it out, which is the right default for a
+   * cash-on-delivery business that often ships from a supplier.
+   *
+   * Enforced TWICE when on, the same way `behaviorTracking` is: the storefront
+   * greys out what cannot be bought, AND the checkout refuses it server-side.
+   * The first is courtesy, the second is the guarantee — a form posted from a
+   * stale tab, or by hand, must not be able to sell stock that is not there.
+   *
+   * It means nothing until the page has been sent to the Manager, because the
+   * levels live on `CatalogProduct.variants`. With no linked product there is
+   * no stock to check and the page sells freely, which is the same answer as
+   * off — deliberately, so turning it on early is harmless rather than a trap.
+   */
+  inventoryEnforcement Boolean @default(false)
   shipping         Decimal @default(0)
   freeShipping     Boolean @default(false)
   orderFormConfig  Json?
@@ -479,6 +500,7 @@ model SalesOrder {
   // Snapshot of the selected options: [{"name":"Color","value":"Black"}].
   // Json rather than an encoded string now that the database supports it.
   variants Json @default("[]")
+
 
   productPrice   Decimal // unit price including variant extras
   shippingPrice  Decimal // for the selected wilaya

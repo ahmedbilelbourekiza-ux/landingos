@@ -35,6 +35,8 @@ export interface DisplayPreviewValues {
    * preview renders identically either way; it rides this section because
    * it is a LandingSetting flag saved by the same route. */
   behaviorTracking: boolean;
+  /** VAR.2 — refuse out-of-stock combinations on this page. */
+  inventoryEnforcement?: boolean;
 }
 
 export interface PreviewState {

@@ -12,6 +12,8 @@ import {
   browserIntegrationsFrom,
 } from "@/lib/storefront/tracking";
 import { toLandingPageData, toThemeData } from "@/lib/landing/mappers";
+// VAR.2 — the optional inventory gate's read side.
+import { variantLevelsFor } from "@/lib/erp/inventory-gate";
 import { LandingTemplate } from "@/components/landing/landing-template";
 import { StorefrontApiProvider } from "@/lib/storefront/api-base";
 import { ViewContentTracker } from "@/components/landing/tracking-scripts";
@@ -45,9 +47,9 @@ const load = cache(async (tenantSlug: string, pageSlug: string) => {
   const tenant = await resolveStorefrontTenant(tenantSlug);
   if (!tenant) return null;
 
-  const [[page, integrationRows], store] = await Promise.all([
-    withTenant(tenant.id, async (db) => [
-      await (db as any).landingPage.findFirst({
+  const [[page, integrationRows, variantLevels], store] = await Promise.all([
+    withTenant(tenant.id, async (db) => {
+      const page = await (db as any).landingPage.findFirst({
         // One SQL statement for the page and its seven relations instead of
         // eight — on the pinned transaction, round trips ARE the latency
         // (D-PM.1.3). Opt-in per query via the relationJoins preview flag.
@@ -64,16 +66,25 @@ const load = cache(async (tenantSlug: string, pageSlug: string) => {
           // LB.36 — the identity this page sells under, when it has one.
           brand: { select: { id: true, name: true, logo: true } },
         },
-      }),
+      });
+
       // The pixels this page may fire (LB.35). Same transaction, one query —
       // the selection itself is applied below, outside the transaction, by
       // the same function resolveBrowserIntegrations uses.
-      await activeBrowserIntegrationRows(db),
-    ]),
-    // The tenant's public identity (B4) — nav brand, footer, socials, the
-    // floating WhatsApp number — read here because the template deliberately
-    // reads no settings itself. Shared with the layout's generateMetadata
-    // through the request-scoped cache: one SELECT serves both.
+      const integrationRows = await activeBrowserIntegrationRows(db);
+
+      /* VAR.2 — the levels this page sells against, when its merchant turned
+       * enforcement on. IN THIS TRANSACTION, not a later one: LB.51's finding
+       * was precisely that reads appended after the page resolved are round
+       * trips bolted onto the critical path. Costs NOTHING when the toggle is
+       * off — the helper returns before touching the database, so every page
+       * that has not opted in pays exactly what it pays today. */
+      const variantLevels = page
+        ? await variantLevelsFor(db, page.id, Boolean(page.setting?.inventoryEnforcement))
+        : null;
+
+      return [page, integrationRows, variantLevels] as const;
+    }),
     storefrontStoreSettings(tenant.id),
   ]);
 
@@ -109,6 +120,10 @@ const load = cache(async (tenantSlug: string, pageSlug: string) => {
   return {
     tenant,
     page,
+    /* VAR.1 (fuller scope) — the whole answer travels, not just the levels.
+       The matrix decides WHICH combinations exist (always) and the toggle
+       decides whether an empty one blocks a sale, so the page needs both. */
+    variantLevels: variantLevels ?? null,
     store: storeData,
     // Resolved here so the component mount needs no second transaction; the
     // selection function is the one resolveBrowserIntegrations itself uses.
@@ -256,7 +271,7 @@ export default async function StorefrontLandingPage({
             shape and the template takes the public one. Passing the wrong
             mapper compiles fine and throws at render. */}
         <LandingTemplate
-          page={toLandingPageData(found.page)}
+          page={toLandingPageData(found.page, found.variantLevels)}
           theme={toThemeData(found.page.theme)}
           store={found.store}
         />

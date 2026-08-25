@@ -37,6 +37,11 @@ export type CheckoutErrorCode =
   | "UNDELIVERABLE"
   | "CHECKOUT_CONFLICT"
   | "ORDER_REFUSED"
+  /* VAR.2 — the chosen combination is out of stock, on a page whose merchant
+   * turned enforcement ON. Named rather than folded into NOT_FOUND: the
+   * product IS available, one choice within it is not, and the customer can
+   * fix it themselves by picking another size. */
+  | "OUT_OF_STOCK"
   | "INTERNAL_ERROR";
 
 type Catalogue = Record<CheckoutErrorCode, string>;
@@ -58,6 +63,7 @@ const AR: Catalogue = {
   UNDELIVERABLE: "التوصيل غير متوفر إلى هذه الولاية حاليا.",
   CHECKOUT_CONFLICT: "تعذر إتمام الطلب — يرجى تحديث الصفحة والمحاولة مرة أخرى.",
   ORDER_REFUSED: "تعذر إتمام هذا الطلب عبر الموقع. يرجى الاتصال بنا لإتمام طلبكم.",
+  OUT_OF_STOCK: "هذا الخيار نفد من المخزون — يرجى اختيار خيار آخر.",
   INTERNAL_ERROR: "تعذر تسجيل الطلب. يرجى المحاولة مرة أخرى.",
 };
 
@@ -70,6 +76,7 @@ const FR: Catalogue = {
   UNDELIVERABLE: "Nous ne livrons pas encore dans cette wilaya.",
   CHECKOUT_CONFLICT: "La commande n'a pas pu être finalisée — actualisez la page et réessayez.",
   ORDER_REFUSED: "Cette commande n'a pas pu être finalisée en ligne. Merci de nous appeler pour la confirmer.",
+  OUT_OF_STOCK: "Cette option est épuisée — veuillez en choisir une autre.",
   INTERNAL_ERROR: "Nous n'avons pas pu enregistrer la commande. Veuillez réessayer.",
 };
 
@@ -82,6 +89,7 @@ const EN: Catalogue = {
   UNDELIVERABLE: "We do not deliver to that wilaya yet.",
   CHECKOUT_CONFLICT: "That order could not be completed — refresh the page and try again.",
   ORDER_REFUSED: "This order could not be completed online. Please call us and we will take it for you.",
+  OUT_OF_STOCK: "That option is out of stock — please choose another.",
   INTERNAL_ERROR: "We could not place that order. Please try again.",
 };
 

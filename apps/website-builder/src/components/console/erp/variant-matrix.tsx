@@ -6,6 +6,8 @@ import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { ImageInput, type ImageInputStrings } from "./image-input";
 import { ProductThumb } from "./product-thumb";
 import { StockChip, type StockLabels } from "./stock-chip";
+// VAR.1 — one cross product, shared with the server-side send path.
+import { matrixFromAxes, type OptionAxis } from "@/lib/erp/variant-axes";
 
 /* =============================================================================
  * The variant matrix — PM.3, and the half of PM.2 that lives per variant.
@@ -49,7 +51,13 @@ export interface VariantRow {
   options: Record<string, string>;
 }
 
-export interface OptionDef {
+/* VAR.1 — the ERP's local name for the shared axis type. Kept as an alias
+ * rather than a second declaration: this component and the send path have to
+ * agree on what an axis IS, and two structurally identical interfaces are two
+ * things that can drift. `values` stays mutable because the editor below
+ * edits it in place; the shared type is read-only, which is the correct
+ * direction for that difference. */
+export interface OptionDef extends Omit<OptionAxis, "values"> {
   name: string;
   values: string[];
 }
@@ -148,28 +156,26 @@ export function VariantMatrix({
    * "M / Blue" and "Blue / M" as two rows holding separate stock.
    */
   const generate = () => {
-    const usable = defs.filter((d) => d.name.trim() && d.values.filter(Boolean).length);
-    if (!usable.length) return;
-
-    let combos: Record<string, string>[] = [{}];
-    for (const def of usable) {
-      const next: Record<string, string>[] = [];
-      for (const combo of combos) {
-        for (const value of def.values.filter(Boolean)) {
-          next.push({ ...combo, [def.name.trim()]: value });
-        }
-      }
-      combos = next;
-    }
+    /* VAR.1 — the cross product itself now lives in `lib/erp/variant-axes.ts`,
+     * shared with the send path. It used to be written out here, and a second
+     * implementation on the server would have been free to disagree about the
+     * one thing that must never differ: the NAME. `applyMovement` finds a
+     * variant by name, so a matrix generated one way and a sale labelled
+     * another move no stock while looking like they worked.
+     *
+     * What stays here is the half that is genuinely this component's: merging
+     * onto the rows already on screen. A generator that replaced them would
+     * silently zero every level it regenerated — a stock loss with no movement
+     * row behind it, which is what D-LP.18.1 forbids. */
+    const combos = matrixFromAxes(defs);
+    if (!combos.length) return;
 
     const byName = new Map(rows.map((r) => [r.name, r]));
     setRows(
-      combos.map((options) => {
-        const name = usable.map((d) => options[d.name.trim()]).join(" / ");
-        return (
-          byName.get(name) ?? { name, sku: "", stock: 0, threshold: 0, image: "", options }
-        );
-      }),
+      combos.map(
+        ({ name, options }) =>
+          byName.get(name) ?? { name, sku: "", stock: 0, threshold: 0, image: "", options },
+      ),
     );
   };
 

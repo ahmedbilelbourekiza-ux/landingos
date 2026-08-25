@@ -2,6 +2,7 @@ import type { LandingPage, LandingMedia, LandingVariant, LandingReview, LandingF
 import type { PreviewState } from "@/types/preview";
 import type { LandingListItem } from "@/lib/landing/mock-landings";
 import type { VariantGroup } from "@/lib/landing/mock-landings";
+import { axesFromLandingVariants, offeredAxes } from "@/lib/erp/variant-axes";
 import type { LandingPageData } from "@/types/landing";
 import type { OrderFormConfig } from "@/lib/landing/mock-order-form";
 import { defaultOrderFormConfig, normalizeOrder, ALL_FIELD_KEYS } from "@/lib/landing/mock-order-form";
@@ -238,13 +239,85 @@ export function toPreviewState(page: LandingWithRelations): PreviewState {
       // BH.1 — opt-in, so the absent-row default is OFF, unlike the show*
       // toggles whose absence means "shown".
       behaviorTracking: page.setting?.behaviorTracking ?? false,
+      inventoryEnforcement: (page.setting as { inventoryEnforcement?: boolean } | null)?.inventoryEnforcement ?? false,
     },
   };
 }
 
 // Convert a Prisma landing page to the LandingPageData shape for the public
 // LandingTemplate.
-export function toLandingPageData(page: LandingWithRelations): LandingPageData {
+/* -----------------------------------------------------------------------------
+ * VAR.1 (fuller scope) — the rows the storefront actually offers
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The page's variant rows, filtered and extended by the Manager's matrix.
+ *
+ * Returns the page's own rows untouched when there is no matrix to consult —
+ * an unlinked page, or the editor preview — which is every page that has never
+ * been sent to the Manager.
+ *
+ * A value the manager ADDED has no `LandingVariant` row, so one is synthesised
+ * with a stable id derived from the axis and value. It carries `extraPrice: 0`
+ * deliberately: an adjustment is a decision the merchant makes on the page,
+ * and inventing one here would put a number on a customer's bill that nobody
+ * chose. The checkout prices from the tenant's OWN rows and ignores ids it
+ * does not know, so a synthesised id contributes nothing to the price — which
+ * is precisely the correct behaviour for a value with no adjustment.
+ */
+function offeredVariantRows(
+  rows: readonly LandingVariant[],
+  levels: import("../erp/variant-axes").VariantLevels | null,
+): { id: string; name: string; value: string; extraPrice: number; displayOrder: number }[] {
+  const own = rows.map((v) => ({
+    id: v.id,
+    name: v.name,
+    value: v.value,
+    extraPrice: v.extraPrice.toNumber(),
+    displayOrder: v.displayOrder,
+  }));
+  if (!levels?.axes?.length) return own;
+
+  const pageAxes = axesFromLandingVariants(
+    rows.map((v) => ({ name: v.name, value: v.value, displayOrder: v.displayOrder })),
+  );
+  const offered = offeredAxes(pageAxes, levels);
+
+  const fold = (v: string) => v.trim().toLowerCase();
+  const byPair = new Map(own.map((r) => [`${fold(r.name)}::${fold(r.value)}`, r]));
+
+  const out: typeof own = [];
+  let order = 0;
+  for (const axis of offered) {
+    for (const value of axis.values) {
+      const existing = byPair.get(`${fold(axis.name)}::${fold(value)}`);
+      out.push(
+        existing
+          ? { ...existing, displayOrder: order++ }
+          : {
+              // Stable and inert: not a real row id, so the checkout's
+              // `variantIds` lookup finds nothing to price from — which is
+              // right for a value carrying no adjustment.
+              id: `erp:${axis.name}:${value}`,
+              name: axis.name,
+              value,
+              extraPrice: 0,
+              displayOrder: order++,
+            },
+      );
+    }
+  }
+  return out;
+}
+
+export function toLandingPageData(
+  page: LandingWithRelations,
+  /* VAR.2 / VAR.1 — what the Manager says about this page's variants, supplied
+   * by the STOREFRONT only. The editor preview passes nothing and gets null,
+   * which is correct: a preview has no warehouse, and hiding a merchant's own
+   * options while they design the page would be a lie about their product. */
+  variantLevels: import("../erp/variant-axes").VariantLevels | null = null,
+): LandingPageData {
   /* Task-1 (24 Aug) — the LIVE page resolves the button label exactly as the
    * editor PREVIEW always has (`toPreviewState`): the General section's
    * `ctaButtonText` when set, the legacy `buttonText` column otherwise. Before
@@ -253,6 +326,10 @@ export function toLandingPageData(page: LandingWithRelations): LandingPageData {
    * feeds BOTH the sticky bar and the order form, so they cannot disagree. */
   const buttonText = page.ctaButtonText ?? page.buttonText;
   return {
+    /* Only the levels are carried for the storefront's stock greying; WHICH
+       combinations exist is applied to the variant rows below, so the picker
+       never has to know the Manager exists. */
+    stockByVariant: variantLevels?.enforced ? variantLevels.stock : null,
     id: page.id,
     title: page.title,
     slug: page.slug,
@@ -274,13 +351,18 @@ export function toLandingPageData(page: LandingWithRelations): LandingPageData {
     published: page.published,
     media: galleryMedia(page.media).map(toMediaData),
     descriptionImages: descriptionMedia(page.media).map(toMediaData),
-    variants: page.variants.map((v) => ({
-      id: v.id,
-      name: v.name,
-      value: v.value,
-      extraPrice: v.extraPrice.toNumber(),
-      displayOrder: v.displayOrder,
-    })),
+    /* VAR.1 (fuller scope) — the Manager decides WHICH values are on sale.
+     *
+     * The page keeps owning the wording, the order and the `extraPrice`; the
+     * matrix decides membership. So a value the manager added appears here
+     * even though the page never had a row for it (synthesised below, at zero
+     * extra price, because a price adjustment is a page decision nobody has
+     * made for it yet), and a value whose combinations the manager deleted
+     * stops being offered.
+     *
+     * `variantLevels` is null for the editor preview and for any page with no
+     * linked product, and then this is exactly the list it always was. */
+    variants: offeredVariantRows(page.variants, variantLevels),
     features: page.features.map((f) => ({
       id: f.id,
       icon: f.icon,

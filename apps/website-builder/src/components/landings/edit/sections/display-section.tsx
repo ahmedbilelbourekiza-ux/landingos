@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Activity, Eye, Star, HelpCircle, Sparkles, MousePointerClick, MessageCircle } from "lucide-react";
+import { Activity, Eye, Star, HelpCircle, Sparkles, MousePointerClick, MessageCircle, PackageCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
@@ -66,6 +66,22 @@ const TOGGLES = [
     icon: Activity,
     titleKey: "builder.editor.behaviorTracking",
     descriptionKey: "builder.editor.behaviorTrackingDesc",
+  },
+  /* VAR.2 (addition A) — BH.1's precedent again, for the same reason: not a
+   * visual toggle, but a LandingSetting flag saved by the same route, and
+   * "what this page does" is exactly what this section lists.
+   *
+   * Default OFF is the merchant's decision and a considered one: a new product
+   * or variant is routinely tested before it has been sent to the Manager or
+   * given stock, and strict inventory rules during that phase block the test.
+   * The description says what turning it on actually does, including the part
+   * a merchant would otherwise discover the hard way — that it needs the page
+   * to have been sent to the Manager to mean anything at all. */
+  {
+    key: "inventoryEnforcement" as const,
+    icon: PackageCheck,
+    titleKey: "builder.editor.inventoryEnforcement",
+    descriptionKey: "builder.editor.inventoryEnforcementDesc",
   },
 ];
 

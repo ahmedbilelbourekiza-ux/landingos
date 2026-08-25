@@ -15,6 +15,8 @@ interface OrderState {
   quantity: number;
   basePrice: number;
   groups: VariantGroup[];
+  /** VAR.2 — level per catalogue name, or null when nothing is enforced. */
+  stockByVariant: Readonly<Record<string, number>> | null;
   select: (name: string, value: string) => void;
   setQuantity: (qty: number) => void;
 }
@@ -35,6 +37,12 @@ function computeUnitPrice(
 
 export function createLandingOrderStore(page: LandingPageData) {
   const groups = groupVariants(page.variants);
+  /* VAR.2 — the levels this page sells against, or null when the merchant has
+   * not turned enforcement on. Null and "linked to nothing" are the same
+   * answer on purpose: sell freely. Carried on the order store because the
+   * selectors already read their groups and selection from here, and the
+   * availability of an option is a fact about that same selection. */
+  const stockByVariant = page.stockByVariant ?? null;
   const initialSelected: Record<string, string> = {};
   for (const group of groups) {
     initialSelected[group.name] = group.options[0]?.value ?? "";
@@ -45,6 +53,7 @@ export function createLandingOrderStore(page: LandingPageData) {
     quantity: 1,
     basePrice: page.price,
     groups,
+    stockByVariant,
     select: (name, value) =>
       set((state) => ({ selected: { ...state.selected, [name]: value } })),
     setQuantity: (qty) => set({ quantity: Math.max(1, Math.min(99, qty)) }),

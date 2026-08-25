@@ -123,6 +123,12 @@ export interface LandingPageData {
   reviews: LandingReviewData[];
   faqs: LandingFAQData[];
   setting: LandingSettingData | null;
+  /* VAR.2 — level per catalogue variant name ("M / Blue" → 3), supplied by the
+   * storefront page ONLY when this page's merchant turned inventory
+   * enforcement on AND the page is linked to a catalogue product. Absent or
+   * null means "nothing to enforce", which is what every page says today. The
+   * editor preview never supplies it: a preview has no warehouse. */
+  stockByVariant?: Readonly<Record<string, number>> | null;
   // Field order, labels, and visibility for the checkout form. The storefront
   // previously hardcoded all of this; it now renders from here so the admin's
   // arrangement is what customers actually see.
