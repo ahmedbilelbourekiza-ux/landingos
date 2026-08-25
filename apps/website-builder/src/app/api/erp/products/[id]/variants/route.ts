@@ -168,13 +168,20 @@ export const PUT = tenantRoute<Params>("erp:inventory:write", async ({ db, req, 
     const before = Number(storedByName.get(v.name)?.stock ?? 0);
     const delta = v.stock - before;
     if (delta === 0) continue;
-    await applyMovement(db, session.auth!.tenantId, {
+    const result = await applyMovement(db, session.auth!.tenantId, {
       productId: params.id,
       variantName: v.name,
       delta,
       reason,
       actorUserId: session.user.id,
     });
+    /* INV.1 — `moves` is what the response tells the merchant moved, so it
+       records what the ledger actually did rather than what was asked for.
+       Every variant here was written into the array a few lines above, so a
+       refusal is not reachable today; reporting a move that did not happen is
+       exactly the class of untruth INV.1 exists to end, and the cost of being
+       honest about it is one branch. */
+    if (!result.ok) continue;
     moves.push({ variantName: v.name, from: before, to: v.stock });
   }
 

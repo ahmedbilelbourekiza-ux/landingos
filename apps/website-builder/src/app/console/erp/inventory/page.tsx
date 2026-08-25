@@ -14,6 +14,7 @@ import { ProductThumb } from "@/components/console/erp/product-thumb";
 import { StockChip } from "@/components/console/erp/stock-chip";
 import { stockLevel, STOCK_TONE, type StockSeverity } from "@/lib/erp/stock-level";
 import {
+  OpeningStockPanel,
   StockAdjustPanel,
   StockLotPanel,
   type StockProduct,
@@ -115,12 +116,35 @@ export default async function ErpInventoryScreen() {
     // stock scan already loaded — a second query would be a second answer to
     // "which products exist", and the archived ones are excluded from both for
     // the same reason: stock nobody sells cannot be corrected into usefulness.
+    /* INV.3 — which levels have NEVER moved, and may therefore still be given
+       an opening figure.
+     *
+     * ONE groupBy for the whole screen, not a count per product: the panels
+     * render every product the tenant has, and a query per row is the PERF-02
+     * shape this codebase refuses (see `resolveOrderProducts`). A level is
+     * identified the way the movement ledger identifies it — productId plus
+     * variantName, with "" meaning the product's own level. */
+    const movedLevels = new Set(
+      (
+        await db.inventoryMovement.groupBy({
+          by: ["productId", "variantName"],
+        })
+      ).map((row) => `${row.productId}::${row.variantName ?? ""}`),
+    );
+
     const stockProducts: StockProduct[] = products
-      .map((p) => ({
-        id: p.id,
-        name: p.name ?? p.sku ?? p.reference ?? p.id,
-        variants: inventoryView(p).variants.map((v) => v.name),
-      }))
+      .map((p) => {
+        const variants = inventoryView(p).variants.map((v) => v.name);
+        // A product with variants keeps its stock on them; one without has a
+        // single unnamed level. Exactly the split `applyMovement` enforces.
+        const levels = variants.length ? variants : [""];
+        return {
+          id: p.id,
+          name: p.name ?? p.sku ?? p.reference ?? p.id,
+          variants,
+          opening: levels.filter((level) => !movedLevels.has(`${p.id}::${level}`)),
+        };
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
 
     return { low, movements, stockProducts };
@@ -168,6 +192,13 @@ export default async function ErpInventoryScreen() {
 
       {mayWrite && (
         <>
+          {/* INV.3 — FIRST, and only while there is a level it can honestly
+              speak about. A product freshly sent from the builder has never
+              moved, so this is the control the merchant meets: it SETS. It
+              renders nothing once everything has moved, and from then on the
+              two panels below — a correction with a reason, and a restock —
+              are the only doors, which is the rule that was right all along. */}
+          <OpeningStockPanel errors={errors} s={s} products={stockProducts} />
           <StockAdjustPanel errors={errors} s={s} products={stockProducts} />
           <StockLotPanel errors={errors} s={s} products={stockProducts} />
         </>

@@ -61,6 +61,7 @@ export function catalogStrings(t: (key: string) => string): CatalogStrings {
     product: t("erp.write.product"),
     variant: t("erp.inventory.variant"),
     allVariants: t("erp.write.allVariants"),
+    chooseVariant: t("erp.write.chooseVariant"),
     // The movement ledger already labels these columns; one word, one key.
     change: t("erp.inventory.change"),
     reason: t("erp.inventory.reason"),
@@ -73,6 +74,10 @@ export function catalogStrings(t: (key: string) => string): CatalogStrings {
     quantity: t("erp.orders.quantity"),
     unitCost: t("erp.write.unitCost"),
     addLot: t("erp.write.addLot"),
+    openingPanel: t("erp.write.openingPanel"),
+    openingHint: t("erp.write.openingHint"),
+    openingLevel: t("erp.write.openingLevel"),
+    setOpening: t("erp.write.setOpening"),
     image: imageStrings(t),
   };
 }

@@ -104,6 +104,31 @@ const ERROR_KEYS: Record<string, string> = {
    * refusal in this screen that is actively protecting their revenue history.
    * The message names the door that IS open, which is Archive. */
   HAS_ORDERS: "common.error.hasOrders",
+  /* INV.1, and the UNKNOWN_ADAPTER note above happening a FOURTH time.
+   *
+   * `VARIANT_LEVEL_REQUIRED` is new here. The other two are not: LP.18 shipped
+   * `VARIANT_HOLDS_STOCK` and `DUPLICATE_VARIANT` with no entry in this file,
+   * so the variant editor answered "that did not work" to its own two most
+   * informative refusals — and both name something the merchant must go and
+   * change before the save can succeed, which is precisely the test this file
+   * says earns a code its own message.
+   *
+   * All three are mapped together because they are one screen's vocabulary and
+   * splitting them would leave the same gap open one more release. */
+  VARIANT_LEVEL_REQUIRED: "common.error.variantLevelRequired",
+  VARIANT_HOLDS_STOCK: "common.error.variantHoldsStock",
+  DUPLICATE_VARIANT: "common.error.duplicateVariant",
+  /* INV.3 — the two ways an OPENING level is refused, and they are two codes
+   * because the fix is different for each. "This has moved before" means the
+   * opening figure is no longer the right instrument and the correction panel
+   * is; "you set it lower" means the number is a reduction, which owes a
+   * reason this control has nowhere to put. Collapsing them would send a
+   * merchant to the wrong door half the time. Both are near-unreachable from
+   * the screen (the panel hides itself once a level has moved, and the box
+   * refuses anything under 1) — they are mapped for the stale-tab case, which
+   * is exactly why HAS_ORDERS is mapped two entries above. */
+  HAS_STOCK_HISTORY: "common.error.hasStockHistory",
+  OPENING_STOCK_LOWER: "common.error.openingStockLower",
   INTERNAL_ERROR: "common.error.internal",
   // Not from the server — the request never arrived. Worth its own wording
   // because "nothing was saved" is certain here and merely likely otherwise.

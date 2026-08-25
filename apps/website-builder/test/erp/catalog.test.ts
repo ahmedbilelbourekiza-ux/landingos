@@ -445,6 +445,378 @@ describe('stock movements are a ledger, not a counter', () => {
 });
 
 /* -----------------------------------------------------------------------------
+ * INV.1 — the ledger and the level cannot disagree
+ *
+ * `rollUp(variants, newQty)` returns the SUM OF THE VARIANT LEVELS whenever the
+ * array is non-empty, and ignores `newQty`. So a PRODUCT-level movement against
+ * a product that keeps its stock per variant used to be accepted, write an
+ * `InventoryMovement` saying `20 → 15`, and leave the column at 20.
+ *
+ * It was not an edge case. Storefront sales never named a variant (INV.2), so
+ * on any product with variants every confirm and every cancel of a storefront
+ * order recorded a movement that moved nothing — the ledger drifting from the
+ * shelf, permanently, with nothing raised anywhere.
+ *
+ * These tests pin the property the fix restores, which is stronger than "the
+ * refusal happens": **no `InventoryMovement` row exists unless the level
+ * actually moved by exactly its delta.** Every test below asserts the ledger
+ * AND the level, because asserting either alone is what let this survive.
+ * -------------------------------------------------------------------------- */
+
+describe('INV.1 — a movement never records more than it moved', () => {
+  const inventoryOf = async (productId: string) =>
+    (await acme.manager.api('GET', `/api/erp/products/${productId}/inventory`)).body.data as {
+      stock: number;
+      variants: Array<{ name: string; stock: number }>;
+    };
+
+  const movementsOf = async (productId: string) =>
+    ((await acme.manager.api('GET', `/api/erp/products/${productId}/inventory/history?variant=all`))
+      .body.data.items ?? []) as Array<{
+      reason: string;
+      delta: number;
+      prevQty: number;
+      newQty: number;
+      orderId: string | null;
+    }>;
+
+  test('a product-level correction on a variant product is refused, and writes nothing', async () => {
+    const product = await newProduct({ variants: [{ name: 'Black/42', stock: 20, threshold: 5 }] });
+
+    const r = await acme.manager.api('POST', `/api/erp/products/${product.id}/inventory/adjust`, {
+      // No variantName — this is exactly the request that used to corrupt.
+      delta: -5, reason: 'damaged',
+    });
+    assert.equal(r.status, 422, 'a level with two owners is not a level');
+    // 422 and not 404: the product is right there, and the request becomes
+    // answerable the moment it says WHICH variant. A 404 would send the
+    // merchant looking for a product that exists.
+    assert.equal(r.body.error.code, 'VARIANT_LEVEL_REQUIRED');
+
+    const inv = await inventoryOf(product.id);
+    assert.equal(inv.variants[0].stock, 20, 'the variant did not move');
+    assert.equal(inv.stock, 20, 'and neither did the roll-up');
+
+    const damaged = (await movementsOf(product.id)).filter((m) => m.reason === 'damaged');
+    assert.equal(
+      damaged.length, 0,
+      'a ledger row was written for a movement that did not happen — this is INV.1 itself',
+    );
+  });
+
+  test('a product-level restock on a variant product is refused, and creates no lot', async () => {
+    /* The worse half of INV.1. This path created the StockLot, wrote the
+       movement, and left `stock` where it was — so the units were paid for,
+       given a cost basis, and never appeared. A later sale would then consume
+       from a lot the stock column had never counted. */
+    const product = await newProduct({ variants: [{ name: 'Black/42', stock: 20, threshold: 5 }] });
+
+    const r = await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      mode: 'purchase', qty: 10, unitCost: 2500, packagingCost: 120,
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'VARIANT_LEVEL_REQUIRED');
+
+    const inv = await inventoryOf(product.id);
+    assert.equal(inv.variants[0].stock, 20);
+    assert.equal(inv.stock, 20);
+
+    const lots = await acme.manager.api('GET', `/api/erp/products/${product.id}/stock-lots`);
+    assert.equal(
+      [...lots.body.data.active, ...lots.body.data.exhausted].length, 0,
+      'a lot exists for units that never reached the shelf',
+    );
+    assert.equal((await movementsOf(product.id)).length, 0, 'and it was recorded as though it had');
+  });
+
+  test('a variant-less product still moves at the product level', async () => {
+    // The guard is about ambiguity, not about product-level movements. A
+    // product with no variants has exactly one level and it must still move —
+    // this is the regression the fix could plausibly have introduced.
+    const product = await newProduct();
+    await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      mode: 'purchase', qty: 12, unitCost: 2000,
+    });
+
+    const r = await acme.manager.api('POST', `/api/erp/products/${product.id}/inventory/adjust`, {
+      delta: -5, reason: 'damaged',
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.prevQty, 12);
+    assert.equal(r.body.data.newQty, 7);
+    assert.equal((await inventoryOf(product.id)).stock, 7, 'the column agrees with the response');
+  });
+
+  test('after any accepted movement the column equals what the ledger says', async () => {
+    /* The invariant, stated once over both shapes of product. It is the thing
+       INV.1 broke, and it is worth asserting directly rather than only through
+       the refusals — a future third write path that forgets the rule fails
+       here even if it never touches the two routes above. */
+    const variantProduct = await newProduct({
+      variants: [{ name: 'S', stock: 4 }, { name: 'M', stock: 6 }],
+    });
+    await acme.manager.api('POST', `/api/erp/products/${variantProduct.id}/inventory/adjust`, {
+      variantName: 'M', delta: -2, reason: 'damaged',
+    });
+
+    const inv = await inventoryOf(variantProduct.id);
+    const moves = await movementsOf(variantProduct.id);
+    const last = moves.find((m) => m.reason === 'damaged');
+    assert.ok(last, 'the accepted movement is on the record');
+    assert.equal(last!.newQty, 4, 'M went 6 → 4');
+    assert.equal(inv.variants.find((v) => v.name === 'M')!.stock, 4, 'and M really is 4');
+    assert.equal(
+      inv.stock,
+      inv.variants.reduce((sum, v) => sum + v.stock, 0),
+      'the roll-up is the sum of the variants it rolls up',
+    );
+  });
+
+  test('an order that names no variant leaves the shelf and the ledger alone', async () => {
+    /* THE MAIN PATH, and the reason INV.1 was not theoretical. `fulfilmentFromSale`
+       never writes `productVariant` (INV.2), so every storefront order against a
+       variant product arrived here naming nothing. Confirming one used to write a
+       `confirm` movement claiming the stock had gone.
+
+       What it must do instead: move nothing, record nothing, and NOT fail the
+       confirmation — the call centre is talking to a customer, and the catalogue
+       being shaped wrong is not their problem. The refusal goes to the log. */
+    const name = `Unnamed Variant ${uid()}`;
+    const product = (await acme.manager.api('POST', '/api/erp/products', {
+      name, sku: `SKU${uid()}`, price: 5000, costPrice: 1000,
+      variants: [{ name: 'M', stock: 0 }],
+    })).body.data;
+    await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      variantName: 'M', qty: 8, unitCost: 1000,
+    });
+
+    const order = (await acme.manager.api('POST', '/api/erp/orders', {
+      client: `No Variant ${uid()}`, phone: phone(), price: 5000,
+      product: name, quantity: 2, // deliberately no productVariant
+    })).body.data as { id: string };
+
+    const confirmed = await acme.manager.api('PATCH', `/api/erp/orders/${order.id}`, {
+      status: 'confirmed',
+    });
+    assert.equal(confirmed.status, 200, 'the confirmation itself must still succeed');
+
+    const inv = await inventoryOf(product.id);
+    assert.equal(inv.variants.find((v) => v.name === 'M')!.stock, 8, 'nothing left the shelf');
+    assert.equal(inv.stock, 8);
+
+    const claimed = (await movementsOf(product.id)).filter(
+      (m) => m.orderId === order.id && m.reason === 'confirm',
+    );
+    assert.equal(
+      claimed.length, 0,
+      'a confirm movement was recorded for stock that never moved — INV.1 on the main path',
+    );
+  });
+
+  test("every refusal these two routes can produce has a message in the reader's language", async () => {
+    /* The fourth time this shape has been caught, and `action-errors.ts` names
+       the first three. `VARIANT_LEVEL_REQUIRED` is new here; `VARIANT_HOLDS_STOCK`
+       and `DUPLICATE_VARIANT` were shipped by LP.18 with no entry at all, so the
+       variant editor answered "that did not work" to its own two most
+       informative refusals — both of which name something the merchant has to go
+       and change before the save can succeed.
+
+       Asserted against the module rather than by clicking, so it fails when a
+       FOURTH code is added to these routes and not mapped. */
+    const { actionErrors, FALLBACK } = await import('../../src/lib/console/action-errors.ts');
+    const messages = actionErrors((key: string) => `T:${key}`);
+    for (const code of ['VARIANT_LEVEL_REQUIRED', 'VARIANT_HOLDS_STOCK', 'DUPLICATE_VARIANT']) {
+      assert.ok(messages[code], `${code} has no message and falls back to "that didn't work"`);
+      assert.notEqual(messages[code], messages[FALLBACK], `${code} still shows the generic refusal`);
+    }
+  });
+});
+
+/* -----------------------------------------------------------------------------
+ * INV.3 — the opening level: the one figure this API takes as an absolute
+ *
+ * The reported complaint was that a page sent to the Manager arrives with no
+ * stock and typing the real quantity "behaves like adding to an existing
+ * amount rather than setting an initial value". Nothing was broken; there was
+ * a HOLE. Every reachable write was additive, and the two routes that DO take
+ * an absolute level were both out of reach for a freshly sent product.
+ *
+ * The tests below pin the shape of the answer rather than just its happy path:
+ * an absolute figure is accepted ONLY where there is no history for it to
+ * absorb, it arrives WITH a cost basis (which `/inventory/adjust` never gave
+ * it), and it stops being offered the moment anything moves.
+ * -------------------------------------------------------------------------- */
+
+describe('INV.3 — an opening level can be stated once, and only once', () => {
+  const inventoryOf = async (productId: string) =>
+    (await acme.manager.api('GET', `/api/erp/products/${productId}/inventory`)).body.data as {
+      stock: number; variants: Array<{ name: string; stock: number }>;
+    };
+
+  const lotsOf = async (productId: string) =>
+    (await acme.manager.api('GET', `/api/erp/products/${productId}/stock-lots`)).body.data as {
+      active: Array<{ unitCost: string; qtyOriginal: number; qtyRemaining: number }>;
+    };
+
+  const movementsOf = async (productId: string) =>
+    ((await acme.manager.api('GET', `/api/erp/products/${productId}/inventory/history?variant=all`))
+      .body.data.items ?? []) as Array<{ reason: string; delta: number; prevQty: number; newQty: number }>;
+
+  test('setTo states the level rather than adding to it, and brings a cost basis', async () => {
+    /* The complaint, answered. A product straight out of `publish-to-erp` has
+       `stock` NULL and no movements — exactly this fixture. */
+    const product = await newProduct();
+    assert.equal((await inventoryOf(product.id)).stock, 0, 'precondition: nothing in stock');
+
+    const r = await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      setTo: 100, unitCost: 1500,
+    });
+    assert.equal(r.status, 201, `setTo refused: ${JSON.stringify(r.body)}`);
+    assert.equal((await inventoryOf(product.id)).stock, 100, 'the level is not what was stated');
+
+    // The half `/inventory/adjust` could never give it: a lot, at a real price.
+    const lots = await lotsOf(product.id);
+    assert.equal(lots.active.length, 1, 'an opening level with no lot has no cost basis');
+    assert.equal(lots.active[0].qtyOriginal, 100);
+    assert.equal(String(lots.active[0].unitCost), '1500');
+
+    // And it is its own event in the history, not hidden inside a restock.
+    const opening = (await movementsOf(product.id)).find((m) => m.reason === 'opening');
+    assert.ok(opening, 'the opening level is not on the record');
+    assert.equal(opening!.prevQty, 0);
+    assert.equal(opening!.newQty, 100);
+  });
+
+  test('a SECOND setTo is refused, because the level now has a history', async () => {
+    /* The rule that keeps this from becoming the untraceable overwrite D-LP.1
+       refuses. Once anything has moved, an absolute figure would silently
+       absorb a sale, a correction or a cancellation into one number. */
+    const product = await newProduct();
+    await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, { setTo: 40 });
+
+    const again = await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      setTo: 55,
+    });
+    assert.equal(again.status, 422);
+    assert.equal(again.body.error.code, 'HAS_STOCK_HISTORY');
+    assert.equal((await inventoryOf(product.id)).stock, 40, 'and the refusal changed nothing');
+  });
+
+  test('a correction still works after that, and it is the delta door', async () => {
+    // The point of the refusal above is that there IS another door, not that
+    // the level is frozen.
+    const product = await newProduct();
+    await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, { setTo: 40 });
+
+    const fix = await acme.manager.api('POST', `/api/erp/products/${product.id}/inventory/adjust`, {
+      delta: -5, reason: 'damaged',
+    });
+    assert.equal(fix.status, 200);
+    assert.equal((await inventoryOf(product.id)).stock, 35);
+  });
+
+  test('an opening level cannot be set DOWNWARD — that is a correction, and owes a reason', async () => {
+    const product = await newProduct({ stock: 30 });
+    assert.equal((await inventoryOf(product.id)).stock, 30, 'precondition: created with stock');
+
+    const r = await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      setTo: 10,
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'OPENING_STOCK_LOWER');
+    assert.equal((await inventoryOf(product.id)).stock, 30, 'nothing moved');
+    assert.equal((await lotsOf(product.id)).active.length, 0, 'and no lot was invented');
+  });
+
+  test('setTo tops a manually created product UP to its real level', async () => {
+    /* `POST /products` writes `stock` directly with no movement and no lot —
+       so a hand-typed product has a level and no cost basis. Stating the real
+       figure here fills the gap and only charges for the difference. */
+    const product = await newProduct({ stock: 30 });
+    const r = await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      setTo: 50, unitCost: 900,
+    });
+    assert.equal(r.status, 201);
+    assert.equal((await inventoryOf(product.id)).stock, 50);
+
+    const lots = await lotsOf(product.id);
+    assert.equal(lots.active[0].qtyOriginal, 20, 'the lot must cover the DIFFERENCE, not the total');
+  });
+
+  test('qty and setTo cannot both be sent, and one of them must be', async () => {
+    const product = await newProduct();
+    for (const body of [{ qty: 5, setTo: 10 }, {}]) {
+      const r = await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, body);
+      assert.equal(r.status, 422, `accepted an ambiguous body: ${JSON.stringify(body)}`);
+      assert.equal(r.body.error.code, 'INVALID_INPUT');
+    }
+    assert.equal((await inventoryOf(product.id)).stock, 0);
+  });
+
+  test('setting it to what it already is records nothing', async () => {
+    // The adjust route's rule, applied here: a movement that moves nothing is
+    // not a movement.
+    const product = await newProduct({ stock: 12 });
+    const r = await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      setTo: 12,
+    });
+    assert.equal(r.status, 422);
+    assert.equal((await movementsOf(product.id)).length, 0);
+  });
+
+  test('each VARIANT gets its own opening level, independently', async () => {
+    /* Scoped per level, not per product: one variant already having moved must
+       not lock the others out — a merchant stocks a matrix one row at a time. */
+    const product = await newProduct({
+      variants: [{ name: 'S', stock: 0 }, { name: 'M', stock: 0 }],
+    });
+
+    const s = await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      variantName: 'S', setTo: 8, unitCost: 100,
+    });
+    assert.equal(s.status, 201);
+
+    // S has moved; M has not, so M can still be opened.
+    const m = await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      variantName: 'M', setTo: 5, unitCost: 100,
+    });
+    assert.equal(m.status, 201, 'one variant moving locked the others out');
+
+    const inv = await inventoryOf(product.id);
+    assert.equal(inv.variants.find((v) => v.name === 'S')!.stock, 8);
+    assert.equal(inv.variants.find((v) => v.name === 'M')!.stock, 5);
+    assert.equal(inv.stock, 13, 'the roll-up is the sum of the two');
+
+    // But S cannot be re-opened.
+    const again = await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      variantName: 'S', setTo: 20,
+    });
+    assert.equal(again.status, 422);
+    assert.equal(again.body.error.code, 'HAS_STOCK_HISTORY');
+  });
+
+  test('INV.1 still holds: an opening level on a variant product must name one', async () => {
+    const product = await newProduct({ variants: [{ name: 'S', stock: 0 }] });
+    const r = await acme.manager.api('POST', `/api/erp/products/${product.id}/stock-lots`, {
+      setTo: 10,
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'VARIANT_LEVEL_REQUIRED');
+  });
+
+  test("both opening refusals have a message in the reader's language", async () => {
+    const { actionErrors, FALLBACK } = await import('../../src/lib/console/action-errors.ts');
+    const messages = actionErrors((key: string) => `T:${key}`);
+    for (const code of ['HAS_STOCK_HISTORY', 'OPENING_STOCK_LOWER']) {
+      assert.ok(messages[code], `${code} falls back to "that didn't work"`);
+      assert.notEqual(messages[code], messages[FALLBACK]);
+    }
+    // Two codes because the fix is different for each — they must not collapse.
+    assert.notEqual(messages.HAS_STOCK_HISTORY, messages.OPENING_STOCK_LOWER);
+  });
+});
+
+/* -----------------------------------------------------------------------------
  * The client registry
  * -------------------------------------------------------------------------- */
 

@@ -190,6 +190,18 @@ export interface MovementInput {
 }
 
 /**
+ * Why a movement did not happen. Named rather than collapsed into `null`,
+ * because the three reasons need three different answers: two are "you asked
+ * about something that is not there" and the third is "what you asked for is
+ * not a coherent operation on this product" — INV.1 below.
+ */
+export type MovementRefusal = "NO_SUCH_PRODUCT" | "NO_SUCH_VARIANT" | "VARIANT_LEVEL_REQUIRED";
+
+export type MovementResult =
+  | { readonly ok: true; readonly prevQty: number; readonly newQty: number }
+  | { readonly ok: false; readonly refusal: MovementRefusal };
+
+/**
  * Move stock, and record why.
  *
  * Everything here happens on the one transaction `withTenant` opened, so a lot
@@ -199,18 +211,42 @@ export interface MovementInput {
  * Stock is floored at zero. Negative stock is not a state the ERP has ever
  * been able to represent, and a movement that would go below zero is far more
  * often a double-submitted confirmation than a real oversell.
+ *
+ * -----------------------------------------------------------------------------
+ * INV.1 — A PRODUCT-LEVEL MOVEMENT ON A PRODUCT THAT HAS VARIANTS IS REFUSED.
+ *
+ * It used to be accepted, and it silently did nothing. The tail of this
+ * function writes `stock: rollUp(variants, newQty)`, and `rollUp` returns the
+ * SUM OF THE VARIANT LEVELS whenever the array is non-empty — so on a variant
+ * product the product branch below computed `newQty`, the update threw it
+ * away, and the `InventoryMovement` row written immediately afterwards said
+ * `50 → 49` over a column that still read 50.
+ *
+ * That is not a rounding error, it is the ledger and the level disagreeing
+ * permanently, with nothing raised anywhere. And it was on the MAIN path, not
+ * an edge: storefront sales never named a variant (INV.2), so every confirm
+ * and every cancel of a storefront order for a variant product recorded a
+ * movement that moved nothing.
+ *
+ * Refused rather than redirected to some default variant, on D-LP.18.2's
+ * precedent — the neighbouring case, removing a variant that still holds
+ * stock, is refused BY NAME for the same reason. "Which variant left the
+ * shelf" is a fact only the caller has; inventing one here would be the same
+ * silent wrongness in a new place. The ledger's guarantee is now
+ * unconditional: **no `InventoryMovement` row is written unless the level
+ * actually moved by exactly its delta.**
  */
 export async function applyMovement(
   db: TenantDb,
   tenantId: string,
   input: MovementInput,
-): Promise<{ prevQty: number; newQty: number } | null> {
+): Promise<MovementResult> {
   const variantName = input.variantName ?? "";
   const product = await db.catalogProduct.findUnique({
     where: { id: input.productId },
     select: { id: true, stock: true, variants: true, costPrice: true, packagingCost: true },
   });
-  if (!product) return null;
+  if (!product) return { ok: false, refusal: "NO_SUCH_PRODUCT" };
 
   const variants = (Array.isArray(product.variants) ? product.variants : []) as unknown as Variant[];
   let prevQty: number;
@@ -220,11 +256,14 @@ export async function applyMovement(
     const variant = variants.find((v) => v.name === variantName);
     // Stock cannot move against a variant that does not exist. Creating one
     // implicitly would invent a product line nobody sells.
-    if (!variant) return null;
+    if (!variant) return { ok: false, refusal: "NO_SUCH_VARIANT" };
     prevQty = Number(variant.stock ?? product.stock ?? 0);
     newQty = Math.max(0, prevQty + input.delta);
     variant.stock = newQty;
   } else {
+    // INV.1 — see the header. This product's stock lives on its variants, and
+    // a level written here would be overwritten by the roll-up below.
+    if (variants.length) return { ok: false, refusal: "VARIANT_LEVEL_REQUIRED" };
     prevQty = Number(product.stock ?? 0);
     newQty = Math.max(0, prevQty + input.delta);
   }
@@ -267,6 +306,11 @@ export async function applyMovement(
     packagingCost = plan.packagingCost;
   }
 
+  /* Both branches above now agree with this line, which is the INV.1 fix
+     stated as an invariant: the variant branch has already written `newQty`
+     into the array, so the roll-up sums to it; the product branch is only
+     reachable when the array is EMPTY, so the roll-up returns the fallback.
+     There is no longer a path on which `newQty` is computed and discarded. */
   await db.catalogProduct.update({
     where: { id: input.productId },
     data: {
@@ -298,12 +342,47 @@ export async function applyMovement(
     });
   }
 
-  return { prevQty, newQty };
+  return { ok: true, prevQty, newQty };
 }
 
 /* -----------------------------------------------------------------------------
  * Stock moving when an order is confirmed or cancelled — Phase 6.6f
  * -------------------------------------------------------------------------- */
+
+/**
+ * INV.1 — the order pipeline's half of the silent-failure guard.
+ *
+ * `resolveStockLines` already says so out loud when no catalogue product
+ * matches an order, for a stated reason: *"a one-character mismatch means
+ * stock quietly never moves, and the only way anybody finds out is by counting
+ * the shelf"*. A refused movement is the same class of event one step later,
+ * and until INV.1 it was worse than silent — a ledger row was written claiming
+ * the stock HAD moved.
+ *
+ * It stays non-fatal. Confirming an order is a call-centre action about a
+ * customer, and failing it because the catalogue is shaped wrong would punish
+ * the wrong person for the wrong thing. So the order proceeds, nothing is
+ * written, and the reason is on the record.
+ */
+function warnRefusedMovement(
+  refusal: MovementRefusal,
+  order: { id: string; product: string | null; productVariant: string | null },
+  line: StockLine,
+): void {
+  console.warn("[inventory] stock did NOT move for this order line", {
+    orderId: order.id,
+    orderProduct: order.product,
+    orderVariant: order.productVariant,
+    productId: line.productId,
+    refusal,
+    // Spelled out for the one that is a catalogue-shape problem rather than a
+    // typo, because the fix is different: give the order a variant name, or
+    // stop keeping this product's stock per variant.
+    ...(refusal === "VARIANT_LEVEL_REQUIRED"
+      ? { detail: "this product keeps its stock per variant and the order names none" }
+      : {}),
+  });
+}
 
 /**
  * Match a product name the way a human typed it.
@@ -417,7 +496,8 @@ export async function reserveOnConfirm(
       orderId: order.id,
       actorUserId,
     });
-    if (result) moved += 1;
+    if (result.ok) moved += 1;
+    else warnRefusedMovement(result.refusal, order, line);
   }
   return moved;
 }
@@ -461,7 +541,8 @@ export async function releaseOnCancel(
       orderId: order.id,
       actorUserId,
     });
-    if (result) moved += 1;
+    if (result.ok) moved += 1;
+    else warnRefusedMovement(result.refusal, order, line);
   }
   return moved;
 }

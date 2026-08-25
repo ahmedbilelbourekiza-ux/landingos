@@ -37,12 +37,33 @@ export const POST = tenantRoute<Params>("erp:inventory:write", async ({ db, req,
     reason: parsed.data.reason,
     actorUserId: session.user.id,
   });
-  if (!moved) return apiError(404, "NOT_FOUND", "No such product or variant.");
+  if (!moved.ok) {
+    /* INV.1 — three refusals, and the third is not a 404.
+     *
+     * "This product keeps its stock per variant and you named none" is a
+     * correction the caller can act on, not a missing row: the product is
+     * right there and the request is answerable the moment it says WHICH
+     * variant. Answering 404 would send them looking for a product that
+     * exists. Before INV.1 this case was accepted, wrote a ledger row, and
+     * moved nothing — see `applyMovement`. */
+    if (moved.refusal === "VARIANT_LEVEL_REQUIRED") {
+      return apiError(
+        422,
+        "VARIANT_LEVEL_REQUIRED",
+        "This product keeps its stock per variant. Name the variant the correction applies to.",
+      );
+    }
+    return apiError(404, "NOT_FOUND", "No such product or variant.");
+  }
 
   const product = await db.catalogProduct.findUnique({
     where: { id: params.id },
     select: { stock: true, threshold: true, variants: true },
   });
 
-  return apiOk({ ...moved, inventory: inventoryView(product!) });
+  return apiOk({
+    prevQty: moved.prevQty,
+    newQty: moved.newQty,
+    inventory: inventoryView(product!),
+  });
 });

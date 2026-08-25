@@ -1342,6 +1342,93 @@ describe('stock moves by a delta and a reason, and the screen says so', () => {
     assert.ok(!/id="adjust-total"|id="adjust-newQty"/.test(r.body));
   });
 
+  test('INV.1 — a variant product is not offered a movement that names no variant', async () => {
+    /* THE REACHABILITY HALF of INV.1, and the reason it is worth its own
+       tenant: the panels render the FIRST product by name, so asserting
+       against `acme` would test whichever fixture happened to sort first.
+       This tenant has exactly one product, so the rendered state is the state
+       under test.
+
+       The routes refuse a product-level movement on a product whose stock
+       lives on its variants. `catalog-write.tsx`'s own rule is that a control
+       must not offer a button that 422s — it already applies that to a zero
+       adjustment — so the blank option has to stop being selectable here too.
+       It used to read "All variants", which was never something either route
+       could do: both move exactly ONE level, and against a variant product the
+       blank value was accepted and silently moved nothing. */
+    const solo = await makeErpTenant('inv1-screen');
+    await solo.manager.api('POST', '/api/erp/products', {
+      name: `Matrix Only ${uid()}`,
+      variants: [{ name: 'S', stock: 3 }, { name: 'M', stock: 4 }],
+    });
+
+    const r = await html('/console/erp/inventory', solo.manager.token);
+    assert.equal(r.status, 200);
+
+    for (const prefix of ['adjust', 'lot']) {
+      const select = r.body.match(
+        new RegExp(`<select[^>]*id="${prefix}-variant"[\\s\\S]*?</select>`),
+      )?.[0];
+      assert.ok(select, `no ${prefix}-variant select on the page`);
+
+      assert.match(select!, /value="S"/, 'precondition: this product really has variants');
+      const blank = select!.match(/<option[^>]*value=""[^>]*>/)?.[0];
+      assert.ok(blank, `${prefix}: no blank option to check`);
+      assert.match(
+        blank!,
+        /disabled/,
+        `${prefix}: the blank option is still selectable, so the merchant can still ask for the movement INV.1 refuses`,
+      );
+    }
+
+    assert.ok(
+      !/All variants/.test(r.body),
+      'the page still offers "All variants", which is not a movement either route can make',
+    );
+  });
+
+  test('INV.3 — the opening-stock control is offered, and only where it is honest', async () => {
+    /* REACHABILITY, and it is the half that matters here: the whole complaint
+       was that the merchant could not FIND a box that sets. A route nobody can
+       reach is LB.23b's defect, and this slice would repeat it exactly.
+
+       Its own tenant because the panel keys off "has this level ever moved",
+       and `acme` is full of fixtures that have. */
+    const solo = await makeErpTenant('inv3-screen');
+
+    const fresh = (await solo.manager.api('POST', '/api/erp/products', {
+      name: `Freshly Sent ${uid()}`,
+    })).body.data;
+
+    const before = await html('/console/erp/inventory', solo.manager.token);
+    assert.equal(before.status, 200);
+    assert.match(
+      before.body,
+      /data-testid="erp-opening-panel"/,
+      'a product that has never moved is offered no way to state its level',
+    );
+    assert.match(before.body, /id="opening-level"/, 'and no box to type it into');
+    // The three panels are distinct doors; the opening one must not have
+    // replaced the auditable ones.
+    assert.match(before.body, /data-testid="erp-adjust-panel"/);
+    assert.match(before.body, /data-testid="erp-lot-panel"/);
+
+    // State it, which is the first movement this level has ever had.
+    const set = await solo.manager.api('POST', `/api/erp/products/${fresh.id}/stock-lots`, {
+      setTo: 25, unitCost: 700,
+    });
+    assert.equal(set.status, 201, `setTo refused: ${JSON.stringify(set.body)}`);
+
+    const after = await html('/console/erp/inventory', solo.manager.token);
+    assert.ok(
+      !/data-testid="erp-opening-panel"/.test(after.body),
+      'the opening control is still offered after the level has moved — an absolute figure would now absorb that history',
+    );
+    // And the doors that ARE right are still there.
+    assert.match(after.body, /data-testid="erp-adjust-panel"/);
+    assert.match(after.body, /data-testid="erp-lot-panel"/);
+  });
+
   test('the movement ledger still offers no edit', async () => {
     // Append-only, and no such route exists.
     const r = await html('/console/erp/inventory', acme.manager.token);

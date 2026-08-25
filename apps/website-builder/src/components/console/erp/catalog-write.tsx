@@ -24,6 +24,17 @@ import { ImageInput, type ImageInputStrings } from "./image-input";
  * auditable. `POST /inventory/adjust` offers no way to set a total, so neither
  * does this — a box labelled "new quantity" would be a control the API cannot
  * honour.
+ *
+ * INV.3 NARROWED THAT SECOND RULE RATHER THAN BREAKING IT, and the distinction
+ * is the whole design. There is now exactly ONE box that states a level
+ * (`OpeningStockPanel`, at the foot of this file), and it exists only where
+ * there is no history for an absolute figure to absorb: a level that has never
+ * moved. It writes through the LOT route, so the opening figure arrives with a
+ * cost basis like any other stock, and it vanishes the moment the first
+ * movement is recorded. Everything after that is still a delta and a reason.
+ * The rule the merchant met — "every box that says stock means add" — was the
+ * bug; two boxes meaning opposite things WOULD have been the cure's own bug,
+ * which is why only one of them can ever be on screen for a given level.
  * ========================================================================== */
 
 /* One declaration, not a tenth hand-written copy of the text input. UX-14
@@ -56,6 +67,8 @@ export interface CatalogStrings {
   readonly product: string;
   readonly variant: string;
   readonly allVariants: string;
+  /** INV.1 — the prompt that replaces `allVariants` on a variant product. */
+  readonly chooseVariant: string;
   readonly change: string;
   readonly reason: string;
   readonly adjust: string;
@@ -67,6 +80,11 @@ export interface CatalogStrings {
   readonly quantity: string;
   readonly unitCost: string;
   readonly addLot: string;
+  /* INV.3 — the one control that states a level rather than a change. */
+  readonly openingPanel: string;
+  readonly openingHint: string;
+  readonly openingLevel: string;
+  readonly setOpening: string;
   readonly image: ImageInputStrings;
 }
 
@@ -75,6 +93,11 @@ export interface StockProduct {
   readonly id: string;
   readonly name: string;
   readonly variants: readonly string[];
+  /* INV.3 — the levels on this product that have NEVER moved, and may
+   * therefore still be given an opening figure. A variant name, or "" for a
+   * product that keeps a single unnamed level. Empty once everything has
+   * moved, which is what makes the opening control disappear by itself. */
+  readonly opening?: readonly string[];
 }
 
 /* -----------------------------------------------------------------------------
@@ -300,6 +323,27 @@ export function ProductRowActions({
  * The stockroom
  * -------------------------------------------------------------------------- */
 
+/**
+ * INV.1 — has this request named the ONE level it is about?
+ *
+ * Both stockroom panels move exactly one level, and both routes behind them
+ * now refuse a product-level movement against a product whose stock lives on
+ * its variants. Written once, here, rather than twice inside two `usable`
+ * expressions that would be free to drift apart — which is how the two panels
+ * came to disagree about the blank value in the first place.
+ *
+ * A product with NO variants is unaffected: the blank value is the only level
+ * it has, and it stays valid.
+ */
+function variantChosen(
+  products: readonly StockProduct[],
+  productId: string,
+  variantName: string,
+): boolean {
+  const variants = products.find((p) => p.id === productId)?.variants ?? [];
+  return variants.length === 0 || variantName !== "";
+}
+
 function ProductPicker({
   products,
   productId,
@@ -356,7 +400,19 @@ function ProductPicker({
           disabled={variants.length === 0}
           className={`mt-1 ${FIELD} disabled:opacity-50`}
         >
-          <option value="">{s.allVariants}</option>
+          {/* INV.1 — "All variants" was never a thing this control could do.
+              Both routes behind it move ONE level, and against a product whose
+              stock lives on its variants the blank value used to be accepted
+              and silently move nothing (the movement was recorded anyway). The
+              routes refuse it now, so the control stops offering it: on a
+              variant product the blank option becomes an unselectable prompt,
+              which is this file's own rule — "the control refuses it too rather
+              than offering a button that 422s". A product with no variants
+              keeps the blank value, because there it means the only level
+              there is. */}
+          <option value="" disabled={variants.length > 0}>
+            {variants.length > 0 ? s.chooseVariant : s.allVariants}
+          </option>
           {variants.map((v) => (
             <option key={v} value={v}>{v}</option>
           ))}
@@ -383,8 +439,13 @@ export function StockAdjustPanel({
 
   const n = Number(delta);
   // The route refuses a zero adjustment — it records nothing — so the control
-  // refuses it too rather than offering a button that 422s.
-  const usable = productId && reason.trim() && Number.isFinite(n) && n !== 0;
+  // refuses it too rather than offering a button that 422s. INV.1 adds the
+  // second half of the same rule: on a product whose stock lives on its
+  // variants, a correction that names none is refused server-side, so the
+  // button stays inert until one is chosen.
+  const usable =
+    productId && reason.trim() && Number.isFinite(n) && n !== 0 &&
+    variantChosen(products, productId, variantName);
 
   return (
     <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-adjust-panel">
@@ -470,7 +531,12 @@ export function StockLotPanel({
   const [unitCost, setUnitCost] = useState("");
 
   const q = Number(qty);
-  const usable = productId && Number.isInteger(q) && q >= 1;
+  // INV.1, the same rule as the correction panel above and for a sharper
+  // reason: this route CREATES a lot, so a product-level restock on a variant
+  // product used to leave a cost basis behind for units the stock column never
+  // counted.
+  const usable =
+    productId && Number.isInteger(q) && q >= 1 && variantChosen(products, productId, variantName);
 
   return (
     <section className="rounded-lg border border-border bg-surface-raised p-4" data-testid="erp-lot-panel">
@@ -545,6 +611,169 @@ export function StockLotPanel({
           }}
         >
           {s.addLot}
+        </ActionButton>
+      </div>
+
+      <ActionError message={error} />
+    </section>
+  );
+}
+
+/* -----------------------------------------------------------------------------
+ * INV.3 — the opening level
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Say what this stock IS, once, before anything has moved.
+ *
+ * THE COMPLAINT THIS ANSWERS, in the merchant's words: a landing page sent to
+ * the Manager arrives with no stock, and typing the real quantity "behaves like
+ * adding to an existing amount rather than setting an initial value". It did.
+ * Every control this screen offered was additive, because every route it can
+ * reach was — the two that accept an absolute level were both out of reach for
+ * a freshly sent product (`POST /products` is not what the send uses, and the
+ * variant editor needs variants the send does not transfer).
+ *
+ * SO THIS BOX IS THE ONE THAT SETS, AND IT IS THE ONLY ONE. Two boxes labelled
+ * "stock" meaning opposite things is the confusion, not the cure, so this one
+ * announces which it is in its own hint and appears ONLY where "set" is a
+ * complete and honest statement: a level with no movement behind it. The
+ * moment anything has moved, the level has a history that an absolute figure
+ * would silently absorb, the control disappears, and corrections go through
+ * the panel above them that records a reason.
+ *
+ * It writes through `/stock-lots`, not `/inventory/adjust`, and that is the
+ * second half of the fix: opening stock is stock that ARRIVED, so it needs a
+ * lot and a unit cost like any other arrival. The adjust route creates no lot
+ * at all — which is why a level entered the obvious way had no cost basis and
+ * made every margin computed from it wrong.
+ */
+export function OpeningStockPanel({
+  errors,
+  s,
+  products,
+}: {
+  readonly errors: ActionErrors;
+  readonly s: CatalogStrings;
+  readonly products: readonly StockProduct[];
+}) {
+  const { run, pending, error } = useApiAction(errors);
+  // Only products that still HAVE an unmoved level can be acted on here.
+  const openable = products.filter((p) => (p.opening?.length ?? 0) > 0);
+  const [productId, setProductId] = useState(openable[0]?.id ?? "");
+  const [variantName, setVariantName] = useState("");
+  const [level, setLevel] = useState("");
+  const [unitCost, setUnitCost] = useState("");
+
+  // The whole panel is absent once every level has moved — there is nothing
+  // left it could honestly do, and an empty picker is a control that lies.
+  if (!openable.length) return null;
+
+  const product = openable.find((p) => p.id === productId) ?? openable[0];
+  const levels = product.opening ?? [];
+  // "" is the product's own level; a named level has to be chosen (INV.1).
+  const namedLevels = levels.filter((l) => l !== "");
+  const chosenLevel = namedLevels.length ? variantName : "";
+  const n = Number(level);
+  const usable =
+    product.id &&
+    Number.isInteger(n) &&
+    n >= 1 &&
+    (namedLevels.length === 0 || chosenLevel !== "");
+
+  return (
+    <section
+      className="rounded-lg border border-border bg-surface-raised p-4"
+      data-testid="erp-opening-panel"
+    >
+      <h2 className="text-sm font-semibold tracking-tight">{s.openingPanel}</h2>
+      <p className="mt-1 text-xs text-muted-foreground">{s.openingHint}</p>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <label htmlFor="opening-product" className="ui-label block">
+            {s.product}
+          </label>
+          <select
+            id="opening-product"
+            value={product.id}
+            onChange={(e) => {
+              setProductId(e.target.value);
+              setVariantName("");
+            }}
+            className={`mt-1 ${FIELD}`}
+          >
+            {openable.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="opening-variant" className="ui-label block">
+            {s.variant}
+          </label>
+          <select
+            id="opening-variant"
+            value={chosenLevel}
+            onChange={(e) => setVariantName(e.target.value)}
+            // A product keeping one unnamed level has nothing to choose. Only
+            // levels that have never moved are offered — the rest have a
+            // history, and this control cannot honestly speak about those.
+            disabled={namedLevels.length === 0}
+            className={`mt-1 ${FIELD} disabled:opacity-50`}
+          >
+            <option value="" disabled={namedLevels.length > 0}>
+              {namedLevels.length > 0 ? s.chooseVariant : s.allVariants}
+            </option>
+            {namedLevels.map((v) => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="opening-level" className="ui-label block">
+            {s.openingLevel}
+          </label>
+          <input
+            id="opening-level" type="number" min={1} dir="ltr"
+            value={level} onChange={(e) => setLevel(e.target.value)}
+            className={`mt-1 ${FIELD}`}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="opening-cost" className="ui-label block">
+            {s.unitCost}
+          </label>
+          <input
+            id="opening-cost" type="number" min={0} step="0.01" dir="ltr"
+            value={unitCost} onChange={(e) => setUnitCost(e.target.value)}
+            className={`mt-1 ${FIELD}`}
+          />
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <ActionButton
+          data-testid="opening-submit"
+          pending={pending}
+          pendingLabel={s.saving}
+          variant="primary"
+          disabled={!usable}
+          onClick={async () => {
+            const { ok } = await run("POST", `/api/erp/products/${product.id}/stock-lots`, {
+              // `setTo`, never `qty` — this box states the level, and the route
+              // works out what has to arrive to reach it.
+              setTo: n,
+              ...(chosenLevel ? { variantName: chosenLevel } : {}),
+              ...(unitCost.trim() ? { unitCost: unitCost.trim() } : {}),
+            });
+            if (ok) { setLevel(""); setUnitCost(""); }
+          }}
+        >
+          {s.setOpening}
         </ActionButton>
       </div>
 
