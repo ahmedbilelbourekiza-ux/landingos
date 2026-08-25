@@ -458,6 +458,18 @@ export interface Storefront {
   readonly page: { id: string; title: string };
   readonly wilaya: { id: number; name: string };
   readonly baladiaName: string;
+  /* INV.2 — the page's selectable options, in the order they were defined.
+   * Empty for the default fixture, which has none. Keyed by `${name}:${value}`
+   * so a test can name the combination it is buying rather than index into an
+   * array whose order is the thing under test. */
+  readonly variantIds: Readonly<Record<string, string>>;
+}
+
+/** One selectable option on a fixture page. */
+export interface FixtureVariant {
+  readonly name: string;
+  readonly value: string;
+  readonly extraPrice?: number;
 }
 
 /**
@@ -467,7 +479,14 @@ export interface Storefront {
  * through the public endpoint, and a second copy of this fixture is a second
  * thing to keep in step with the checkout contract.
  */
-export async function storefront(tenantId: string): Promise<Storefront> {
+export async function storefront(
+  tenantId: string,
+  /* INV.2 — options this page sells. `displayOrder` is assigned from ARRAY
+   * POSITION, exactly as the variants PUT route does, because definition order
+   * is what the catalogue name is built from and a fixture that ordered them
+   * differently would be testing something the product never does. */
+  variants: readonly FixtureVariant[] = [],
+): Promise<Storefront> {
   return withTenant(tenantId, async (db) => {
     const page = await (db as any).landingPage.create({
       data: {
@@ -480,6 +499,22 @@ export async function storefront(tenantId: string): Promise<Storefront> {
       },
       select: { id: true, title: true },
     });
+
+    const variantIds: Record<string, string> = {};
+    for (const [index, v] of variants.entries()) {
+      const row = await (db as any).landingVariant.create({
+        data: {
+          tenantId,
+          landingPageId: page.id,
+          name: v.name,
+          value: v.value,
+          extraPrice: v.extraPrice ?? 0,
+          displayOrder: index,
+        },
+        select: { id: true },
+      });
+      variantIds[`${v.name}:${v.value}`] = row.id;
+    }
     const wilaya = await asPlatform().wilaya.findFirst({ select: { id: true, name: true } });
     // Upsert, not create: the price is per (tenant, wilaya) and this helper runs
     // once per test against the same tenant and the same first wilaya.
@@ -492,7 +527,7 @@ export async function storefront(tenantId: string): Promise<Storefront> {
       where: { wilayaId: wilaya!.id },
       select: { name: true },
     });
-    return { page, wilaya: wilaya!, baladiaName: baladia?.name ?? 'Centre' };
+    return { page, wilaya: wilaya!, baladiaName: baladia?.name ?? 'Centre', variantIds };
   });
 }
 
@@ -508,7 +543,15 @@ export async function checkout(
   slug: string,
   shop: Storefront,
   customerName = 'Split Customer',
-  extra: { draftToken?: string; phone?: string } = {},
+  extra: {
+    draftToken?: string;
+    phone?: string;
+    /* INV.2 — which options this customer picked. The ARRAY ORDER is the order
+     * they were clicked in, which is deliberately allowed to differ from
+     * definition order: the catalogue name must not depend on it. */
+    variantIds?: readonly string[];
+    quantity?: number;
+  } = {},
 ) {
   const res = await fetch(`${BASE}/api/storefront/${slug}/orders`, {
     method: 'POST',
@@ -520,8 +563,8 @@ export async function checkout(
       wilayaId: shop.wilaya.id,
       baladiaName: shop.baladiaName,
       address: '12 Rue de Test',
-      quantity: 2,
-      variantIds: [],
+      quantity: extra.quantity ?? 2,
+      variantIds: extra.variantIds ?? [],
       shippingMethod: 'HOME',
       ...(extra.draftToken ? { draftToken: extra.draftToken } : {}),
     }),

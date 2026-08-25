@@ -100,6 +100,11 @@ export async function POST(
           wilaya: true,
           baladia: true,
           quantity: true,
+          // INV.2 — the chosen options, so the call-centre's lead names the
+          // variant the visitor was actually looking at. Read off the MERGED
+          // row like every other field here, for the reason stated above: a
+          // capture may carry fewer fields than the visitor has already given.
+          variants: true,
           fulfillment: { select: { id: true } },
         },
       });
@@ -139,6 +144,7 @@ export async function POST(
             baladia: (draft.baladia ?? null) as string | null,
             quantity: (draft.quantity ?? null) as number | null,
             productTitle: page.title as string,
+            variants: draft.variants as unknown,
           };
           if (draft.fulfillment) {
             await topUpFulfilmentFromDraft(db, draft.fulfillment.id as string, snapshot);

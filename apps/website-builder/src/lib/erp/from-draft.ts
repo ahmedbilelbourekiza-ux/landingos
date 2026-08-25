@@ -6,6 +6,7 @@ import { nextReference } from "./ids";
 import { normalizePhone } from "./phone";
 import { autoAssignOnCreate } from "./assign";
 import { notifyNewOrder } from "./notify";
+import { variantLabelFromSnapshot } from "./variant-label";
 
 /* =============================================================================
  * Abandoned cart → ERP, the counterpart of `from-sale.ts` (LB.57).
@@ -69,6 +70,14 @@ export interface DraftSnapshot {
   readonly quantity: number | null;
   /** The landing page's title — the only product name a draft can name. */
   readonly productTitle: string;
+  /* INV.2 — the options this visitor had chosen when the cart was captured,
+   * as the stored `[{name, value}]` snapshot. An abandoned cart names a
+   * variant for the same reason a sale does: the agent phoning it needs to
+   * know WHICH one to talk about and whether it is in stock, and if the cart
+   * is later promoted (LB.57) the order must not arrive variantless. Nullable
+   * because a draft is captured mid-typing and the visitor may not have
+   * chosen yet. */
+  readonly variants?: unknown;
 }
 
 const trimmed = (value: string | null | undefined): string =>
@@ -136,6 +145,9 @@ export async function fulfilmentFromDraft(
       wilaya: trimmed(draft.wilaya),
       commune: trimmed(draft.baladia),
       product: draft.productTitle,
+      // INV.2 — see `SaleSnapshot`'s note. Empty when nothing was chosen yet,
+      // which is the same "no variant" the column already means.
+      productVariant: variantLabelFromSnapshot(draft.variants),
       quantity: draft.quantity ?? 1,
       // Forced. A draft carries no prices — the capture contract has no field
       // for one — so any figure here would be invented.
@@ -188,7 +200,7 @@ export async function topUpFulfilmentFromDraft(
     where: { id: fulfilmentId },
     select: {
       id: true, client: true, wilaya: true, commune: true, product: true,
-      phoneNormalized: true, salesOrderId: true,
+      productVariant: true, phoneNormalized: true, salesOrderId: true,
     },
   });
   if (!existing) return false;
@@ -197,7 +209,10 @@ export async function topUpFulfilmentFromDraft(
   if (existing.salesOrderId) return false;
 
   const patch: Record<string, string> = {};
-  const fill = (field: "client" | "wilaya" | "commune" | "product", value: string) => {
+  const fill = (
+    field: "client" | "wilaya" | "commune" | "product" | "productVariant",
+    value: string,
+  ) => {
     if (value && !existing[field]) patch[field] = value;
   };
 
@@ -205,6 +220,11 @@ export async function topUpFulfilmentFromDraft(
   fill("wilaya", trimmed(draft.wilaya));
   fill("commune", trimmed(draft.baladia));
   fill("product", draft.productTitle);
+  /* INV.2 — filled on the SAME "only if still empty" rule as everything else
+   * here, and it matters more than it looks: the capture that first carries a
+   * phone number usually fires BEFORE the visitor has picked a size, so the
+   * lead is raised variantless and the choice arrives on a later capture. */
+  fill("productVariant", variantLabelFromSnapshot(draft.variants));
 
   const phoneNormalized = normalizePhone(draft.phone);
   if (isCallablePhone(draft.phone) && phoneNormalized !== existing.phoneNormalized) {

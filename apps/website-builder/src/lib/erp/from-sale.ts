@@ -5,6 +5,7 @@ import { productRegistry } from "@landingos/product-registry";
 
 import { nextReference } from "./ids";
 import { normalizePhone } from "./phone";
+import { variantLabelFromSnapshot } from "./variant-label";
 import { syncClientFromOrder } from "./clients";
 import { autoAssignOnCreate } from "./assign";
 import { notifyNewOrder } from "./notify";
@@ -158,6 +159,22 @@ export async function fulfilmentFromSale(
     wilaya: sale.wilaya,
     commune: sale.baladia,
     product: sale.productTitle,
+    /* INV.2 — WHICH variant was bought, in the column the ERP actually reads.
+     *
+     * This was the gap. The selection has always travelled in
+     * `lineItems[0].variants` below, which is a display field: nothing joins
+     * on it, nothing matches on it, and `applyMovement` finds a variant BY
+     * NAME off THIS column. So every storefront sale reached the call-centre
+     * naming no variant — the products screen showed the product's roll-up
+     * instead of the variant's level, `unknownVariant` could never fire
+     * because there was no name to be unknown, and stock moved (or, before
+     * INV.1, appeared to move) against the product as a whole.
+     *
+     * It is written in ONE place on purpose. This object feeds both branches
+     * below — the fresh create and LB.57's promotion of an abandoned cart —
+     * and a promoted order that lost its variant would be the same bug back
+     * again for exactly the customers who came back and bought. */
+    productVariant: variantLabelFromSnapshot(sale.variants),
     quantity: sale.quantity,
     unitPrice: sale.productPrice,
     price: sale.totalPrice,
