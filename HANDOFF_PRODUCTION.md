@@ -15,6 +15,44 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✅ THE 25 AUG BUILDER/ERP BATCH IS LIVE (25 Aug 2026, 18:36:18 UTC) — INV.1–3, VH.1, VAR.1+VAR.2, CAT.1, BULK.1
+>
+> **`origin/main` = `2effc3e`** (`116acc0..2effc3e`, seven commits;
+> **rollback `116acc0`**). OFF.1 is NOT in this deploy — it lives on
+> `deferred/off1-full-batch` (`0dd8c71`), untouched.
+>
+> **Migration applied FIRST via the Supabase MCP** (named
+> `var2_inventory_enforcement`): ONE additive defaulted column,
+> `LandingSetting.inventoryEnforcement BOOLEAN NOT NULL DEFAULT false` —
+> the range's only schema change, verified by diffing the schema across the
+> whole range before applying. **Production: 64 tables, RLS 58/58,
+> merchant data untouched** (Tenant 3, SalesOrder 4, LandingPage 3,
+> DraftOrder 5, FulfillmentOrder 3, AdAccount 1, AdSpendDaily 30 — the
+> order-table growth vs the 24 Aug record is REAL merchant traffic;
+> LB.57's bridge has now fired in production).
+>
+> **Verified live** (build id `nUcY4Wc4…` → `_sp24nnMpPB743dBfDiNu`, health
+> 200, logs clean on Render AND postgres): full functional pass on a
+> throwaway signup fixture through the real console — CAT.1's Suggest
+> answered with a real AI shortlist and the category mapped into the
+> Manager's filter; VAR.2's send generated the matrix; a Manager-side "Vert"
+> + stock edit propagated to the live storefront immediately (derived on
+> read); the enforcement toggle was measured in BOTH states (OFF: 0-stock
+> rows sell; ON: per-variant greying + server 409 `OUT_OF_STOCK` in the
+> shop's locale, in-stock variant still buyable); INV.2's
+> `FulfillmentOrder.productVariant` carried "Rouge"; BULK.1's select-all,
+> bulk send and bulk archive all ran live. Fixture swept to ZERO (atomic
+> block, 20 tables, counts re-checked). 123 image variants re-warmed.
+> CHANGELOG §DEPLOY (25 Aug batch) is the full record.
+>
+> **⚠ One branch not executed live:** BULK.1's delete partial-result
+> (mixed selection → "N kept because they have orders") — the automated
+> browser cannot accept the native confirm(); its copy was verified and the
+> branch rests on suite coverage. **⚠ Storefront-path note:** selliora1.com
+> is bebezzouar's custom domain, so path-prefix tenant URLs 404 there BY
+> DESIGN; use `landingos.onrender.com/<tenant>/<slug>` for fixture
+> storefronts.
+
 > ### ✅ THE OVERNIGHT BATCH IS LIVE (24 Aug 2026, 06:27:48 UTC) — FIX.ANN + ALL EIGHT TRAFFIC SLICES
 >
 > **`origin/main` = `c2a3c27`** (`680328e..c2a3c27`, ten commits;

@@ -48,20 +48,22 @@ LB.10 are renumbered to avoid colliding with those commits.**
 
 ## THE 24 AUG FEEDBACK BATCH — nine slices, in build order
 
-> **✅ 25 Aug 2026 — ALL NINE SLICES ARE BUILT, DEV ONLY. NOT PUSHED, NOT
-> DEPLOYED. Production still carries every bug this batch fixes.**
+> **✅ 25 Aug 2026, evening — THE EIGHT-SLICE BATCH IS DEPLOYED AND LIVE
+> (18:36:18 UTC, `origin/main` = `2effc3e`, rollback `116acc0`), verified
+> functionally on production through a swept fixture.** OFF.1 remains held
+> back on `deferred/off1-full-batch`. HANDOFF §1's top banner and CHANGELOG
+> §DEPLOY (25 Aug batch) are the deploy records.
 >
 > `CHANGELOG.md` §INV.1 / §INV.2 / §INV.3 / §VH.1 / §VAR.1 / §VAR.2 / §CAT.1 /
-> §BULK.1 / §OFF.1 are the records, newest first.
+> §BULK.1 / §OFF.1 are the build records, newest first.
 >
-> **TWO MIGRATIONS, applied to DEV only.** Production previews are written and
-> waiting for an explicit go-ahead:
-> `docs/migrations-pending/VAR.2-prod-migration-preview.sql` (one additive
-> defaulted column, `LandingSetting.inventoryEnforcement`) and
+> **The VAR.2 migration IS APPLIED to production** (25 Aug, via the Supabase
+> MCP as `var2_inventory_enforcement`; 64 tables / RLS 58 unchanged) — its
+> preview stays in `docs/migrations-pending/` as the applied text.
 > `docs/migrations-pending/OFF.1-prod-migration-preview.sql` (three enums, the
 > `LandingOffer` table, one defaulted JSONB column on `SalesOrder` — **and the
-> RLS policy the new table needs; dev went 58 → 59, all four checks PASS**).
-> Both are additive, so old code runs safely against the new schema.
+> RLS policy the new table needs; dev went 58 → 59, all four checks PASS**)
+> remains UNAPPLIED, waiting on OFF.1's own go-ahead.
 >
 > **Two diagnoses were corrected BY MEASUREMENT during the build, and both are
 > recorded rather than quietly dropped:**

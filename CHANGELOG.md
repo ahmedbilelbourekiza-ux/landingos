@@ -10,6 +10,88 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## DEPLOY — the 25 Aug eight-slice batch (INV.1–3, VH.1, VAR.1+2, CAT.1, BULK.1) — migrated and deployed 25 Aug 2026, live 18:36:18 UTC
+
+> **`origin/main` = `2effc3e`** (`116acc0..2effc3e`, seven commits — six code
+> slices + the batch records; **rollback `116acc0`**). OFF.1 stayed on
+> `deferred/off1-full-batch`, untouched, as decided.
+>
+> **Migration FIRST, then the push** (the standing order): the one additive
+> defaulted column — `LandingSetting.inventoryEnforcement BOOLEAN NOT NULL
+> DEFAULT false` — applied to Supabase via the MCP (named migration
+> `var2_inventory_enforcement`), verified before the code moved: column
+> present/NOT NULL/default false, all 3 existing rows read `false`, **64
+> tables and RLS 58 UNCHANGED**. The whole range's schema diff was measured
+> to be exactly this one column before anything was applied.
+>
+> **Deploy verified:** Render `live` = `2effc3e` at 18:36:18 UTC (~3 min from
+> push); build id `nUcY4Wc4DsW-_VGxfpl7S` → `_sp24nnMpPB743dBfDiNu`; health
+> 200; dedima 200 at 506,625 → 507,280 B (+655 B — this range touches
+> storefront rendering, so a small growth is expected, unlike a console-only
+> deploy). **Logs clean on both sides**: 0 flagged lines in Render runtime
+> logs, 0 postgres errors/fatals/constraint violations across the migration,
+> the deploy and the whole functional pass (18:30–19:05 UTC).
+>
+> **Functionally verified live on a throwaway signup fixture**
+> (`zz-check-0825`, created through the real public signup, driven through the
+> real console UI, **swept to zero afterwards in one atomic block** — 26 rows
+> across 20 tables plus tenant/user/session; global counts identical to the
+> pre-fixture baseline: Tenant 3, SalesOrder 4, LandingPage 3, DraftOrder 5,
+> FulfillmentOrder 3, AdAccount 1, AdSpendDaily 30):
+>
+> - **CAT.1** — the inline Category field renders on the editor's General
+>   section with its Suggest button. Suggest returned a **real ranked AI
+>   shortlist from the production platform credential** ("T-Shirts — Directly
+>   describes the product type" / "Clothing — Broad category…"), did NOT
+>   auto-assign, and the inline `+ Create "T-Shirts"` path created the
+>   category. On send, the name was **mapped into `CatalogProduct.category`**
+>   and the Manager's filter showed "T-Shirts (1)" — the two slice goals
+>   beyond the field itself.
+> - **VAR.2 (send)** — the bulk "Send to the Manager" generated the matrix
+>   from the page's one axis: Rouge and Bleu, each at stock 0, options
+>   `{Couleur: …}`.
+> - **VAR.1 + VAR.2 (ongoing authority)** — the Manager's "Edit variants"
+>   card pre-loaded that matrix; adding **Vert** and setting Rouge to 5 wrote
+>   exactly one `InventoryMovement` (with its reason), and **Vert appeared on
+>   the live storefront immediately** — derived on read, no job, while the
+>   page editor's own axes stayed Rouge/Bleu (correct: no write-back).
+> - **INV enforcement (VAR.2 addition A)** — measured in BOTH toggle states
+>   on the live page. OFF (default): zero `data-out-of-stock` markers, the
+>   0-stock rows sell freely. ON (flipped through the real Display toggle,
+>   which wrote the new column): Bleu and Vert render
+>   `disabled`/`aria-disabled`/`data-out-of-stock`, Rouge stays buyable —
+>   per-variant, exactly. Server side, a direct POST for Bleu (the stale-tab
+>   case the UI cannot produce) refused **409 `OUT_OF_STOCK` in the shop's
+>   own locale**; the Rouge POST created the order (201, total 2500+400
+>   delivery).
+> - **INV.2** — that storefront sale wrote **`FulfillmentOrder.productVariant
+>   = "Rouge"`**, and stock stayed 5 at `pending` (movements belong to
+>   confirm). A client-side timeout + retry produced exactly ONE SalesOrder —
+>   the idempotency key held.
+> - **BULK.1** — checkboxes + "Select all — 2 selected" render; **bulk send**
+>   ran (it is what created the product above); **bulk archive** archived
+>   both pages in one action (storefront 404 after); the bulk-delete confirm
+>   carries the partial-result promise ("Pages that have orders will be
+>   kept"). ⚠ **The delete partial-result path itself was NOT executed
+>   live** — the automated browser suppresses native `confirm()` and the
+>   direct API call was declined by the permission layer, so that one branch
+>   rests on its suite coverage. LB.38's row-level rule was re-observed in
+>   passing: the per-row Delete control vanished the moment the page had an
+>   order.
+>
+> **After the pass:** 123 `/_next/image` variants re-warmed (dedima 58,
+> robeelegante 65), zero errors. `robe` is ARCHIVED and serves no storefront —
+> pre-existing state, not this deploy.
+>
+> **Two observations worth keeping.** (1) `selliora1.com` resolves as
+> bebezzouar's CUSTOM DOMAIN, so path-prefix tenants 404 on it by design
+> (custom domain wins); fixture storefronts must be checked on a platform
+> host — `landingos.onrender.com` qualifies (`isPlatformHost` accepts any
+> `*.onrender.com`). (2) Baseline drift vs the 24 Aug records — SalesOrder
+> 2→4, DraftOrder 3→5, **FulfillmentOrder 0→3** — is organic merchant
+> traffic: **LB.57's abandoned-cart bridge has now fired in production for
+> real**, closing its "deployed but never fired" caveat.
+
 ## OFF.1 — upsells, downsells and bundles (PRE-PURCHASE slice) — built 25 Aug 2026, **HELD BACK FROM THE BATCH, NOT IN ANY COMMIT ON `main`**
 
 > **⛔ WITHDRAWN FROM THE 25 AUG DEPLOY BY THE PRODUCT OWNER'S DECISION, on a
