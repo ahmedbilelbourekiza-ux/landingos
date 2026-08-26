@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useCallback, useContext } from "react";
 
 /* =============================================================================
  * Where the editor sends its requests.
@@ -39,8 +39,23 @@ export function BuilderApiProvider({
  *
  *   const api = useBuilderApi();
  *   fetch(api(`/landings/${id}/pricing`), ...)
+ *
+ * REFERENTIALLY STABLE, and that is a load-bearing contract, not a nicety.
+ * Seventeen editor components hold this function in `useCallback`/`useEffect`
+ * dependency arrays. The original unmemoized closure was a NEW identity on
+ * every render, which voided every one of those arrays — and in the version
+ * history dialog it closed a self-sustaining loop: effect → fetch → setState →
+ * render → new `api` → new `load` → effect again, forever. One click on
+ * "Version history" measured 23+ requests in 8 seconds, flickering
+ * loading↔ready the whole time (the bug shipped 20 Aug with LB.14b and was
+ * reported live by the merchant 26 Aug). The dialog was the one consumer
+ * whose effect both depended on this identity AND set state, but every
+ * consumer was paying for the broken contract in silent extra work.
  */
 export function useBuilderApi(): (path: string) => string {
   const base = useContext(BuilderApiContext);
-  return (path: string) => `${base}${path.startsWith("/") ? path : `/${path}`}`;
+  return useCallback(
+    (path: string) => `${base}${path.startsWith("/") ? path : `/${path}`}`,
+    [base],
+  );
 }
