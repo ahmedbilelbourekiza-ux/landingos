@@ -15,14 +15,19 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
-> ### 🔴 FIX.VH IS BUILT AND VERIFIED, WAITING ON THE GO-AHEAD — the live version-history loading loop (26 Aug 2026, overnight)
+> ### ✅ FIX.VH IS LIVE (26 Aug 2026, 02:36:37 UTC) — the version-history loading loop is fixed in production
 >
-> **The merchant-reported bug is real, reproduced, root-caused by
-> measurement, fixed, regression-tested, and verified in the browser — on
-> branch `fix/vh-version-history-loop` (`4dff1f9`, ONE commit on top of the
-> deployed `22a134f`). NOT pushed, NOT deployed: per the standing rule it
-> waits for the explicit go-ahead. It is small, isolated and
-> high-confidence — a one-function memoization plus its test.**
+> **Deployed on the merchant's go-ahead: `origin/main` = `e1ecb93`
+> (`22a134f..e1ecb93`, code `4dff1f9` + the overnight records; rollback
+> `22a134f`). Code-only, zero migrations, zero env changes. Verified live
+> on a throwaway prod tenant (swept): Version History opened THREE times →
+> exactly three `GET /versions`, one per open, each 200, dialog settled
+> with no flicker — where the pre-fix production measured 23+ requests in
+> 8 seconds from ONE click. Build id `1L4-8TwHJ…` → `G3BrGXfmk…`, health
+> 200, dedima byte-identical in size (client-only change), Render runtime
+> logs 0 flagged lines, postgres 0 errors since the deploy window, 123
+> image variants re-warmed. Categories decision recorded the same night:
+> the sidebar page STAYS AS-IS (see NEXT_STEPS).**
 >
 > **The bug:** clicking "Version history" flashes loading → content →
 > loading forever. Measured on the exact deployed tree with a throwaway

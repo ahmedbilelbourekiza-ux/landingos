@@ -83,16 +83,23 @@
 > invasive, real risk to what is live, NOT recommended. If the reported
 > gap is "typing values one by one is tedious", (a) closes it cheaply.
 
-> **⏳ WAITING ON HIS DECISION (the morning list):**
-> 1. **Go-ahead to push FIX.VH** (P0 — one code-only commit, ready).
-> 2. Categories sidebar: keep as-is, or shrink? (P1-A; removal breaks
->    visibility/delete — not recommended.)
-> 3. Themes: add delete and/or overwrite-on-regenerate? (P1-B; nothing
->    breaks today, clutter grows.)
-> 4. Builder variant entry: adopt the Manager's comma-separated+generate
->    ergonomics (option (a))? (P2.)
-> 5. Unchanged from before: OFF.1's second-delivery-fee question (branch
->    untouched tonight, as instructed); the OFF.1 migration go-ahead.
+> **THE MORNING DECISIONS CAME BACK (26 Aug) — state of each:**
+> 1. ✅ **FIX.VH: DEPLOYED, live 02:36:37 UTC** on his go-ahead
+>    (`origin/main` = `e1ecb93`, rollback `22a134f`). Verified live: three
+>    dialog opens → exactly three requests, settled, logs clean. HANDOFF
+>    §1's top banner is the record.
+> 2. ✅ **Categories sidebar: RESOLVED — KEEP AS-IS, no code change** (his
+>    decision). The P1-A finding above stands as the reference: the screen
+>    shares one `Category` table with CAT.1's inline field and remains the
+>    only UI for `isVisible` (storefront-gating) and delete. CLOSED.
+> 3. 🔨 **Themes: his decision is FULLY AUTOMATIC, per-page, no manual
+>    picker — being built** on branch `feature/auto-themes` (see its own
+>    entry once committed). The P1-B diagnostic above is the baseline it
+>    starts from.
+> 4. ⏳ Builder variant entry ergonomics (option (a)) — still open, no
+>    decision yet.
+> 5. ⏳ OFF.1's second-delivery-fee question + its migration go-ahead —
+>    still open; branch untouched.
 
 **PHASE LB (the Landing Page Builder as a commercial product) IS COMPLETE —
 see `BUILDER_AUDIT.md` (the before), `BUILDER_HANDOFF.md` (the after, with the
