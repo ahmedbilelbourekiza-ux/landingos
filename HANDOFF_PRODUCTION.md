@@ -15,6 +15,40 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### 🔴 FIX.VH IS BUILT AND VERIFIED, WAITING ON THE GO-AHEAD — the live version-history loading loop (26 Aug 2026, overnight)
+>
+> **The merchant-reported bug is real, reproduced, root-caused by
+> measurement, fixed, regression-tested, and verified in the browser — on
+> branch `fix/vh-version-history-loop` (`4dff1f9`, ONE commit on top of the
+> deployed `22a134f`). NOT pushed, NOT deployed: per the standing rule it
+> waits for the explicit go-ahead. It is small, isolated and
+> high-confidence — a one-function memoization plus its test.**
+>
+> **The bug:** clicking "Version history" flashes loading → content →
+> loading forever. Measured on the exact deployed tree with a throwaway
+> tenant: ONE click = 23+ `GET /versions` requests in eight seconds, all
+> 200s, never settling. It is NOT a VH.1 regression — the dialog is
+> untouched since LB.14b, so this has been live since 20 Aug; VH.1 and the
+> OFF.1 extraction are both innocent (the loop is client-side, in files
+> neither touched).
+>
+> **Root cause:** `useBuilderApi()` returned a new closure every render.
+> The dialog's `load` callback depends on that identity, its effect depends
+> on `load`, and the effect sets state — so every render re-armed the
+> effect and every effect run caused a render. Fix: the hook now returns a
+> `useCallback([base])`-stable function, restoring the dependency-array
+> contract for all seventeen editor components that hold it.
+>
+> **Proof:** `test/version-history-loop.test.ts` mounts the REAL dialog
+> (happy-dom devDep + a per-file module hook for `@/`+JSX under bare node)
+> and pins: stable hook identity; ONE fetch per open that SETTLES with
+> content still on screen after time and parent re-renders; one fetch per
+> reopen. On the pre-fix code it fails in milliseconds ("expected ONE list
+> fetch, saw 9"). Live on the local build: three dialog opens → exactly
+> three requests, view settled each time; fixture swept to zero. tsc 275
+> unchanged. **To ship on the go-ahead:** merge/push this one commit —
+> code-only, zero migrations, zero env changes.
+
 > ### ✅ THE 25 AUG BUILDER/ERP BATCH IS LIVE (25 Aug 2026, 18:36:18 UTC) — INV.1–3, VH.1, VAR.1+VAR.2, CAT.1, BULK.1
 >
 > **`origin/main` = `2effc3e`** (`116acc0..2effc3e`, seven commits;

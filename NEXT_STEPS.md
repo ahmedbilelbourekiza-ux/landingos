@@ -1,5 +1,99 @@
 ﻿# Next Steps
 
+## THE 26 AUG OVERNIGHT PASS — one fix built, three investigations, decisions owed
+
+> **✅ P0 — FIX.VH: the live version-history loading loop is FIXED on branch
+> `fix/vh-version-history-loop` (`4dff1f9`), verified, NOT deployed.**
+> HANDOFF §1's top banner is the record. One click on "Version history"
+> measured 23+ requests in 8s on the deployed tree (all 200s — not an error
+> retry); root cause is `useBuilderApi()` returning a new function identity
+> per render, which voided the dialog's effect dependency array and made
+> every state change re-fire the load. Live since LB.14b (20 Aug) — VH.1
+> and the OFF.1 extraction are both innocent. Fix = memoize the hook
+> (`useCallback([base])`); regression test mounts the REAL dialog and fails
+> in milliseconds on the pre-fix code. **Ship = push this one code-only
+> commit on the go-ahead.**
+
+> **🔎 P1-A — the Categories sidebar page (diagnostic only, nothing
+> changed).** What it does today: lists the tenant's `Category` rows (name,
+> slug, per-category page count, visibility) with create (name+slug),
+> show/hide toggle, and delete. **It does NOT duplicate CAT.1 — the two
+> share ONE table and split the work**: CAT.1's editor field fetches
+> `GET /api/builder/categories` — the SAME rows this screen manages — for
+> its type-ahead, creates through the same validated path, and its AI
+> Suggest ranks against these same names. So yes: the sidebar page's list
+> IS the source CAT.1 pulls from, and a category created inline in the
+> editor appears on the sidebar screen and vice versa. **Removing the
+> screen would break real things**: it is the ONLY UI for `isVisible`
+> (which gates the live storefront — the category listing page 404s
+> non-visible categories, the store home's nav pills and `sitemap.xml`
+> filter on it — measured, three read sites) and the ONLY UI for deleting
+> a category; both were deliberately KEPT here by CAT.1's shipped scoping
+> ("icon, coverImage, sortOrder, isVisible and delete have no home on a
+> page editor"). Recommendation if simplification is wanted: shrink, don't
+> remove — but that is his call.
+
+> **🔎 P1-B — the Themes grid (diagnostic only, nothing changed).**
+> **Scoping: per-store.** `LandingTheme.tenantId` is non-null and every
+> read is tenant-bound; built-ins are per-tenant seeded rows
+> (`isBuiltIn`). One merchant's generated themes are invisible to another.
+> **Bounds: NONE anywhere.** `GET /api/builder/themes` is a bare
+> `findMany` (no `take`), the editor's Theme grid renders every row, the
+> Templates screen likewise; no pagination, no search, no cap. **"Build
+> one from the product image" creates a NEW row every click** — no dedupe,
+> no overwrite — and there is **no delete or rename route or UI for
+> themes at all**. At 50–100 generated themes: data cost is trivial (a few
+> hundred bytes each — performance will not visibly suffer for years),
+> but the grid becomes a scroll-wall of near-identical swatches inside the
+> editor's General section AND on Templates, with no way to clean up short
+> of SQL. The exposure is usability + unbounded growth, not load. If he
+> wants action, the shape would be: a delete control (guarded — pages
+> reference `themeId`, schema says SetNull), and/or from-image OVERWRITING
+> the page's previous generated theme instead of accumulating. Decision
+> his.
+
+> **🔎 P2 — Builder variant creation vs the Manager's axes→matrix flow
+> (diagnostic only, nothing changed).** **Builder today
+> (`variants-section.tsx` → `PUT /landings/[id]/variants`):** "Add group"
+> → type the axis name ("Couleur") → "Add option" once PER VALUE, each
+> value typed into its own row with an optional per-value `extraPrice` →
+> Save writes flat `LandingVariant` rows (name, value, extraPrice,
+> displayOrder; caps 3 groups × 10 options). No matrix, no stock, no SKU
+> — the merchant never sees the combinations. **Manager today (products
+> screen → "Edit variants", VAR.1/VAR.2 live):** pick product → axis name
+> + values as ONE comma-separated input ("Rouge, Bleu, Vert") → "Generate
+> variants" expands the full combination matrix, existing combinations
+> keep their stock → per-combination stock/threshold/SKU/image → Reason →
+> Save (ledger movement per stock change). **The divergence is partly BY
+> DESIGN** (Decision 1, 24 Aug: builder owns AXES — what a customer picks,
+> priced per value; ERP owns the MATRIX — what sits on a shelf; VAR.1b
+> made the Manager the ongoing authority once linked, derived on read).
+> What is NOT design is the ENTRY ERGONOMICS: the builder's one-input-
+> per-value clicking vs the Manager's comma-separated + generate. **What
+> aligning would take — two very different scopes:** (a) *ergonomics
+> only* (comma-separated value entry in the builder, optionally a
+> read-only preview of the combinations that will be generated at send):
+> one file (`variants-section.tsx`), reusing the already-extracted
+> generator from `console/erp/variant-matrix.tsx`; no schema, no API, no
+> route change — LandingVariant rows come out identical, so ZERO risk to
+> live VAR.1/VAR.2 behaviour. Small. (b) *semantic merge* (per-combination
+> stock/SKU editing inside the builder): contradicts the shipped
+> two-writers decision VAR.1 explicitly rejected, would touch schema,
+> publish-to-erp reconcile, the inventory gate and the storefront read —
+> invasive, real risk to what is live, NOT recommended. If the reported
+> gap is "typing values one by one is tedious", (a) closes it cheaply.
+
+> **⏳ WAITING ON HIS DECISION (the morning list):**
+> 1. **Go-ahead to push FIX.VH** (P0 — one code-only commit, ready).
+> 2. Categories sidebar: keep as-is, or shrink? (P1-A; removal breaks
+>    visibility/delete — not recommended.)
+> 3. Themes: add delete and/or overwrite-on-regenerate? (P1-B; nothing
+>    breaks today, clutter grows.)
+> 4. Builder variant entry: adopt the Manager's comma-separated+generate
+>    ergonomics (option (a))? (P2.)
+> 5. Unchanged from before: OFF.1's second-delivery-fee question (branch
+>    untouched tonight, as instructed); the OFF.1 migration go-ahead.
+
 **PHASE LB (the Landing Page Builder as a commercial product) IS COMPLETE —
 see `BUILDER_AUDIT.md` (the before), `BUILDER_HANDOFF.md` (the after, with the
 readiness checklist and roadmap), and PROJECT_STATE's *Phase LB* section. The
