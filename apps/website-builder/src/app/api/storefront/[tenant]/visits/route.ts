@@ -4,6 +4,7 @@ import { withTenant } from "@landingos/db";
 
 import { tenantBySlug } from "@/lib/storefront/resolve-tenant";
 import { allowRequest, clientIp, visitLimit } from "@/lib/storefront/rate-limit";
+import { recordGeoProbe } from "@/lib/storefront/geo-probe";
 import { VisitBody } from "@/lib/storefront/contract";
 import { deriveSource } from "@/lib/storefront/traffic-source";
 import { pruneExpiredVisits, shouldAmortisedPrune } from "@/lib/storefront/visit-retention";
@@ -100,6 +101,13 @@ export async function POST(
   } catch (error) {
     console.error("[storefront] visit beacon failed", error);
   }
+
+  /* GEO.0 — the TEMPORARY Cloudflare geo-header measurement for Part A
+     (visits by wilaya). AFTER the visit's transaction, fire-and-forget, its
+     own binding — the dispatchTrackingEvent pattern — so it can neither slow
+     nor break a beacon. Records header values only, never an IP; only for
+     Cloudflare-attested requests. Sunset note in NEXT_STEPS §GEO.0. */
+  recordGeoProbe(tenant.id, req);
 
   return new NextResponse(null, { status: 204 });
 }

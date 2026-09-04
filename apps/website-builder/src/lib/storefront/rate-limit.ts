@@ -124,7 +124,9 @@ export function allowRequest(
  * falling through would re-open the bypass through the back door.
  * -------------------------------------------------------------------------- */
 
-type HeaderBag = { headers: { get(name: string): string | null } };
+/** Exported for the modules that resolve identity from the same headers
+ *  (GEO.0's probe today) — a request-shaped bag, never the whole request. */
+export type HeaderBag = { headers: { get(name: string): string | null } };
 
 const IPV4 = /^(?:\d{1,3})(?:\.\d{1,3}){3}$/;
 
