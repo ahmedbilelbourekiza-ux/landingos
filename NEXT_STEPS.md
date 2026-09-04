@@ -1,5 +1,33 @@
 ﻿# Next Steps
 
+## GEO.0 — the Cloudflare geo-header measurement IS LIVE (4 Sep, `b05698c`); ONE TOGGLE IS BILEL'S
+
+> **Part A (visits by wilaya) is approved and in flight; the resolution
+> source decides itself from a measurement now running in production.**
+> Every Cloudflare-attested beacon increments one bounded counter row per
+> tenant (`ProductSetting` `website-builder`/`geoProbe`): country, region
+> code, region name, presence flags — NEVER the IP, never city/postal/
+> coordinate values. Read it with:
+> `SELECT value FROM "ProductSetting" WHERE key = 'geoProbe';`
+>
+> **First finding (5 samples, 4 Sep ~22:40 UTC, an Algerian connection):
+> every sample reads `DZ|-|-` — the country header arrives, NO region
+> headers do.** So the zone has IP Geolocation ON and the **"Add visitor
+> location headers" Managed Transform OFF. Flipping it is BILEL'S attended
+> step**: Cloudflare dashboard → the zone → Rules → Settings → Managed
+> Transforms → enable "Add visitor location headers". Docs-verified: the
+> transform is available on EVERY plan (only True-Client-IP is
+> Enterprise-gated). After flipping, visit the store once from MOBILE DATA
+> and once from the HOME line, then read the row again — if
+> `cf-region-code` comes back as the ISO wilaya numbers ("16") at a decent
+> rate, Part A builds on the header (option A); if absent or
+> non-ISO, GeoLite2 in-process is the fallback (option B, licence terms in
+> the wilaya-geo memory).
+>
+> **SUNSET:** the probe module (`src/lib/storefront/geo-probe.ts`), its one
+> call site in the visits route, and the `geoProbe` rows are all deleted
+> when the A-vs-B decision lands. They must not outlive the decision.
+
 ## THE 26 AUG OVERNIGHT PASS — one fix built, three investigations, decisions owed
 
 > **✅ P0 — FIX.VH: the live version-history loading loop is FIXED on branch
