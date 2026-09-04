@@ -15,6 +15,52 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✅ TR.1+TR.2+WM.1 ARE LIVE (4 Sep 2026, ~21:40:15 UTC) — the Traffic screen redesigned: verdicts, four-tier scale, customizable tiles, and the orders-by-wilaya map
+>
+> **Deployed on the merchant's go-ahead: `origin/main` = `16ae5c5`
+> (`2c68bd6..16ae5c5`, ONE batch commit — three interleaved slices;
+> rollback `2c68bd6`, which is the previous live commit). Code-only, ZERO
+> migrations, zero env changes — asserted on the range before pushing
+> (`git diff --name-only` shows no prisma/migration files), so the push
+> was the whole deploy.** Pushed 21:37:58 UTC; the new build served ~2min17s
+> later (fast — historic builds ran 7–9 min).
+>
+> **Deploy verified two ways, without the Render API key** (none on this
+> machine): (1) the storefront's hashed-chunk fingerprint — Turbopack
+> builds carry NO `/_next/static/<buildId>/` path, the build id marker of
+> older records is GONE; the marker is now the md5 of the sorted
+> `/_next/static/chunks/*` set in the page HTML — flipped
+> `22b72ac0899d → 0cfa084013f1` and is stable across fetches; (2) a
+> route-existence probe: `GET /api/builder/analytics/tiles` (a route that
+> exists ONLY in 16ae5c5) answers **401 UNAUTHENTICATED** on the live host
+> while the control `/api/builder/analytics/nope` answers 404. Health 200
+> `database: ok`. Post-deploy: **126 image variants re-warmed** (21 media
+> × deviceSizes [640,750,828,1080,1200,1920]) after the docs push below.
+>
+> **What shipped (the commit message on `16ae5c5` is the full record):**
+> TR.1 — the Traffic screen leads with the answer: store verdict chip,
+> worst-first triage alert band, per-page health chips, AI recommendations
+> re-ranked by a severity derived from their grounding numbers; the
+> insight prompt takes the console locale (stored rows stay Arabic until
+> re-analyzed). TR.2 — one four-tier scale (`lib/console/benchmark.ts`,
+> red/orange/blue/green; NO BENCHMARK, NO COLOUR — figures stay grey until
+> the merchant sets thresholds), tapering percent-of-previous funnel, SVG
+> donut for sources, Meta-ads tile grid, and "Customize tiles"
+> (settings:write; one ProductSetting row `website-builder/trafficTiles` —
+> a DATA row, not a migration). WM.1 — orders by wilaya on a vendored
+> 68-shape OpenStreetMap asset (`scripts/build-wilaya-map.mjs`
+> regenerates; ODbL credit on screen): OSM already carved the ten mapped
+> post-2026-reform wilayas out of their parents, so all 68 real shapes
+> render and each new shape keys its data to its geometry-verified parent,
+> keeping the 58-name vocabulary the checkout constrains every order to;
+> zero-order wilayas render OFF the colour ramp; exact-name join with an
+> "unmatched" bucket printed rather than guessed.
+>
+> **Open by design:** the 58→69 wilaya reference upgrade (Loi 26-06) is a
+> flagged follow-up, NOT silently absorbed; Part A visitor geolocation
+> (visits-by-wilaya) awaits the merchant's decision — see NEXT_STEPS and
+> the wilaya-geo investigation memory.
+
 > ### ✅ FIX.VH IS LIVE (26 Aug 2026, 02:36:37 UTC) — the version-history loading loop is fixed in production
 >
 > **Deployed on the merchant's go-ahead: `origin/main` = `e1ecb93`

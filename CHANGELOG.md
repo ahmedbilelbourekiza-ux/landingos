@@ -10,6 +10,40 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## DEPLOY — TR.1+TR.2+WM.1, the Traffic-screen redesign batch — deployed 4 Sep 2026, live ~21:40:15 UTC
+
+> **`origin/main` = `16ae5c5`** (`2c68bd6..16ae5c5`, one batch commit whose
+> message is the full slice-by-slice record; **rollback `2c68bd6`**).
+> Code-only, ZERO migrations — asserted on the range before the push — so
+> push = deploy, no DB step, no env change. 21 files, +4,162/−229.
+>
+> **Verified live without the Render API** (no key on this machine), two
+> independent markers: the storefront chunk-set fingerprint flipped
+> (`22b72ac0899d → 0cfa084013f1`, stable across fetches — note for future
+> deploys: Turbopack builds have NO `/_next/static/<buildId>/` segment, the
+> old build-id marker is gone; fingerprint the sorted chunk list instead)
+> AND `GET /api/builder/analytics/tiles`, a route that exists only in this
+> commit, answers 401 on the live host where its nonexistent sibling 404s.
+> Health 200. 126 image variants re-warmed post-deploy (21 published media
+> × the six deviceSizes) — the deploy wipes the `/_next/image` cache.
+>
+> **Suites at ship time, real output:** wilaya-map 10, traffic-tiles 16,
+> benchmark 8, traffic-triage 31, builder-insights 19, ads-routes 30,
+> builder-sections 76, storefront 111, erp/analytics 19, erp/screens 171,
+> i18n parity 22 — all green; tsc at the pre-existing 275 baseline with
+> none in the changed files.
+>
+> **The three slices** (details in the commit message and NEXT_STEPS):
+> TR.1 verdict layer + insight-prompt locale; TR.2 four-tier benchmark
+> scale (grey until the merchant sets thresholds), tapering funnel, donut,
+> Meta tile grid, customizable tiles on one `ProductSetting` row; WM.1
+> orders-by-wilaya on a vendored 68-shape OSM asset with geometry-verified
+> parent mapping for the ten post-reform shapes and an honest unmatched
+> bucket. Flagged follow-ups: the 58→69 wilaya reference upgrade; Part A
+> visitor geolocation undecided.
+
+---
+
 ## DEPLOY — the 25 Aug eight-slice batch (INV.1–3, VH.1, VAR.1+2, CAT.1, BULK.1) — migrated and deployed 25 Aug 2026, live 18:36:18 UTC
 
 > **`origin/main` = `2effc3e`** (`116acc0..2effc3e`, seven commits — six code
