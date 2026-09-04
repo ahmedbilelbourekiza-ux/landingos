@@ -120,16 +120,43 @@ const InsightAnswer = z.object({
  * Prompt
  * ------------------------------------------------------------------------ */
 
-const SYSTEM_PROMPT = [
-  "أنت محلّل تسويق لصفحات هبوط تُباع بالدفع عند الاستلام في الجزائر. تقرأ أرقاماً مجمَّعة عن سلوك زوار صفحة واحدة وتقترح تحسينات عملية يقدر التاجر يطبّقها في محرّر الصفحة.",
-  "",
-  "قواعد صارمة:",
-  "- كل توصية لازم تستند إلى رقم موجود في المعطيات، وتذكر المفتاح (metric) وقيمته (value) كما وردا بالضبط. توصية بلا رقمها تُرفض آلياً.",
-  "- لا تخترع أرقاماً ولا نسباً غير قابلة للاشتقاق المباشر من المعطيات، ولا تفترض أسباباً ما تشهد عليها الأرقام.",
-  "- اكتب finding و suggestion بعربية واضحة ومهنية يفهمها تاجر جزائري، مختصرة وعملية.",
-  "- الأرقام الغربية فقط (0-9).",
-  "- أجب بكائن JSON واحد فقط: بدون ``` وبدون أي نص قبله أو بعده.",
-].join("\n");
+/* TR.1 — WHICH LANGUAGE THE ADVICE COMES BACK IN.
+ *
+ * This prompt used to hard-code Arabic, and `buildInsightMessages` took no
+ * locale. The console, meanwhile, translates everything around the advice —
+ * the section chip, the date line, the headings — so an English or French
+ * merchant read an Arabic sentence wearing an English label, on one line. The
+ * mix was structural, not occasional, and it could not be fixed in the
+ * rendering: the words arrive in the language the prompt asked for.
+ *
+ * The instruction is per locale rather than "answer in the user's language",
+ * because the input carries a `pageTitle` that is usually Arabic and a model
+ * told to match "the user" follows the data instead of the reader.
+ *
+ * The rest of the rules stay identical in every language, including the
+ * Western-digits rule: `westernizeDigits` at parse time depends on it, and the
+ * grounding check compares numbers byte for byte.
+ */
+const LANGUAGE_RULE: Record<string, string> = {
+  ar: "- اكتب finding و suggestion بعربية واضحة ومهنية يفهمها تاجر جزائري، مختصرة وعملية.",
+  fr: "- Rédige finding et suggestion en français clair et professionnel, court et concret, pour un commerçant algérien.",
+  en: "- Write finding and suggestion in clear, professional English — short and practical, for an Algerian merchant.",
+};
+
+const DEFAULT_LANGUAGE_RULE = LANGUAGE_RULE.ar!;
+
+function systemPrompt(locale: string): string {
+  return [
+    "أنت محلّل تسويق لصفحات هبوط تُباع بالدفع عند الاستلام في الجزائر. تقرأ أرقاماً مجمَّعة عن سلوك زوار صفحة واحدة وتقترح تحسينات عملية يقدر التاجر يطبّقها في محرّر الصفحة.",
+    "",
+    "قواعد صارمة:",
+    "- كل توصية لازم تستند إلى رقم موجود في المعطيات، وتذكر المفتاح (metric) وقيمته (value) كما وردا بالضبط. توصية بلا رقمها تُرفض آلياً.",
+    "- لا تخترع أرقاماً ولا نسباً غير قابلة للاشتقاق المباشر من المعطيات، ولا تفترض أسباباً ما تشهد عليها الأرقام.",
+    LANGUAGE_RULE[locale] ?? DEFAULT_LANGUAGE_RULE,
+    "- الأرقام الغربية فقط (0-9).",
+    "- أجب بكائن JSON واحد فقط: بدون ``` وبدون أي نص قبله أو بعده.",
+  ].join("\n");
+}
 
 const outputContract = () =>
   [
@@ -145,7 +172,13 @@ const outputContract = () =>
     "}",
   ].join("\n");
 
-export function buildInsightMessages(summary: InsightSummary): AiMessage[] {
+/**
+ * @param locale The console locale the answer will be READ in ("ar" | "fr" |
+ *   "en"). Anything else falls back to Arabic, which is this platform's
+ *   default locale — an unknown locale must not silently produce English for a
+ *   merchant whose console is not in English.
+ */
+export function buildInsightMessages(summary: InsightSummary, locale: string): AiMessage[] {
   const user = [
     "المعطيات المجمَّعة للصفحة (المصدر الوحيد للأرقام — المفاتيح المسموح ذكرها في metric هي مفاتيح flatMetrics):",
     JSON.stringify({ summary, flatMetrics: flattenSummaryMetrics(summary) }, null, 2),
@@ -154,7 +187,7 @@ export function buildInsightMessages(summary: InsightSummary): AiMessage[] {
   ].join("\n");
 
   return [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt(locale) },
     { role: "user", content: user },
   ];
 }

@@ -95,11 +95,38 @@ describe('the grounding contract (pure)', () => {
   });
 
   test('the prompt shows the model the summary AND the citable keys', () => {
-    const [system, user] = buildInsightMessages(SUMMARY);
+    const [system, user] = buildInsightMessages(SUMMARY, 'ar');
     assert.ok(system.content.includes('metric'));
     assert.ok(user.content.includes('"faq.q1": 14'));
     assert.ok(user.content.includes('"views": 120'));
     assert.ok(user.content.includes('recommendations'));
+  });
+
+  /* TR.1 — the advice is read on a console that translates everything around
+     it, so it has to arrive in that console's language. Before this, the
+     prompt hard-coded Arabic and an English console rendered an Arabic
+     sentence under an English chip. */
+  test('the answer is requested in the console locale, Arabic for anything unknown', () => {
+    const [ar] = buildInsightMessages(SUMMARY, 'ar');
+    const [fr] = buildInsightMessages(SUMMARY, 'fr');
+    const [en] = buildInsightMessages(SUMMARY, 'en');
+    assert.ok(ar.content.includes('بعربية'));
+    assert.ok(fr.content.includes('en français'));
+    assert.ok(en.content.includes('in clear, professional English'));
+
+    // Arabic is the platform default; an unknown locale must not fall through
+    // to English for a merchant whose console is not in English.
+    const [unknown] = buildInsightMessages(SUMMARY, 'es');
+    assert.equal(unknown.content, ar.content);
+  });
+
+  test('every locale keeps the grounding and Western-digit rules', () => {
+    for (const locale of ['ar', 'fr', 'en', 'es']) {
+      const [system] = buildInsightMessages(SUMMARY, locale);
+      assert.ok(system.content.includes('metric'), `${locale} keeps the citation rule`);
+      assert.ok(system.content.includes('(0-9)'), `${locale} keeps the Western-digit rule`);
+      assert.ok(system.content.includes('JSON'), `${locale} keeps the JSON-only rule`);
+    }
   });
 
   test('a grounded recommendation survives; unknown metrics and misquoted values are dropped', () => {

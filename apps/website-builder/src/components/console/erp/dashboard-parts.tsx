@@ -110,6 +110,8 @@ export function KpiTile({
   comparison,
   noComparison,
   href,
+  icon,
+  tone,
 }: {
   readonly id: string;
   readonly label: string;
@@ -134,6 +136,24 @@ export function KpiTile({
   readonly comparison: string;
   readonly noComparison: string;
   readonly href?: string;
+  /**
+   * TR.1 — a decorative mark beside the label, so a tile is identifiable
+   * before it is read.
+   *
+   * OPTIONAL, and every existing caller omits it: a grid where some tiles
+   * carry a mark and others do not reads as broken, so a screen adopts icons
+   * for its whole band or for none of it. Always `aria-hidden` at the call
+   * site — the label is right there, and an icon announced beside the word it
+   * illustrates is the label read twice.
+   */
+  readonly icon?: ReactNode;
+  /**
+   * TR.2 — inline tone vars from `toneVars()`, for a figure judged against a
+   * benchmark. Optional and omitted by every caller that has no benchmark to
+   * judge by: a tile with no basis for a colour must stay neutral, never be
+   * green by default.
+   */
+  readonly tone?: Record<string, string>;
 }) {
   const flat = delta !== null && Math.abs(delta) < 0.05;
   const good = delta === null || flat ? null : delta > 0 === riseIsGood;
@@ -141,7 +161,10 @@ export function KpiTile({
 
   const body = (
     <>
-      <span className="block text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        {icon}
+        {label}
+      </span>
       <span
         className="mt-1.5 flex items-baseline gap-0.5 text-2xl/none font-semibold tracking-tight tabular-nums"
         dir="ltr"
@@ -196,11 +219,11 @@ export function KpiTile({
      would have quietly discharged the test that proves an agent is not shown a
      company-wide customer count. */
   return href ? (
-    <Link href={href} data-kpi={id} data-tile={id} className={shell}>
+    <Link href={href} data-kpi={id} data-tile={id} className={shell} style={tone}>
       {body}
     </Link>
   ) : (
-    <div data-kpi={id} data-tile={id} className={shell}>
+    <div data-kpi={id} data-tile={id} className={shell} style={tone}>
       {body}
     </div>
   );

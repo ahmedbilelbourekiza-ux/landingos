@@ -135,7 +135,11 @@ export const POST = tenantRoute<Params>("website-builder:pages:write", async ({ 
           maxTokens: provider.maxTokens ?? null,
           timeoutMs: provider.timeoutMs ?? null,
         },
-        buildInsightMessages(summary),
+        /* TR.1 — the advice comes back in the language the console is read
+           in. The user's own choice wins over the tenant's, matching how
+           every other screen resolves locale; the tenant's is the fallback
+           for a member who never set one. */
+        buildInsightMessages(summary, session.user.locale ?? session.tenant?.locale ?? "ar"),
       );
       await settleAiCall(tenantId, usageEventId, {
         ok: true,
