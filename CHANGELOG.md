@@ -10,7 +10,7 @@ touched, any **migration**, and any **risk**.
 
 ---
 
-## VP.1 — a variant option can carry its OWN price (fallback: the product price) — 17 Oct 2026, LOCAL COMMIT, NOT PUSHED
+## VP.1 — a variant option can carry its OWN price (fallback: the product price) — DEPLOYED 17 Oct 2026, live ~20:43:37 UTC (`62e0744`; prod column first — HANDOFF_PRODUCTION §1)
 
 > **The problem (merchant report):** "when adding a variant, I can't set its
 > own price — every variant uses the product price." In the builder editor a

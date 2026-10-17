@@ -15,6 +15,41 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✅ VP.1 IS LIVE (17 Oct 2026, ~20:43:37 UTC) — a variant option can carry its own price
+>
+> **Deployed on the owner's go-ahead: `origin/main` = `62e0744`
+> (`1761736..62e0744`, one commit; rollback `1761736`). ONE MIGRATION,
+> applied BEFORE the push** — `ALTER TABLE "LandingVariant" ADD COLUMN IF NOT
+> EXISTS "price" DECIMAL(65,30);` — through the Supabase connector's
+> `apply_migration` (`vp1_landing_variant_price`, same path as LB.57/SEC.11/
+> VAR.2) on project `fpwrvcwunypgdwndtqop`, at the owner's instruction (the
+> owner-string file route was declined by the permission classifier).
+>
+> **Gate before the write (read-only):** prod `LandingVariant` matched the
+> pre-commit Prisma DDL exactly — 9 columns (types, nullability, defaults),
+> PK, FK cascade/cascade, the composite index, RLS enabled+forced with
+> `tenant_isolation`; no `price` column; `landingos_app` grants are
+> TABLE-level (a new column inherits them). The code-side delta was proven to
+> be that single statement with a model-to-model `migrate diff` (no DB).
+>
+> **After the write:** `price` numeric(65,30), nullable, no default; 10
+> columns; **26 rows before and after, md5 over the original 9 columns
+> identical (`de66d336fbb9…`)**; 0 non-null prices; RLS true/true, 1 policy,
+> 2 indexes, 2 constraints; `landingos_app` holds SELECT/INSERT/UPDATE on
+> the column.
+>
+> **Deploy verified:** pushed 20:39:34 UTC; storefront chunk fingerprint on
+> `selliora1.com/dedima` (md5 of the sorted unique `/_next/static/chunks/*`
+> paths) `73984e7f3e53 → 1995a09c62fa` at 20:43:37, stable on recheck;
+> CONTENT proof on the same page — every variant in the serialized page data
+> now carries `"price":null` beside `extraPrice`, a field only the new mapper
+> emits. Health 200 `database: ok`. Image cache NOT re-warmed yet (the deploy
+> wipes `/_next/image`).
+>
+> **Not verified live (needs an authed session on prod):** the editor's
+> Price box and an own-priced order on the real domain. Both were verified
+> end to end on dev (CHANGELOG §VP.1).
+
 > ### ✅ TR.1+TR.2+WM.1 ARE LIVE (4 Sep 2026, ~21:40:15 UTC) — the Traffic screen redesigned: verdicts, four-tier scale, customizable tiles, and the orders-by-wilaya map
 >
 > **Deployed on the merchant's go-ahead: `origin/main` = `16ae5c5`

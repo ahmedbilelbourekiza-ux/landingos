@@ -1,10 +1,13 @@
 ﻿# Next Steps
 
-## VP.1 — per-variant price: BUILT + VERIFIED ON DEV, committed LOCALLY, NOT PUSHED (17 Oct)
+## VP.1 — per-variant price: LIVE (17 Oct, `62e0744`, ~20:43:37 UTC; prod column applied first — HANDOFF_PRODUCTION §1)
 
 > A variant option in the builder can now carry its own price; empty falls
-> back to the product price (full record: CHANGELOG §VP.1). **Waiting on the
-> owner's go-ahead to push.** Before any deploy:
+> back to the product price (full record: CHANGELOG §VP.1). **Deployed on the
+> owner's go-ahead; the column went to prod first via the Supabase connector,
+> rows verified untouched.** Still owed: an authed check of the editor's Price
+> box on prod, and re-warming the image cache. The pre-deploy notes, kept for
+> the record:
 >
 > 1. **Prod DDL FIRST, code second** — the code reads `LandingVariant.price`.
 >    Preview `migrate diff` from the approved tree against prod; expect exactly
