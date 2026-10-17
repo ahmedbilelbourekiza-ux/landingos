@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import type { VariantGroup, VariantOption } from "@/lib/landing/mock-landings";
+import { currencySymbol } from "@/lib/landing/format";
 import { VariantOptionRow } from "./variant-option-row";
 
 const MAX_OPTIONS = 10;
@@ -126,6 +127,24 @@ export function VariantGroupEditor({
 
       {/* Options */}
       <div className="flex flex-col gap-2">
+        {/* VP.1b — column names, so "+ 0" beside a price reads as an add-on
+            amount and never as stock. Widths mirror the row's fixed ones
+            (handle size-7, price w-28, add-on w-24, remove size-7; px matches
+            the row's p-2 plus its border). Hidden on a phone, where the row
+            wraps and the add-on carries its currency instead. */}
+        {group.options.length > 0 && (
+          <div
+            className="hidden items-center gap-2 px-[9px] text-[11px] font-medium text-muted-foreground sm:flex"
+            data-testid="variant-columns"
+            aria-hidden
+          >
+            <span className="w-7 shrink-0" />
+            <span className="min-w-0 flex-1 basis-24">{t("builder.editor.colOption")}</span>
+            <span className="w-28">{t("builder.editor.colPrice", { currency: currencySymbol(currency) })}</span>
+            <span className="w-24">{t("builder.editor.colAddOn", { currency: currencySymbol(currency) })}</span>
+            <span className="w-7 shrink-0" />
+          </div>
+        )}
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}

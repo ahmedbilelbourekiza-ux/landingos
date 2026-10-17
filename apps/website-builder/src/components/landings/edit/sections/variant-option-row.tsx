@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MONEY_PATTERN, readTypedMoney } from "@/lib/landing/money-field";
+import { currencySymbol } from "@/lib/landing/format";
 import type { VariantOption } from "@/lib/landing/mock-landings";
 
 // One sortable option row inside a variant group. The drag handle uses
@@ -142,8 +143,14 @@ export function VariantOptionRow({
           Text that cannot be read is left at the last good value rather than
           silently becoming 0 — `Number("500,75") || 0` was a free supplement
           on a product that charges for one. */}
-      <div className="flex items-center gap-1">
-        <span className="text-xs text-muted-foreground">+</span>
+      {/* VP.1b — the add-on reads as MONEY, never as a quantity: a bare
+          "+ 0" beside a price was taken for stock. On wide screens the
+          group's column header names it ("Add-on (DA)"); on a phone, where
+          rows wrap and the header is hidden, the currency sits beside it.
+          Disabled on a row with its own price — the reason is said in the
+          note under the row and the tooltip, not left to a grey box. */}
+      <div className="flex w-24 items-center gap-1">
+        <span className="text-xs text-muted-foreground" aria-hidden>+</span>
         <Input
           type="text"
           inputMode="decimal"
@@ -151,7 +158,9 @@ export function VariantOptionRow({
           pattern={MONEY_PATTERN}
           value={priceText}
           disabled={hasOwn}
-          placeholder="0"
+          placeholder={hasOwn ? "—" : "0"}
+          title={hasOwn ? t("builder.editor.addOnUnusedNote") : undefined}
+          data-testid="variant-option-addon"
           aria-label={t("builder.editor.optionPriceAria", { number: index + 1 })}
           onPointerDown={(e) => e.stopPropagation()}
           onChange={(e) => {
@@ -166,6 +175,9 @@ export function VariantOptionRow({
           }}
           className="h-8 w-20 tabular-nums"
         />
+        <span className="text-xs text-muted-foreground sm:hidden" aria-hidden>
+          {currencySymbol(currency)}
+        </span>
       </div>
 
       {/* Remove */}
@@ -180,6 +192,13 @@ export function VariantOptionRow({
       >
         <X className="size-4" />
       </Button>
+
+      {/* VP.1b — why the add-on is grey, in words, on the row it concerns. */}
+      {hasOwn && (
+        <p className="basis-full ps-9 text-[11px] text-muted-foreground" data-testid="variant-addon-unused">
+          {t("builder.editor.addOnUnusedNote")}
+        </p>
+      )}
     </div>
   );
 }

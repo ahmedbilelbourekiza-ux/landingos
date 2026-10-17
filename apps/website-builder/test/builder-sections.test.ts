@@ -897,6 +897,40 @@ describe('the landing editor moved, not rewritten', { skip }, () => {
     );
   });
 
+  /* VP.1b — a merchant read the greyed "+ 0" beside an own price as STOCK.
+     The add-on must be named as money, and its greying must be explained. */
+  test('the add-on is named as money and its greying is explained (VP.1b)', async () => {
+    await withTenant(tenant, async (tx) => {
+      await (tx as any).landingVariant.deleteMany({ where: { landingPageId: pageId } });
+      await (tx as any).landingVariant.createMany({
+        data: [
+          { tenantId: tenant, landingPageId: pageId, name: 'Size', value: 'S', extraPrice: 0, displayOrder: 0 },
+          { tenantId: tenant, landingPageId: pageId, name: 'Size', value: 'L', extraPrice: 0, price: 2900, displayOrder: 1 },
+        ],
+      });
+    });
+
+    const r = await fetch(`${BASE}/console/builder/pages/${pageId}/edit`, {
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+    });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+
+    // The console speaks the platform default (Arabic) to this tenant.
+    const ed = (arMessages as any).builder.editor;
+    const columns = html.match(/data-testid="variant-columns"[\s\S]*?<\/div>/)?.[0] ?? '';
+    assert.ok(columns.includes(ed.colAddOn.replace('{currency}', 'DA')), 'the add-on column is named, in the shop currency');
+    assert.ok(columns.includes(ed.colPrice.replace('{currency}', 'DA')));
+
+    const addons = html.match(/<input[^>]*data-testid="variant-option-addon"[^>]*>/g) ?? [];
+    assert.equal(addons.length, 2, 'one add-on box per option');
+    assert.equal(addons.filter((a) => /disabled=""/.test(a)).length, 1, 'only the own-priced row is greyed');
+    assert.ok((addons.find((a) => /disabled=""/.test(a)) ?? '').includes(`title="${ed.addOnUnusedNote}"`), 'the grey box says why');
+
+    const notes = html.match(/data-testid="variant-addon-unused"/g) ?? [];
+    assert.equal(notes.length, 1, 'the reason is written under the one row it concerns');
+  });
+
   test('the CREATE screen reads a price the same way the editor does (LB.15)', async () => {
     /* LB.15 established that ONE function must say what the characters in a
        money box mean, and fixed the three boxes in the editor. The create

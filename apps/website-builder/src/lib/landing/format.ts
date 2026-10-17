@@ -11,8 +11,13 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   AED: "AED",
 };
 
+/** The short symbol a price is written with ("DA" for DZD). */
+export function currencySymbol(currency: string): string {
+  return CURRENCY_SYMBOLS[currency] ?? currency;
+}
+
 export function formatPrice(amount: number, currency: string): string {
-  const symbol = CURRENCY_SYMBOLS[currency] ?? currency;
+  const symbol = currencySymbol(currency);
   const formatted = amount.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,

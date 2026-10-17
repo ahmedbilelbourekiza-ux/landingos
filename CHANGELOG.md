@@ -10,6 +10,35 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## VP.1b — the variant add-on box reads as MONEY, and says why it greys out — 17 Oct 2026, LOCAL COMMIT, NOT PUSHED
+
+> **Merchant report, the day VP.1 shipped:** "when I add the price, the
+> stock of that variant becomes 0 and greyed out, I couldn't add stock." No
+> stock moved anywhere: the box was VP.1's add-on (`extraPrice`), which an own
+> price zeroes and disables by design. Unlabelled, "+ 0" beside a price read
+> as a quantity. UI-only; no data, rule or API change.
+>
+> **Now:** each group has column names — Option / Price (DA) / Add-on (DA) —
+> aligned to the row's fixed widths (wide screens); on a phone, where rows
+> wrap and the header is hidden, the add-on carries "DA" beside it. On an
+> own-priced row the add-on shows "—", a tooltip, and a one-line note under
+> the row ("Add-on not used: this option has its own price."). The top hint,
+> the locked-group sentence, the aria label and the `VARIANT_PRICE_AXIS`
+> message now name the Add-on column instead of a bare "+". AR/FR/EN.
+> `lib/landing/format.ts` exports `currencySymbol` (formatPrice uses it).
+>
+> **Tests:** builder-sections 80 → 81 (the editor render names the add-on
+> column in the shop currency, greys only the own-priced row, and gives its
+> reason in the tooltip and under the row). builder-versions 29, hardening 30,
+> variant-price 9, i18n parity 22 — all green; tsc 275 = baseline. Verified in
+> the browser at desktop width and 375px (no horizontal overflow).
+>
+> **Files:** `components/landings/edit/sections/{variant-option-row,
+> variant-group-editor}.tsx`, `lib/landing/format.ts`,
+> `i18n/messages/{ar,fr,en}.json`, `test/builder-sections.test.ts`.
+
+---
+
 ## VP.1 — a variant option can carry its OWN price (fallback: the product price) — DEPLOYED 17 Oct 2026, live ~20:43:37 UTC (`62e0744`; prod column first — HANDOFF_PRODUCTION §1)
 
 > **The problem (merchant report):** "when adding a variant, I can't set its
