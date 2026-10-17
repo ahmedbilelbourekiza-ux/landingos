@@ -1,5 +1,38 @@
 ﻿# Next Steps
 
+## VP.1 — per-variant price: BUILT + VERIFIED ON DEV, committed LOCALLY, NOT PUSHED (17 Oct)
+
+> A variant option in the builder can now carry its own price; empty falls
+> back to the product price (full record: CHANGELOG §VP.1). **Waiting on the
+> owner's go-ahead to push.** Before any deploy:
+>
+> 1. **Prod DDL FIRST, code second** — the code reads `LandingVariant.price`.
+>    Preview `migrate diff` from the approved tree against prod; expect exactly
+>    `ALTER TABLE "LandingVariant" ADD COLUMN "price" DECIMAL(65,30);`.
+> 2. **Dev schema drift is NOT from VP.1:** dev holds the deferred OFF.1 offer
+>    tables, so `db push` on dev would DROP them — use `db execute` there.
+> 3. **Battery (website-builder, same harness, before → after):** 1925 tests
+>    / 32 fail → **1929 / 29 fail** (2 skipped both). The four VP.1 reds went
+>    green; the 28 pre-existing failures are byte-identical by name; ONE new
+>    name — the worker tick's "with the right bearer it actually runs the
+>    jobs" — is `UND_ERR_HEADERS_TIMEOUT` at undici's 300s default: the tick
+>    sweeps EVERY dev tenant (each battery run adds more) and took ~280s per
+>    call in the baseline. The tick's job modules never read variants.
+>    Re-run alone it timed out on BOTH authorised calls (~308s each) — it
+>    gets worse as dev accumulates tenants — and a static walk of the tick
+>    route's import graph (30 files) reaches NONE of VP.1's changed files.
+>    Worth its own fix (the tick needs to answer faster than 300s, or the test
+>    a longer timeout / a scoped tenant set). Packages: i18n 22/22, auth 37, ui 42, product-registry 36,
+>    db 31/35 (the four static checks below). tsc 275 = baseline.
+> 4. Pre-existing on this machine (identical before/after, not VP.1): the AI
+>    generate/analyze/category suites (no model stub), webhook delivery
+>    timeouts, SEC.12 network-key tests, and `packages/db`'s four static
+>    convention checks (PlatformCredential, StorefrontVisit.viewId,
+>    FulfillmentOrder.draftOrderId).
+>
+> Dev leftovers from verification: tenant `vp1-verify-1792260360335` (one
+> page, one test order) — harmless, delete whenever.
+
 ## GEO.0 — the Cloudflare geo-header measurement IS LIVE (4 Sep, `b05698c`); ONE TOGGLE IS BILEL'S
 
 > **Part A (visits by wilaya) is approved and in flight; the resolution

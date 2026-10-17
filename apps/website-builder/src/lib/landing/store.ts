@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import type { LandingPageData, VariantGroup } from "@/types/landing";
 import { groupVariants } from "./mock-data";
+import { unitPriceNumber } from "./variant-price";
 
 // Order state for a single landing page. Holds the user's variant selections
 // and quantity; unit price and subtotal are derived via selectors. Shipping
@@ -26,13 +27,15 @@ function computeUnitPrice(
   selected: Record<string, string>,
   basePrice: number,
 ): number {
-  let extra = 0;
+  // Groups are in display order, so the selection is too — the order the
+  // checkout resolves an own price in (VP.1).
+  const chosen: VariantGroup["options"] = [];
   for (const group of groups) {
-    const chosen = selected[group.name] ?? group.options[0]?.value;
-    const option = group.options.find((o) => o.value === chosen);
-    if (option) extra += option.extraPrice;
+    const value = selected[group.name] ?? group.options[0]?.value;
+    const option = group.options.find((o) => o.value === value);
+    if (option) chosen.push(option);
   }
-  return basePrice + extra;
+  return unitPriceNumber(basePrice, chosen);
 }
 
 export function createLandingOrderStore(page: LandingPageData) {

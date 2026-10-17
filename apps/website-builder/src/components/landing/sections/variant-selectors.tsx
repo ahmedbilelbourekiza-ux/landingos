@@ -9,6 +9,7 @@ import type { LandingOrderStore } from "@/lib/landing/store";
 // VAR.2 — availability is per COMBINATION, and the rule lives in one shared
 // module so the storefront, the checkout and the matrix cannot disagree.
 import { isCombinationAvailable, type OptionAxis } from "@/lib/erp/variant-axes";
+import { hasOwnPrice } from "@/lib/landing/variant-price";
 
 // One segmented control per variant group. Each option is a button; the
 // selected option gets a solid fill. Extra-price adjustments shown inline.
@@ -89,7 +90,7 @@ export function VariantSelectors({
                 >
                   {isSelected && <Check className="size-3.5" aria-hidden />}
                   <span>{option.value}</span>
-                  {option.extraPrice > 0 && (
+                  {(hasOwnPrice(option.price) || option.extraPrice > 0) && (
                     /* The softened GUARANTEED foreground, never the background
                        at partial opacity: background@70 over the primary is an
                        unguaranteed pair that measured 2.98–4.07:1 on four of
@@ -103,7 +104,12 @@ export function VariantSelectors({
                           : undefined
                       }
                     >
-                      +{formatPrice(option.extraPrice, currency)}
+                      {/* VP.1 — an own price is shown as the price itself; an
+                          add-on keeps its "+". Never both: the PUT zeroes the
+                          add-on on a row that sets its own price. */}
+                      {hasOwnPrice(option.price)
+                        ? formatPrice(Number(option.price), currency)
+                        : `+${formatPrice(option.extraPrice, currency)}`}
                     </span>
                   )}
                 </button>

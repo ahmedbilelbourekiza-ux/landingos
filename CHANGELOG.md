@@ -10,6 +10,89 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## VP.1 — a variant option can carry its OWN price (fallback: the product price) — 17 Oct 2026, LOCAL COMMIT, NOT PUSHED
+
+> **The problem (merchant report):** "when adding a variant, I can't set its
+> own price — every variant uses the product price." In the builder editor a
+> variant option had only the `+` box (`LandingVariant.extraPrice`, an add-on),
+> so "Large costs 2,900" was not expressible; the ERP matrix has no price at
+> all and is untouched (by decision: the page owns pricing, VAR.1).
+>
+> **The rule (`src/lib/landing/variant-price.ts`, no directive — browser,
+> server and bare-node suite all import it):** base = the chosen option's own
+> price if one has it, else the product price; unit = base + every chosen
+> option's `extraPrice`. Own prices live on ONE option group per page — the
+> PUT refuses a second (`VARIANT_PRICE_AXIS`, mapped and translated AR/FR/EN)
+> and the editor locks the other groups' price boxes with a sentence naming
+> where prices live. A row with an own price carries no add-on (the PUT zeroes
+> it), so nothing is counted twice. Empty = null = product price; `0` is a
+> real price; `""` is never coerced to 0.
+>
+> **Where it now applies — the two price computations and everything that
+> displays one:** the checkout (`orders/route.ts`, Decimal end to end, from the
+> tenant's rows only), the storefront store (`computeUnitPrice`), the variant
+> chips (an own price shows as the price, an add-on keeps its `+`), the HEADLINE
+> `PriceBlock` (now the SELECTED unit price — previously it ignored the
+> selection; the was-price/badge hide themselves at or above it), and the three
+> editor previews. Duplicate copies `price`; version snapshots carry it
+> generically (DMMF), older snapshots restore it as null. ERP-synthesised values
+> get `price: null` (product price), same reasoning as their `extraPrice: 0`.
+> Downstream (`SalesOrder.productPrice` → fulfilment, webhooks, CAPI) needed
+> nothing: it already snapshots the resolved unit price.
+>
+> **MIGRATION — one additive, nullable column:**
+> `ALTER TABLE "LandingVariant" ADD COLUMN "price" DECIMAL(65,30);`
+> Applied to DEV (`ep-gentle-sky-b1rahhl0`) with `prisma db execute`, NOT
+> `db push` — dev carries the deferred OFF.1 tables (`LandingOffer` + 3 enums,
+> `SalesOrder.offerLines`) that `main`'s schema does not, and a push would have
+> dropped them. Post-apply `migrate diff` against dev shows ONLY that OFF.1
+> drift. **PROD ORDER MATTERS: the column must exist BEFORE this code deploys**
+> (every variant read selects all scalars). Preview with `migrate diff` from the
+> approved tree as usual; expect exactly the one ADD COLUMN.
+>
+> **Measured first:** the new checkout tests ran red against the UNCHANGED
+> route on the same build — Large(2800.5)+Black ×2 charged 4500, not 6101;
+> XS(1500) charged 4500, not 3500; M+Gold charged 4900, not 6501.
+>
+> **Tests (new):** `variant-price` 9 (pure rule); storefront +5 (own price
+> charged in Decimal; lower than product price; empty → product price; add-on
+> on the other axis; forged price + `erp:` id buy nothing); builder-sections +4
+> (round-trip incl. `""`→null and `0`; add-on zeroed; second priced group
+> refused by code; negative refused); builder-versions +1; hardening's
+> duplicate test now asserts `price` is copied. **Counts:** see the battery
+> line in NEXT_STEPS (same harness before and after). tsc at the 275 baseline,
+> none in changed files.
+>
+> **Live check (dev, in-app browser):** set Large = 2900 in the editor → saved
+> row `price=2900, extraPrice=0`; storefront headline 2,500 → 2,900 on Large,
+> 3,200 on Large+Gold(+300), badge −17% → −9%; ordered ×2 → form quoted 6,900;
+> stored `productPrice 3200 / shipping 500 / total 6900`. Editor at 375px: no
+> horizontal overflow; option rows wrap (label + price, then add-on + remove).
+>
+> **Environment fix found on the way (not in the commit):** the repo's move to
+> `D:` had turned the `node_modules/@landingos/*` workspace links into plain
+> COPIES, so Turbopack refused every `.ts` workspace import ("Unknown module
+> type") and no build could run. The copies (byte-identical to the sources)
+> were moved to `node_modules/.landingos-copies-backup/` and replaced with
+> junctions — what `npm install` creates on Windows.
+>
+> **Files:** `lib/landing/variant-price.ts` (new), `api/storefront/[tenant]/
+> orders/route.ts`, `api/builder/landings/[id]/{variants,duplicate}/route.ts`,
+> `lib/landing/{store,mappers,mock-data,mock-landings,preview-to-landing}.ts`,
+> `types/landing.ts`, `lib/console/action-errors.ts`, `components/landing/
+> sections/{variant-selectors,product-info}.tsx`, `components/landings/edit/
+> sections/{variant-option-row,variant-group-editor,variants-section}.tsx`,
+> `components/landings/edit/preview/{preview-pricing,preview-variants,
+> preview-order-form}.tsx`, both Prisma schemas, `i18n/messages/{ar,fr,en}.json`,
+> tests as above.
+>
+> **Risk:** the headline price now follows the selection on EVERY page,
+> including add-on-only pages whose first option carries a `+` (the headline
+> shows base + that add-on at first paint, matching the order summary it sits
+> above). Rollback = revert the commit; the column is inert without the code.
+
+---
+
 ## DEPLOY — TR.1+TR.2+WM.1, the Traffic-screen redesign batch — deployed 4 Sep 2026, live ~21:40:15 UTC
 
 > **`origin/main` = `16ae5c5`** (`2c68bd6..16ae5c5`, one batch commit whose

@@ -135,6 +135,18 @@ describe('restorableColumns (pure)', () => {
     });
     assert.deepEqual(Object.keys(out).sort(), ['displayOrder', 'extraPrice', 'name', 'value']);
   });
+
+  test('VP.1 — a variant own price is restored; an older snapshot without one restores empty', () => {
+    const priced = restorableColumns('LandingVariant', {
+      name: 'Size', value: 'M', extraPrice: '0', price: '2800.5', displayOrder: 0,
+    });
+    assert.equal(String(priced.price), '2800.5', 'the own price survives a restore');
+
+    const older = restorableColumns('LandingVariant', {
+      name: 'Size', value: 'M', extraPrice: '0', displayOrder: 0,
+    });
+    assert.equal('price' in older, false, 'absent, so the column default (null = product price) applies');
+  });
 });
 
 /* ---- drift guard 1: the snapshot covers every relation ------------------- */

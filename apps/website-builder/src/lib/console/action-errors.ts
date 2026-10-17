@@ -118,6 +118,10 @@ const ERROR_KEYS: Record<string, string> = {
   VARIANT_LEVEL_REQUIRED: "common.error.variantLevelRequired",
   VARIANT_HOLDS_STOCK: "common.error.variantHoldsStock",
   DUPLICATE_VARIANT: "common.error.duplicateVariant",
+  /* VP.1 — own variant prices on a second option group. The editor already
+   * stops this at the keyboard; this is for the stale tab and the hand-made
+   * request, and it names the fix (keep prices in one group). */
+  VARIANT_PRICE_AXIS: "common.error.variantPriceAxis",
   /* INV.3 — the two ways an OPENING level is refused, and they are two codes
    * because the fix is different for each. "This has moved before" means the
    * opening figure is no longer the right instrument and the correction panel

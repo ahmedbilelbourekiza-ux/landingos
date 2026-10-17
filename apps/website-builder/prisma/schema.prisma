@@ -166,6 +166,8 @@ model LandingVariant {
   name          String
   value         String
   extraPrice    Decimal     @default(0)
+  // VP.1 — own unit price; null = the product price. See packages/db.
+  price         Decimal?
   displayOrder  Int         @default(0)
 
   landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)

@@ -35,12 +35,15 @@ export function VariantGroupEditor({
   group,
   index,
   currency,
+  priceLockedTo = null,
   onChange,
   onDelete,
 }: {
   group: VariantGroup;
   index: number;
   currency: string;
+  /** VP.1 — the name of ANOTHER group that already carries own prices. */
+  priceLockedTo?: string | null;
   onChange: (id: string, patch: Partial<VariantGroup>) => void;
   onDelete: (id: string) => void;
 }) {
@@ -67,6 +70,7 @@ export function VariantGroupEditor({
       id: `opt-${Date.now()}`,
       label: "",
       extraPrice: 0,
+      price: null,
     };
     onChange(group.id, { options: [...group.options, newOption] });
   };
@@ -112,6 +116,14 @@ export function VariantGroupEditor({
         </Button>
       </div>
 
+      {/* VP.1 — said, not just greyed: the merchant learns WHERE prices live
+          and what this group can still do. */}
+      {priceLockedTo !== null && (
+        <p className="mb-2 text-xs text-muted-foreground" data-testid="variant-price-locked">
+          {t("builder.editor.priceLockedToGroup", { name: priceLockedTo || "—" })}
+        </p>
+      )}
+
       {/* Options */}
       <div className="flex flex-col gap-2">
         <DndContext
@@ -129,6 +141,7 @@ export function VariantGroupEditor({
                 option={opt}
                 index={i}
                 currency={currency}
+                priceLocked={priceLockedTo !== null}
                 onChange={updateOption}
                 onRemove={removeOption}
               />

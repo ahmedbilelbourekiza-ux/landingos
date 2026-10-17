@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { formatPrice } from "@/lib/landing/format";
+import { unitPriceNumber } from "@/lib/landing/variant-price";
 import type { PreviewState } from "@/types/preview";
 import {
   normalizeOrder,
@@ -64,10 +65,12 @@ export function PreviewOrderForm({ preview }: { preview: PreviewState }) {
   const shipping = deliveryPrices[Number(selectedWilaya)] ?? 0;
 
   // Compute effective price (base + variant extras + shipping)
-  const variantExtra = preview.variants.groups.reduce((sum, g) => {
-    return sum + (g.options[0]?.extraPrice ?? 0);
-  }, 0);
-  const effectivePrice = preview.pricing.price + variantExtra;
+  // The first option of each group, priced by the shared rule: an own price
+  // replaces the product price, extras add (VP.1).
+  const effectivePrice = unitPriceNumber(
+    preview.pricing.price,
+    preview.variants.groups.flatMap((g) => (g.options[0] ? [g.options[0]] : [])),
+  );
   const total = effectivePrice + shipping;
 
   const selectedWilayaData = wilayas.find((w) => w.id === Number(selectedWilaya));

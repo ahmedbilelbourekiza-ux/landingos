@@ -46,6 +46,8 @@ export function VariantsSection({
           name: g.name,
           value: opt.label,
           extraPrice: opt.extraPrice,
+          // VP.1 — null is "the product price", sent as such.
+          price: opt.price ?? null,
         })),
       );
       const res = await fetch(api(`/landings/${landingId}/variants`), {
@@ -87,6 +89,12 @@ export function VariantsSection({
     setGroups((prev) => prev.filter((g) => g.id !== id));
     section.markDirty();
   };
+
+  /* VP.1 — own prices live on ONE group (the PUT refuses a second). The first
+   * group holding any is the one; every other group's price box is locked
+   * and says where the prices are. */
+  const pricedGroup =
+    groups.find((g) => g.options.some((o) => o.price !== null && o.price !== undefined)) ?? null;
 
   // --- Save / Cancel ---
   const handleSave = async () => {
@@ -144,12 +152,17 @@ export function VariantsSection({
           </div>
         )}
 
+        {groups.length > 0 && (
+          <p className="text-xs text-muted-foreground">{t("builder.editor.variantPriceHint")}</p>
+        )}
+
         {groups.map((group, i) => (
           <VariantGroupEditor
             key={group.id}
             group={group}
             index={i}
             currency={CURRENCY}
+            priceLockedTo={pricedGroup && pricedGroup.id !== group.id ? pricedGroup.name : null}
             onChange={updateGroup}
             onDelete={deleteGroup}
           />

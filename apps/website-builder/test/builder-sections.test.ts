@@ -315,6 +315,63 @@ describe('landing editor sections', { skip }, () => {
     assert.equal(r.body.error.code, 'DUPLICATE_VARIANT');
   });
 
+  /* VP.1 — a variant option's own price. */
+  test('an own variant price round-trips; empty stays empty, never 0', async () => {
+    const r = await put(`/api/builder/landings/${pageId}/variants`, tokens.owner, {
+      items: [
+        { name: 'Size', value: 'S', extraPrice: 0, price: null },
+        { name: 'Size', value: 'M', extraPrice: 0, price: '2800.50' },
+        { name: 'Size', value: 'L', extraPrice: 0, price: '' },
+        { name: 'Size', value: 'XL', extraPrice: 0, price: 0 },
+        { name: 'Colour', value: 'Gold', extraPrice: 200 },
+      ],
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const rows = await withTenant(tenant, (tx) =>
+      (tx as any).landingVariant.findMany({
+        where: { landingPageId: pageId },
+        orderBy: { displayOrder: 'asc' },
+        select: { value: true, price: true, extraPrice: true },
+      }),
+    );
+    const byValue = Object.fromEntries((rows as any[]).map((v: any) => [v.value, v]));
+    assert.equal(byValue.S.price, null, 'null is the product price');
+    assert.equal(String(byValue.M.price), '2800.5');
+    assert.equal(byValue.L.price, null, 'an empty box is NOT a free variant');
+    assert.equal(String(byValue.XL.price), '0', 'zero is a real price');
+    assert.equal(byValue.Gold.price, null, 'an absent price is the product price');
+    assert.equal(String(byValue.Gold.extraPrice), '200', 'the add-on still works on the other group');
+  });
+
+  test('an option with its own price carries no add-on', async () => {
+    const r = await put(`/api/builder/landings/${pageId}/variants`, tokens.owner, {
+      items: [{ name: 'Size', value: 'M', extraPrice: 300, price: 2800 }],
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const row = await withTenant(tenant, (tx) =>
+      (tx as any).landingVariant.findFirst({ where: { landingPageId: pageId }, select: { extraPrice: true } }),
+    );
+    assert.equal(String((row as any).extraPrice), '0', 'the price IS the figure — never counted twice');
+  });
+
+  test('own prices on a second option group are refused, by code', async () => {
+    const r = await put(`/api/builder/landings/${pageId}/variants`, tokens.owner, {
+      items: [
+        { name: 'Size', value: 'M', price: 2800 },
+        { name: 'Colour', value: 'Gold', price: 3100 },
+      ],
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.body.error.code, 'VARIANT_PRICE_AXIS');
+  });
+
+  test('a negative own price is refused', async () => {
+    const r = await put(`/api/builder/landings/${pageId}/variants`, tokens.owner, {
+      items: [{ name: 'Size', value: 'M', price: -1 }],
+    });
+    assert.equal(r.status, 422);
+  });
+
   test('a review rating outside 1..5 is refused', async () => {
     // Prisma has no portable CHECK constraint, so validation is the only guard.
     for (const rating of [0, 6, -1]) {

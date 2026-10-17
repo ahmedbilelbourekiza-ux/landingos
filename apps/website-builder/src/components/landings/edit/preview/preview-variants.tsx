@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/landing/format";
+import { hasOwnPrice } from "@/lib/landing/variant-price";
 import type { PreviewState } from "@/types/preview";
 import { useTranslations } from "next-intl";
 
@@ -32,9 +33,11 @@ export function PreviewVariants({ preview }: { preview: PreviewState }) {
                 )}
               >
                 {opt.label || "—"}
-                {opt.extraPrice > 0 && (
+                {(hasOwnPrice(opt.price) || opt.extraPrice > 0) && (
                   <span className={cn("ml-0.5", i === 0 ? "text-background/70" : "")}>
-                    +{formatPrice(opt.extraPrice, pricing.currency)}
+                    {hasOwnPrice(opt.price)
+                      ? formatPrice(Number(opt.price), pricing.currency)
+                      : `+${formatPrice(opt.extraPrice, pricing.currency)}`}
                   </span>
                 )}
               </span>

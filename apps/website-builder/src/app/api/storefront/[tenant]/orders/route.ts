@@ -12,6 +12,7 @@ import { dispatchTrackingEvent } from "@/lib/tracking/dispatch";
 import { hasErp, fulfilmentFromSale } from "@/lib/erp/from-sale";
 // VAR.2 — the inventory toggle's server-side half.
 import { variantLevelsFor, refuseIfOutOfStock } from "@/lib/erp/inventory-gate";
+import { ownPriceOption } from "@/lib/landing/variant-price";
 // SEC.11 — the same folding the ERP applies, so "0555 12 34 56" and
 // "0555123456" are one customer to the idempotency guard too.
 import { normalizePhone } from "@/lib/erp/phone";
@@ -287,7 +288,12 @@ export async function POST(
         new Prisma.Decimal(0),
       );
 
-      const unitPrice = new Prisma.Decimal(page.price).plus(extras);
+      /* VP.1 — a chosen option with its OWN price replaces the page's price;
+       * none means the page's price, exactly as before. `chosen` is already in
+       * display order (the include above), which is the order the storefront
+       * resolves in too, so the figure shown and the figure charged agree. */
+      const own = ownPriceOption(chosen as { price?: Prisma.Decimal | null }[]);
+      const unitPrice = new Prisma.Decimal(own ? own.price! : page.price).plus(extras);
       /* Free shipping is applied by `deliveryPricesFor` now, not here. It used
          to be a second step taken on this side only, which made the comment
          above it false: the dropdown quoted the company's rate and this line

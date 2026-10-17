@@ -455,6 +455,10 @@
       "optionLabelPlaceholder": "Option label",
       "optionLabelAria": "Label of option {number}",
       "optionPriceAria": "Extra price for option {number}",
+      "optionOwnPriceAria": "Price for option {number}",
+      "optionOwnPricePlaceholder": "Product price",
+      "variantPriceHint": "Price: leave empty to use the product price. “+” adds an amount on top.",
+      "priceLockedToGroup": "Prices are set in “{name}”. Use “+” here for an add-on.",
       "dragOption": "Drag option {number}",
       "removeOption": "Remove option {number}",
       "groupNameRequired": "Every group must have a name.",
@@ -1390,6 +1394,7 @@
       "variantLevelRequired": "This product keeps its stock per variant. Choose which variant this applies to.",
       "variantHoldsStock": "A variant that still holds stock cannot be removed. Set it to zero first, with a reason, so the movement is recorded.",
       "duplicateVariant": "That variant is listed twice. Each variant needs its own name.",
+      "variantPriceAxis": "Variant prices can be set in one option group only. Clear the prices in the other group, or use “+” for an add-on.",
       "hasStockHistory": "This stock has moved before, so it no longer has an opening level. Record a correction with a reason instead.",
       "openingStockLower": "An opening level can only be set upward here. To take stock away, record a correction with a reason."
     },

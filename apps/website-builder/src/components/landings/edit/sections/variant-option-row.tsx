@@ -19,12 +19,15 @@ export function VariantOptionRow({
   option,
   index,
   currency,
+  priceLocked = false,
   onChange,
   onRemove,
 }: {
   option: VariantOption;
   index: number;
   currency: string;
+  /** VP.1 — another group already carries own prices, so this one cannot. */
+  priceLocked?: boolean;
   onChange: (id: string, patch: Partial<VariantOption>) => void;
   onRemove: (id: string) => void;
 }) {
@@ -55,12 +58,28 @@ export function VariantOptionRow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [option.extraPrice]);
 
+  /* VP.1 — the option's OWN price, held as text for the same keystroke reason.
+   * Empty is meaningful here, unlike the supplement: it means "the product
+   * price", so it is kept as null rather than read as 0 — a blank box must
+   * never turn into a free variant. */
+  const ownText = (p: number | null | undefined) => (p === null || p === undefined ? "" : String(p));
+  const [ownPriceText, setOwnPriceText] = React.useState(() => ownText(option.price));
+  React.useEffect(() => {
+    if ((readTypedMoney(ownPriceText) ?? null) !== (option.price ?? null)) {
+      setOwnPriceText(ownText(option.price));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [option.price]);
+  const hasOwn = option.price !== null && option.price !== undefined;
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-2 rounded-lg border bg-card p-2",
+        // Wraps: with the own-price box (VP.1) a phone-width row cannot hold
+        // five controls, and squeezing them hid the option label entirely.
+        "flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2",
         isDragging && "z-10 opacity-80 shadow-md",
       )}
     >
@@ -83,7 +102,36 @@ export function VariantOptionRow({
         aria-label={t("builder.editor.optionLabelAria", { number: index + 1 })}
         onPointerDown={(e) => e.stopPropagation()}
         onChange={(e) => onChange(option.id, { label: e.target.value })}
-        className="h-8 flex-1"
+        className="h-8 min-w-0 flex-1 basis-24"
+      />
+
+      {/* Own price (VP.1). Same text-with-decimal-keypad treatment as the
+          supplement beside it; the placeholder says what empty means. Locked
+          when another group already carries prices — own prices live on one
+          group, and the group says which. */}
+      <Input
+        type="text"
+        inputMode="decimal"
+        dir="ltr"
+        pattern={MONEY_PATTERN}
+        value={ownPriceText}
+        disabled={priceLocked && !hasOwn}
+        placeholder={t("builder.editor.optionOwnPricePlaceholder")}
+        aria-label={t("builder.editor.optionOwnPriceAria", { number: index + 1 })}
+        data-testid="variant-option-price"
+        onPointerDown={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          const raw = e.target.value;
+          const read = readTypedMoney(raw);
+          if (read === null) return;
+          setOwnPriceText(raw);
+          // An own price replaces the supplement on this row (the PUT zeroes
+          // it too), so the "+" box clears rather than silently counting twice.
+          onChange(option.id, read === undefined
+            ? { price: null }
+            : { price: Math.max(0, read), extraPrice: 0 });
+        }}
+        className="h-8 w-24 tabular-nums sm:w-28"
       />
 
       {/* Extra price. Text with a decimal keypad, never `type="number"` —
@@ -102,6 +150,7 @@ export function VariantOptionRow({
           dir="ltr"
           pattern={MONEY_PATTERN}
           value={priceText}
+          disabled={hasOwn}
           placeholder="0"
           aria-label={t("builder.editor.optionPriceAria", { number: index + 1 })}
           onPointerDown={(e) => e.stopPropagation()}

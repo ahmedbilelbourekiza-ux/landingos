@@ -455,6 +455,10 @@
       "optionLabelPlaceholder": "Libellé de l'option",
       "optionLabelAria": "Libellé de l'option {number}",
       "optionPriceAria": "Supplément pour l'option {number}",
+      "optionOwnPriceAria": "Prix de l'option {number}",
+      "optionOwnPricePlaceholder": "Prix du produit",
+      "variantPriceHint": "Prix : laissez vide pour utiliser le prix du produit. « + » ajoute un montant en plus.",
+      "priceLockedToGroup": "Les prix sont définis dans « {name} ». Utilisez « + » ici pour un supplément.",
       "dragOption": "Glisser l'option {number}",
       "removeOption": "Supprimer l'option {number}",
       "groupNameRequired": "Chaque groupe doit avoir un nom.",
@@ -1390,6 +1394,7 @@
       "variantLevelRequired": "Ce produit gère son stock par variante. Choisissez la variante concernée.",
       "variantHoldsStock": "Une variante qui détient encore du stock ne peut pas être supprimée. Mettez-la à zéro d'abord, avec un motif, pour que le mouvement soit enregistré.",
       "duplicateVariant": "Cette variante figure deux fois. Chaque variante doit avoir son propre nom.",
+      "variantPriceAxis": "Les prix de variante ne peuvent être définis que dans un seul groupe d'options. Videz les prix de l'autre groupe, ou utilisez « + » pour un supplément.",
       "hasStockHistory": "Ce stock a déjà bougé, il n'a donc plus de niveau de départ. Enregistrez plutôt une correction avec un motif.",
       "openingStockLower": "Un niveau de départ ne peut être défini qu'à la hausse ici. Pour retirer du stock, enregistrez une correction avec un motif."
     },

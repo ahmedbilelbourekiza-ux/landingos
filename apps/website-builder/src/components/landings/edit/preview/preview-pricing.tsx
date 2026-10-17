@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 
 import { formatPrice, discountPercentage } from "@/lib/landing/format";
+import { unitPriceNumber } from "@/lib/landing/variant-price";
 import type { PreviewState } from "@/types/preview";
 
 // Pricing block. Shows the effective price (base + variant extras) and the
@@ -11,10 +12,12 @@ import type { PreviewState } from "@/types/preview";
 export function PreviewPricing({ preview }: { preview: PreviewState }) {
   const { pricing, variants } = preview;
 
-  const variantExtra = variants.groups.reduce((sum, g) => {
-    return sum + (g.options[0]?.extraPrice ?? 0);
-  }, 0);
-  const effectivePrice = pricing.price + variantExtra;
+  // The preview shows each group's first option as selected; the unit price
+  // follows the same rule the storefront and the checkout use (VP.1).
+  const effectivePrice = unitPriceNumber(
+    pricing.price,
+    variants.groups.flatMap((g) => (g.options[0] ? [g.options[0]] : [])),
+  );
   const discount = discountPercentage(effectivePrice, pricing.oldPrice);
 
   return (

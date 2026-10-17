@@ -27,6 +27,8 @@ export interface LandingVariantData {
   name: string;
   value: string;
   extraPrice: number;
+  /** VP.1 — own unit price; null/absent means the product price. */
+  price?: number | null;
   displayOrder: number;
 }
 
@@ -144,5 +146,6 @@ export interface VariantGroup {
     id: string;
     value: string;
     extraPrice: number;
+    price?: number | null;
   }[];
 }

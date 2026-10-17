@@ -99,7 +99,7 @@ export const POST = tenantRoute<Params>("website-builder:pages:write", async ({ 
       // "inherit the tenant's set", and it is what every page had before LB.35.
       trackingIntegrationIds: source.trackingIntegrationIds ?? undefined,
       media: { create: copyRows(source.media, ["type", "url", "altText", "displayOrder", "placement"]) },
-      variants: { create: copyRows(source.variants, ["name", "value", "extraPrice", "displayOrder"]) },
+      variants: { create: copyRows(source.variants, ["name", "value", "extraPrice", "price", "displayOrder"]) },
       features: { create: copyRows(source.features, ["icon", "title", "description", "displayOrder"]) },
       reviews: { create: copyRows(source.reviews, ["customerName", "customerAvatar", "rating", "reviewText", "displayOrder"]) },
       faqs: { create: copyRows(source.faqs, ["question", "answer", "displayOrder"]) },

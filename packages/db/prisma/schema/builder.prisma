@@ -163,6 +163,12 @@ model LandingVariant {
   name         String
   value        String
   extraPrice   Decimal @default(0)
+  // VP.1 — this option's OWN unit price, replacing the page's price when
+  // chosen. Null means "use the product price"; 0 is a real (free) price.
+  // Own prices live on ONE axis per page (the variants PUT enforces it), so
+  // which option sets the base is never ambiguous; `extraPrice` on the other
+  // axes still adds on top. See `lib/landing/variant-price.ts`.
+  price        Decimal?
   displayOrder Int     @default(0)
 
   landingPage LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)

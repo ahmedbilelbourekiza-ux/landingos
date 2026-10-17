@@ -418,7 +418,8 @@ before(async () => {
         ] },
         variants: { create: [
           { tenantId, name: 'Couleur', value: 'Noir', extraPrice: 0, displayOrder: 0 },
-          { tenantId, name: 'Couleur', value: 'Or', extraPrice: 500, displayOrder: 1 },
+          // VP.1 — an own price, so the duplicate is seen to carry it.
+          { tenantId, name: 'Couleur', value: 'Or', extraPrice: 0, price: 3700, displayOrder: 1 },
         ] },
         reviews: { create: [
           { tenantId, customerName: 'Amina', rating: 5, reviewText: 'ممتاز', displayOrder: 0 },
@@ -494,6 +495,11 @@ describe('a page can be duplicated whole (LB.6)', { skip }, () => {
     assert.equal(copy.title, 'Fifteen Variants (copy)');
     assert.equal(copy.media.length, 2, 'both placements came along');
     assert.equal(copy.variants.length, 2);
+    // VP.1 — a variant's own price came along; the other stays empty.
+    const or = (copy as any).variants.find((v: any) => v.value === 'Or');
+    const noir = (copy as any).variants.find((v: any) => v.value === 'Noir');
+    assert.equal(String(or.price), '3700', 'the own price was copied');
+    assert.equal(noir.price, null, 'an empty price stays empty in the copy');
     assert.equal(copy.reviews.length, 1);
     assert.equal(copy.setting.stopDeskEnabled, true);
     assert.deepEqual(copy.setting.orderFormConfig, { order: ['phone', 'customerName'] });

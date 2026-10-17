@@ -442,6 +442,95 @@ describe('checkout never trusts a price from the client', { skip }, () => {
     assert.equal(String(stored.productPrice), '2000.1');
   });
 
+  /* VP.1 — a variant option may carry its OWN price, which replaces the
+   * product price; an empty one falls back to it. Priced from the tenant's
+   * rows like every other figure here, so nothing the client sends moves it. */
+  describe('VP.1 — per-variant price', () => {
+    let pageId = '';
+    const ids: Record<string, string> = {};
+
+    before(async () => {
+      if (skip) return;
+      await withTenant(tenantA, async (db) => {
+        const p = await (db as any).landingPage.create({
+          data: {
+            tenantId: tenantA, title: 'Priced Variants', slug: `vp-${stamp}`,
+            price: 2000, published: true, status: 'PUBLISHED',
+          },
+          select: { id: true },
+        });
+        pageId = p.id;
+        const rows = [
+          { key: 'S', name: 'Size', value: 'S', price: null, extraPrice: 0 },
+          { key: 'M', name: 'Size', value: 'M', price: 2800.5, extraPrice: 0 },
+          { key: 'XS', name: 'Size', value: 'XS', price: 1500, extraPrice: 0 },
+          { key: 'Black', name: 'Colour', value: 'Black', price: null, extraPrice: 0 },
+          { key: 'Gold', name: 'Colour', value: 'Gold', price: null, extraPrice: 200 },
+        ];
+        for (const [i, r] of rows.entries()) {
+          const v = await (db as any).landingVariant.create({
+            data: {
+              tenantId: tenantA, landingPageId: p.id, name: r.name, value: r.value,
+              price: r.price, extraPrice: r.extraPrice, displayOrder: i,
+            },
+            select: { id: true },
+          });
+          ids[r.key] = v.id;
+        }
+      });
+    });
+
+    const order = (variantIds: string[], extra: Record<string, unknown> = {}) =>
+      post(`/api/storefront/${slugA}/orders`, {
+        landingPageId: pageId,
+        customerName: 'Variant Buyer',
+        phone: `0555${String(Math.floor(Math.random() * 1e6)).padStart(6, '0')}`,
+        wilayaId,
+        baladiaName: 'Somewhere',
+        quantity: 2,
+        variantIds,
+        shippingMethod: 'HOME',
+        ...extra,
+      });
+
+    const stored = (id: string) =>
+      withTenant(tenantA, (db) =>
+        (db as any).salesOrder.findFirst({ where: { id }, select: { productPrice: true, totalPrice: true } }),
+      );
+
+    test('an option with its own price is charged that price, in Decimal', async () => {
+      const r = await order([ids.M, ids.Black]);
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+      assert.equal(r.body.data.total, '6101', '2800.5 × 2 + 500');
+      assert.equal(String(((await stored(r.body.data.id)) as any).productPrice), '2800.5');
+    });
+
+    test('an own price may be LOWER than the product price', async () => {
+      const r = await order([ids.XS, ids.Black]);
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+      assert.equal(r.body.data.total, '3500', '1500 × 2 + 500');
+    });
+
+    test('an empty price falls back to the product price', async () => {
+      const r = await order([ids.S, ids.Black]);
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+      assert.equal(r.body.data.total, '4500', '2000 × 2 + 500');
+    });
+
+    test('an extra on the other axis adds on top of the own price', async () => {
+      const r = await order([ids.M, ids.Gold]);
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+      assert.equal(r.body.data.total, '6501', '(2800.5 + 200) × 2 + 500');
+      assert.equal(String(((await stored(r.body.data.id)) as any).productPrice), '3000.5');
+    });
+
+    test('a forged price and an unknown (ERP-synthesised) id buy nothing', async () => {
+      const r = await order([`erp:Size:XL`, ids.Black], { price: 1, productPrice: 1, unitPrice: 1 });
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+      assert.equal(r.body.data.total, '4500', 'product price — the unknown id prices nothing');
+    });
+  });
+
   test('another tenant\'s product cannot be ordered through this store', async () => {
     const r = await post(`/api/storefront/${slugA}/orders`, {
       landingPageId: publishedB,

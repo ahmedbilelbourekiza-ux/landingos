@@ -20,7 +20,7 @@ export function previewToLandingPage(preview: PreviewState): LandingPageData {
 
   const flatVariants = variants.groups.flatMap((group, gi) =>
     group.options.map((opt, oi) => ({
-      id: opt.id, name: group.name, value: opt.label, extraPrice: opt.extraPrice, displayOrder: gi * 100 + oi,
+      id: opt.id, name: group.name, value: opt.label, extraPrice: opt.extraPrice, price: opt.price ?? null, displayOrder: gi * 100 + oi,
     })),
   );
 

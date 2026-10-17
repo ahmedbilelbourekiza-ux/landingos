@@ -6,7 +6,7 @@ import { VariantSelectors } from "./variant-selectors";
 import { OrderSummary } from "./order-summary";
 import { PurchaseForm } from "./purchase-form";
 import type { LandingPageData } from "@/types/landing";
-import type { LandingOrderStore } from "@/lib/landing/store";
+import { useUnitPrice, type LandingOrderStore } from "@/lib/landing/store";
 
 export function ProductInfo({
   page,
@@ -15,6 +15,12 @@ export function ProductInfo({
   page: LandingPageData;
   store: LandingOrderStore;
 }) {
+  /* VP.1 — the headline is the price of what is SELECTED, so a variant with
+     its own price is never advertised at the product price it does not cost.
+     The store starts on each group's first option on the server and the
+     client alike, so first paint and hydration agree. The was-price and its
+     badge hide themselves when the selection is at or above it. */
+  const unitPrice = useUnitPrice(store);
   return (
     // The entrance is a CSS animation, not framer: a framer initial state
     // server-renders as opacity 0 and holds the column invisible until the
@@ -33,7 +39,7 @@ export function ProductInfo({
       </div>
 
       <div className="py-1">
-        <PriceBlock price={page.price} oldPrice={page.oldPrice} currency={page.currency} />
+        <PriceBlock price={unitPrice} oldPrice={page.oldPrice} currency={page.currency} />
       </div>
 
       {/* LB.12 — the merchant's own benefits when any exist, the standard COD

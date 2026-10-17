@@ -86,6 +86,7 @@ function groupVariants(variants: LandingVariant[]): VariantGroup[] {
       id: v.id,
       label: v.value,
       extraPrice: v.extraPrice.toNumber(),
+      price: v.price?.toNumber() ?? null,
     });
   }
   return groups;
@@ -268,12 +269,13 @@ export function toPreviewState(page: LandingWithRelations): PreviewState {
 function offeredVariantRows(
   rows: readonly LandingVariant[],
   levels: import("../erp/variant-axes").VariantLevels | null,
-): { id: string; name: string; value: string; extraPrice: number; displayOrder: number }[] {
+): { id: string; name: string; value: string; extraPrice: number; price: number | null; displayOrder: number }[] {
   const own = rows.map((v) => ({
     id: v.id,
     name: v.name,
     value: v.value,
     extraPrice: v.extraPrice.toNumber(),
+    price: v.price?.toNumber() ?? null,
     displayOrder: v.displayOrder,
   }));
   if (!levels?.axes?.length) return own;
@@ -302,6 +304,9 @@ function offeredVariantRows(
               name: axis.name,
               value,
               extraPrice: 0,
+              // VP.1 — no own price either: the product price, for the same
+              // reason there is no adjustment.
+              price: null,
               displayOrder: order++,
             },
       );

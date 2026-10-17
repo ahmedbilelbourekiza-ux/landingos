@@ -24,6 +24,8 @@ export interface VariantOption {
   id: string;
   label: string;
   extraPrice: number;
+  /** VP.1 — own unit price; null means the product price. */
+  price?: number | null;
 }
 
 export interface VariantGroup {

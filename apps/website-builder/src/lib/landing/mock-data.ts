@@ -189,7 +189,7 @@ export function groupVariants(
       group = { name: v.name, options: [] };
       groups.push(group);
     }
-    group.options.push({ id: v.id, value: v.value, extraPrice: v.extraPrice });
+    group.options.push({ id: v.id, value: v.value, extraPrice: v.extraPrice, price: v.price ?? null });
   }
   return groups;
 }
