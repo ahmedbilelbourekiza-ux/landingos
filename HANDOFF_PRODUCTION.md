@@ -15,6 +15,23 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✅ VP.1b IS LIVE (17 Oct 2026, 23:58:25 UTC) — the variant add-on box is labelled as money
+>
+> **`origin/main` = `fb55187`** (`6f2347f..fb55187`, one commit; rollback
+> `6f2347f`). UI-only — no migration, no env change. The merchant had read
+> VP.1's greyed add-on ("+ 0") beside an own price as stock; columns are now
+> named Option / Price (DA) / Add-on (DA), phones show "DA" beside the box,
+> and an own-priced row explains why its add-on is unused (CHANGELOG §VP.1b).
+>
+> **Verified:** pushed 23:55:53; new instance detected at 23:58:25 by an
+> image variant flipping HIT → MISS (the deploy wipes `/_next/image`);
+> CONTENT proof — the client chunk `26ma2fbr6h97b.js`, which carries the new
+> `variant-addon-unused` note, answered 404 before the push and 200 after
+> (same content hash as the local build). Health 200 `database: ok`.
+> **273 image variants re-warmed** (every `/_next/image` URL the four
+> published pages reference; verify pass 273/273 HIT). The VP.1 docs push
+> before it also re-warmed 273/273 (20:52 UTC deploy).
+
 > ### ✅ VP.1 IS LIVE (17 Oct 2026, ~20:43:37 UTC) — a variant option can carry its own price
 >
 > **Deployed on the owner's go-ahead: `origin/main` = `62e0744`

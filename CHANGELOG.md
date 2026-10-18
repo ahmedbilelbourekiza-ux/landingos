@@ -10,7 +10,7 @@ touched, any **migration**, and any **risk**.
 
 ---
 
-## VP.1b — the variant add-on box reads as MONEY, and says why it greys out — 17 Oct 2026, LOCAL COMMIT, NOT PUSHED
+## VP.1b — the variant add-on box reads as MONEY, and says why it greys out — DEPLOYED 17 Oct 2026, live 23:58:25 UTC (`fb55187`)
 
 > **Merchant report, the day VP.1 shipped:** "when I add the price, the
 > stock of that variant becomes 0 and greyed out, I couldn't add stock." No
