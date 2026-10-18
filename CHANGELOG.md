@@ -10,7 +10,7 @@ touched, any **migration**, and any **risk**.
 
 ---
 
-## VS.1 — the variant editor shows (and sets) the Manager's stock — 18 Oct 2026, LOCAL COMMIT, NOT PUSHED
+## VS.1 — the variant editor shows (and sets) the Manager's stock — DEPLOYED 18 Oct 2026, live 11:56:44 UTC (`d3613ae`)
 
 > **The report:** "after setting a variant's own Price, stock can't be
 > entered, and stock entered first resets to 0." **Measured before changing

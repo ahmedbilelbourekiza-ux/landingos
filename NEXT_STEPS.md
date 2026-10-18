@@ -1,6 +1,6 @@
 ﻿# Next Steps
 
-## VS.1 — Stock line in the builder variant editor: BUILT + VERIFIED ON DEV, committed LOCALLY, NOT PUSHED (18 Oct)
+## VS.1 — Stock line in the builder variant editor: LIVE (18 Oct, `d3613ae`, 11:56:44 UTC — HANDOFF_PRODUCTION §1)
 
 > The "stock resets to 0 after setting a price" report was stock typed into
 > the add-on box (the builder had no stock field); Manager stock was never

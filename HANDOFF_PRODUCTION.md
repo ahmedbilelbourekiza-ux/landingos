@@ -15,6 +15,26 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✅ VS.1 IS LIVE (18 Oct 2026, 11:56:44 UTC) — the builder variant editor shows and sets the Manager's stock
+>
+> **`origin/main` = `d3613ae`** (`fb55187..d3613ae`: the VS.1 commit plus the
+> VP.1b deploy record `5894e5b`; rollback `fb55187`). **No migration** — zero
+> `packages/db` / prisma files in the range, asserted before the push; the
+> new route reads existing tables only. One-group pages linked to the Manager
+> get a labelled Stock line (writes are `applyMovement` deltas, reason
+> `page_editor`); two-group pages link to the Manager variant editor; unsent
+> pages get a note + Send (CHANGELOG §VS.1).
+>
+> **Verified:** pushed 11:54:07; new instance at 11:56:44 (image variant HIT →
+> MISS); CONTENT proof — chunk `1r2cbyp1o0h0f.js` (carries the Stock line)
+> 404 → 200, and `PUT /api/builder/landings/x/stock` 404 → **401** (the route
+> now exists and demands a session). Health 200 `database: ok`. **273 image
+> variants re-warmed**, verify pass 273/273 HIT.
+>
+> **Not verified live (needs an authed prod session):** the Stock line on a
+> real page and a real stock edit. Both verified end to end on dev. Prod
+> `robe` (unpublished) still carries +20 DA add-ons — owner's call.
+
 > ### ✅ VP.1b IS LIVE (17 Oct 2026, 23:58:25 UTC) — the variant add-on box is labelled as money
 >
 > **`origin/main` = `fb55187`** (`6f2347f..fb55187`, one commit; rollback
