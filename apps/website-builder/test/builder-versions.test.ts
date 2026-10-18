@@ -217,6 +217,8 @@ describe('the checkpoint hook cannot be forgotten on a new route', () => {
     'route.ts:DELETE': 'versions cascade from the page, so a checkpoint here deletes itself',
     'versions/[versionId]/restore/route.ts:POST':
       'takes its own unconditional `restore` checkpoint, which the session rule would have skipped',
+    'stock/route.ts:PUT':
+      'VS.1 — moves the MANAGER\'s stock through the movement ledger; the page is not changed, and a restore must never rewind a warehouse',
   };
 
   function routeFiles(dir: string): string[] {

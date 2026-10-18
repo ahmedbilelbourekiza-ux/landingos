@@ -17,6 +17,7 @@ import { PublishDialog } from "./publish-dialog";
 import { LeaveWarningDialog } from "./leave-warning-dialog";
 import { VersionHistoryDialog } from "./version-history-dialog";
 import { useBuilderApi } from "@/lib/builder/api-base";
+import type { VariantStockContext } from "@/lib/landing/variant-stock";
 
 export function EditWorkspace({
   landingId,
@@ -29,6 +30,7 @@ export function EditWorkspace({
   initialSeo,
   trackingIntegrations,
   initialTracking,
+  variantStock = { mode: "none" },
 }: {
   landingId: string;
   landingTitle: string;
@@ -50,6 +52,8 @@ export function EditWorkspace({
   /** LB.35b — the company's pixels, and which of them this page reports to. */
   trackingIntegrations: readonly TrackingIntegrationOption[];
   initialTracking: TrackingValues;
+  /** VS.1 — the Manager stock context for the Variants section. */
+  variantStock?: VariantStockContext;
 }) {
   // Where this editor sends its requests. The legacy dashboard and the
   // console mount the same components against different bases.
@@ -161,6 +165,7 @@ export function EditWorkspace({
             initialSeo={initialSeo}
             trackingIntegrations={trackingIntegrations}
             initialTracking={initialTracking}
+            variantStock={variantStock}
           />
           <div className="hidden lg:block">
             <PreviewPanel

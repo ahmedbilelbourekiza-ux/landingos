@@ -28,6 +28,7 @@ import { ImagesSection } from "./sections/images-section";
 import { VariantsSection } from "./sections/variants-section";
 import { ReviewsSection } from "./sections/reviews-section";
 import { BenefitsSection } from "./sections/benefits-section";
+import type { VariantStockContext } from "@/lib/landing/variant-stock";
 import { FaqSection } from "./sections/faq-section";
 import { OrderFormSection } from "./sections/order-form-section";
 import { DescriptionImagesSection } from "./sections/description-images-section";
@@ -73,6 +74,7 @@ export function EditSections({
   initialSeo,
   trackingIntegrations,
   initialTracking,
+  variantStock,
 }: {
   preview: PreviewState;
   onPreviewChange: <K extends keyof PreviewState>(
@@ -83,6 +85,7 @@ export function EditSections({
   initialSeo: SeoValues;
   trackingIntegrations: readonly TrackingIntegrationOption[];
   initialTracking: TrackingValues;
+  variantStock: VariantStockContext;
 }) {
   const t = useTranslations();
   const callbacks = React.useMemo(
@@ -177,6 +180,7 @@ export function EditSections({
               landingId={landingId}
               initialValues={preview.variants}
               onPreviewChange={callbacks.variants}
+              stock={variantStock}
             />
           );
         }

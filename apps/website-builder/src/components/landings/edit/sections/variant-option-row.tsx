@@ -13,6 +13,11 @@ import { MONEY_PATTERN, readTypedMoney } from "@/lib/landing/money-field";
 import { currencySymbol } from "@/lib/landing/format";
 import type { VariantOption } from "@/lib/landing/mock-landings";
 
+/** VS.1 — this option's Manager stock, when the page has one option group. */
+export type StockCell =
+  | { readonly state: "missing" }
+  | { readonly state: "edit" | "readonly"; readonly text: string; readonly onChange: (text: string) => void };
+
 // One sortable option row inside a variant group. The drag handle uses
 // dnd-kit listeners; the label and extra-price inputs stop pointer events
 // so they don't trigger a drag when the user clicks into them.
@@ -21,6 +26,7 @@ export function VariantOptionRow({
   index,
   currency,
   priceLocked = false,
+  stock,
   onChange,
   onRemove,
 }: {
@@ -29,6 +35,7 @@ export function VariantOptionRow({
   currency: string;
   /** VP.1 — another group already carries own prices, so this one cannot. */
   priceLocked?: boolean;
+  stock?: StockCell;
   onChange: (id: string, patch: Partial<VariantOption>) => void;
   onRemove: (id: string) => void;
 }) {
@@ -192,6 +199,43 @@ export function VariantOptionRow({
       >
         <X className="size-4" />
       </Button>
+
+      {/* VS.1 — the Manager's stock for this option, on its own labelled
+          line: a merchant who wants stock finds a box that SAYS stock, instead
+          of the add-on. Whole numbers only; the server records a movement. */}
+      {stock && (
+        <div className="flex basis-full items-center gap-2 ps-9 text-xs" data-testid="variant-stock-line">
+          <label className="text-muted-foreground" htmlFor={`variant-stock-${option.id}`}>
+            {t("builder.editor.stockLabel")}
+          </label>
+          {stock.state === "missing" ? (
+            <span className="text-muted-foreground" data-testid="variant-stock-missing">
+              {t("builder.editor.stockNotInManager")}
+            </span>
+          ) : (
+            <Input
+              id={`variant-stock-${option.id}`}
+              type="text"
+              inputMode="numeric"
+              dir="ltr"
+              pattern="[0-9]*"
+              value={stock.text}
+              readOnly={stock.state === "readonly"}
+              disabled={stock.state === "readonly"}
+              aria-label={t("builder.editor.stockAria", { number: index + 1 })}
+              data-testid="variant-stock-input"
+              onPointerDown={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                const raw = e.target.value;
+                // Digits only, refused at the keystroke like the money boxes.
+                if (raw !== "" && !/^\d{1,7}$/.test(raw)) return;
+                if (stock.state === "edit") stock.onChange(raw);
+              }}
+              className="h-7 w-20 tabular-nums"
+            />
+          )}
+        </div>
+      )}
 
       {/* VP.1b — why the add-on is grey, in words, on the row it concerns. */}
       {hasOwn && (

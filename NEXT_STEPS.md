@@ -1,5 +1,28 @@
 ﻿# Next Steps
 
+## VS.1 — Stock line in the builder variant editor: BUILT + VERIFIED ON DEV, committed LOCALLY, NOT PUSHED (18 Oct)
+
+> The "stock resets to 0 after setting a price" report was stock typed into
+> the add-on box (the builder had no stock field); Manager stock was never
+> touched by builder saves (proved on prod data + a dev repro). Fix: a
+> labelled Stock line per option for Manager-linked ONE-group pages, written
+> as ledger movements (reason `page_editor`); two-group pages link to the
+> Manager variant editor (`?variants=<id>#variant-editor`); unsent pages get a
+> note + Send. Full record: CHANGELOG §VS.1. **No migration. Waiting on the
+> owner to push.**
+>
+> **Suites on the final tree (port 3002 harness):** variant-stock 19 (new),
+> builder-versions 29, builder-sections 81, hardening 30, variant-price 9,
+> variant-model 35, storefront 116, erp/catalog 91, erp/screens 171,
+> console-shell 20, i18n parity 22 — all green; tsc 275 = baseline. Browser:
+> own price + stock 120 saved and reloaded (ledger: 500g +20 page_editor);
+> the two-group link opens the Manager on the right product; Send turns the
+> note into Stock lines; 375px no overflow.
+>
+> **Open, owner's call:** prod `robe` (unpublished) still carries +20 DA
+> add-ons on both colours — almost certainly stock typed into the add-on.
+> Dev leftovers: tenants `vs1-verify-*`, `vp-stock-*` (harmless).
+
 ## VP.1 — per-variant price: LIVE (17 Oct, `62e0744`, ~20:43:37 UTC; prod column applied first — HANDOFF_PRODUCTION §1)
 
 > A variant option in the builder can now carry its own price; empty falls

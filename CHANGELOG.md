@@ -10,6 +10,72 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## VS.1 — the variant editor shows (and sets) the Manager's stock — 18 Oct 2026, LOCAL COMMIT, NOT PUSHED
+
+> **The report:** "after setting a variant's own Price, stock can't be
+> entered, and stock entered first resets to 0." **Measured before changing
+> anything — two hypotheses, one real:**
+> (2) "saving builder variants resets the ERP stock" — RULED OUT three ways:
+> prod `asselelbilad` kept 500g=100 / 1kg=50 (opening movements 20:53 UTC)
+> through the own-price save at 00:12 with no movement after it; a scripted
+> dev repro kept 100/50 through a builder save AND a re-send; and in code the
+> variants PUT touches only `LandingVariant`, while the (manual) send's
+> `reconcileMatrix` keeps levels by name.
+> (1) "stock typed into the add-on box" — CONFIRMED: the builder had NO stock
+> field; the add-on is the only other number on the row and an own price
+> clears + disables it by design. Reproduced in the browser (20 typed into the
+> add-on, price set → box cleared to "—"). Prod evidence: unpublished `robe`
+> carries +20 DA on both colours since 15 Aug (left as-is, owner's call).
+>
+> **The fix — a real Stock line, fed from and written to the Manager:**
+> - `lib/landing/variant-stock.ts` (pure): the context type, `stockKey`,
+>   `levelsFromMatrix`, `groupCount`, `readLevel`, reason `page_editor`.
+> - `lib/erp/variant-stock-context.ts`: the editor's server loader adds ONE
+>   statement (link + product together) for a person with the Manager, none
+>   otherwise; modes `none` / `unlinked` / `linked`.
+> - `PUT /api/builder/landings/[id]/stock`: `erp:inventory:write` (+ page
+>   write); typed LEVELS become deltas against the level stored NOW, applied
+>   through `applyMovement` — the Manager variant editor's own conversion; an
+>   unchanged level records nothing; scoped to this page's linked product and
+>   its own options; a two-group page refused (`STOCK_PER_COMBINATION`), an
+>   unsent page or an option the Manager lacks refused (`NOT_IN_MANAGER`) for
+>   the whole batch. `tenantRoute`, not `landingWriteRoute`: stock is not page
+>   data and must not checkpoint a page version.
+> - Editor: one-group linked page → a labelled "Stock" line under each option
+>   (read-only without stock access; "Not in the Manager yet" + Send for new
+>   options); two+ groups → a note linking to the Manager variant editor;
+>   unsent page → a note + "Send to Manager". Levels are saved after the
+>   variants save, in the same Save. A send re-reads the screen.
+> - Manager: `/console/erp/products?variants=<id>#variant-editor` opens the
+>   variant editor on that product (read on its own when not on the list page).
+> - Codes mapped + all strings AR/FR/EN.
+>
+> **Found during browser verification and fixed:** after "Send to Manager"
+> the refreshed context was ignored (levels seeded once at mount), so a just-
+> sent option still read "Not in the Manager yet"; the section now follows the
+> context it is handed.
+>
+> **Tests:** new `variant-stock.test.ts` — 19 (4 pure; 9 route: movement +
+> reason, negative delta, unchanged = nothing, builder save leaves stock
+> alone, page-editor-only member refused, no-Manager shop refused, two-group
+> refused, unsent refused, partial batch refused whole, bad value/level
+> refused; 6 render: stock lines with Manager levels, read-only, two-group
+> link to ITS product, unsent note + send, nothing without the Manager, deep
+> link opens the panel on the product). builder-versions' drift guard caught
+> the new un-hooked write route — it is now on the EXEMPT record with its
+> reason (a restore must never rewind a warehouse). Suites: see NEXT_STEPS.
+> tsc 275 = baseline.
+>
+> **Files:** `lib/landing/variant-stock.ts`, `lib/erp/variant-stock-context.ts`,
+> `app/api/builder/landings/[id]/stock/route.ts` (new);
+> `app/console/builder/pages/[id]/edit/page.tsx`, `components/landings/edit/
+> {edit-workspace,edit-sections}.tsx`, `sections/{variants-section,
+> variant-group-editor,variant-option-row}.tsx`, `app/console/erp/products/
+> page.tsx`, `components/console/erp/variant-editor.tsx`,
+> `lib/console/action-errors.ts`, `i18n/messages/{ar,fr,en}.json`.
+
+---
+
 ## VP.1b — the variant add-on box reads as MONEY, and says why it greys out — DEPLOYED 17 Oct 2026, live 23:58:25 UTC (`fb55187`)
 
 > **Merchant report, the day VP.1 shipped:** "when I add the price, the

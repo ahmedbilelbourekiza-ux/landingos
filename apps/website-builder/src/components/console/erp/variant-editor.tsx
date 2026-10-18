@@ -79,15 +79,24 @@ export interface EditableProductVariants {
 
 export function VariantEditorPanel({
   products,
+  initialProductId,
+  initiallyOpen = false,
   errors,
   s,
 }: {
   readonly products: readonly EditableProductVariants[];
+  /** VS.1 — the product a deep link (`?variants=<id>`) asked for. */
+  readonly initialProductId?: string;
+  readonly initiallyOpen?: boolean;
   readonly errors: ActionErrors;
   readonly s: VariantEditorStrings;
 }) {
-  const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState(products[0]?.id ?? "");
+  const [open, setOpen] = useState(initiallyOpen);
+  const [selected, setSelected] = useState(
+    initialProductId && products.some((p) => p.id === initialProductId)
+      ? initialProductId
+      : products[0]?.id ?? "",
+  );
 
   if (!products.length) return null;
   const product = products.find((p) => p.id === selected) ?? products[0];

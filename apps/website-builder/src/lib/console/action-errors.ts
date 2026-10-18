@@ -122,6 +122,10 @@ const ERROR_KEYS: Record<string, string> = {
    * stops this at the keyboard; this is for the stale tab and the hand-made
    * request, and it names the fix (keep prices in one group). */
   VARIANT_PRICE_AXIS: "common.error.variantPriceAxis",
+  /* VS.1 — the two refusals of the page editor's stock route; both name the
+   * place the merchant goes next (the Manager), so both earn a sentence. */
+  STOCK_PER_COMBINATION: "common.error.stockPerCombination",
+  NOT_IN_MANAGER: "common.error.notInManager",
   /* INV.3 — the two ways an OPENING level is refused, and they are two codes
    * because the fix is different for each. "This has moved before" means the
    * opening figure is no longer the right instrument and the correction panel

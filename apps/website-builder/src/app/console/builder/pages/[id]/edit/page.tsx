@@ -10,6 +10,7 @@ import { BuilderApiProvider } from "@/lib/builder/api-base";
 import { StorefrontApiProvider } from "@/lib/storefront/api-base";
 import { toPreviewState } from "@/lib/landing/mappers";
 import { EditWorkspace } from "@/components/landings/edit/edit-workspace";
+import { variantStockContext } from "@/lib/erp/variant-stock-context";
 import type { PublishStatus } from "@/components/landings/edit/edit-workspace-header";
 
 export const dynamic = "force-dynamic";
@@ -56,7 +57,7 @@ export default async function ConsoleEditLandingPage({
    * Next's control-flow exception, and raising it mid-transaction would abort
    * the transaction to say something the caller could say a line later.
    */
-  const { page, settings, integrations, publicOrigin } = await withTenant(
+  const { page, settings, integrations, publicOrigin, variantStock } = await withTenant(
     session.auth!.tenantId,
     async (db) => {
       const page = await (db as any).landingPage.findUnique({
@@ -101,7 +102,11 @@ export default async function ConsoleEditLandingPage({
       // and primary; the platform-prefixed path otherwise (LB.46).
       const publicOrigin = await primaryPublicOrigin(db);
 
-      return { page, settings, integrations, publicOrigin };
+      /* VS.1 — what the Variants section may say about stock. One statement
+       * for a person with the Manager, none for anybody else. */
+      const variantStock = await variantStockContext(db, session.auth!, id);
+
+      return { page, settings, integrations, publicOrigin, variantStock };
     },
   );
 
@@ -157,6 +162,7 @@ export default async function ConsoleEditLandingPage({
         initialSeo={{ seoTitle: page.seoTitle ?? "", seoDescription: page.seoDescription ?? "" }}
         trackingIntegrations={integrations}
         initialTracking={{ selected: selectedTracking }}
+        variantStock={variantStock}
         initialStatus={(page.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT") as PublishStatus}
       />
       </StorefrontApiProvider>

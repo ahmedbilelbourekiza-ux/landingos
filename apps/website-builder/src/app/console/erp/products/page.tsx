@@ -81,7 +81,13 @@ export default async function ErpProductsScreen({
      below cannot produce the wrong sentence. */
   const filtered = ["search", "category", "niche"].some((k) => params.get(k)?.trim());
 
-  const { products, total, ambiguous, categories, niches } = await withTenant(session.auth!.tenantId, async (db) => {
+  /* VS.1 — `?variants=<productId>` opens the variant editor on that product.
+     The page editor links here for a page whose stock is per COMBINATION. The
+     list is paginated, so the product is read on its own when it is not on
+     this page of it — inside the same transaction. */
+  const focusId = params.get("variants")?.trim() || null;
+
+  const { products, total, ambiguous, categories, niches, focus } = await withTenant(session.auth!.tenantId, async (db) => {
     const total = await db.catalogProduct.count({ where });
     const safePage = Math.min(page, Math.max(1, Math.ceil(total / PAGE_SIZE)));
     return {
@@ -113,6 +119,17 @@ export default async function ErpProductsScreen({
        are not the categories. */
     categories: await productCategories(db, { archived }),
     niches: await productClassification(db, "niche", { archived }),
+    focus: focusId
+      ? await db.catalogProduct.findUnique({
+          where: { id: focusId },
+          select: {
+            id: true, reference: true, name: true, sku: true, brand: true, description: true,
+            price: true, costPrice: true, packagingCost: true,
+            stock: true, threshold: true, variants: true, archived: true,
+            niche: true, category: true, supplier: true, optionDefs: true, image: true,
+          },
+        })
+      : null,
     };
   });
 
@@ -174,7 +191,8 @@ export default async function ErpProductsScreen({
   /* LP.18 — the variant matrix, per product, from what the server holds.
      `inventoryView` is the same shape `GET /products/[id]/variants` answers
      with, so the panel and the route cannot disagree about a level. */
-  const variantEditable: readonly EditableProductVariants[] = products.map((p) => {
+  const variantSource = focus && !products.some((p) => p.id === focus.id) ? [focus, ...products] : products;
+  const variantEditable: readonly EditableProductVariants[] = variantSource.map((p) => {
     const view = inventoryView(p);
     const defs = (Array.isArray(p.optionDefs) ? p.optionDefs : []) as {
       name?: string; values?: string[];
@@ -244,11 +262,15 @@ export default async function ErpProductsScreen({
           {/* LP.18 — the variant matrix. Gated on the permission the ROUTE
               checks, which is not the one above it. */}
           {mayMoveStock && (
+            <div id="variant-editor">
             <VariantEditorPanel
               products={variantEditable}
+              initialProductId={focus?.id}
+              initiallyOpen={Boolean(focus)}
               errors={errors}
               s={variantEditorStrings(t)}
             />
+            </div>
           )}
         </div>
       )}

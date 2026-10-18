@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import type { VariantGroup, VariantOption } from "@/lib/landing/mock-landings";
 import { currencySymbol } from "@/lib/landing/format";
-import { VariantOptionRow } from "./variant-option-row";
+import { VariantOptionRow, type StockCell } from "./variant-option-row";
 
 const MAX_OPTIONS = 10;
 
@@ -37,6 +37,7 @@ export function VariantGroupEditor({
   index,
   currency,
   priceLockedTo = null,
+  stockCells,
   onChange,
   onDelete,
 }: {
@@ -45,6 +46,8 @@ export function VariantGroupEditor({
   currency: string;
   /** VP.1 — the name of ANOTHER group that already carries own prices. */
   priceLockedTo?: string | null;
+  /** VS.1 — Manager stock per option id (one-group pages only). */
+  stockCells?: Readonly<Record<string, StockCell>>;
   onChange: (id: string, patch: Partial<VariantGroup>) => void;
   onDelete: (id: string) => void;
 }) {
@@ -161,6 +164,7 @@ export function VariantGroupEditor({
                 index={i}
                 currency={currency}
                 priceLocked={priceLockedTo !== null}
+                stock={stockCells?.[opt.id]}
                 onChange={updateOption}
                 onRemove={removeOption}
               />
