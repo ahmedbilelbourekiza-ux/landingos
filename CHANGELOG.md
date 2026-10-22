@@ -10,7 +10,7 @@ touched, any **migration**, and any **risk**.
 
 ---
 
-## IQ.1 — tall description posters keep their width (uploads cap WIDTH, not the longest edge) — 22 Oct 2026, LOCAL COMMIT, NOT PUSHED
+## IQ.1 — tall description posters keep their width (uploads cap WIDTH, not the longest edge) — DEPLOYED 22 Oct 2026, live 13:51:54 UTC (`e0944cc`)
 
 > **Merchant report:** the description images on the honey page
 > (`/asselelbilad`, "عسل الندوة العسلية الأسود") look low quality. **Measured

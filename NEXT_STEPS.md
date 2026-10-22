@@ -1,6 +1,6 @@
 ﻿# Next Steps
 
-## IQ.1 — sharp tall description posters: committed LOCALLY, NOT PUSHED (22 Oct)
+## IQ.1 — sharp tall description posters: LIVE (22 Oct, `e0944cc`, 13:51:54 UTC — HANDOFF_PRODUCTION §1)
 
 > Uploads now cap width (2000) instead of the longest edge, so tall
 > description posters keep their full width (the honey page's poster had been

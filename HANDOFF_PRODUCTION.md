@@ -15,6 +15,29 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✅ IQ.1 IS LIVE (22 Oct 2026, 13:51:54 UTC) — tall description posters keep their width
+>
+> **`origin/main` = `e0944cc`** (`d3613ae..e0944cc`: the IQ.1 commit plus the
+> VS.1 deploy record `41e33eb`; rollback `d3613ae`). **No migration** — zero
+> prisma/migration files in the range, asserted before the push. Uploads now
+> cap WIDTH at 2000 and height at 12000 instead of the longest edge at 2000;
+> the description image's `sizes` states its real rendered width
+> (CHANGELOG §IQ.1).
+>
+> **Verified:** pushed 13:47:31; CONTENT proof — `selliora1.com/asselelbilad`
+> flipped its description image `sizes` from `(max-width: 1024px) 100vw,
+> 1152px` to `(max-width: 640px) calc(100vw - 32px), … 1104px` at 13:51:54.
+> Health 200 `database: ok`, `isolation: rls`, `uploads: r2`; `/`, `/dedima`,
+> `/asselelbilad`, `/sellioratm-la-royale` all 200. **273 image variants
+> re-warmed** (every `/_next/image` URL on the sitemap's pages; verify pass
+> 273/273 HIT at 13:53:35). Note: before the deploy the cache was already
+> mostly cold (228/259 MISS) — an instance restart since 18 Oct.
+>
+> **Not verified live (needs an authed prod session):** an actual tall upload
+> on prod (verified on a local standalone build: builder-sections IQ.1 3/3).
+> **Owed, merchant's hands:** re-upload the original description poster on
+> `/asselelbilad` — the stored copy is 267×2000 and cannot be repaired.
+
 > ### ✅ VS.1 IS LIVE (18 Oct 2026, 11:56:44 UTC) — the builder variant editor shows and sets the Manager's stock
 >
 > **`origin/main` = `d3613ae`** (`fb55187..d3613ae`: the VS.1 commit plus the
