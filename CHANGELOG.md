@@ -10,6 +10,48 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## IQ.1 — tall description posters keep their width (uploads cap WIDTH, not the longest edge) — 22 Oct 2026, LOCAL COMMIT, NOT PUSHED
+
+> **Merchant report:** the description images on the honey page
+> (`/asselelbilad`, "عسل الندوة العسلية الأسود") look low quality. **Measured
+> before changing anything:** its description image sits in storage at
+> **267×2000**. `storeImage` capped the LONGEST edge at 2000px
+> (`resize(2000, 2000, inside)`), so a tall poster lost ~75% of its width at
+> upload, then rendered at 100vw on a phone that needs ~1100px — a ~4×
+> stretch. No client-side compression exists; the optimizer's q=75 was not
+> the cause.
+>
+> **Now:** width capped at 2000 (unchanged — still the top of
+> `deviceSizes`), height at 12000 (`MAX_IMAGE_WIDTH` / `MAX_IMAGE_HEIGHT`).
+> 12000 keeps a 1:10 poster 1200px wide and stays under WebP's 16383px
+> limit (the optimizer never enlarges, so no `/_next/image` output can be
+> taller than the stored file). Landscape, square and mild-portrait photos
+> come out exactly as before. The description image's `sizes` now states
+> the real rendered width (`calc(100vw - 32px)` / `calc(100vw - 48px)` /
+> `1104px`) instead of `100vw, 1152px`, so phones stop over-asking by one
+> optimizer step.
+>
+> **Speed, measured on a 1080×5175 poster built from the page's own photos:**
+> served on a phone 417px-wide stretched / ~83KB before → 1080px / ~316KB
+> after (~216KB at w=828). Description images stay lazy in the served HTML
+> (LB.44) and the first one's eager flip still waits for the load event
+> (LB.48), so the hero / LCP path is untouched.
+>
+> **Existing uploads are NOT repaired** — the stored file is the only copy
+> and it is already 267px wide. The merchant must re-upload the original
+> poster on the honey page after the deploy.
+>
+> **Tests:** builder-sections +3 (IQ.1: 1080×8000 stored 1080×8000;
+> 1500×15000 → 1200×12000; 3000×2000 → 2000×1333), run with LB.22's
+> upload/theme tests 8/8 twice on a local standalone build; tsc 275 =
+> baseline.
+>
+> **Files:** `lib/image-upload.ts`,
+> `components/landing/sections/description-images.tsx`, `next.config.ts`
+> (comment), `test/builder-sections.test.ts`.
+
+---
+
 ## VS.1 — the variant editor shows (and sets) the Manager's stock — DEPLOYED 18 Oct 2026, live 11:56:44 UTC (`d3613ae`)
 
 > **The report:** "after setting a variant's own Price, stock can't be

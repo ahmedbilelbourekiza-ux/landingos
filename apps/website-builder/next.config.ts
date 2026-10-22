@@ -95,7 +95,7 @@ const nextConfig: NextConfig = {
      * trimming them trades a real risk of blurry thumbnails on high-DPR phones
      * for almost no CPU. The cost here is concentrated in the big widths.
      *
-     * If `storeImage`'s 2000px cap ever rises, raise this list to match — the
+     * If `storeImage`'s 2000px WIDTH cap (MAX_IMAGE_WIDTH) ever rises, raise this list to match — the
      * two numbers are the same decision stated twice, which is the one thing
      * to watch. */
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],

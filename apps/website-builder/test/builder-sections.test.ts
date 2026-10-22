@@ -1673,3 +1673,44 @@ describe('landing pages can be published into the catalogue (LB.21)', { skip }, 
     assert.equal(r.status, 404);
   });
 });
+
+/* =============================================================================
+ * IQ.1 — a tall description poster keeps its width.
+ *
+ * The cap used to be 2000px on the LONGEST edge, so a 1080×8000 poster was
+ * stored ~270px wide and stretched across a phone (the live honey page's
+ * description image was 267×2000). Width is what the screen uses, so width is
+ * what is capped; ordinary photos must come out exactly as before.
+ * ========================================================================== */
+describe('uploads cap width, not the longest edge (IQ.1)', { skip }, () => {
+  const sizeAfterUpload = async (width: number, height: number) => {
+    const sharp = (await import('sharp')).default;
+    const jpg = await sharp({ create: { width, height, channels: 3, background: '#c8902a' } })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(jpg)], { type: 'image/jpeg' }), 'p.jpg');
+    const res = await fetch(BASE + '/api/builder/upload', {
+      method: 'POST',
+      headers: { cookie: `${SESSION_COOKIE}=${tokens.owner}` },
+      body: form,
+    });
+    assert.equal(res.status, 200);
+    const { url } = (await res.json()).data;
+    const stored = Buffer.from(await (await fetch(BASE + url)).arrayBuffer());
+    const meta = await sharp(stored).metadata();
+    return `${meta.width}x${meta.height}`;
+  };
+
+  test('a 1080×8000 poster is stored at full width', async () => {
+    assert.equal(await sizeAfterUpload(1080, 8000), '1080x8000');
+  });
+
+  test('an extreme poster stops at the 12000px height cap, keeping its ratio', async () => {
+    assert.equal(await sizeAfterUpload(1500, 15000), '1200x12000');
+  });
+
+  test('a wide photo is still capped at 2000px wide, as before', async () => {
+    assert.equal(await sizeAfterUpload(3000, 2000), '2000x1333');
+  });
+});

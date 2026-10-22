@@ -1,5 +1,14 @@
 ﻿# Next Steps
 
+## IQ.1 — sharp tall description posters: committed LOCALLY, NOT PUSHED (22 Oct)
+
+> Uploads now cap width (2000) instead of the longest edge, so tall
+> description posters keep their full width (the honey page's poster had been
+> stored 267×2000). Full record: CHANGELOG §IQ.1. **No migration.**
+>
+> **Owed after deploy, merchant's hands:** re-upload the original description
+> poster on `/asselelbilad` — the stored copy cannot be repaired.
+
 ## VS.1 — Stock line in the builder variant editor: LIVE (18 Oct, `d3613ae`, 11:56:44 UTC — HANDOFF_PRODUCTION §1)
 
 > The "stock resets to 0 after setting a price" report was stock typed into

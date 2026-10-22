@@ -47,7 +47,12 @@ export function DescriptionImages({ images }: { images: LandingMediaData[] }) {
               // author-supplied images of arbitrary shape and cropping them to
               // a fixed box would cut off content.
               className="h-auto w-full object-contain"
-              sizes="(max-width: 1024px) 100vw, 1152px"
+              // The real rendered width: the section's px-4 / sm:px-6
+              // padding comes off the viewport, and max-w-6xl (1152) minus
+              // px-6 is 1104. Stating 100vw over-asked by one optimizer step
+              // on many phones — and since IQ.1 lets tall posters keep their
+              // full width, that step is real bytes, so ask for what's shown.
+              sizes="(max-width: 640px) calc(100vw - 32px), (max-width: 1152px) calc(100vw - 48px), 1104px"
               // ALL lazy in the SERVED HTML, the first included — LB.44
               // measured what an eager+preloaded first image did to the hero.
               // But native lazy waits for scroll PROXIMITY, and on a slow
