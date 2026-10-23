@@ -15,6 +15,40 @@ remain the deep references.
 
 ## 1. CURRENT PRODUCTION STATE
 
+> ### ✅ CAPI.1+PX.1 ARE LIVE (23 Oct 2026, 22:52:38 UTC) — Meta CAPI covers the whole funnel; a page reports only to the pixels ticked on it
+>
+> **`origin/main` = `e372c13`** (`e0944cc..e372c13`: the CAPI.1+PX.1 commit
+> plus the IQ.1 deploy record `cb7be08`; rollback `e0944cc`). **No
+> migration** — zero prisma/schema files in the range, asserted before the
+> push. PX.1 changes the MEANING of `LandingPage.trackingIntegrationIds`:
+> NULL (the old "All of your tracking" default) and `[]` now mean NO pixel,
+> browser and server, every event (CHANGELOG §PX.1, §CAPI.1).
+>
+> **Deployed at the owner's instruction WITHOUT the pre-deploy pixel check.**
+> The read-only prod count (pages by selection mode) was refused by the
+> permission classifier; the owner chose "deploy anyway" knowing pages on
+> the old default stop reporting.
+>
+> **Verified:** pushed 22:50:07; CONTENT proof — `POST
+> /api/storefront/<t>/events` 404 → **204** at 22:52:38 (the relay exists),
+> `POST /api/platform/integrations/tracking/x/test` 404 → **401**. Health
+> 200 `database: ok`, `isolation: rls`, `uploads: r2`; `/`, `/dedima`,
+> `/asselelbilad`, `/sellioratm-la-royale` all 200. **Pixels served per page
+> after the deploy:** `/dedima` and `/sellioratm-la-royale` load Meta
+> `1126888189501016` and carry the relay endpoint; **`/asselelbilad` loads NO
+> pixel** (nothing ticked → stopped reporting); store home none (by design).
+> The new dataset `1113261321449322` is on no live page. **273 image
+> variants re-warmed** (pass 1 273/273 MISS = new instance; pass 2 273/273 HIT
+> at 22:55:30).
+>
+> **Not verified live (would send events into the merchant's real dataset /
+> needs an authed prod session):** a server-side ViewContent/Purchase reaching
+> Meta, the Test events panel on prod. Both verified end to end on dev against
+> a local Graph stub (tracking 30/30). **Owed, merchant's hands:** tick a pixel
+> on `/asselelbilad`; connect `1113261321449322` with its token in Settings →
+> Integrations and tick it on the pages that should report to it; then use the
+> Test events panel.
+
 > ### ✅ IQ.1 IS LIVE (22 Oct 2026, 13:51:54 UTC) — tall description posters keep their width
 >
 > **`origin/main` = `e0944cc`** (`d3613ae..e0944cc`: the IQ.1 commit plus the

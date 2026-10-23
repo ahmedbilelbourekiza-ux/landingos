@@ -10,13 +10,13 @@ touched, any **migration**, and any **risk**.
 
 ---
 
-## PX.1 — a page reports ONLY to the pixels ticked on it; "all pixels" is gone — NOT DEPLOYED
+## PX.1 — a page reports ONLY to the pixels ticked on it; "all pixels" is gone — DEPLOYED 23 Oct 2026, live 22:52:38 UTC (`e372c13`)
 
 > **The ask:** Purchase and Lead go only to the pixels selected on the landing
 > page that produced them, like the funnel events; never to every pixel in
 > the store; a page with no pixel selected sends to none.
 >
-> **Decided with the owner (24 Oct):** "no pixel selected" includes the
+> **Decided with the owner (23 Oct):** "no pixel selected" includes the
 > editor's old default, "All of your tracking" (a NULL column). So NULL, `[]`
 > and anything that is not an array all mean NONE, everywhere — not only for
 > Purchase/Lead — so the browser pixel, the funnel and the conversion can
@@ -42,7 +42,7 @@ touched, any **migration**, and any **risk**.
 >   section is a checklist with a hint, and the "nothing ticked" warning wears
 >   the warning colour. Saving writes an explicit array.
 >
-> **⚠ BEFORE DEPLOYING:** every page still on the old default (NULL) stops
+> **Deployed without the pre-deploy check, at the owner's instruction — after the deploy `/asselelbilad` loads no pixel. Original warning:** every page still on the old default (NULL) stops
 > reporting — browser and server, every event — the moment this ships. Tick
 > the right pixels on each live page first (or backfill the column per brand),
 > then deploy. New pages start with nothing ticked.
@@ -57,7 +57,7 @@ touched, any **migration**, and any **risk**.
 
 ---
 
-## CAPI.1 — Meta Conversions API covers the whole funnel, with city/state and a test-events button — NOT DEPLOYED
+## CAPI.1 — Meta Conversions API covers the whole funnel, with city/state and a test-events button — DEPLOYED 23 Oct 2026, live 22:52:38 UTC (`e372c13`)
 
 > **The ask:** server-side Meta events for a new dataset (`1113261321449322`):
 > ViewContent, AddToCart, InitiateCheckout, Purchase, deduplicated against the
