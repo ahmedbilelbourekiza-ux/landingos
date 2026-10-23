@@ -69,6 +69,8 @@ export function LandingTemplate({
           store={orderStore}
           buttonText={page.buttonText}
           currency={page.currency}
+          landingId={page.id}
+          productTitle={page.title}
         />
       )}
       {setting?.floatingWhatsapp && store?.whatsapp && (

@@ -745,12 +745,10 @@ describe('a landing page links to its own Meta pixels (LB.35)', { skip }, () => 
     return r.text();
   };
 
-  test('with no selection a page inherits every active tenant pixel', async () => {
+  test('with no selection a page fires NO pixel (PX.1 — there is no "all" any more)', async () => {
     const html = await pageHtml();
-    // Both ids reach the browser, which is what "fires to all of them" means
-    // at the boundary this test can observe.
-    assert.match(html, /311111111111111/, 'the first pixel is missing');
-    assert.match(html, /322222222222222/, 'the SECOND pixel is missing — only the first fires');
+    assert.ok(!html.includes('311111111111111'), 'an unticked pixel fires on a page with no selection');
+    assert.ok(!html.includes('322222222222222'), 'an unticked pixel fires on a page with no selection');
   });
 
   test('a page linked to one pixel stops firing the other', async () => {
@@ -775,14 +773,14 @@ describe('a landing page links to its own Meta pixels (LB.35)', { skip }, () => 
     assert.match(html, /322222222222222/);
   });
 
-  test('clearing the selection restores "all of them"', async () => {
+  test('clearing the selection fires none again — never "all of them" (PX.1)', async () => {
     await api(`/api/builder/landings/${trackedPage}/general`, tokens.ownerA, {
       method: 'PATCH',
       body: JSON.stringify({ trackingIntegrationIds: null }),
     });
     const html = await pageHtml();
-    assert.match(html, /311111111111111/);
-    assert.match(html, /322222222222222/);
+    assert.ok(!html.includes('311111111111111'));
+    assert.ok(!html.includes('322222222222222'));
   });
 
   test('a pixel belonging to another tenant is refused, not silently ignored', async () => {
@@ -800,7 +798,11 @@ describe('a landing page links to its own Meta pixels (LB.35)', { skip }, () => 
     assert.equal(r.body?.error?.code, 'INVALID_REFERENCE');
   });
 
-  test('ALL FOUR storefront routes still mount the loader (LB.5 as a test)', async () => {
+  test('product and thank-you fire the page’s ticked pixel; home and category fire none (PX.1)', async () => {
+    await api(`/api/builder/landings/${trackedPage}/general`, tokens.ownerA, {
+      method: 'PATCH',
+      body: JSON.stringify({ trackingIntegrationIds: [pixelOne] }),
+    });
     // LB.5 put the loader in the layout so no page could forget it. The mount
     // moved down to the routes, so the guarantee lives here now instead.
     const cat = await withTenant(tenantA, (tx) =>
@@ -824,20 +826,23 @@ describe('a landing page links to its own Meta pixels (LB.35)', { skip }, () => 
       }),
     );
 
-    for (const [name, path] of [
-      ['home', `/${tenantSlug}`],
-      ['category', `/${tenantSlug}/category/pixel-cat-${stamp}`],
-      ['product', `/${tenantSlug}/pixel-page-${stamp}`],
-      ['thank-you', `/${tenantSlug}/thank-you/${order.id}`],
+    for (const [name, path, fires] of [
+      ['home', `/${tenantSlug}`, false],
+      ['category', `/${tenantSlug}/category/pixel-cat-${stamp}`, false],
+      ['product', `/${tenantSlug}/pixel-page-${stamp}`, true],
+      ['thank-you', `/${tenantSlug}/thank-you/${order.id}`, true],
     ] as const) {
       const r = await fetch(BASE + path);
       assert.equal(r.status, 200, `${name} did not render`);
       const html = await r.text();
-      assert.ok(
-        html.includes('311111111111111') || html.includes('322222222222222'),
-        `${name} mounts no tracking loader — LB.5's guarantee is broken`,
-      );
+      assert.ok(!html.includes('322222222222222'), `${name} fires a pixel the page did not tick`);
+      assert.equal(html.includes('311111111111111'), fires,
+        fires ? `${name} does not fire the page's ticked pixel` : `${name} fires a pixel although it is no product page`);
     }
+    await api(`/api/builder/landings/${trackedPage}/general`, tokens.ownerA, {
+      method: 'PATCH',
+      body: JSON.stringify({ trackingIntegrationIds: null }),
+    });
   });
 
   /* LB.35b — the DOOR, which LB.35 never built. Everything above asserts the
@@ -879,23 +884,24 @@ describe('a landing page links to its own Meta pixels (LB.35)', { skip }, () => 
     await setSelection(null);
   });
 
-  test('no selection shows as "all", not as an empty list of ticks', async () => {
-    // The distinction the whole column exists for. NULL must not render the
-    // same as `[]`, or the merchant cannot tell "everything" from "nothing".
+  test('no selection shows as nothing ticked, with the warning — there is no "all" mode (PX.1)', async () => {
     await setSelection(null);
     const html = await editorHtml();
-    const all = /data-testid="tracking-mode-all"[^>]*checked/.test(html)
-      || /checked[^>]*data-testid="tracking-mode-all"/.test(html);
-    assert.ok(all, 'a page with no selection did not show as "all"');
+    assert.ok(!/tracking-mode-all/.test(html), 'the retired "All of your tracking" mode is still offered');
+    assert.match(html, /data-testid="tracking-choices"/, 'the pixel list is not rendered');
+    assert.match(html, /data-testid="tracking-none-warning"/, 'a page reporting to nothing gave no warning');
+    for (const id of [pixelOne, pixelTwo]) {
+      const at = html.indexOf(`tracking-option-${id}`);
+      assert.ok(at > -1, `option ${id} missing`);
+      assert.ok(!/\bchecked\b/.test(html.slice(Math.max(0, at - 200), at + 200)), `${id} shows as ticked`);
+    }
   });
 
-  test('an explicit subset shows as "choose", with only that pixel ticked', async () => {
+  test('an explicit subset shows only that pixel ticked', async () => {
     await setSelection([pixelTwo]);
     const html = await editorHtml();
-    const choosing = /data-testid="tracking-mode-choose"[^>]*checked/.test(html)
-      || /checked[^>]*data-testid="tracking-mode-choose"/.test(html);
-    assert.ok(choosing, 'an explicit subset did not show as "choose"');
     assert.match(html, /data-testid="tracking-choices"/, 'the pixel list is not rendered');
+    assert.ok(!/data-testid="tracking-none-warning"/.test(html), 'a ticked pixel still shows the none warning');
 
     // Which one is ticked, read off the served markup rather than assumed.
     const ticked = (id: string) => {

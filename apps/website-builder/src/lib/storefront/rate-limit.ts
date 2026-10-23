@@ -309,3 +309,9 @@ export function draftLimit(): number {
 export function visitLimit(): number {
   return Number(process.env.VISIT_RATE_LIMIT ?? 120);
 }
+/** CAPI.1 — the funnel relay (ViewContent / AddToCart / InitiateCheckout).
+ * At most three per page view, but each accepted one fans out to third
+ * parties, so it is bounded like a visit rather than left open. */
+export function funnelLimit(): number {
+  return Number(process.env.FUNNEL_RATE_LIMIT ?? 120);
+}

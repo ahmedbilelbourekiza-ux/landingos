@@ -23,20 +23,13 @@ import { useBuilderApi } from "@/lib/builder/api-base";
  * LB.35, and left in place after it stopped being the whole truth. So the
  * feature existed and the answer to "where do I set it?" was "you cannot".
  *
- * THREE STATES, AND THEY ARE GENUINELY DIFFERENT — which is why the column is
- * nullable rather than defaulted, and why this is a mode switch rather than a
- * list of checkboxes:
- *
- *   null   every active integration the company owns. The default, and what
- *          every page did before the column existed.
- *   [ids]  an explicit subset — the merchant running two ad accounts who
- *          wants this product reported to one of them.
- *   []     none. A merchant who unticks everything means it, and the
- *          storefront honours it rather than falling back to "all".
- *
- * A plain checkbox list could not say all three: "nothing ticked" would have
- * to mean either "all" or "none" and could not mean both. The mode switch
- * makes the difference the merchant's choice instead of a guess.
+ * ONE RULE (PX.1): a page reports to the integrations ticked here and to
+ * nothing else. LB.35b offered a third mode, "All of your tracking" (a NULL
+ * column), and made it the default — which is how one brand's Purchases
+ * reached another brand's dataset in a store that runs two. That mode is
+ * gone: NULL now reads as nothing ticked, exactly like `[]`, and the
+ * storefront and every server event treat both as NONE. The warning below is
+ * what keeps "nothing ticked" from being a silent loss of reporting.
  *
  * INACTIVE INTEGRATIONS ARE LISTED, not hidden. An inactive row fires nothing
  * today, but a page linked to it stays linked, and hiding it would quietly
@@ -53,7 +46,7 @@ export interface TrackingIntegrationOption {
 }
 
 export interface TrackingValues {
-  /** The column verbatim: `null` means "all", an array means exactly itself. */
+  /** The column verbatim. `null` (pre-PX.1 rows) is shown as nothing ticked. */
   readonly selected: readonly string[] | null;
 }
 
@@ -69,8 +62,8 @@ export function TrackingSection({
   const api = useBuilderApi();
   const t = useTranslations();
 
-  const [selected, setSelected] = React.useState<readonly string[] | null>(
-    initialValues.selected,
+  const [selected, setSelected] = React.useState<readonly string[]>(
+    initialValues.selected ?? [],
   );
 
   const section = useSectionState({
@@ -78,34 +71,20 @@ export function TrackingSection({
       const res = await fetch(api(`/landings/${landingId}/general`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        // `null` and `[]` are both sent as themselves. The route's schema is
-        // `.optional().nullable()`, so absent means "leave alone" and neither
-        // of these is absent — that distinction is the whole feature.
+        // Always an array (PX.1): saving turns a legacy NULL into the explicit
+        // list the merchant sees, so the column says what the page does.
         body: JSON.stringify({ trackingIntegrationIds: selected }),
       });
       refuseIfFailed(await res.json());
     },
   });
 
-  const setMode = (mode: "all" | "choose") => {
-    // Switching to "choose" starts from what is already firing — every active
-    // integration — rather than from nothing. Starting empty would read as
-    // "turn everything off", which is the opposite of what picking "choose"
-    // means, and one careless save would silently stop a merchant's reporting.
-    setSelected(mode === "all" ? null : integrations.filter((i) => i.isActive).map((i) => i.id));
-    section.markDirty();
-  };
-
   const toggle = (id: string) => {
-    setSelected((current) => {
-      const list = current ?? [];
-      return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
-    });
+    setSelected((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
     section.markDirty();
   };
 
-  const choosing = selected !== null;
-  const chosen = selected ?? [];
+  const chosen = selected;
 
   return (
     <SectionShell
@@ -136,102 +115,62 @@ export function TrackingSection({
           </div>
         ) : (
           <>
-            <div className="flex flex-col gap-2" role="radiogroup" aria-label={t("builder.editor.trackingModeLabel")}>
-              {(["all", "choose"] as const).map((mode) => {
-                const active = mode === "choose" ? choosing : !choosing;
+            <p className="text-xs text-muted-foreground" data-testid="tracking-strict-hint">
+              {t("builder.editor.trackingStrictHint")}
+            </p>
+
+            <div className="flex flex-col gap-2" data-testid="tracking-choices">
+              {integrations.map((integration) => {
+                const checked = chosen.includes(integration.id);
                 return (
                   <label
-                    key={mode}
+                    key={integration.id}
                     className={cn(
                       "flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors",
-                      active ? "border-primary/40 bg-primary/5" : "bg-muted/20 hover:bg-muted/40",
+                      checked ? "border-primary/40 bg-primary/5" : "bg-muted/20 hover:bg-muted/40",
                     )}
                   >
                     <input
-                      type="radio"
-                      name="tracking-mode"
-                      data-testid={`tracking-mode-${mode}`}
-                      checked={active}
-                      onChange={() => setMode(mode)}
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(integration.id)}
+                      data-testid={`tracking-option-${integration.id}`}
                       className="mt-1 size-4 accent-primary"
                     />
                     <span className="flex flex-col gap-0.5">
-                      {/* The ternary sits OUTSIDE `t(...)`, not inside it, and
-                          that is deliberate rather than stylistic. LB.13's
-                          guard masks a direct `t("literal")` and the key-exists
-                          scan only reads one, so `t(cond ? a : b)` is invisible
-                          to the second check and looks like hardcoded English
-                          to the first — it failed exactly that way once. Two
-                          literal calls are covered by both. */}
-                      <span className="text-sm font-medium">
-                        {mode === "all"
-                          ? t("builder.editor.trackingAll")
-                          : t("builder.editor.trackingChoose")}
+                      <span className="text-sm font-medium" dir="auto">
+                        {integration.label}
                       </span>
                       <span className="text-[11px] text-muted-foreground">
-                        {mode === "all"
-                          ? t("builder.editor.trackingAllHint")
-                          : t("builder.editor.trackingChooseHint")}
+                        {/* `dir="ltr"` on the id: a pixel id is digits, and
+                            an Arabic paragraph would otherwise reorder them
+                            — the same money-island rule LB.15 applies. */}
+                        {integration.provider}
+                        {" · "}
+                        <span dir="ltr">{integration.publicId}</span>
+                        {!integration.isActive && (
+                          <> {" · "}{t("builder.editor.trackingInactive")}</>
+                        )}
                       </span>
                     </span>
                   </label>
                 );
               })}
+
+              {chosen.length === 0 && (
+                /* Not an error — it is a legal, honoured state. Since PX.1 it
+                   is also what every pre-PX.1 page shows until its pixels are
+                   ticked, so it wears the warning colour: a merchant must see
+                   it here rather than discover it in their ad account. */
+                <p
+                  className="text-xs font-medium"
+                  style={{ color: "var(--warning-fg)" }}
+                  data-testid="tracking-none-warning"
+                >
+                  {t("builder.editor.trackingNoneChosen")}
+                </p>
+              )}
             </div>
-
-            {choosing && (
-              <div className="flex flex-col gap-2" data-testid="tracking-choices">
-                {integrations.map((integration) => {
-                  const checked = chosen.includes(integration.id);
-                  return (
-                    <label
-                      key={integration.id}
-                      className={cn(
-                        "flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors",
-                        checked ? "border-primary/40 bg-primary/5" : "bg-muted/20 hover:bg-muted/40",
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggle(integration.id)}
-                        data-testid={`tracking-option-${integration.id}`}
-                        className="mt-1 size-4 accent-primary"
-                      />
-                      <span className="flex flex-col gap-0.5">
-                        <span className="text-sm font-medium" dir="auto">
-                          {integration.label}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground">
-                          {/* `dir="ltr"` on the id: a pixel id is digits, and
-                              an Arabic paragraph would otherwise reorder them
-                              — the same money-island rule LB.15 applies. */}
-                          {integration.provider}
-                          {" · "}
-                          <span dir="ltr">{integration.publicId}</span>
-                          {!integration.isActive && (
-                            <> {" · "}{t("builder.editor.trackingInactive")}</>
-                          )}
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })}
-
-                {chosen.length === 0 && (
-                  /* Not an error — it is a legal, honoured state. It is called
-                     out because it is the one selection that silently stops a
-                     merchant's reporting, and they should see that they chose
-                     it rather than discover it in their ad account. */
-                  <p
-                    className="text-xs text-muted-foreground"
-                    data-testid="tracking-none-warning"
-                  >
-                    {t("builder.editor.trackingNoneChosen")}
-                  </p>
-                )}
-              </div>
-            )}
 
             <a
               href="/console/settings/integrations"

@@ -10,7 +10,13 @@ import { createSession, destroySessionsForUser, SESSION_COOKIE, hashPassword } f
 import { buildMetaPayload } from '../src/lib/tracking/providers/meta.ts';
 import { buildTiktokPayload, tiktokEventName } from '../src/lib/tracking/providers/tiktok.ts';
 import { buildGa4Payload, ga4EventName } from '../src/lib/tracking/providers/ga4.ts';
-import { phoneCandidates, type ServerTrackingEvent, type TrackingDestination } from '../src/lib/tracking/events.ts';
+import {
+  phoneCandidates,
+  normalizeLocation,
+  normalizeName,
+  type ServerTrackingEvent,
+  type TrackingDestination,
+} from '../src/lib/tracking/events.ts';
 
 /* =============================================================================
  * The tracking pipeline (LB.5).
@@ -79,6 +85,36 @@ describe('meta payload builder (pure)', () => {
     assert.equal(payload.test_event_code, 'TEST123');
     assert.equal(data.custom_data.value, '5400');
     assert.deepEqual(data.custom_data.content_ids, ['page_1']);
+  });
+});
+
+describe('CAPI.1 — city, state and name normalisation (pure)', () => {
+  test('locations lose case, spaces, punctuation and accents before hashing', () => {
+    assert.equal(normalizeLocation('Bordj Bou Arreridj'), 'bordjbouarreridj');
+    assert.equal(normalizeLocation("M'Chedallah"), 'mchedallah');
+    assert.equal(normalizeLocation('  Béjaïa '), 'bejaia');
+    assert.equal(normalizeLocation('Alger Centre'), 'algercentre');
+    assert.equal(normalizeLocation('الجزائر'), 'الجزائر', 'a non-Latin name is kept, never emptied');
+  });
+
+  test('names lose punctuation but keep their letters and inner spaces', () => {
+    assert.equal(normalizeName("  Karim  O'Brien-Ali "), 'karim obrienali');
+    assert.equal(normalizeName('Ben Ali'), 'ben ali');
+    assert.equal(normalizeName('محمد أمين'), 'محمد أمين');
+  });
+
+  test('the Meta payload carries ct and st as hashes of the normalised values', () => {
+    const withPlace: ServerTrackingEvent = {
+      ...EVENT,
+      customer: { ...EVENT.customer, city: 'Ras El Oued', state: 'Bordj Bou Arreridj' },
+    };
+    const user = (buildMetaPayload(withPlace, null) as any).data[0].user_data;
+    assert.deepEqual(user.ct, [sha('raseloued')]);
+    assert.deepEqual(user.st, [sha('bordjbouarreridj')]);
+    assert.deepEqual(user.country, [sha('dz')]);
+    const without = (buildMetaPayload(EVENT, null) as any).data[0].user_data;
+    assert.equal(without.ct, undefined, 'no city → no ct key at all, never a hash of ""');
+    assert.equal(without.st, undefined);
   });
 });
 
@@ -209,6 +245,25 @@ async function api(path: string, token: string, init: RequestInit = {}) {
   return { status: res.status, body };
 }
 
+/** PX.1 — a page reports ONLY to the pixels ticked on it, so the suite ticks
+ * them explicitly: every integration the tenant has (`'all'`), an exact list,
+ * or the column's raw value (`null` / `[]`, both meaning NONE). */
+async function linkPage(selection: 'all' | string[] | null) {
+  await withTenant(tenantId, async (tx) => {
+    const ids = selection === 'all'
+      ? (await (tx as any).trackingIntegration.findMany({ select: { id: true } })).map((r: any) => r.id)
+      : selection;
+    await (tx as any).landingPage.update({ where: { id: pageId }, data: { trackingIntegrationIds: ids } });
+  });
+}
+
+async function integrationId(publicId: string): Promise<string> {
+  const row = (await withTenant(tenantId, (tx) =>
+    (tx as any).trackingIntegration.findFirst({ where: { publicId }, select: { id: true } }),
+  )) as any;
+  return row.id;
+}
+
 before(async () => {
   if (skip) return;
 
@@ -320,6 +375,7 @@ describe('the tracking configuration surface', { skip }, () => {
   });
 
   test('the storefront page renders the loader for a configured store', async () => {
+    await linkPage('all'); // PX.1 — only ticked pixels reach the page
     const html = await fetch(`${BASE}/${slug}/tracked-product`).then((x) => x.text());
     // The loader is a client component rendering null, so the proof it was
     // mounted is its PROPS in the flight payload: the public container id the
@@ -345,6 +401,8 @@ describe('server-side conversion events reach every configured platform', { skip
       });
       assert.equal(r.status, 201, JSON.stringify(r.body));
     }
+    // PX.1 — tick them on the page, or the Purchase goes to nobody.
+    await linkPage('all');
 
     const checkout = await fetch(`${BASE}/api/storefront/${slug}/orders`, {
       method: 'POST',
@@ -518,5 +576,242 @@ describe('server-side conversion events reach every configured platform', { skip
     await capture({ customerName: 'Late Phone', phone: '0555222333', wilaya: 'Adrar', fbc: 'fb.1.1700.leadclick' });
     await new Promise((r) => setTimeout(r, 1500));
     assert.equal(hits.filter(isThisLead).length, 1, 'exactly one Lead per visitor');
+  });
+});
+
+/* ========================================================================== */
+/* CAPI.1 — the funnel relay, city/state on Purchase, and test events.        */
+/* ========================================================================== */
+
+describe('CAPI.1 — server copies of the funnel and the test-events button', { skip: skip || !stub }, () => {
+  const relay = (body: Record<string, unknown>) =>
+    fetch(`${BASE}/api/storefront/${slug}/events`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'user-agent': 'RelayTest/1.0' },
+      body: JSON.stringify(body),
+    });
+
+  test('Purchase carries the commune and wilaya as hashed ct / st', async () => {
+    const w = (await withTenant(tenantId, (tx) =>
+      (tx as any).wilaya.findUnique({ where: { id: wilayaId }, select: { name: true } }),
+    )) as any;
+    const checkout = await fetch(`${BASE}/api/storefront/${slug}/orders`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        landingPageId: pageId, customerName: 'Place Buyer', phone: '0555444333',
+        wilayaId, baladiaName: "Sidi M'Hamed", quantity: 1, shippingMethod: 'HOME',
+      }),
+    }).then((r) => r.json());
+    assert.ok(checkout.success, JSON.stringify(checkout));
+    const meta = await waitFor(() =>
+      hits.find((h) => h.path.includes('/999888777666/events') && h.body?.data?.[0]?.event_id === checkout.data.id));
+    assert.deepEqual(meta.body.data[0].user_data.ct, [sha('sidimhamed')]);
+    assert.deepEqual(meta.body.data[0].user_data.st, [sha(normalizeLocation(w.name))]);
+  });
+
+  test('a relayed AddToCart reaches Meta and TikTok with the browser id, priced from the page row', async () => {
+    const eventId = `atc-${stamp}-relay01`;
+    const res = await relay({
+      name: 'AddToCart', eventId, landingPageId: pageId, quantity: 2,
+      fbp: 'fb.1.1700.browser', fbc: 'fb.1.1700.relayclick',
+      // Not in the contract: a client cannot price its own event.
+      value: 1, currency: 'USD',
+    });
+    assert.equal(res.status, 204);
+
+    const meta = await waitFor(() =>
+      hits.find((h) => h.path.includes('/999888777666/events') && h.body?.data?.[0]?.event_id === eventId));
+    const d = meta.body.data[0];
+    assert.equal(d.event_name, 'AddToCart');
+    assert.equal(d.custom_data.value, '5000', '2 x the page price 2500, from the database');
+    assert.equal(d.custom_data.currency, 'DZD');
+    assert.equal(d.custom_data.num_items, 2);
+    assert.equal(d.user_data.fbp, 'fb.1.1700.browser');
+    assert.equal(d.user_data.fbc, 'fb.1.1700.relayclick');
+    assert.equal(d.user_data.client_user_agent, 'RelayTest/1.0');
+    assert.equal(d.event_source_url, `${BASE}/${slug}/tracked-product`);
+
+    const tiktok = await waitFor(() =>
+      hits.find((h) => h.path.includes('/event/track') && h.body?.data?.[0]?.event_id === eventId));
+    assert.equal(tiktok.body.data[0].event, 'AddToCart');
+
+    // GA4 has no dedup key for this event: the relay must not send it there.
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.ok(
+      !hits.some((h) => h.path.includes('/mp/collect') && h.body?.events?.[0]?.name === 'add_to_cart'),
+      'no add_to_cart reached GA4 — the browser already counted it once',
+    );
+  });
+
+  test('the relay refuses Purchase, junk ids and unknown pages — silently', async () => {
+    const ids = [`pur-${stamp}-relay02`, 'short', `unk-${stamp}-relay03`];
+    assert.equal((await relay({ name: 'Purchase', eventId: ids[0], landingPageId: pageId })).status, 204);
+    assert.equal((await relay({ name: 'ViewContent', eventId: ids[1], landingPageId: pageId })).status, 204);
+    assert.equal((await relay({ name: 'ViewContent', eventId: ids[2], landingPageId: 'no-such-page' })).status, 204);
+    await new Promise((r) => setTimeout(r, 1500));
+    for (const id of ids) {
+      assert.ok(
+        !hits.some((h) => h.body?.data?.[0]?.event_id === id),
+        `${id} was not dispatched`,
+      );
+    }
+  });
+
+  test('a page pixel selection decides who gets the server copy — per brand', async () => {
+    const metaRow = (await withTenant(tenantId, (tx) =>
+      (tx as any).trackingIntegration.findFirst({ where: { publicId: '999888777666' }, select: { id: true } }),
+    )) as any;
+    await withTenant(tenantId, (tx) =>
+      (tx as any).landingPage.update({ where: { id: pageId }, data: { trackingIntegrationIds: [metaRow.id] } }),
+    );
+    try {
+      const eventId = `vc-${stamp}-scoped01`;
+      assert.equal((await relay({ name: 'ViewContent', eventId, landingPageId: pageId })).status, 204);
+      await waitFor(() =>
+        hits.find((h) => h.path.includes('/999888777666/events') && h.body?.data?.[0]?.event_id === eventId));
+      await new Promise((r) => setTimeout(r, 1500));
+      const others = hits.filter((h) =>
+        h.body?.data?.[0]?.event_id === eventId && !h.path.includes('/999888777666/events'));
+      assert.equal(others.length, 0, 'the unselected Meta pixel and TikTok got nothing');
+    } finally {
+      await withTenant(tenantId, (tx) =>
+        (tx as any).landingPage.update({ where: { id: pageId }, data: { trackingIntegrationIds: null } }),
+      );
+      await linkPage('all');
+    }
+  });
+
+  test('Send test event goes out with the saved test code and answers with the Meta reply', async () => {
+    const main = (await withTenant(tenantId, (tx) =>
+      (tx as any).trackingIntegration.findFirst({ where: { publicId: '111222333444' }, select: { id: true } }),
+    )) as any;
+    const r = await api(`/api/platform/integrations/tracking/${main.id}/test`, ownerToken, {
+      method: 'POST',
+      body: JSON.stringify({ eventName: 'InitiateCheckout' }),
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.data.testCode, 'TEST99');
+    const hit = await waitFor(() =>
+      hits.find((h) => h.path.includes('/111222333444/events') && h.body?.data?.[0]?.event_id === r.body.data.eventId));
+    assert.equal(hit.body.test_event_code, 'TEST99');
+    assert.equal(hit.body.data[0].event_name, 'InitiateCheckout');
+    assert.deepEqual(hit.body.data[0].user_data.st, [sha('alger')], 'test data exercises the location keys');
+    assert.ok(hit.path.includes('access_token=EAAB-secret-token'), 'the stored token is decrypted for the call');
+    assert.ok(!JSON.stringify(r.body).includes('EAAB-secret-token'), 'the reply never echoes the token');
+  });
+
+  test('without a test code, or for a non-Meta row, the test send refuses by name', async () => {
+    const rows = (await withTenant(tenantId, (tx) =>
+      (tx as any).trackingIntegration.findMany({
+        where: { publicId: { in: ['999888777666', 'TTPIXCODE99'] } },
+        select: { id: true, provider: true },
+      }),
+    )) as any[];
+    const meta = rows.find((x) => x.provider === 'meta');
+    const tiktok = rows.find((x) => x.provider === 'tiktok');
+    const noCode = await api(`/api/platform/integrations/tracking/${meta.id}/test`, ownerToken, {
+      method: 'POST', body: '{}',
+    });
+    assert.equal(noCode.status, 422);
+    assert.equal(noCode.body.error.code, 'NO_TEST_CODE');
+    const tt = await api(`/api/platform/integrations/tracking/${tiktok.id}/test`, ownerToken, {
+      method: 'POST', body: '{}',
+    });
+    assert.equal(tt.status, 422);
+    assert.equal(tt.body.error.code, 'TEST_UNSUPPORTED');
+  });
+});
+
+/* ========================================================================== */
+/* PX.1 — Purchase and Lead reach ONLY the pixels ticked on the page.          */
+/* ========================================================================== */
+
+describe('PX.1 — Purchase and Lead go only to the page\u2019s own pixels', { skip: skip || !stub }, () => {
+  const checkoutOnce = async (phone: string) => {
+    const r = await fetch(`${BASE}/api/storefront/${slug}/orders`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        landingPageId: pageId, customerName: 'Scoped Buyer', phone,
+        wilayaId, baladiaName: 'Centre', quantity: 1, shippingMethod: 'HOME',
+      }),
+    }).then((x) => x.json());
+    assert.ok(r.success, JSON.stringify(r));
+    return r.data.id as string;
+  };
+  const leadOnce = async (tag: string, phone: string) => {
+    const token = `tok-${stamp}-${tag}`;
+    await fetch(`${BASE}/api/storefront/${slug}/draft-orders`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token, landingPageId: pageId, customerName: `Lead ${tag}`, phone }),
+    });
+    // The Lead's event id is the draft row's id; find it to match hits.
+    const row = (await withTenant(tenantId, (tx) =>
+      (tx as any).draftOrder.findUnique({ where: { token }, select: { id: true } }),
+    )) as any;
+    return row.id as string;
+  };
+  const hitsFor = (eventId: string) => hits.filter((h) =>
+    h.body?.data?.[0]?.event_id === eventId ||
+    h.body?.events?.[0]?.params?.transaction_id === eventId ||
+    // GA4 carries a Lead's id only inside its derived client id.
+    h.body?.client_id === `landingos.${eventId}`);
+  const settle = () => new Promise((r) => setTimeout(r, 2000));
+
+  after(async () => { if (!skip) await linkPage('all'); });
+
+  test('a page with ONE ticked pixel sends Purchase and Lead to that pixel only', async () => {
+    const chosen = await integrationId('999888777666');
+    await linkPage([chosen]);
+
+    const orderId = await checkoutOnce('0555700001');
+    await waitFor(() =>
+      hits.find((h) => h.path.includes('/999888777666/events') && h.body?.data?.[0]?.event_id === orderId));
+    const leadId = await leadOnce('px1-one', '0555700002');
+    await waitFor(() =>
+      hits.find((h) => h.path.includes('/999888777666/events') && h.body?.data?.[0]?.event_id === leadId));
+    await settle();
+
+    for (const id of [orderId, leadId]) {
+      const elsewhere = hitsFor(id).filter((h) => !h.path.includes('/999888777666/events'));
+      assert.equal(elsewhere.length, 0,
+        `${id} also reached ${elsewhere.map((h) => h.path.split('?')[0]).join(', ')} — another pixel in the store`);
+    }
+  });
+
+  for (const [label, selection] of [['no selection (NULL)', null], ['an empty selection', []]] as const) {
+    test(`a page with ${label} sends Purchase and Lead to NO pixel`, async () => {
+      await linkPage(selection as null | string[]);
+      const tag = selection === null ? 'null' : 'empty';
+      const orderId = await checkoutOnce(selection === null ? '0555700003' : '0555700005');
+      const leadId = await leadOnce(`px1-${tag}`, selection === null ? '0555700004' : '0555700006');
+      await settle();
+      assert.equal(hitsFor(orderId).length, 0, 'the Purchase reached a pixel the page did not tick');
+      assert.equal(hitsFor(leadId).length, 0, 'the Lead reached a pixel the page did not tick');
+    });
+  }
+
+  test('the thank-you page fires only the ordered page\u2019s pixels; the store home fires none', async () => {
+    const chosen = await integrationId('999888777666');
+    await linkPage([chosen]);
+    const orderId = await checkoutOnce('0555700007');
+
+    const thanks = await fetch(`${BASE}/${slug}/thank-you/${orderId}`).then((x) => x.text());
+    assert.match(thanks, /999888777666/, 'the ticked pixel is missing from the thank-you page');
+    assert.ok(!thanks.includes('111222333444'), 'an unticked Meta pixel fires the browser Purchase');
+    assert.ok(!thanks.includes('TTPIXCODE99'), 'an unticked TikTok pixel fires the browser Purchase');
+
+    await linkPage(null);
+    const none = await fetch(`${BASE}/${slug}/thank-you/${orderId}`).then((x) => x.text());
+    for (const id of ['999888777666', '111222333444', 'TTPIXCODE99', 'G-TESTID99']) {
+      assert.ok(!none.includes(id), `${id} fires on the thank-you page of a page with nothing ticked`);
+    }
+
+    const home = await fetch(`${BASE}/${slug}`).then((x) => x.text());
+    for (const id of ['999888777666', '111222333444', 'TTPIXCODE99', 'G-TESTID99', 'GTM-ABC1234']) {
+      assert.ok(!home.includes(id), `${id} fires on the store home — no page selected it`);
+    }
   });
 });

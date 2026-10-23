@@ -3,6 +3,8 @@ import "server-only";
 import { withTenant } from "@landingos/db";
 import { revealStoredSecret } from "@/lib/meta/crypto";
 
+import { selectedIntegrationIds } from "@/lib/storefront/tracking";
+
 import type { ServerTrackingEvent, TrackingDestination } from "./events.ts";
 import { sendMetaEvent } from "./providers/meta.ts";
 import { sendTiktokEvent } from "./providers/tiktok.ts";
@@ -38,12 +40,46 @@ const SENDERS: Record<
   // by not listing them, which is the point of this map.
 };
 
-export function dispatchTrackingEvent(tenantId: string, event: ServerTrackingEvent): void {
+/**
+ * Who receives an event. `pageSelection` is REQUIRED (PX.1): every server
+ * event belongs to the landing page that produced it, and goes only to the
+ * pixels ticked on that page.
+ *
+ * `providers` — only these adapters. The funnel relay (ViewContent, AddToCart,
+ * InitiateCheckout) sends to Meta and TikTok only: both deduplicate a server
+ * event against the browser one by event_id, while GA4 has no such key for
+ * non-purchase events and would count every view twice.
+ *
+ * `pageSelection` — the page's `trackingIntegrationIds`, verbatim: an array
+ * is exactly those integrations; NULL, `[]` or anything else is NONE. There
+ * is no "every pixel in the store" path any more — that is what sent one
+ * brand's sales into another brand's dataset. It is also what keeps the
+ * server half of an event on the SAME pixels the browser half fired on.
+ */
+export interface DispatchScope {
+  providers?: readonly string[];
+  pageSelection: unknown;
+}
+
+export function dispatchTrackingEvent(
+  tenantId: string,
+  event: ServerTrackingEvent,
+  scope: DispatchScope,
+): void {
   void (async () => {
     try {
+      const providers = Object.keys(SENDERS).filter(
+        (p) => !scope.providers || scope.providers.includes(p),
+      );
+      const chosen = selectedIntegrationIds(scope.pageSelection);
+      if (chosen.length === 0) return; // nothing ticked on the page -> nobody
       const rows = await withTenant(tenantId, (db) =>
         (db as any).trackingIntegration.findMany({
-          where: { isActive: true, provider: { in: Object.keys(SENDERS) } },
+          where: {
+            isActive: true,
+            provider: { in: providers },
+            id: { in: chosen },
+          },
           select: {
             id: true, provider: true, label: true, publicId: true,
             serverToken: true, testCode: true, settings: true,

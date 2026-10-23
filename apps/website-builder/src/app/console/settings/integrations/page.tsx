@@ -10,7 +10,7 @@ import { getTranslations } from "next-intl/server";
 import { PageHeader, PageBody } from "@/components/console/ui/primitives";
 import { DataTable } from "@/components/console/data-table";
 import { WebhookCreatePanel, WebhookRowActions } from "@/components/console/platform/webhook-write";
-import { TrackingCreatePanel, TrackingRowActions } from "@/components/console/platform/tracking-write";
+import { TrackingCreatePanel, TrackingRowActions, TrackingTestPanel } from "@/components/console/platform/tracking-write";
 import { WEBHOOK_EVENTS, WEBHOOK_EVENT_LABELS } from "@/lib/webhooks/events";
 import { trackingProvider } from "@/lib/tracking/config";
 import { actionErrors } from "@/lib/console/action-errors";
@@ -58,6 +58,19 @@ export default async function IntegrationsPage() {
     confirmRemove: t("settings.actionConfirmRemove"),
     keepIt: t("settings.actionKeepIt"),
     remove: t("settings.actionRemove"),
+    testEvents: t("settings.trackingTestEvents"),
+    testIntro: t("settings.trackingTestIntro"),
+    testCode: t("settings.trackingTestCode"),
+    saveTestCode: t("settings.trackingSaveTestCode"),
+    clearTestCode: t("settings.trackingClearTestCode"),
+    testEventName: t("settings.trackingTestEventName"),
+    sendTestEvent: t("settings.trackingSendTestEvent"),
+    testWarning: t("settings.trackingTestWarning"),
+    testSent: t("settings.trackingTestSent"),
+    replaceToken: t("settings.trackingReplaceToken"),
+    saveToken: t("settings.trackingSaveToken"),
+    noToken: t("settings.trackingNoToken"),
+    sending: t("settings.pendingSending"),
   };
   const webhookLabels = {
     add: t("settings.addEndpoint"),
@@ -102,6 +115,9 @@ export default async function IntegrationsPage() {
       select: {
         id: true, provider: true, label: true, publicId: true, managedBy: true,
         isActive: true, serverToken: true, createdAt: true,
+        // The test code is not a credential — it only routes events to Meta's
+        // Test events tab — so the manager sees what is saved (CAPI.1).
+        testCode: true,
       },
     }),
   ]);
@@ -175,7 +191,18 @@ export default async function IntegrationsPage() {
                   id: "actions",
                   header: "",
                   cell: (x: any) => (
-                    <TrackingRowActions id={x.id} isActive={x.isActive} errors={errors} labels={trackingLabels} />
+                    <>
+                      <TrackingRowActions id={x.id} isActive={x.isActive} errors={errors} labels={trackingLabels} />
+                      {x.provider === "meta" && (
+                        <TrackingTestPanel
+                          id={x.id}
+                          hasToken={Boolean(x.serverToken)}
+                          savedTestCode={x.testCode ?? null}
+                          errors={errors}
+                          labels={trackingLabels}
+                        />
+                      )}
+                    </>
                   ),
                 },
               ]

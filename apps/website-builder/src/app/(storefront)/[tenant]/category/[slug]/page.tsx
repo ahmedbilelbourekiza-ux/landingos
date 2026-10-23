@@ -102,8 +102,8 @@ export default async function StorefrontCategoryPage({
     // OS preference. See the home page for why DEFAULT_THEME and not a store
     // theme — StoreSettings has no theme field yet.
     <ThemeProvider theme={DEFAULT_THEME}>
-      {/* LB.35 — the tenant's whole active set; a category is a listing, not
-          one product. */}
+      {/* PX.1 — no pixels: a category is a listing, not one product. Mounted
+          anyway so an ad click id landing here is kept. */}
       <StorefrontTracking tenantId={tenant.id} />
       {/* AN.1 — a category view counts as store traffic, page-less. */}
       <VisitBeacon endpoint={`/api/storefront/${tenant.slug}/visits`} pageKind="category" />

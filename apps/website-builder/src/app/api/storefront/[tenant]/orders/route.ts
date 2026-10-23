@@ -433,6 +433,10 @@ export async function POST(
         currency: page.currency as string,
         pageTitle: page.title as string,
         pageSlug: page.slug as string,
+        // CAPI.1 — Meta's `st` match key; the commune is input.baladiaName.
+        wilayaName: wilaya.name as string,
+        // PX.1 — the Purchase goes only to the pixels ticked on THIS page.
+        pageSelection: page.trackingIntegrationIds as unknown,
       };
     });
 
@@ -469,7 +473,12 @@ export async function POST(
       contentId: input.landingPageId,
       contentName: result.pageTitle,
       quantity: input.quantity,
-      customer: { name: input.customerName, phone: input.phone },
+      customer: {
+        name: input.customerName,
+        phone: input.phone,
+        city: input.baladiaName,
+        state: result.wilayaName,
+      },
       context: {
         // SEC.10 — the END USER's address or nothing. Meta and TikTok match on
         // this field, so a proxy's address is a confident wrong answer rather
@@ -484,7 +493,7 @@ export async function POST(
         gaClientId: input.gaClientId ?? null,
         url: origin ? `${origin}${storefrontHref(tenant, result.pageSlug)}` : null,
       },
-    });
+    }, { pageSelection: result.pageSelection });
 
     return NextResponse.json(
       { success: true, data: { id: result.order.id, total: String(result.total) } },

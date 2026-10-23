@@ -232,6 +232,7 @@ export default async function StorefrontLandingPage({
         tenantId={found.tenant.id}
         landingPageId={found.page.id}
         integrations={found.integrations}
+        relayEndpoint={`/api/storefront/${found.tenant.slug}/events`}
       />
       <script
         type="application/ld+json"

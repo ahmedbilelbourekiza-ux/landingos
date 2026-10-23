@@ -8,9 +8,14 @@ import { TrackingScripts, type BrowserIntegration } from "./tracking-scripts";
  * shape, which is the mistake the pre-LB.5 loader made.
  *
  * `landingPageId` is what the layout could never supply: with it, a product
- * page fires the pixels linked TO THAT PRODUCT; without it, the store home,
- * a category listing and the thank-you page take the tenant's whole active
- * set, because none of them is a single product.
+ * page (or the thank-you page of an order) fires the pixels ticked ON THAT
+ * PAGE and nothing else. Without it — the store home, a category listing —
+ * no pixel fires at all (PX.1): there is no "every pixel in the store" mode.
+ *
+ * The loader is mounted EVEN WITH NO PIXELS (PX.1): it is also what stores
+ * the ad click id (`fbclid` → `_fbc`) for later. A shopper who lands on the
+ * store home from an ad and then opens a product page would otherwise reach
+ * the Purchase with their click attribution already gone.
  *
  * `integrations` (LB.51): a caller that already resolved the list inside its
  * own tenant transaction passes it here instead of paying a second
@@ -22,12 +27,20 @@ export async function StorefrontTracking({
   tenantId,
   landingPageId,
   integrations,
+  relayEndpoint,
 }: {
   tenantId: string;
   landingPageId?: string;
   integrations?: BrowserIntegration[];
+  /** CAPI.1 — the tenant's `/events` relay. Product pages only: it carries
+   *  the server half of ViewContent / AddToCart / InitiateCheckout. */
+  relayEndpoint?: string;
 }) {
   const list = integrations ?? (await resolveBrowserIntegrations(tenantId, landingPageId));
-  if (list.length === 0) return null;
-  return <TrackingScripts integrations={list} />;
+  return (
+    <TrackingScripts
+      integrations={list}
+      relay={relayEndpoint ? { endpoint: relayEndpoint } : undefined}
+    />
+  );
 }

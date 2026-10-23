@@ -66,6 +66,10 @@ export interface ServerTrackingEvent {
   customer?: {
     name?: string | null;
     phone?: string | null;
+    /** The commune (baladia) as the order snapshots it — Meta's `ct`. */
+    city?: string | null;
+    /** The wilaya as the order snapshots it — Meta's `st`. */
+    state?: string | null;
   };
   context?: TrackingContext;
 }
@@ -122,6 +126,40 @@ export function phoneCandidates(phone: string): string[] {
   const candidates = [digits];
   if (/^0\d{9}$/.test(digits)) candidates.push(`213${digits.slice(1)}`);
   return candidates;
+}
+
+/**
+ * Meta's name normalisation (fn/ln): lowercase, no punctuation. Letters of any
+ * script survive — an Arabic name is valid UTF-8 input, and stripping it would
+ * hash the empty string, which matches nobody. Spaces inside a multi-word
+ * surname are kept, as Meta's examples do.
+ */
+export function normalizeName(value: string): string {
+  return value
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Meta's city/state normalisation (ct/st): lowercase, no punctuation, no
+ * spaces, roman letters preferred — so accents are folded too
+ * ("Béjaïa" → "bejaia", "Bordj Bou Arreridj" → "bordjbouarreridj",
+ * "M'Chedallah" → "mchedallah"). Non-Latin letters are kept rather than
+ * dropped, for the same reason as normalizeName.
+ */
+export function normalizeLocation(value: string): string {
+  // Accents are folded on LATIN letters only: in Arabic a combining mark can
+  // be part of the letter itself (ئ decomposes to ي + hamza), and stripping it
+  // would hash a different word.
+  return value
+    .normalize("NFD")
+    .replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, "");
 }
 
 export function splitName(fullName: string): { first: string; last: string } {

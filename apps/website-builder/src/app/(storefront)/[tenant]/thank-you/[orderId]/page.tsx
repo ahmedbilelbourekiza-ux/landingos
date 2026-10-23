@@ -117,12 +117,15 @@ export default async function ThankYouPage({
     // buys on a light page and lands on a near-black confirmation (the same
     // bleed LB.26 fixed for the landing pages themselves).
     <ThemeProvider theme={toThemeData(order.landingPage?.theme ?? null)}>
-      {/* LB.35 — the tenant's whole active set, deliberately NOT the ordered
-          page's selection. The Purchase below is the conversion every one of
-          the merchant's ad accounts is waiting for; scoping it to the pixels
-          that happened to be linked to the product page would silently stop
-          reporting sales to the others. */}
-      <StorefrontTracking tenantId={tenant.id} />
+      {/* PX.1 — the ORDERED page's pixels and nothing else, reversing LB.35's
+          "whole active set". A store running two brands must not report one
+          brand's sale into the other's dataset, and the server-side Purchase
+          (orders route) is scoped the same way, so browser and server reach
+          the same pixels and deduplicate. A page with nothing ticked — or an
+          order whose page was deleted — fires no pixel here. */}
+      {order.landingPage?.id ? (
+        <StorefrontTracking tenantId={tenant.id} landingPageId={order.landingPage.id} />
+      ) : null}
       {/* Arabic like the rest of the storefront (the purchase form's strings
           are Arabic literals): this page was the one English screen a customer
           saw, on every single sale (M-04, storefront half). */}

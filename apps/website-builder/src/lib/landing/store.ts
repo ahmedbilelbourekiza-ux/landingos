@@ -65,6 +65,13 @@ export function createLandingOrderStore(page: LandingPageData) {
 
 export type LandingOrderStore = ReturnType<typeof createLandingOrderStore>;
 
+/** Unit price × quantity for a store snapshot — the value an AddToCart fired
+ * outside React (a store subscription) reports. Same arithmetic as
+ * useOrderTotals, by construction. */
+export function subtotalOf(s: Pick<OrderState, "groups" | "selected" | "basePrice" | "quantity">): number {
+  return computeUnitPrice(s.groups, s.selected, s.basePrice) * s.quantity;
+}
+
 export function useUnitPrice(store: LandingOrderStore): number {
   return store((s) =>
     computeUnitPrice(s.groups, s.selected, s.basePrice),

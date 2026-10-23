@@ -2,6 +2,8 @@ import {
   sha256Lower,
   phoneCandidates,
   splitName,
+  normalizeName,
+  normalizeLocation,
   type ServerTrackingEvent,
   type TrackingDestination,
 } from "../events.ts";
@@ -13,8 +15,8 @@ import {
  * (a guaranteed ReferenceError swallowed by its own catch) and had zero
  * callers — no server-side Meta event was ever sent (BUILDER_AUDIT §2).
  *
- * Advanced matching: phone, first/last name and country are hashed per Meta's
- * normalisation spec; fbc/fbp/ip/user-agent travel unhashed as the spec
+ * Advanced matching: phone, first/last name, city (commune), state (wilaya)
+ * and country are hashed per Meta's normalisation spec; fbc/fbp/ip/user-agent travel unhashed as the spec
  * requires. `event_id` carries the caller's dedup key so a browser pixel event
  * with the same id is deduplicated in Events Manager rather than counted
  * twice. `test_event_code` is passed through when the integration carries one,
@@ -39,10 +41,16 @@ export function buildMetaPayload(event: ServerTrackingEvent, testCode: string | 
     if (candidates.length) userData.ph = candidates.map(sha256Lower);
   }
   if (event.customer?.name) {
-    const { first, last } = splitName(event.customer.name);
+    const { first, last } = splitName(normalizeName(event.customer.name));
     if (first) userData.fn = [sha256Lower(first)];
     if (last) userData.ln = [sha256Lower(last)];
   }
+  // ct/st: normalised BEFORE hashing (no spaces, no punctuation) — a hash of
+  // "Bordj Bou Arreridj" matches nothing; "bordjbouarreridj" is Meta's key.
+  const city = event.customer?.city ? normalizeLocation(event.customer.city) : "";
+  if (city) userData.ct = [sha256Lower(city)];
+  const state = event.customer?.state ? normalizeLocation(event.customer.state) : "";
+  if (state) userData.st = [sha256Lower(state)];
   const ctx = event.context ?? {};
   if (ctx.fbc) userData.fbc = ctx.fbc;
   if (ctx.fbp) userData.fbp = ctx.fbp;
@@ -75,24 +83,48 @@ export function buildMetaPayload(event: ServerTrackingEvent, testCode: string | 
   };
 }
 
+/**
+ * POST one payload and return Meta's answer (`events_received`, `messages`,
+ * `fbtrace_id`). Throws on a non-2xx with Meta's error text, which names the
+ * problem precisely (expired token, wrong dataset id, missing permission).
+ * The token travels as a query parameter, Meta's documented form; it is never
+ * logged — only the response body is.
+ */
+export async function postMetaEvents(
+  pixelId: string,
+  accessToken: string,
+  payload: unknown,
+): Promise<Record<string, unknown>> {
+  const url =
+    `${graphBase()}/${GRAPH_API_VERSION}/${encodeURIComponent(pixelId)}/events` +
+    `?access_token=${encodeURIComponent(accessToken)}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(10000),
+  });
+  const text = await res.text().catch(() => "");
+  if (!res.ok) {
+    throw new Error(`Meta CAPI ${res.status}: ${text.slice(0, 300)}`);
+  }
+  try {
+    return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 /** One send, caught by the dispatcher — a tracking failure never surfaces. */
 export async function sendMetaEvent(
   destination: TrackingDestination,
   event: ServerTrackingEvent,
 ): Promise<void> {
   if (!destination.serverToken) return; // browser-pixel-only configuration
-  const url =
-    `${graphBase()}/${GRAPH_API_VERSION}/${encodeURIComponent(destination.publicId)}/events` +
-    `?access_token=${encodeURIComponent(destination.serverToken)}`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(buildMetaPayload(event, destination.testCode)),
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Meta CAPI ${res.status}: ${body.slice(0, 300)}`);
-  }
+  await postMetaEvents(
+    destination.publicId,
+    destination.serverToken,
+    buildMetaPayload(event, destination.testCode),
+  );
 }

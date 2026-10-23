@@ -25,6 +25,12 @@ import { usePathname } from "next/navigation";
  * however many of the two sides got through. That redundancy is deliberate:
  * for COD, the server event is the one that survives ad blockers, and the
  * browser event is the one that carries the richest session identity.
+ *
+ * Funnel dedup (CAPI.1): ViewContent, AddToCart and InitiateCheckout get a
+ * browser-minted event id. fbq fires with it, and the SAME id is posted to the
+ * storefront's /events relay, which sends the server copy through Meta CAPI
+ * and TikTok Events API. Only product pages pass a relay, so the store home,
+ * category listings, the thank-you page and the editor preview never post.
  * ========================================================================== */
 
 export interface BrowserIntegration {
@@ -203,46 +209,128 @@ export interface TrackParams {
   quantity?: number;
 }
 
+/* PX.1 — THIS PAGE's destinations, by id, reset on every mount.
+ *
+ * Pixel scripts are global and outlive a client-side navigation: once product
+ * A has run `fbq("init", A_PIXEL)`, a plain `fbq("track")` on product B would
+ * still report to A's pixel. So every event names its destinations explicitly
+ * (fbq `trackSingle`, a TikTok instance per code, GA4 `send_to`) from the ids
+ * the CURRENT page was rendered with — never "whatever has been initialised". */
 interface LoaderState {
   ready: boolean;
-  hasMeta: boolean;
-  hasTiktok: boolean;
-  hasGtag: boolean;
+  metaIds: string[];
+  tiktokCodes: string[];
+  ga4Ids: string[];
   hasGtm: boolean;
   /** `AW-xxxx/label` targets that receive a conversion on Purchase. */
   adsTargets: string[];
 }
 
 const state: LoaderState = {
-  ready: false, hasMeta: false, hasTiktok: false, hasGtag: false, hasGtm: false, adsTargets: [],
+  ready: false, metaIds: [], tiktokCodes: [], ga4Ids: [], hasGtm: false, adsTargets: [],
 };
 const pending: { name: string; params?: TrackParams; eventId?: string }[] = [];
 
+/** The events whose server half goes through the storefront relay. Purchase
+ * and Lead are NOT here: the checkout and draft routes already send those
+ * from data the server owns. Mirrors FUNNEL_RELAY_EVENTS in contract.ts. */
+const RELAYED = new Set(["ViewContent", "AddToCart", "InitiateCheckout"]);
+
+export interface TrackingRelay {
+  /** `/api/storefront/<tenant>/events` */
+  endpoint: string;
+}
+
+let relay: TrackingRelay | null = null;
+
+/** Unique enough for dedup within Meta's 48h window; no PII, no order. */
+function newEventId(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {
+    /* fall through */
+  }
+  return `ev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/** The server half. keepalive so an AddToCart tapped just before navigating
+ * still leaves; errors are swallowed — tracking never surfaces to a shopper. */
+function relayToServer(name: string, eventId: string, params?: TrackParams) {
+  // The product comes from the EVENT, not from the relay: module state
+  // outlives a client-side navigation, and the event's contentId is always
+  // the page it happened on.
+  if (!relay || !RELAYED.has(name) || !params?.contentId) return;
+  // Only Meta and TikTok take the server copy; with neither on the page the
+  // relay would be a request that dispatches to nobody.
+  if (state.metaIds.length === 0 && state.tiktokCodes.length === 0) return;
+  const endpoint = relay.endpoint;
+  const contentId = params.contentId;
+
+  const send = () => {
+    const cookies = readTrackingCookies();
+    const body = {
+      name,
+      eventId,
+      landingPageId: contentId,
+      ...(params?.quantity != null ? { quantity: params.quantity } : {}),
+      ...(cookies.fbc ? { fbc: cookies.fbc } : {}),
+      ...(cookies.fbp ? { fbp: cookies.fbp } : {}),
+      ...(cookies.ttclid ? { ttclid: cookies.ttclid } : {}),
+      ...(cookies.ttp ? { ttp: cookies.ttp } : {}),
+    };
+    try {
+      void fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        keepalive: true,
+      }).catch(() => {});
+    } catch {
+      /* never surfaces */
+    }
+  };
+
+  // `_fbp` is written by fbevents.js once it loads, so the page's FIRST event
+  // usually fires before it exists. Wait briefly for it — it is one of Meta's
+  // strongest match keys — then send regardless (a blocked script never
+  // writes it). Dedup does not depend on it: event_id + event_name do that.
+  if (state.metaIds.length > 0 && !getCookie("_fbp")) setTimeout(send, 1500);
+  else send();
+}
+
 function dispatchToProviders(name: string, params?: TrackParams, eventId?: string) {
-  if (state.hasMeta && window.fbq) {
+  if (state.metaIds.length > 0 && window.fbq) {
     const meta: Record<string, unknown> = {};
     if (params?.currency) meta.currency = params.currency;
     if (params?.value != null) meta.value = params.value;
     if (params?.contentId) { meta.content_ids = [params.contentId]; meta.content_type = "product"; }
     if (params?.contentName) meta.content_name = params.contentName;
     if (params?.quantity != null) meta.num_items = params.quantity;
-    window.fbq("track", name, meta, eventId ? { eventID: eventId } : undefined);
+    for (const id of state.metaIds) {
+      window.fbq("trackSingle", id, name, meta, eventId ? { eventID: eventId } : undefined);
+    }
   }
 
-  if (state.hasTiktok && window.ttq) {
+  if (state.tiktokCodes.length > 0 && window.ttq) {
     const props: Record<string, unknown> = {};
     if (params?.currency) props.currency = params.currency;
     if (params?.value != null) props.value = params.value;
     if (params?.contentId) {
       props.contents = [{ content_id: params.contentId, content_type: "product", content_name: params.contentName, quantity: params.quantity }];
     }
-    if (name === "PageView") window.ttq.page();
-    else window.ttq.track(TIKTOK_NAMES[name] ?? name, props, eventId ? { event_id: eventId } : undefined);
+    for (const code of state.tiktokCodes) {
+      const pixel = window.ttq.instance(code);
+      if (name === "PageView") pixel.page();
+      else pixel.track(TIKTOK_NAMES[name] ?? name, props, eventId ? { event_id: eventId } : undefined);
+    }
   }
 
-  if (state.hasGtag && window.gtag) {
+  const hasGtag = state.ga4Ids.length > 0 || state.adsTargets.length > 0;
+  if (hasGtag && window.gtag && state.ga4Ids.length > 0) {
     if (name === "PageView") {
-      window.gtag("event", "page_view");
+      window.gtag("event", "page_view", { send_to: state.ga4Ids });
     } else {
       const ga: Record<string, unknown> = {};
       if (params?.currency) ga.currency = params.currency;
@@ -251,8 +339,10 @@ function dispatchToProviders(name: string, params?: TrackParams, eventId?: strin
       if (params?.contentId) {
         ga.items = [{ item_id: params.contentId, item_name: params.contentName, quantity: params.quantity }];
       }
-      window.gtag("event", GA4_NAMES[name] ?? name, ga);
+      window.gtag("event", GA4_NAMES[name] ?? name, { ...ga, send_to: state.ga4Ids });
     }
+  }
+  if (hasGtag && window.gtag) {
     // Google Ads: the Purchase conversion, once per configured target.
     if (name === "Purchase") {
       for (const target of state.adsTargets) {
@@ -266,15 +356,22 @@ function dispatchToProviders(name: string, params?: TrackParams, eventId?: strin
     }
   }
 
-  if (state.hasGtm && window.dataLayer && !state.hasGtag) {
+  if (state.hasGtm && window.dataLayer && !hasGtag) {
     // With gtag present the event already reached the dataLayer through it;
     // this branch serves GTM-only setups.
     window.dataLayer.push({ event: name, ...params, event_id: eventId });
   }
+
+  // After the browser calls, so fbq is never delayed by the relay. Runs even
+  // when fbevents.js was blocked — that is the case the server copy is for.
+  if (eventId) relayToServer(name, eventId, params);
 }
 
 /** The one function pages and forms call. Safe before init: buffered. */
 export function track(name: string, params?: TrackParams, eventId?: string) {
+  // A relayed event without a caller-given id gets one HERE, before buffering,
+  // so the browser and server copies cannot end up with different ids.
+  if (!eventId && RELAYED.has(name)) eventId = newEventId();
   if (!state.ready) {
     pending.push({ name, params, eventId });
     return;
@@ -284,11 +381,40 @@ export function track(name: string, params?: TrackParams, eventId?: string) {
 
 // ---------------------------------------------------------------------------
 
-export function TrackingScripts({ integrations }: { integrations: BrowserIntegration[] }) {
+// ---------------------------------------------------------------------------
+// Once-per-product-view events.
+// ---------------------------------------------------------------------------
+
+const firedThisView = new Set<string>();
+
+/** Fire `name` at most once for this product view. ViewContentTracker resets
+ * the guard when a product page mounts, so a later visit counts again. */
+export function trackOncePerView(name: string, params: TrackParams & { contentId: string }) {
+  const key = `${name}:${params.contentId}`;
+  if (firedThisView.has(key)) return;
+  firedThisView.add(key);
+  track(name, params);
+}
+
+function beginProductView(contentId: string) {
+  for (const key of [...firedThisView]) {
+    if (key.endsWith(`:${contentId}`)) firedThisView.delete(key);
+  }
+}
+
+export function TrackingScripts({
+  integrations,
+  relay: relayConfig,
+}: {
+  integrations: BrowserIntegration[];
+  /** Product pages only — see the header note on funnel dedup. */
+  relay?: TrackingRelay;
+}) {
   const pathname = usePathname();
 
   React.useEffect(() => {
     captureClickIds();
+    relay = relayConfig ?? null;
 
     const metas = integrations.filter((i) => i.provider === "meta").map((i) => i.publicId);
     const tiktoks = integrations.filter((i) => i.provider === "tiktok").map((i) => i.publicId);
@@ -296,11 +422,17 @@ export function TrackingScripts({ integrations }: { integrations: BrowserIntegra
     const ads = integrations.filter((i) => i.provider === "google-ads");
     const gtms = integrations.filter((i) => i.provider === "gtm").map((i) => i.publicId);
 
-    if (metas.length) { bootMeta(metas); state.hasMeta = true; }
-    if (tiktoks.length) { bootTiktok(tiktoks); state.hasTiktok = true; }
+    // PX.1 — replace, never accumulate: this page's ids and only those.
+    state.metaIds = metas;
+    state.tiktokCodes = tiktoks;
+    state.ga4Ids = ga4s;
+    state.hasGtm = gtms.length > 0;
+    state.adsTargets = [];
+
+    if (metas.length) bootMeta(metas);
+    if (tiktoks.length) bootTiktok(tiktoks);
     if (ga4s.length || ads.length) {
       bootGtag([...ga4s, ...ads.map((a) => a.publicId)]);
-      state.hasGtag = true;
       state.adsTargets = ads
         .map((a) => {
           const label = (a.settings as any)?.conversionLabel;
@@ -308,7 +440,7 @@ export function TrackingScripts({ integrations }: { integrations: BrowserIntegra
         })
         .filter((t): t is string => Boolean(t));
     }
-    if (gtms.length) { bootGtm(gtms); state.hasGtm = true; }
+    if (gtms.length) bootGtm(gtms);
 
     state.ready = true;
     while (pending.length > 0) {
@@ -344,7 +476,8 @@ export function ViewContentTracker({
   currency: string;
 }) {
   React.useEffect(() => {
-    track("ViewContent", { contentId, contentName, value, currency });
+    beginProductView(contentId);
+    track("ViewContent", { contentId, contentName, value, currency, quantity: 1 });
   }, [contentId, contentName, value, currency]);
   return null;
 }

@@ -32,15 +32,23 @@ import type { BrowserIntegration } from "@/components/landing/tracking-scripts";
  * routes that have no transaction of their own.
  * ========================================================================== */
 
-/** Ids that no longer resolve are dropped rather than honoured, so deleting an
- *  integration degrades a page to "fewer pixels", never to a broken page. */
-function selectedIds(raw: unknown): string[] | null {
-  if (!Array.isArray(raw)) return null;
-  const ids = raw.filter((v): v is string => typeof v === "string" && v.length > 0);
-  // An explicitly EMPTY selection is honoured as "no tracking on this page" —
-  // a merchant who unticks every pixel means it. Only a null column means
-  // "inherit the tenant's set".
-  return ids;
+/**
+ * The pixels a page reports to — STRICTLY the ones ticked on it (PX.1).
+ *
+ * Until PX.1 a NULL column meant "inherit every active pixel the company
+ * owns", the editor's default. That sent one brand's Purchases into another
+ * brand's dataset whenever a store ran more than one, so the rule is now
+ * absolute: a page reports to the integrations listed on it and to nothing
+ * else. NULL (every pre-PX.1 row, and the old "All of your tracking" mode),
+ * an empty array, or anything that is not an array all mean NONE.
+ *
+ * Ids that no longer resolve are dropped by the callers' `id IN (...)`
+ * filter, so deleting an integration degrades a page to "fewer pixels",
+ * never to a broken page.
+ */
+export function selectedIntegrationIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((v): v is string => typeof v === "string" && v.length > 0);
 }
 
 /** A TrackingIntegration row as the browser resolution reads it. */
@@ -66,17 +74,13 @@ export async function activeBrowserIntegrationRows(db: TenantDb): Promise<Browse
 
 /**
  * Apply a page's `trackingIntegrationIds` selection to the tenant's active
- * set. `selection` is the column value verbatim: NULL (or anything that is
- * not an array — every pre-LB.35 row) inherits the whole active set; an array
- * is a subset; an empty array is "no tracking on this page", honoured.
+ * set: exactly the ticked ones, and none when nothing is ticked (PX.1).
  */
 export function browserIntegrationsFrom(
   all: BrowserIntegrationRow[],
   selection: unknown,
 ): BrowserIntegration[] {
-  const chosen = selectedIds(selection);
-  if (chosen === null) return strip(all);
-  const wanted = new Set(chosen);
+  const wanted = new Set(selectedIntegrationIds(selection));
   return strip(all.filter((i) => wanted.has(i.id)));
 }
 
@@ -85,9 +89,11 @@ export async function resolveBrowserIntegrations(
   landingPageId?: string,
 ): Promise<BrowserIntegration[]> {
   return withTenant(tenantId, async (db) => {
+    // No page, no pixels (PX.1): the store home and category listings belong
+    // to no single product, and "every pixel the company owns" is exactly
+    // the fan-out PX.1 removed.
+    if (!landingPageId) return [];
     const all = await activeBrowserIntegrationRows(db);
-
-    if (!landingPageId) return browserIntegrationsFrom(all, null);
 
     const page = await (db as any).landingPage.findUnique({
       where: { id: landingPageId },

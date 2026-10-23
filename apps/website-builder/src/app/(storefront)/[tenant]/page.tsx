@@ -80,8 +80,8 @@ export default async function StorefrontHome({
     // on <html> for every route). There is no store-level theme row yet —
     // when StoreSettings grows one, it slots in here in place of the default.
     <ThemeProvider theme={DEFAULT_THEME}>
-      {/* LB.35 — the tenant's whole active set: a store home is not one
-          product, so it has no per-page selection to make. */}
+      {/* PX.1 — no pixels: a store home is not one product and has no pixel
+          selection. Mounted anyway so an ad click id landing here is kept. */}
       <StorefrontTracking tenantId={tenant.id} />
       {/* AN.1 — home traffic counts too, page-less. */}
       <VisitBeacon endpoint={`/api/storefront/${tenant.slug}/visits`} pageKind="home" />

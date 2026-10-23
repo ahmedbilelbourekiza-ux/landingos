@@ -6,6 +6,7 @@ import { ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatPrice } from "@/lib/landing/format";
 import { recordStickyBuyClick } from "@/components/landing/visit-beacon";
+import { trackOncePerView } from "@/components/landing/tracking-scripts";
 import type { LandingOrderStore } from "@/lib/landing/store";
 import { useOrderTotals } from "@/lib/landing/store";
 
@@ -18,10 +19,15 @@ export function StickyBuyButton({
   store,
   buttonText,
   currency,
+  landingId,
+  productTitle,
 }: {
   store: LandingOrderStore;
   buttonText: string;
   currency: string;
+  /** CAPI.1 — for the AddToCart a tap on the bar fires. */
+  landingId: string;
+  productTitle: string;
 }) {
   const { subtotal } = useOrderTotals(store);
   const [visible, setVisible] = React.useState(false);
@@ -53,6 +59,15 @@ export function StickyBuyButton({
   const scrollToForm = () => {
     // BH.1 — the sticky bar earning its keep; no-op unless opted in.
     recordStickyBuyClick();
+    // A tap on "buy" is the clearest "I want this one" a COD page has; once
+    // per product view, shared with the form's own AddToCart triggers.
+    trackOncePerView("AddToCart", {
+      contentId: landingId,
+      contentName: productTitle,
+      value: subtotal,
+      currency,
+      quantity: store.getState().quantity,
+    });
     targetRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 

@@ -522,9 +522,10 @@ describe('a page can be duplicated whole (LB.6)', { skip }, () => {
      *
      *   `deliveryPrices` (LB.20) — a copy of a HEAVY product was silently
      *   charging the company's ordinary shipping on every order it took.
-     *   `trackingIntegrationIds` (LB.35) — absent means "fire the tenant's
-     *   WHOLE set", so dropping a deliberate subset made the copy report to
-     *   MORE ad accounts than its original.
+     *   `trackingIntegrationIds` (LB.35) — dropping a deliberate subset
+     *   made the copy report to MORE ad accounts than its original (absent
+     *   meant "the tenant's whole set"); since PX.1 absent means NONE, so
+     *   the same drop would silently stop the copy reporting at all.
      *
      * This test is written to fail when the page grows a third part, which is
      * the only way "every section" stays true: it counts the page's own

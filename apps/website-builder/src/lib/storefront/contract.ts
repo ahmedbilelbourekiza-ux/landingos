@@ -208,6 +208,33 @@ export const VisitBehaviorBody = z.object({
 
 export type VisitBehaviorInput = z.input<typeof VisitBehaviorBody>;
 
+/**
+ * POST /api/storefront/[tenant]/events — the funnel relay (CAPI.1).
+ *
+ * The server half of the browser's ViewContent / AddToCart / InitiateCheckout,
+ * carrying the SAME `eventId` the browser pixel fired with so Meta and TikTok
+ * count each once. Only these three names: Purchase and Lead are already sent
+ * server-side by the checkout and draft routes, from data the server owns.
+ *
+ * No money travels: value and currency are read from the landing page row,
+ * so an anonymous caller cannot report a fake basket into a merchant's ads.
+ */
+export const FUNNEL_RELAY_EVENTS = ["ViewContent", "AddToCart", "InitiateCheckout"] as const;
+
+export const FunnelEventBody = z.object({
+  name: z.enum(FUNNEL_RELAY_EVENTS),
+  /** Browser-minted, shared with fbq's eventID. */
+  eventId: z.string().trim().regex(/^[A-Za-z0-9_.:-]{8,80}$/),
+  landingPageId: z.string().min(1).max(60),
+  quantity: z.coerce.number().int().min(1).max(99).optional(),
+  fbc: z.string().trim().max(500).optional(),
+  fbp: z.string().trim().max(500).optional(),
+  ttclid: z.string().trim().max(500).optional(),
+  ttp: z.string().trim().max(500).optional(),
+});
+
+export type FunnelEventInput = z.input<typeof FunnelEventBody>;
+
 /** One destination row from GET /api/storefront/[tenant]/wilayas. */
 export interface WilayaItem {
   id: number;

@@ -14,8 +14,8 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/landing/format";
 import type { LandingOrderStore } from "@/lib/landing/store";
-import { useOrderTotals, useUnitPrice } from "@/lib/landing/store";
-import { readTrackingCookies, track } from "@/components/landing/tracking-scripts";
+import { subtotalOf, useOrderTotals, useUnitPrice } from "@/lib/landing/store";
+import { readTrackingCookies, trackOncePerView } from "@/components/landing/tracking-scripts";
 import { useDraftCapture } from "@/lib/landing/use-draft-capture";
 import {
   normalizeOrder,
@@ -113,23 +113,46 @@ export function PurchaseForm({
   const unitPrice = useUnitPrice(store);
   const quantity = store((s) => s.quantity);
 
-  // Meta Pixel InitiateCheckout. The form is rendered inline rather than in
-  // a modal, so there is no literal "open" moment — the customer's first
-  // interaction with any field is the equivalent signal. Fired at most once
-  // per page view.
-  const checkoutTracked = React.useRef(false);
+  /* The funnel, once per product view each (CAPI.1):
+   *
+   *   AddToCart        — the shopper commits to THIS product: the first
+   *                      quantity/variant change, a sticky-bar tap, or, at the
+   *                      latest, their first touch of the form. There is no
+   *                      cart on a COD landing page, so these are the moments
+   *                      that mean "I want this one".
+   *   InitiateCheckout — the form is inline rather than in a modal, so there
+   *                      is no literal "open" moment; the first interaction
+   *                      with any field is the equivalent signal.
+   *
+   * AddToCart is fired first on that interaction, so the funnel always reads
+   * ViewContent ≥ AddToCart ≥ InitiateCheckout ≥ Purchase in Events Manager. */
   const handleFirstInteraction = React.useCallback(() => {
-    if (checkoutTracked.current) return;
-    checkoutTracked.current = true;
     const state = store.getState();
-    track("InitiateCheckout", {
+    const params = {
       contentId: landingId,
       contentName: productTitle,
       value: subtotal,
       currency,
       quantity: state.quantity,
-    });
+    };
+    trackOncePerView("AddToCart", params);
+    trackOncePerView("InitiateCheckout", params);
   }, [store, landingId, productTitle, subtotal, currency]);
+
+  React.useEffect(
+    () =>
+      store.subscribe((s, prev) => {
+        if (s.quantity === prev.quantity && s.selected === prev.selected) return;
+        trackOncePerView("AddToCart", {
+          contentId: landingId,
+          contentName: productTitle,
+          value: subtotalOf(s),
+          currency,
+          quantity: s.quantity,
+        });
+      }),
+    [store, landingId, productTitle, currency],
+  );
 
   const [wilayas, setWilayas] = React.useState<WilayaItem[]>([]);
   const [selectedWilaya, setSelectedWilaya] = React.useState<number | "">("");

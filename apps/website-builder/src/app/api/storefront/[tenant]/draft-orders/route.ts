@@ -70,7 +70,8 @@ export async function POST(
         where: { id: landingPageId, published: true },
         // `title` for the ERP row (LB.57): the page title is the only product
         // name a draft can name — it records no catalogue link.
-        select: { id: true, slug: true, title: true },
+        // PX.1 — `trackingIntegrationIds`: the Lead goes only to this page's pixels.
+        select: { id: true, slug: true, title: true, trackingIntegrationIds: true },
       });
       if (!page) return null;
 
@@ -163,9 +164,9 @@ export async function POST(
           where: { id: draft.id },
           data: { notifiedAt: new Date() },
         });
-        return { event: "draft_order.created" as const, id: draft.id, leadArrived, pageSlug: page.slug as string };
+        return { event: "draft_order.created" as const, id: draft.id, leadArrived, pageSlug: page.slug as string, wilaya: draft.wilaya as string | null, baladia: draft.baladia as string | null, pageSelection: page.trackingIntegrationIds as unknown };
       }
-      return { event: "draft_order.updated" as const, id: draft.id, leadArrived, pageSlug: page.slug as string };
+      return { event: "draft_order.updated" as const, id: draft.id, leadArrived, pageSlug: page.slug as string, wilaya: draft.wilaya as string | null, baladia: draft.baladia as string | null, pageSelection: page.trackingIntegrationIds as unknown };
     });
 
     if (fire) {
@@ -183,7 +184,14 @@ export async function POST(
           name: "Lead",
           eventId: fire.id,
           contentId: landingPageId,
-          customer: { name: fields.customerName ?? null, phone: fields.phone },
+          customer: {
+            name: fields.customerName ?? null,
+            phone: fields.phone,
+            // The MERGED row's location (CAPI.1): usually typed after the
+            // phone, so often absent on the Lead — sent whenever known.
+            city: fire.baladia,
+            state: fire.wilaya,
+          },
           context: {
             // SEC.10 — the END USER's address or nothing; see the checkout
             // route's note. A Lead carrying a proxy IP matches nobody.
@@ -196,7 +204,7 @@ export async function POST(
             gaClientId: gaClientId ?? null,
             url: origin ? `${origin}${storefrontHref(tenant, fire.pageSlug)}` : null,
           },
-        });
+        }, { pageSelection: fire.pageSelection });
       }
     }
   } catch (error) {

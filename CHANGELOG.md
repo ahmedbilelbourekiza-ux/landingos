@@ -10,6 +10,105 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## PX.1 — a page reports ONLY to the pixels ticked on it; "all pixels" is gone — NOT DEPLOYED
+
+> **The ask:** Purchase and Lead go only to the pixels selected on the landing
+> page that produced them, like the funnel events; never to every pixel in
+> the store; a page with no pixel selected sends to none.
+>
+> **Decided with the owner (24 Oct):** "no pixel selected" includes the
+> editor's old default, "All of your tracking" (a NULL column). So NULL, `[]`
+> and anything that is not an array all mean NONE, everywhere — not only for
+> Purchase/Lead — so the browser pixel, the funnel and the conversion can
+> never disagree about which datasets a page reports to.
+>
+> **What changed:**
+> - Server: `dispatchTrackingEvent` now REQUIRES the page's selection; the
+>   "no scope = every active integration" path is deleted. Purchase (orders
+>   route) and Lead (draft route) pass the page's `trackingIntegrationIds`;
+>   the funnel relay already did. `selectedIntegrationIds` returns `[]`
+>   (never `null`) for anything that is not an array.
+> - Browser: the product page fires only its ticked pixels (NULL → none).
+>   The thank-you page fires the ORDERED page's pixels (reverses LB.35's
+>   "whole active set"); an order whose page is gone fires none. Store home
+>   and category pages fire no pixel. The loader still mounts with an empty
+>   list on every storefront route, so an ad click id (`fbclid` → `_fbc`)
+>   landing on the home page survives to the Purchase.
+> - Browser, client-side navigation: events name their destinations
+>   (`fbq('trackSingle', id, …)`, a TikTok instance per code, GA4 `send_to`),
+>   and the loader replaces its id lists on every mount — a pixel initialised
+>   on one page no longer receives the next page's events.
+> - Editor: the "All of your tracking / Choose which ones" switch is gone; the
+>   section is a checklist with a hint, and the "nothing ticked" warning wears
+>   the warning colour. Saving writes an explicit array.
+>
+> **⚠ BEFORE DEPLOYING:** every page still on the old default (NULL) stops
+> reporting — browser and server, every event — the moment this ships. Tick
+> the right pixels on each live page first (or backfill the column per brand),
+> then deploy. New pages start with nothing ticked.
+>
+> **Migration:** none (column unchanged; meaning of NULL changed).
+> **Files:** `lib/storefront/tracking.ts`, `lib/tracking/dispatch.ts`,
+> `app/api/storefront/[tenant]/{orders,draft-orders}/route.ts`,
+> `app/(storefront)/[tenant]/{page,category/[slug]/page,thank-you/[orderId]/page}.tsx`,
+> `components/landing/{tracking-scripts,storefront-tracking}.tsx`,
+> `components/landings/edit/sections/tracking-section.tsx`, `packages/i18n`
+> (−4 mode keys, +1 hint, reworded warning), `test/{tracking,builder-api,hardening}.test.ts`.
+
+---
+
+## CAPI.1 — Meta Conversions API covers the whole funnel, with city/state and a test-events button — NOT DEPLOYED
+
+> **The ask:** server-side Meta events for a new dataset (`1113261321449322`):
+> ViewContent, AddToCart, InitiateCheckout, Purchase, deduplicated against the
+> browser pixel, with fbp/fbc/IP/UA and hashed phone, name, city, state,
+> country; token not hardcoded; per store/brand; testable in Test events.
+>
+> **Already there (LB.5):** per-tenant `TrackingIntegration(provider: meta)`
+> with the token AES-GCM encrypted at rest and write-only; Purchase sent
+> server-side keyed on the order id, which the thank-you pixel shares; Lead
+> from draft capture; fbp/fbc/IP/UA; hashed ph/fn/ln/country; `testCode`.
+>
+> **Missing, now added:**
+> - **ViewContent / InitiateCheckout had no server copy and no event id;
+>   AddToCart never fired at all.** The loader now mints an event id for
+>   those three, fires fbq with it, and posts the same id to a new public
+>   relay `POST /api/storefront/[tenant]/events` (product pages only). The
+>   relay prices from the landing page row (no client-sent money), rebuilds
+>   `event_source_url`, takes the end-user IP (SEC.10), waits ≤1.5s for
+>   `_fbp` on the first event, is rate-limited (`FUNNEL_RATE_LIMIT`, 120/5min),
+>   and answers a silent 204 to everything.
+> - **AddToCart** fires once per product view on the first of: quantity or
+>   variant change, sticky-bar tap, first touch of the form (just before
+>   InitiateCheckout) — so ViewContent ≥ AddToCart ≥ InitiateCheckout ≥ Purchase.
+> - **Per brand:** the relay's server copy goes to the page's own pixel
+>   selection (`trackingIntegrationIds`), Meta + TikTok only (GA4 has no
+>   dedup key for these events and would double count). `dispatchTrackingEvent`
+>   gained a scope for this. (Purchase/Lead scoping: see PX.1 above.)
+> - **ct / st:** Purchase sends the commune (baladia) and wilaya; Lead sends
+>   them when the draft has them. Normalised before hashing (lowercase, no
+>   spaces/punctuation, Latin accents folded, Arabic letters kept).
+>   fn/ln now drop punctuation before hashing.
+> - **Test events:** each Meta row in Settings → Integrations has a "Test
+>   events" panel — save/clear the test code, send one synthetic event
+>   through the production builder and see Meta's reply (events_received,
+>   fbtrace_id, or Meta's error text), and replace the access token.
+>   `POST /api/platform/integrations/tracking/[id]/test` requires a code, so
+>   a "test" can never land in live data untagged. Token inputs are now
+>   password fields.
+>
+> **Migration:** none. **Files:** `lib/tracking/{events,dispatch}.ts`,
+> `lib/tracking/providers/meta.ts`, `lib/storefront/{contract,rate-limit,tracking}.ts`,
+> `lib/landing/store.ts`, `app/api/storefront/[tenant]/{events (new),orders,draft-orders}/route.ts`,
+> `app/api/platform/integrations/tracking/[id]/test/route.ts` (new),
+> `components/landing/{tracking-scripts,storefront-tracking,landing-template}.tsx`,
+> `components/landing/sections/{purchase-form,sticky-buy-button}.tsx`,
+> `components/console/platform/tracking-write.tsx`,
+> `app/console/settings/integrations/page.tsx`, `app/(storefront)/[tenant]/[slug]/page.tsx`,
+> `packages/i18n` (12 keys × en/ar/fr), `test/tracking.test.ts`.
+
+---
+
 ## IQ.1 — tall description posters keep their width (uploads cap WIDTH, not the longest edge) — DEPLOYED 22 Oct 2026, live 13:51:54 UTC (`e0944cc`)
 
 > **Merchant report:** the description images on the honey page
