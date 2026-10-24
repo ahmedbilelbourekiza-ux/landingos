@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { Prisma, withTenant } from "@landingos/db";
 
-import { tenantBySlug, currentOrigin, storefrontHref } from "@/lib/storefront/resolve-tenant";
+import { tenantBySlug, storefrontPageUrl } from "@/lib/storefront/resolve-tenant";
 import { allowRequest, clientIp, endUserIp, checkoutLimit } from "@/lib/storefront/rate-limit";
 import { CheckoutBody } from "@/lib/storefront/contract";
 import { deriveSource } from "@/lib/storefront/traffic-source";
@@ -464,7 +464,7 @@ export async function POST(
     // event_source_url for action_source "website", and a client-sent URL
     // would be a second spoofable input alongside the headers currentOrigin
     // already vets (LB.43).
-    const origin = await currentOrigin();
+    const pageUrl = await storefrontPageUrl(tenant, result.pageSlug);
     dispatchTrackingEvent(tenant.id, {
       name: "Purchase",
       eventId: result.order.id,
@@ -491,7 +491,7 @@ export async function POST(
         ttclid: input.ttclid ?? null,
         ttp: input.ttp ?? null,
         gaClientId: input.gaClientId ?? null,
-        url: origin ? `${origin}${storefrontHref(tenant, result.pageSlug)}` : null,
+        url: pageUrl,
       },
     }, { pageSelection: result.pageSelection });
 

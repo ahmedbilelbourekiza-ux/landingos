@@ -10,6 +10,48 @@ touched, any **migration**, and any **risk**.
 
 ---
 
+## CAPI.2 — server events name the page the shopper saw on a custom domain; one PageView per page — NOT DEPLOYED
+
+> **The report:** a real Purchase from the honey page (`selliora1.com/
+> asselelbilad`) showed the wrong Event Source URL in Meta's Test events,
+> and no browser event for the same event_id.
+>
+> **Measured — event_source_url (bug, fixed):** the storefront API routes
+> resolve the tenant from the PATH slug, so `viaCustomDomain` was always
+> false and `storefrontHref` built the platform form:
+> `https://selliora1.com/bebezzouar/asselelbilad`, which is a **404** on
+> that domain (checked live). Never caught: every test ran on a platform
+> host. New `storefrontPageUrl(tenant, slug)` decides from the vetted host
+> whether the request arrived on THIS tenant's verified domain; Purchase,
+> Lead and the funnel relay all use it. On the platform host nothing changes.
+>
+> **Measured — browser Purchase (works, no fix):** a real form checkout on a
+> local build fired `fbq('trackSingle', <ticked pixel>, 'Purchase', …,
+> {eventID: <order id>})` on the thank-you page after the client-side hop,
+> and the server sent its Purchase with the SAME id. Meta's Test events tab
+> shows BROWSER events only for a session opened from that tab ("Test
+> browser events" → open the site); a normal browser's Purchase goes to live
+> data, while server events show because the saved test code rides on all
+> of them.
+>
+> **Found on the way — double PageView (fixed):** after the checkout's
+> client-side hop the thank-you page sent PageView TWICE to Meta while our
+> loader called it ONCE (traced with a stack-logging fbq wrapper), so the
+> extra came from fbevents.js itself. Two changes, verified together in one
+> build (thank-you now sends exactly PageView + Purchase): the loader no
+> longer re-`init`s a pixel it already initialised in this document, and
+> `fbq.disablePushState = true` is set on the stub before fbevents.js loads
+> (stops Meta's own PageView-on-pushState). PageView is also fired once per
+> loader mount instead of from a `[pathname]` effect.
+>
+> **Tests:** tracking +2 (Purchase, Lead and the relay through a verified
+> custom domain, Host header set, assert `https://<domain>/<page>`).
+> **Files:** `lib/storefront/resolve-tenant.ts`,
+> `app/api/storefront/[tenant]/{orders,draft-orders,events}/route.ts`,
+> `components/landing/tracking-scripts.tsx`, `test/tracking.test.ts`.
+
+---
+
 ## PX.1 — a page reports ONLY to the pixels ticked on it; "all pixels" is gone — DEPLOYED 23 Oct 2026, live 22:52:38 UTC (`e372c13`)
 
 > **The ask:** Purchase and Lead go only to the pixels selected on the landing

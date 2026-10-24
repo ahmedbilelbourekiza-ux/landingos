@@ -815,3 +815,85 @@ describe('PX.1 — Purchase and Lead go only to the page\u2019s own pixels', { s
     }
   });
 });
+
+/* ========================================================================== */
+/* CAPI.2 — event_source_url on a CUSTOM DOMAIN is the page the shopper saw.  */
+/* ========================================================================== */
+
+import { request as httpRequest } from 'node:http';
+
+/** POST through the running server with a chosen Host header — what a
+ * storefront on its own domain (selliora1.com) sends. fetch() cannot set Host. */
+function postWithHost(path: string, host: string, body: unknown): Promise<{ status: number; text: string }> {
+  const target = new URL(BASE);
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      {
+        hostname: target.hostname, port: target.port, path, method: 'POST',
+        headers: { host, 'content-type': 'application/json', 'user-agent': 'DomainTest/1.0' },
+      },
+      (res) => {
+        let text = '';
+        res.on('data', (c) => { text += c; });
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, text }));
+      },
+    );
+    req.on('error', reject);
+    req.end(JSON.stringify(body));
+  });
+}
+
+describe('CAPI.2 — on a custom domain the server events name the real page URL', { skip: skip || !stub }, () => {
+  const domain = `capi2-${stamp}.test`;
+
+  before(async () => {
+    if (skip) return;
+    await withTenant(tenantId, (tx) =>
+      (tx as any).tenantDomain.create({
+        data: { tenantId, domain, verificationToken: `tok-capi2-${stamp}`, verifiedAt: new Date(), isPrimary: true },
+      }),
+    );
+    await linkPage('all');
+  });
+
+  const pageUrl = () => `https://${domain}/tracked-product`;
+
+  test('Purchase from the custom domain carries https://<domain>/<page>, not the platform path', async () => {
+    const r = await postWithHost(`/api/storefront/${slug}/orders`, domain, {
+      landingPageId: pageId, customerName: 'Domain Buyer', phone: '0555800001',
+      wilayaId, baladiaName: 'Centre', quantity: 1, shippingMethod: 'HOME',
+    });
+    assert.equal(r.status, 201, r.text);
+    const orderId = JSON.parse(r.text).data.id;
+    const meta = await waitFor(() =>
+      hits.find((h) => h.path.includes('/999888777666/events') && h.body?.data?.[0]?.event_id === orderId));
+    assert.equal(meta.body.data[0].event_source_url, pageUrl(),
+      'before CAPI.2 this was https://<domain>/<tenant-slug>/tracked-product — a 404 on that domain');
+    const tiktok = await waitFor(() =>
+      hits.find((h) => h.path.includes('/event/track') && h.body?.data?.[0]?.event_id === orderId));
+    assert.equal(tiktok.body.data[0].page.url, pageUrl());
+  });
+
+  test('Lead and the funnel relay use the same page URL on the custom domain', async () => {
+    const token = `tok-${stamp}-capi2lead`;
+    const d = await postWithHost(`/api/storefront/${slug}/draft-orders`, domain, {
+      token, landingPageId: pageId, customerName: 'Domain Lead', phone: '0555800002',
+    });
+    assert.equal(d.status, 204);
+    const draft = (await withTenant(tenantId, (tx) =>
+      (tx as any).draftOrder.findUnique({ where: { token }, select: { id: true } }),
+    )) as any;
+    const lead = await waitFor(() =>
+      hits.find((h) => h.path.includes('/999888777666/events') && h.body?.data?.[0]?.event_id === draft.id));
+    assert.equal(lead.body.data[0].event_source_url, pageUrl());
+
+    const eventId = `vc-${stamp}-capi2dom`;
+    const v = await postWithHost(`/api/storefront/${slug}/events`, domain, {
+      name: 'ViewContent', eventId, landingPageId: pageId,
+    });
+    assert.equal(v.status, 204);
+    const vc = await waitFor(() =>
+      hits.find((h) => h.path.includes('/999888777666/events') && h.body?.data?.[0]?.event_id === eventId));
+    assert.equal(vc.body.data[0].event_source_url, pageUrl());
+  });
+});

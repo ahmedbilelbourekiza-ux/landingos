@@ -265,3 +265,26 @@ export function storefrontHref(tenant: StorefrontTenant, path = ""): string {
   const suffix = path ? (path.startsWith("/") ? path : `/${path}`) : "";
   return tenant.viaCustomDomain ? suffix || "/" : `/${tenant.slug}${suffix}`;
 }
+
+/**
+ * The absolute URL of one of this tenant's pages, as the shopper saw it — the
+ * `event_source_url` every server-side conversion carries (CAPI.2).
+ *
+ * The storefront API routes resolve their tenant from the PATH slug
+ * (`/api/storefront/<slug>/…`), so their tenant always says
+ * `viaCustomDomain: false`. Fed to storefrontHref as-is, a Purchase placed on
+ * `selliora1.com/asselelbilad` reported `https://selliora1.com/<slug>/
+ * asselelbilad` — a 404 on that domain. Whether the request arrived on THIS
+ * tenant's own verified domain is decided here, from the vetted host, the
+ * same lookup the storefront pages use; any other host keeps the path form.
+ */
+export async function storefrontPageUrl(
+  tenant: StorefrontTenant,
+  pageSlug: string,
+): Promise<string | null> {
+  const origin = await currentOrigin();
+  if (!origin) return null;
+  const byDomain = await tenantByDomain();
+  const asSeen = byDomain && byDomain.id === tenant.id ? byDomain : tenant;
+  return `${origin}${storefrontHref(asSeen, pageSlug)}`;
+}

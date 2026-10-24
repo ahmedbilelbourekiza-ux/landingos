@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { withTenant } from "@landingos/db";
 
-import { tenantBySlug, currentOrigin, storefrontHref } from "@/lib/storefront/resolve-tenant";
+import { tenantBySlug, storefrontPageUrl } from "@/lib/storefront/resolve-tenant";
 import { allowRequest, clientIp, endUserIp, draftLimit } from "@/lib/storefront/rate-limit";
 import { DraftBody } from "@/lib/storefront/contract";
 import { triggerDraftOrderWebhook } from "@/lib/webhooks/tenant-triggers";
@@ -179,7 +179,7 @@ export async function POST(
         // Rebuilt server-side, same rule as the checkout's Purchase: Meta
         // requires event_source_url for website events, and the vetted
         // origin + page slug is the one non-spoofable source of it (LB.43).
-        const origin = await currentOrigin();
+        const pageUrl = await storefrontPageUrl(tenant, fire.pageSlug);
         dispatchTrackingEvent(tenant.id, {
           name: "Lead",
           eventId: fire.id,
@@ -202,7 +202,7 @@ export async function POST(
             ttclid: ttclid ?? null,
             ttp: ttp ?? null,
             gaClientId: gaClientId ?? null,
-            url: origin ? `${origin}${storefrontHref(tenant, fire.pageSlug)}` : null,
+            url: pageUrl,
           },
         }, { pageSelection: fire.pageSelection });
       }

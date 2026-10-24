@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { usePathname } from "next/navigation";
 
 /* =============================================================================
  * The storefront's ONE tracking loader (LB.5).
@@ -125,9 +124,26 @@ function bootMeta(ids: string[]) {
       const s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t, s);
     })(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
     /* eslint-enable */
+    /* CAPI.2 — fbevents.js fires its OWN PageView on every history.pushState
+       (its single-page-app support), and this loader fires one per page
+       mount. A checkout's client-side hop to the thank-you page therefore
+       reported PageView twice (measured). The loader is the one source of
+       PageView here — it knows which pixels the new page ticked; Meta's
+       automatic one goes to every pixel ever initialised. */
+    (window.fbq as any).disablePushState = true;
   }
-  for (const id of ids) window.fbq?.("init", id);
+  // `init` once per pixel per document: the script keeps every initialised
+  // pixel for the page's lifetime, so re-initialising on each client-side
+  // page mount is at best redundant and, per the measured double PageView,
+  // not free.
+  for (const id of ids) {
+    if (initialisedMetaIds.has(id)) continue;
+    initialisedMetaIds.add(id);
+    window.fbq?.("init", id);
+  }
 }
+
+const initialisedMetaIds = new Set<string>();
 
 function bootTiktok(codes: string[]) {
   if (!window.ttq) {
@@ -410,8 +426,6 @@ export function TrackingScripts({
   /** Product pages only — see the header note on funnel dedup. */
   relay?: TrackingRelay;
 }) {
-  const pathname = usePathname();
-
   React.useEffect(() => {
     captureClickIds();
     relay = relayConfig ?? null;
@@ -447,17 +461,17 @@ export function TrackingScripts({
       const evt = pending.shift()!;
       dispatchToProviders(evt.name, evt.params, evt.eventId);
     }
+    // ONE PageView per mount (CAPI.2). Every storefront route mounts its own
+    // loader, so a mount IS a page view. The old `[pathname]` effect also
+    // fired from the OUTGOING page's loader the moment the router changed the
+    // path, so a checkout's client-side hop to the thank-you page reported
+    // two PageViews (measured). Fired after the buffer flush, as before, and
+    // before ViewContentTracker's effect, which runs after this sibling's.
+    track("PageView");
     // The integration list is server-rendered per storefront and does not
     // change within a page's lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // PageView per client-side navigation. The first render's PageView is
-  // buffered by the effect ordering above; there is no double fire because
-  // none of the boot functions send one themselves.
-  React.useEffect(() => {
-    track("PageView");
-  }, [pathname]);
 
   return null;
 }

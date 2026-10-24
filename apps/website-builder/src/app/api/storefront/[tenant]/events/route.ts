@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { withTenant } from "@landingos/db";
 
-import { tenantBySlug, currentOrigin, storefrontHref } from "@/lib/storefront/resolve-tenant";
+import { tenantBySlug, storefrontPageUrl } from "@/lib/storefront/resolve-tenant";
 import { allowRequest, clientIp, endUserIp, funnelLimit } from "@/lib/storefront/rate-limit";
 import { FunnelEventBody } from "@/lib/storefront/contract";
 import { dispatchTrackingEvent } from "@/lib/tracking/dispatch";
@@ -63,7 +63,7 @@ export async function POST(
     // size the shopper had chosen when they fired.
     const quantity = input.name === "ViewContent" ? 1 : (input.quantity ?? 1);
     const unit = Number(page.price);
-    const origin = await currentOrigin();
+    const pageUrl = await storefrontPageUrl(tenant, page.slug as string);
 
     // After the read returned (its own binding), never awaited — the
     // dispatchTrackingEvent rule.
@@ -84,7 +84,7 @@ export async function POST(
           fbp: input.fbp ?? null,
           ttclid: input.ttclid ?? null,
           ttp: input.ttp ?? null,
-          url: origin ? `${origin}${storefrontHref(tenant, page.slug as string)}` : null,
+          url: pageUrl,
         },
       },
       { providers: ["meta", "tiktok"], pageSelection: page.trackingIntegrationIds },
